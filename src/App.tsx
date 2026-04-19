@@ -9,6 +9,7 @@ import Contracts from "./pages/Contracts.tsx";
 import Clients from "./pages/Clients.tsx";
 import ClientDetail from "./pages/ClientDetail.tsx";
 import Fines from "./pages/Fines.tsx";
+import Payments from "./pages/Payments.tsx";
 import Placeholder from "./pages/Placeholder.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
