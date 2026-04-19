@@ -8,6 +8,7 @@ interface StatCardProps {
   value: string;
   icon: LucideIcon;
   tint?: Tint;
+  highlight?: Tint;
 }
 
 const tintClasses: Record<Tint, string> = {
