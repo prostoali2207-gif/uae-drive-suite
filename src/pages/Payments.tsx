@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CreditCard, Plus, TrendingUp, AlertTriangle, Wallet } from "lucide-react";
+import { CreditCard, Plus, TrendingUp, TriangleAlert as AlertTriangle, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
