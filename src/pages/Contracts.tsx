@@ -2,24 +2,14 @@ import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -29,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { ContractForm, type ClientOption, type NewClientInput } from "@/components/ContractForm";
 
 type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
