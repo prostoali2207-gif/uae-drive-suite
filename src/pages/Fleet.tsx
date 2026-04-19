@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -29,30 +29,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 type Status = "Available" | "Rented" | "Service";
 
 interface Car {
   id: string;
   plate: string;
-  makeModel: string;
+  make: string;
+  model: string;
   year: number;
   status: Status;
-  insuranceExpiry: string; // ISO date
-  mulkiyaExpiry: string; // ISO date
-  renter: string;
+  insurance_expiry: string | null;
+  mulkiya_expiry: string | null;
 }
-
-const initialCars: Car[] = [
-  { id: "1", plate: "DXB A 12345", makeModel: "Toyota Corolla", year: 2023, status: "Rented", insuranceExpiry: "2026-05-10", mulkiyaExpiry: "2026-11-02", renter: "Ahmed Al Mansoori" },
-  { id: "2", plate: "DXB F 87231", makeModel: "Nissan Sunny", year: 2022, status: "Rented", insuranceExpiry: "2026-04-28", mulkiyaExpiry: "2027-01-15", renter: "Sara Hassan" },
-  { id: "3", plate: "AUH B 44120", makeModel: "Hyundai Elantra", year: 2024, status: "Available", insuranceExpiry: "2026-09-12", mulkiyaExpiry: "2026-04-18", renter: "" },
-  { id: "4", plate: "DXB N 55891", makeModel: "Kia Pegas", year: 2023, status: "Rented", insuranceExpiry: "2027-02-20", mulkiyaExpiry: "2026-12-01", renter: "Layla Ibrahim" },
-  { id: "5", plate: "SHJ 1 22019", makeModel: "Mitsubishi Attrage", year: 2022, status: "Service", insuranceExpiry: "2026-03-30", mulkiyaExpiry: "2026-08-22", renter: "" },
-  { id: "6", plate: "DXB K 09812", makeModel: "Toyota Yaris", year: 2024, status: "Available", insuranceExpiry: "2027-06-04", mulkiyaExpiry: "2027-03-19", renter: "" },
-  { id: "7", plate: "DXB Q 71234", makeModel: "Chevrolet Spark", year: 2021, status: "Rented", insuranceExpiry: "2026-04-22", mulkiyaExpiry: "2026-05-05", renter: "Omar Saeed" },
-  { id: "8", plate: "AUH C 30021", makeModel: "Nissan Kicks", year: 2023, status: "Available", insuranceExpiry: "2026-10-11", mulkiyaExpiry: "2027-02-28", renter: "" },
-];
 
 const statusClasses: Record<Status, string> = {
   Available: "bg-tint-green text-tint-green-foreground",
@@ -70,7 +61,8 @@ function daysUntil(iso: string): number {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
@@ -78,7 +70,8 @@ function formatDate(iso: string): string {
   });
 }
 
-function expiryCellClass(iso: string): string {
+function expiryCellClass(iso: string | null): string {
+  if (!iso) return "text-muted-foreground";
   const d = daysUntil(iso);
   if (d < 0) return "bg-tint-rose/60 text-tint-rose-foreground font-medium";
   if (d <= 30) return "bg-tint-amber/60 text-tint-amber-foreground font-medium";
@@ -86,18 +79,37 @@ function expiryCellClass(iso: string): string {
 }
 
 const Fleet = () => {
-  const [cars, setCars] = useState<Car[]>(initialCars);
+  const [cars, setCars] = useState<Car[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"All" | Status>("All");
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     plate: "",
-    makeModel: "",
+    make: "",
+    model: "",
     year: new Date().getFullYear(),
     status: "Available" as Status,
-    insuranceExpiry: "",
-    mulkiyaExpiry: "",
-    renter: "",
+    insurance_expiry: "",
+    mulkiya_expiry: "",
   });
+
+  const fetchCars = async () => {
+    const { data, error } = await supabase
+      .from("cars")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) {
+      toast.error("Failed to load fleet");
+    } else {
+      setCars((data as Car[]) || []);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchCars();
+  }, []);
 
   const filtered = useMemo(
     () => (filter === "All" ? cars : cars.filter((c) => c.status === filter)),
@@ -114,31 +126,35 @@ const Fleet = () => {
     [cars],
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCars((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        plate: form.plate,
-        makeModel: form.makeModel,
-        year: Number(form.year),
-        status: form.status,
-        insuranceExpiry: form.insuranceExpiry,
-        mulkiyaExpiry: form.mulkiyaExpiry,
-        renter: form.status === "Rented" ? form.renter : "",
-      },
-    ]);
-    setOpen(false);
-    setForm({
-      plate: "",
-      makeModel: "",
-      year: new Date().getFullYear(),
-      status: "Available",
-      insuranceExpiry: "",
-      mulkiyaExpiry: "",
-      renter: "",
+    setSaving(true);
+    const { error } = await supabase.from("cars").insert({
+      plate: form.plate.trim(),
+      make: form.make.trim(),
+      model: form.model.trim(),
+      year: Number(form.year),
+      status: form.status,
+      insurance_expiry: form.insurance_expiry || null,
+      mulkiya_expiry: form.mulkiya_expiry || null,
     });
+    setSaving(false);
+    if (error) {
+      toast.error("Failed to add car: " + error.message);
+    } else {
+      toast.success("Car added to fleet");
+      setOpen(false);
+      setForm({
+        plate: "",
+        make: "",
+        model: "",
+        year: new Date().getFullYear(),
+        status: "Available",
+        insurance_expiry: "",
+        mulkiya_expiry: "",
+      });
+      fetchCars();
+    }
   };
 
   return (
@@ -200,15 +216,27 @@ const Fleet = () => {
                     />
                   </div>
                 </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="makeModel">Make & Model</Label>
-                  <Input
-                    id="makeModel"
-                    required
-                    value={form.makeModel}
-                    onChange={(e) => setForm({ ...form, makeModel: e.target.value })}
-                    placeholder="Toyota Corolla"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="make">Make</Label>
+                    <Input
+                      id="make"
+                      required
+                      value={form.make}
+                      onChange={(e) => setForm({ ...form, make: e.target.value })}
+                      placeholder="Toyota"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="model">Model</Label>
+                    <Input
+                      id="model"
+                      required
+                      value={form.model}
+                      onChange={(e) => setForm({ ...form, model: e.target.value })}
+                      placeholder="Corolla"
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
@@ -216,9 +244,8 @@ const Fleet = () => {
                     <Input
                       id="insurance"
                       type="date"
-                      required
-                      value={form.insuranceExpiry}
-                      onChange={(e) => setForm({ ...form, insuranceExpiry: e.target.value })}
+                      value={form.insurance_expiry}
+                      onChange={(e) => setForm({ ...form, insurance_expiry: e.target.value })}
                     />
                   </div>
                   <div className="grid gap-1.5">
@@ -226,45 +253,34 @@ const Fleet = () => {
                     <Input
                       id="mulkiya"
                       type="date"
-                      required
-                      value={form.mulkiyaExpiry}
-                      onChange={(e) => setForm({ ...form, mulkiyaExpiry: e.target.value })}
+                      value={form.mulkiya_expiry}
+                      onChange={(e) => setForm({ ...form, mulkiya_expiry: e.target.value })}
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="status">Status</Label>
-                    <Select
-                      value={form.status}
-                      onValueChange={(v) => setForm({ ...form, status: v as Status })}
-                    >
-                      <SelectTrigger id="status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Available">Available</SelectItem>
-                        <SelectItem value="Rented">Rented</SelectItem>
-                        <SelectItem value="Service">Service</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="renter">Current Renter</Label>
-                    <Input
-                      id="renter"
-                      value={form.renter}
-                      onChange={(e) => setForm({ ...form, renter: e.target.value })}
-                      placeholder="Optional"
-                      disabled={form.status !== "Rented"}
-                    />
-                  </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="status">Status</Label>
+                  <Select
+                    value={form.status}
+                    onValueChange={(v) => setForm({ ...form, status: v as Status })}
+                  >
+                    <SelectTrigger id="status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Available">Available</SelectItem>
+                      <SelectItem value="Rented">Rented</SelectItem>
+                      <SelectItem value="Service">Service</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit">Add Car</Button>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Adding..." : "Add Car"}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -280,14 +296,19 @@ const Fleet = () => {
                 <TableHead className="text-xs">Year</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs">Insurance Expiry</TableHead>
-                <TableHead className="text-xs">Mulkiya Expiry</TableHead>
-                <TableHead className="px-5 text-xs">Current Renter</TableHead>
+                <TableHead className="px-5 text-xs">Mulkiya Expiry</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
+                    Loading fleet...
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
                     No cars match this filter.
                   </TableCell>
                 </TableRow>
@@ -295,30 +316,27 @@ const Fleet = () => {
                 filtered.map((car) => (
                   <TableRow key={car.id}>
                     <TableCell className="px-5 font-mono text-xs text-foreground">{car.plate}</TableCell>
-                    <TableCell className="font-medium text-foreground">{car.makeModel}</TableCell>
+                    <TableCell className="font-medium text-foreground">{car.make} {car.model}</TableCell>
                     <TableCell className="text-muted-foreground">{car.year}</TableCell>
                     <TableCell>
                       <span
                         className={cn(
                           "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                          statusClasses[car.status],
+                          statusClasses[car.status as Status] ?? "bg-muted text-muted-foreground",
                         )}
                       >
                         {car.status}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.insuranceExpiry))}>
-                        {formatDate(car.insuranceExpiry)}
+                      <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.insurance_expiry))}>
+                        {formatDate(car.insurance_expiry)}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.mulkiyaExpiry))}>
-                        {formatDate(car.mulkiyaExpiry)}
+                    <TableCell className="px-5">
+                      <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.mulkiya_expiry))}>
+                        {formatDate(car.mulkiya_expiry)}
                       </span>
-                    </TableCell>
-                    <TableCell className="px-5 text-sm text-muted-foreground">
-                      {car.renter || <span className="text-muted-foreground/60">—</span>}
                     </TableCell>
                   </TableRow>
                 ))

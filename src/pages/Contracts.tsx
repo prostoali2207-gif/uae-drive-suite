@@ -1,15 +1,26 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -19,159 +30,153 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { ContractForm, type ClientOption, type NewClientInput } from "@/components/ContractForm";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
+type RateType = "Daily" | "Monthly" | "Yearly";
+type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
 
-interface Client {
+interface ContractRow {
   id: string;
-  name: string;
+  client_id: string;
+  car_id: string;
+  start_date: string;
+  end_date: string;
+  rate_type: string;
+  rate_amount: number;
+  total_amount: number;
+  deposit_amount: number;
+  initial_mileage: number;
+  fuel_level: string;
+  status: string;
+  payment_status: string;
+  clients: { full_name: string } | null;
+  cars: { plate: string; make: string; model: string } | null;
 }
 
-interface Car {
-  id: string;
-  plate: string;
-  model: string;
-  available: boolean;
-}
+interface ClientOption { id: string; full_name: string; }
+interface CarOption { id: string; plate: string; make: string; model: string; status: string; }
 
-interface Contract {
-  id: string;
-  number: string;
-  clientName: string;
-  carPlate: string;
-  carModel: string;
-  startDate: string;
-  endDate: string;
-  dailyRate: number;
-  paymentStatus: PaymentStatus;
-}
-
-const clients: Client[] = [
-  { id: "c1", name: "Ahmed Al Mansoori" },
-  { id: "c2", name: "Sara Hassan" },
-  { id: "c3", name: "Layla Ibrahim" },
-  { id: "c4", name: "Omar Saeed" },
-  { id: "c5", name: "Fatima Al Zaabi" },
-  { id: "c6", name: "Khalid Rahman" },
-];
-
-const cars: Car[] = [
-  { id: "v1", plate: "DXB A 12345", model: "Toyota Corolla", available: false },
-  { id: "v2", plate: "DXB F 87231", model: "Nissan Sunny", available: false },
-  { id: "v3", plate: "AUH B 44120", model: "Hyundai Elantra", available: true },
-  { id: "v4", plate: "DXB N 55891", model: "Kia Pegas", available: false },
-  { id: "v5", plate: "DXB K 09812", model: "Toyota Yaris", available: true },
-  { id: "v6", plate: "AUH C 30021", model: "Nissan Kicks", available: true },
-];
-
-const initialContracts: Contract[] = [
-  { id: "1", number: "CT-1042", clientName: "Ahmed Al Mansoori", carPlate: "DXB A 12345", carModel: "Toyota Corolla", startDate: "2026-03-15", endDate: "2026-04-22", dailyRate: 120, paymentStatus: "Paid" },
-  { id: "2", number: "CT-1041", clientName: "Sara Hassan", carPlate: "DXB F 87231", carModel: "Nissan Sunny", startDate: "2026-04-01", endDate: "2026-04-25", dailyRate: 95, paymentStatus: "Partial" },
-  { id: "3", number: "CT-1040", clientName: "Layla Ibrahim", carPlate: "DXB N 55891", carModel: "Kia Pegas", startDate: "2026-04-05", endDate: "2026-05-10", dailyRate: 110, paymentStatus: "Paid" },
-  { id: "4", number: "CT-1039", clientName: "Omar Saeed", carPlate: "DXB Q 71234", carModel: "Chevrolet Spark", startDate: "2026-03-20", endDate: "2026-04-15", dailyRate: 80, paymentStatus: "Unpaid" },
-  { id: "5", number: "CT-1038", clientName: "Fatima Al Zaabi", carPlate: "AUH B 44120", carModel: "Hyundai Elantra", startDate: "2026-02-10", endDate: "2026-03-12", dailyRate: 130, paymentStatus: "Paid" },
-  { id: "6", number: "CT-1037", clientName: "Khalid Rahman", carPlate: "SHJ 1 22019", carModel: "Mitsubishi Attrage", startDate: "2026-04-10", endDate: "2026-04-30", dailyRate: 85, paymentStatus: "Partial" },
-];
-
-function daysUntil(iso: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(iso);
-  target.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
-}
-
-function durationDays(start: string, end: string): number {
-  const s = new Date(start);
-  const e = new Date(end);
-  return Math.max(0, Math.round((e.getTime() - s.getTime()) / 86_400_000));
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function deriveStatus(c: Contract): ContractStatus {
-  const d = daysUntil(c.endDate);
-  if (d < 0) {
-    return c.paymentStatus === "Paid" ? "Completed" : "Overdue";
-  }
-  if (d <= 7) return "Expiring Soon";
-  return "Active";
-}
-
-const statusClasses: Record<ContractStatus, string> = {
+const statusClasses: Record<string, string> = {
   Active: "bg-tint-blue text-tint-blue-foreground",
   "Expiring Soon": "bg-tint-amber text-tint-amber-foreground",
   Overdue: "bg-tint-rose text-tint-rose-foreground",
   Completed: "bg-muted text-muted-foreground",
 };
 
-const paymentClasses: Record<PaymentStatus, string> = {
+const paymentClasses: Record<string, string> = {
   Paid: "bg-tint-green text-tint-green-foreground",
   Partial: "bg-tint-amber text-tint-amber-foreground",
   Unpaid: "bg-tint-rose text-tint-rose-foreground",
 };
 
 const filters: ("All" | ContractStatus)[] = ["All", "Active", "Expiring Soon", "Overdue"];
+const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function diffDays(start: string, end: string): number {
+  if (!start || !end) return 0;
+  const s = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  return Math.max(0, Math.round((e - s) / 86_400_000));
+}
+
+const emptyForm = {
+  client_id: "",
+  car_id: "",
+  start_date: "",
+  end_date: "",
+  rate_type: "Daily" as RateType,
+  rate_amount: 100,
+  deposit_amount: 0,
+  initial_mileage: 0,
+  fuel_level: "Full" as FuelLevel,
+  special_conditions: "",
+};
 
 const Contracts = () => {
-  const [contracts, setContracts] = useState<Contract[]>(initialContracts);
-  const [clientList, setClientList] = useState<ClientOption[]>(clients);
+  const [contracts, setContracts] = useState<ContractRow[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [cars, setCars] = useState<CarOption[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"All" | ContractStatus>("All");
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(emptyForm);
 
-  const enriched = useMemo(
-    () => contracts.map((c) => ({ ...c, status: deriveStatus(c) })),
-    [contracts],
+  const fetchData = async () => {
+    const [contractsRes, clientsRes, carsRes] = await Promise.all([
+      supabase
+        .from("contracts")
+        .select("*, clients(full_name), cars(plate, make, model)")
+        .order("created_at", { ascending: false }),
+      supabase.from("clients").select("id, full_name").order("full_name"),
+      supabase.from("cars").select("id, plate, make, model, status").order("plate"),
+    ]);
+    if (contractsRes.error) toast.error("Failed to load contracts");
+    else setContracts((contractsRes.data as ContractRow[]) || []);
+    if (!clientsRes.error) setClients(clientsRes.data || []);
+    if (!carsRes.error) setCars(carsRes.data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const availableCars = useMemo(() => cars.filter((c) => c.status === "Available"), [cars]);
+
+  const days = useMemo(() => diffDays(form.start_date, form.end_date), [form.start_date, form.end_date]);
+  const total = useMemo(() => {
+    if (!form.rate_amount || !days) return 0;
+    if (form.rate_type === "Daily") return form.rate_amount * days;
+    if (form.rate_type === "Monthly") return form.rate_amount * (days / 30);
+    return form.rate_amount * (days / 365);
+  }, [form.rate_type, form.rate_amount, days]);
+
+  const filtered = useMemo(
+    () => (filter === "All" ? contracts : contracts.filter((c) => c.status === filter)),
+    [contracts, filter],
   );
 
   const counts = useMemo(() => {
-    const base = { All: enriched.length, Active: 0, "Expiring Soon": 0, Overdue: 0 } as Record<string, number>;
-    enriched.forEach((c) => {
-      if (c.status in base) base[c.status]++;
-    });
+    const base: Record<string, number> = { All: contracts.length, Active: 0, "Expiring Soon": 0, Overdue: 0 };
+    contracts.forEach((c) => { if (c.status in base) base[c.status]++; });
     return base;
-  }, [enriched]);
+  }, [contracts]);
 
-  const filtered = useMemo(
-    () => (filter === "All" ? enriched : enriched.filter((c) => c.status === filter)),
-    [enriched, filter],
-  );
-
-  const handleCreateClient = (input: NewClientInput): ClientOption => {
-    const created: ClientOption = { id: crypto.randomUUID(), name: input.fullName.trim() };
-    setClientList((prev) => [...prev, created]);
-    return created;
-  };
-
-  const handleSubmit = (values: Parameters<React.ComponentProps<typeof ContractForm>["onSubmit"]>[0]) => {
-    const client = clientList.find((c) => c.id === values.clientId);
-    const car = cars.find((c) => c.id === values.carId);
-    if (!client || !car) return;
-    const nextNum = `CT-${1042 + contracts.length + 1}`;
-    const dailyEquivalent = values.durationDays > 0 ? values.total / values.durationDays : values.rate;
-    setContracts((prev) => [
-      {
-        id: crypto.randomUUID(),
-        number: nextNum,
-        clientName: client.name,
-        carPlate: car.plate,
-        carModel: car.model,
-        startDate: values.startDate,
-        endDate: values.endDate,
-        dailyRate: Math.round(dailyEquivalent),
-        paymentStatus: "Unpaid",
-      },
-      ...prev,
-    ]);
-    setOpen(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.client_id || !form.car_id) return;
+    setSaving(true);
+    const { error } = await supabase.from("contracts").insert({
+      client_id: form.client_id,
+      car_id: form.car_id,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      rate_type: form.rate_type,
+      rate_amount: Number(form.rate_amount),
+      total_amount: total,
+      deposit_amount: Number(form.deposit_amount),
+      initial_mileage: Number(form.initial_mileage),
+      fuel_level: form.fuel_level,
+      status: "Active",
+      payment_status: "Unpaid",
+    });
+    setSaving(false);
+    if (error) {
+      toast.error("Failed to create contract: " + error.message);
+    } else {
+      toast.success("Contract created");
+      setForm(emptyForm);
+      setOpen(false);
+      fetchData();
+    }
   };
 
   return (
@@ -208,15 +213,88 @@ const Contracts = () => {
                 <DialogTitle>Create new contract</DialogTitle>
                 <DialogDescription>Total amount is calculated automatically.</DialogDescription>
               </DialogHeader>
-              {open && (
-                <ContractForm
-                  clients={clientList}
-                  cars={cars}
-                  onSubmit={handleSubmit}
-                  onCancel={() => setOpen(false)}
-                  onCreateClient={handleCreateClient}
-                />
-              )}
+              <form onSubmit={handleSubmit} className="grid gap-4 py-2">
+                <div className="grid gap-1.5">
+                  <Label>Client</Label>
+                  <Select value={form.client_id} onValueChange={(v) => setForm({ ...form, client_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select a client" /></SelectTrigger>
+                    <SelectContent>
+                      {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Car (Available only)</Label>
+                  <Select value={form.car_id} onValueChange={(v) => setForm({ ...form, car_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select a car" /></SelectTrigger>
+                    <SelectContent>
+                      {availableCars.map((c) => <SelectItem key={c.id} value={c.id}>{c.plate} — {c.make} {c.model}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="start">Start Date</Label>
+                    <Input id="start" type="date" required value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="end">End Date</Label>
+                    <Input id="end" type="date" required value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label>Rate Type</Label>
+                    <Select value={form.rate_type} onValueChange={(v) => setForm({ ...form, rate_type: v as RateType })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Daily">Daily</SelectItem>
+                        <SelectItem value="Monthly">Monthly</SelectItem>
+                        <SelectItem value="Yearly">Yearly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="rate">Rate (AED)</Label>
+                    <Input id="rate" type="number" min={0} required value={form.rate_amount} onChange={(e) => setForm({ ...form, rate_amount: Number(e.target.value) })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="mileage">Initial Mileage (km)</Label>
+                    <Input id="mileage" type="number" min={0} value={form.initial_mileage} onChange={(e) => setForm({ ...form, initial_mileage: Number(e.target.value) })} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Fuel Level</Label>
+                    <Select value={form.fuel_level} onValueChange={(v) => setForm({ ...form, fuel_level: v as FuelLevel })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {fuelLevels.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="deposit">Deposit Amount (AED)</Label>
+                  <Input id="deposit" type="number" min={0} value={form.deposit_amount} onChange={(e) => setForm({ ...form, deposit_amount: Number(e.target.value) })} />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Total Amount</div>
+                    <div className="text-lg font-semibold text-foreground">
+                      AED {total.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div>{days} days</div>
+                    <div>{form.rate_type.toLowerCase()} rate</div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={saving}>{saving ? "Creating..." : "Create Contract"}</Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
@@ -225,50 +303,47 @@ const Contracts = () => {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="px-5 text-xs">Contract #</TableHead>
-                <TableHead className="text-xs">Client</TableHead>
+                <TableHead className="px-5 text-xs">Client</TableHead>
                 <TableHead className="text-xs">Car</TableHead>
                 <TableHead className="text-xs">Start</TableHead>
                 <TableHead className="text-xs">End</TableHead>
                 <TableHead className="text-xs">Days</TableHead>
-                <TableHead className="text-xs">Rate</TableHead>
                 <TableHead className="text-xs">Total</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="px-5 text-xs">Payment</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {loading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">
-                    No contracts match this filter.
-                  </TableCell>
+                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">Loading contracts...</TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">No contracts match this filter.</TableCell>
                 </TableRow>
               ) : (
                 filtered.map((c) => {
-                  const days = durationDays(c.startDate, c.endDate);
-                  const total = days * c.dailyRate;
+                  const d = diffDays(c.start_date, c.end_date);
                   return (
                     <TableRow key={c.id}>
-                      <TableCell className="px-5 font-mono text-xs text-foreground">{c.number}</TableCell>
-                      <TableCell className="font-medium text-foreground">{c.clientName}</TableCell>
+                      <TableCell className="px-5 font-medium text-foreground">{c.clients?.full_name ?? "—"}</TableCell>
                       <TableCell>
-                        <div className="font-mono text-xs text-foreground">{c.carPlate}</div>
-                        <div className="text-xs text-muted-foreground">{c.carModel}</div>
+                        <div className="font-mono text-xs text-foreground">{c.cars?.plate ?? "—"}</div>
+                        <div className="text-xs text-muted-foreground">{c.cars ? `${c.cars.make} ${c.cars.model}` : ""}</div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(c.startDate)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(c.endDate)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{days}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">AED {c.dailyRate}</TableCell>
-                      <TableCell className="text-sm font-medium text-foreground">AED {total.toLocaleString()}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(c.start_date)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(c.end_date)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{d}</TableCell>
+                      <TableCell className="text-sm font-medium text-foreground">AED {Number(c.total_amount).toLocaleString()}</TableCell>
                       <TableCell>
-                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[c.status])}>
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[c.status] ?? "bg-muted text-muted-foreground")}>
                           {c.status}
                         </span>
                       </TableCell>
                       <TableCell className="px-5">
-                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", paymentClasses[c.paymentStatus])}>
-                          {c.paymentStatus}
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", paymentClasses[c.payment_status] ?? "bg-muted text-muted-foreground")}>
+                          {c.payment_status}
                         </span>
                       </TableCell>
                     </TableRow>

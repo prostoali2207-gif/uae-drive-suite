@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, AlertTriangle, Wallet } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -32,157 +32,175 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { initialClients, formatDate } from "@/data/clients";
+import { supabase } from "@/lib/supabase";
 
-type FineType = "Speeding" | "Parking" | "Signal" | "Other";
-type FineSource = "Dubai Police" | "Abu Dhabi Police" | "Sharjah";
 type ChargeStatus = "Unpaid" | "Charged to Client" | "Paid";
 
-interface Fine {
+interface FineRow {
   id: string;
-  date: string;
-  carPlate: string;
-  clientId: string;
-  clientName: string;
-  type: FineType;
+  fine_date: string;
+  fine_type: string;
   amount: number;
-  source: FineSource;
-  status: ChargeStatus;
-  notes?: string;
+  source: string;
+  status: string;
+  notes: string | null;
+  car_id: string | null;
+  client_id: string | null;
+  cars: { plate: string } | null;
+  clients: { full_name: string } | null;
 }
 
-interface SalikCharge {
+interface SalikRow {
   id: string;
-  date: string;
-  carPlate: string;
-  clientId: string;
-  clientName: string;
+  charge_date: string;
   trips: number;
   amount: number;
-  status: ChargeStatus;
+  status: string;
+  car_id: string | null;
+  client_id: string | null;
+  cars: { plate: string } | null;
+  clients: { full_name: string } | null;
 }
 
-const cars = [
-  { plate: "DXB A 12345", model: "Toyota Corolla" },
-  { plate: "DXB F 87231", model: "Nissan Sunny" },
-  { plate: "AUH B 44120", model: "Hyundai Elantra" },
-  { plate: "DXB N 55891", model: "Kia Pegas" },
-  { plate: "DXB K 09812", model: "Toyota Yaris" },
-  { plate: "SHJ 1 22019", model: "Mitsubishi Attrage" },
-];
-
-const initialFines: Fine[] = [
-  { id: "f1", date: "2026-04-12", carPlate: "DXB A 12345", clientId: "c1", clientName: "Ahmed Al Mansoori", type: "Speeding", amount: 600, source: "Dubai Police", status: "Unpaid", notes: "Sheikh Zayed Rd, 132 km/h zone." },
-  { id: "f2", date: "2026-04-08", carPlate: "DXB F 87231", clientId: "c2", clientName: "Sara Hassan", type: "Parking", amount: 200, source: "Dubai Police", status: "Charged to Client" },
-  { id: "f3", date: "2026-04-02", carPlate: "AUH B 44120", clientId: "c5", clientName: "Fatima Al Zaabi", type: "Signal", amount: 1000, source: "Abu Dhabi Police", status: "Paid" },
-  { id: "f4", date: "2026-03-28", carPlate: "DXB Q 71234", clientId: "c4", clientName: "Omar Saeed", type: "Speeding", amount: 400, source: "Dubai Police", status: "Unpaid" },
-  { id: "f5", date: "2026-03-22", carPlate: "SHJ 1 22019", clientId: "c6", clientName: "Khalid Rahman", type: "Other", amount: 300, source: "Sharjah", status: "Unpaid", notes: "Tinted window." },
-];
-
-const initialSalik: SalikCharge[] = [
-  { id: "s1", date: "2026-04-15", carPlate: "DXB A 12345", clientId: "c1", clientName: "Ahmed Al Mansoori", trips: 8, amount: 32, status: "Charged to Client" },
-  { id: "s2", date: "2026-04-14", carPlate: "DXB F 87231", clientId: "c2", clientName: "Sara Hassan", trips: 4, amount: 16, status: "Unpaid" },
-  { id: "s3", date: "2026-04-10", carPlate: "DXB N 55891", clientId: "c3", clientName: "Layla Ibrahim", trips: 12, amount: 48, status: "Paid" },
-  { id: "s4", date: "2026-04-09", carPlate: "DXB K 09812", clientId: "c4", clientName: "Omar Saeed", trips: 6, amount: 24, status: "Unpaid" },
-];
+interface CarOption { id: string; plate: string; make: string; model: string; }
+interface ClientOption { id: string; full_name: string; }
 
 const SALIK_BALANCE = 1240;
 
-const fineTypes: FineType[] = ["Speeding", "Parking", "Signal", "Other"];
-const fineSources: FineSource[] = ["Dubai Police", "Abu Dhabi Police", "Sharjah"];
+const fineTypes = ["Speeding", "Parking", "Signal", "Other"];
+const fineSources = ["Dubai Police", "Abu Dhabi Police", "Sharjah"];
 
-const statusClasses: Record<ChargeStatus, string> = {
+const statusClasses: Record<string, string> = {
   Unpaid: "bg-tint-rose text-tint-rose-foreground",
   "Charged to Client": "bg-tint-amber text-tint-amber-foreground",
   Paid: "bg-tint-green text-tint-green-foreground",
 };
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 const Fines = () => {
-  const [fines, setFines] = useState<Fine[]>(initialFines);
-  const [salik, setSalik] = useState<SalikCharge[]>(initialSalik);
+  const [fines, setFines] = useState<FineRow[]>([]);
+  const [salik, setSalik] = useState<SalikRow[]>([]);
+  const [cars, setCars] = useState<CarOption[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [loading, setLoading] = useState(true);
   const [fineOpen, setFineOpen] = useState(false);
   const [salikOpen, setSalikOpen] = useState(false);
 
   const [fineForm, setFineForm] = useState({
-    date: "",
-    carPlate: "",
-    clientId: "",
-    type: "Speeding" as FineType,
+    fine_date: "",
+    car_id: "",
+    client_id: "",
+    fine_type: "Speeding",
     amount: 0,
-    source: "Dubai Police" as FineSource,
+    source: "Dubai Police",
     notes: "",
   });
 
   const [salikForm, setSalikForm] = useState({
-    date: "",
-    carPlate: "",
-    clientId: "",
+    charge_date: "",
+    car_id: "",
+    client_id: "",
     trips: 0,
     amount: 0,
   });
 
+  const fetchData = async () => {
+    const [finesRes, salikRes, carsRes, clientsRes] = await Promise.all([
+      supabase
+        .from("fines")
+        .select("*, cars(plate), clients(full_name)")
+        .order("fine_date", { ascending: false }),
+      supabase
+        .from("salik")
+        .select("*, cars(plate), clients(full_name)")
+        .order("charge_date", { ascending: false }),
+      supabase.from("cars").select("id, plate, make, model").order("plate"),
+      supabase.from("clients").select("id, full_name").order("full_name"),
+    ]);
+    if (!finesRes.error) setFines((finesRes.data as FineRow[]) || []);
+    if (!salikRes.error) setSalik((salikRes.data as SalikRow[]) || []);
+    if (!carsRes.error) setCars(carsRes.data || []);
+    if (!clientsRes.error) setClients(clientsRes.data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
   const totalUnpaidFines = useMemo(
-    () => fines.filter((f) => f.status === "Unpaid").reduce((s, f) => s + f.amount, 0),
+    () => fines.filter((f) => f.status === "Unpaid").reduce((s, f) => s + Number(f.amount), 0),
     [fines],
   );
 
   const totalUnpaidSalik = useMemo(
-    () => salik.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + s.amount, 0),
+    () => salik.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + Number(s.amount), 0),
     [salik],
   );
 
-  const chargeFineToClient = (id: string) => {
-    setFines((prev) => prev.map((f) => f.id === id ? { ...f, status: "Charged to Client" } : f));
-    toast.success("Fine charged to client's outstanding balance");
+  const chargeFineToClient = async (id: string) => {
+    const { error } = await supabase.from("fines").update({ status: "Charged to Client" }).eq("id", id);
+    if (error) {
+      toast.error("Failed to update fine");
+    } else {
+      toast.success("Fine charged to client's outstanding balance");
+      setFines((prev) => prev.map((f) => f.id === id ? { ...f, status: "Charged to Client" } : f));
+    }
   };
 
-  const chargeSalikToClient = (id: string) => {
-    setSalik((prev) => prev.map((s) => s.id === id ? { ...s, status: "Charged to Client" } : s));
-    toast.success("Salik charge added to client's outstanding balance");
+  const chargeSalikToClient = async (id: string) => {
+    const { error } = await supabase.from("salik").update({ status: "Charged to Client" }).eq("id", id);
+    if (error) {
+      toast.error("Failed to update Salik charge");
+    } else {
+      toast.success("Salik charge added to client's outstanding balance");
+      setSalik((prev) => prev.map((s) => s.id === id ? { ...s, status: "Charged to Client" } : s));
+    }
   };
 
-  const handleAddFine = (e: React.FormEvent) => {
+  const handleAddFine = async (e: React.FormEvent) => {
     e.preventDefault();
-    const client = initialClients.find((c) => c.id === fineForm.clientId);
-    if (!client || !fineForm.carPlate || !fineForm.date) return;
-    setFines((prev) => [
-      {
-        id: crypto.randomUUID(),
-        date: fineForm.date,
-        carPlate: fineForm.carPlate,
-        clientId: client.id,
-        clientName: client.name,
-        type: fineForm.type,
-        amount: Number(fineForm.amount),
-        source: fineForm.source,
-        status: "Unpaid",
-        notes: fineForm.notes.trim() || undefined,
-      },
-      ...prev,
-    ]);
-    setFineForm({ date: "", carPlate: "", clientId: "", type: "Speeding", amount: 0, source: "Dubai Police", notes: "" });
-    setFineOpen(false);
+    if (!fineForm.car_id || !fineForm.client_id || !fineForm.fine_date) return;
+    const { error } = await supabase.from("fines").insert({
+      fine_date: fineForm.fine_date,
+      car_id: fineForm.car_id,
+      client_id: fineForm.client_id,
+      fine_type: fineForm.fine_type,
+      amount: Number(fineForm.amount),
+      source: fineForm.source,
+      status: "Unpaid",
+      notes: fineForm.notes.trim() || null,
+    });
+    if (error) {
+      toast.error("Failed to add fine: " + error.message);
+    } else {
+      toast.success("Fine added");
+      setFineForm({ fine_date: "", car_id: "", client_id: "", fine_type: "Speeding", amount: 0, source: "Dubai Police", notes: "" });
+      setFineOpen(false);
+      fetchData();
+    }
   };
 
-  const handleAddSalik = (e: React.FormEvent) => {
+  const handleAddSalik = async (e: React.FormEvent) => {
     e.preventDefault();
-    const client = initialClients.find((c) => c.id === salikForm.clientId);
-    if (!client || !salikForm.carPlate || !salikForm.date) return;
-    setSalik((prev) => [
-      {
-        id: crypto.randomUUID(),
-        date: salikForm.date,
-        carPlate: salikForm.carPlate,
-        clientId: client.id,
-        clientName: client.name,
-        trips: Number(salikForm.trips),
-        amount: Number(salikForm.amount),
-        status: "Unpaid",
-      },
-      ...prev,
-    ]);
-    setSalikForm({ date: "", carPlate: "", clientId: "", trips: 0, amount: 0 });
-    setSalikOpen(false);
+    if (!salikForm.car_id || !salikForm.client_id || !salikForm.charge_date) return;
+    const { error } = await supabase.from("salik").insert({
+      charge_date: salikForm.charge_date,
+      car_id: salikForm.car_id,
+      client_id: salikForm.client_id,
+      trips: Number(salikForm.trips),
+      amount: Number(salikForm.amount),
+      status: "Unpaid",
+    });
+    if (error) {
+      toast.error("Failed to add Salik charge: " + error.message);
+    } else {
+      toast.success("Salik charges added");
+      setSalikForm({ charge_date: "", car_id: "", client_id: "", trips: 0, amount: 0 });
+      setSalikOpen(false);
+      fetchData();
+    }
   };
 
   return (
@@ -193,7 +211,6 @@ const Fines = () => {
           <TabsTrigger value="salik">Salik Charges</TabsTrigger>
         </TabsList>
 
-        {/* TRAFFIC FINES */}
         <TabsContent value="fines" className="m-0 flex flex-col gap-4">
           {totalUnpaidFines > 0 && (
             <div className="flex items-center gap-3 rounded-xl border border-tint-rose-foreground/20 bg-tint-rose px-4 py-3">
@@ -226,29 +243,29 @@ const Fines = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label htmlFor="f-date">Date</Label>
-                      <Input id="f-date" type="date" required value={fineForm.date} onChange={(e) => setFineForm({ ...fineForm, date: e.target.value })} />
+                      <Input id="f-date" type="date" required value={fineForm.fine_date} onChange={(e) => setFineForm({ ...fineForm, fine_date: e.target.value })} />
                     </div>
                     <div className="grid gap-1.5">
                       <Label>Car</Label>
-                      <Select value={fineForm.carPlate} onValueChange={(v) => setFineForm({ ...fineForm, carPlate: v })}>
+                      <Select value={fineForm.car_id} onValueChange={(v) => setFineForm({ ...fineForm, car_id: v })}>
                         <SelectTrigger><SelectValue placeholder="Select car" /></SelectTrigger>
                         <SelectContent>
-                          {cars.map((c) => <SelectItem key={c.plate} value={c.plate}>{c.plate} — {c.model}</SelectItem>)}
+                          {cars.map((c) => <SelectItem key={c.id} value={c.id}>{c.plate} — {c.make} {c.model}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="col-span-2 grid gap-1.5">
                       <Label>Client</Label>
-                      <Select value={fineForm.clientId} onValueChange={(v) => setFineForm({ ...fineForm, clientId: v })}>
+                      <Select value={fineForm.client_id} onValueChange={(v) => setFineForm({ ...fineForm, client_id: v })}>
                         <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
                         <SelectContent>
-                          {initialClients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                          {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="grid gap-1.5">
                       <Label>Fine Type</Label>
-                      <Select value={fineForm.type} onValueChange={(v) => setFineForm({ ...fineForm, type: v as FineType })}>
+                      <Select value={fineForm.fine_type} onValueChange={(v) => setFineForm({ ...fineForm, fine_type: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {fineTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
@@ -261,7 +278,7 @@ const Fines = () => {
                     </div>
                     <div className="col-span-2 grid gap-1.5">
                       <Label>Source</Label>
-                      <Select value={fineForm.source} onValueChange={(v) => setFineForm({ ...fineForm, source: v as FineSource })}>
+                      <Select value={fineForm.source} onValueChange={(v) => setFineForm({ ...fineForm, source: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {fineSources.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -298,21 +315,25 @@ const Fines = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {fines.length === 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">Loading fines...</TableCell>
+                  </TableRow>
+                ) : fines.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
                   </TableRow>
                 ) : (
                   fines.map((f) => (
                     <TableRow key={f.id}>
-                      <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(f.date)}</TableCell>
-                      <TableCell className="font-mono text-xs text-foreground">{f.carPlate}</TableCell>
-                      <TableCell className="text-sm font-medium text-foreground">{f.clientName}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{f.type}</TableCell>
-                      <TableCell className="text-sm font-medium text-foreground">AED {f.amount.toLocaleString()}</TableCell>
+                      <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(f.fine_date)}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground">{f.cars?.plate ?? "—"}</TableCell>
+                      <TableCell className="text-sm font-medium text-foreground">{f.clients?.full_name ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{f.fine_type}</TableCell>
+                      <TableCell className="text-sm font-medium text-foreground">AED {Number(f.amount).toLocaleString()}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{f.source}</TableCell>
                       <TableCell>
-                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[f.status])}>
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[f.status] ?? "bg-muted text-muted-foreground")}>
                           {f.status}
                         </span>
                       </TableCell>
@@ -332,7 +353,6 @@ const Fines = () => {
           </div>
         </TabsContent>
 
-        {/* SALIK */}
         <TabsContent value="salik" className="m-0 flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-tint-blue text-tint-blue-foreground">
@@ -367,23 +387,23 @@ const Fines = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label htmlFor="s-date">Date</Label>
-                      <Input id="s-date" type="date" required value={salikForm.date} onChange={(e) => setSalikForm({ ...salikForm, date: e.target.value })} />
+                      <Input id="s-date" type="date" required value={salikForm.charge_date} onChange={(e) => setSalikForm({ ...salikForm, charge_date: e.target.value })} />
                     </div>
                     <div className="grid gap-1.5">
                       <Label>Car</Label>
-                      <Select value={salikForm.carPlate} onValueChange={(v) => setSalikForm({ ...salikForm, carPlate: v })}>
+                      <Select value={salikForm.car_id} onValueChange={(v) => setSalikForm({ ...salikForm, car_id: v })}>
                         <SelectTrigger><SelectValue placeholder="Select car" /></SelectTrigger>
                         <SelectContent>
-                          {cars.map((c) => <SelectItem key={c.plate} value={c.plate}>{c.plate} — {c.model}</SelectItem>)}
+                          {cars.map((c) => <SelectItem key={c.id} value={c.id}>{c.plate} — {c.make} {c.model}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="col-span-2 grid gap-1.5">
                       <Label>Client</Label>
-                      <Select value={salikForm.clientId} onValueChange={(v) => setSalikForm({ ...salikForm, clientId: v })}>
+                      <Select value={salikForm.client_id} onValueChange={(v) => setSalikForm({ ...salikForm, client_id: v })}>
                         <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
                         <SelectContent>
-                          {initialClients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                          {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -419,20 +439,24 @@ const Fines = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {salik.length === 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
+                  </TableRow>
+                ) : salik.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
                   </TableRow>
                 ) : (
                   salik.map((s) => (
                     <TableRow key={s.id}>
-                      <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(s.date)}</TableCell>
-                      <TableCell className="font-mono text-xs text-foreground">{s.carPlate}</TableCell>
-                      <TableCell className="text-sm font-medium text-foreground">{s.clientName}</TableCell>
+                      <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(s.charge_date)}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
+                      <TableCell className="text-sm font-medium text-foreground">{s.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{s.trips}</TableCell>
-                      <TableCell className="text-sm font-medium text-foreground">AED {s.amount.toLocaleString()}</TableCell>
+                      <TableCell className="text-sm font-medium text-foreground">AED {Number(s.amount).toLocaleString()}</TableCell>
                       <TableCell>
-                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[s.status])}>
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[s.status] ?? "bg-muted text-muted-foreground")}>
                           {s.status}
                         </span>
                       </TableCell>

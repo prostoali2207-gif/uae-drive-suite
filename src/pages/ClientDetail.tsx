@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -12,21 +12,49 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import {
-  initialClients,
-  initialClientContracts,
-  formatDate,
-  type ClientContract,
-} from "@/data/clients";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
-const statusClasses: Record<ClientContract["status"], string> = {
+interface ClientRecord {
+  id: string;
+  full_name: string;
+  phone: string;
+  emirates_id: string;
+  nationality: string;
+  email: string | null;
+  license_number: string;
+  license_expiry: string | null;
+  passport_number: string;
+}
+
+interface ContractRow {
+  id: string;
+  car_id: string;
+  start_date: string;
+  end_date: string;
+  total_amount: number;
+  payment_status: string;
+  status: string;
+  cars: { plate: string; make: string; model: string } | null;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+const statusClasses: Record<string, string> = {
   Active: "bg-tint-blue text-tint-blue-foreground",
   "Expiring Soon": "bg-tint-amber text-tint-amber-foreground",
   Overdue: "bg-tint-rose text-tint-rose-foreground",
   Completed: "bg-muted text-muted-foreground",
 };
 
-const InfoRow = ({ label, value }: { label: string; value?: string }) => (
+const InfoRow = ({ label, value }: { label: string; value?: string | null }) => (
   <div className="flex flex-col gap-0.5">
     <span className="text-xs text-muted-foreground">{label}</span>
     <span className="text-sm font-medium text-foreground">{value || "—"}</span>
@@ -35,18 +63,45 @@ const InfoRow = ({ label, value }: { label: string; value?: string }) => (
 
 const ClientDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const client = initialClients.find((c) => c.id === id);
-  const contracts = useMemo(
-    () => initialClientContracts.filter((k) => k.clientId === id),
-    [id],
-  );
+  const [client, setClient] = useState<ClientRecord | null>(null);
+  const [contracts, setContracts] = useState<ContractRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    const fetchData = async () => {
+      const [clientRes, contractsRes] = await Promise.all([
+        supabase.from("clients").select("*").eq("id", id).maybeSingle(),
+        supabase
+          .from("contracts")
+          .select("id, car_id, start_date, end_date, total_amount, payment_status, status, cars(plate, make, model)")
+          .eq("client_id", id)
+          .order("created_at", { ascending: false }),
+      ]);
+      if (clientRes.error) toast.error("Failed to load client");
+      else setClient(clientRes.data);
+      if (!contractsRes.error) setContracts((contractsRes.data as ContractRow[]) || []);
+      setLoading(false);
+    };
+    fetchData();
+  }, [id]);
 
   const totals = useMemo(() => {
-    const totalBilled = contracts.reduce((s, c) => s + c.totalAmount, 0);
-    const totalPaid = contracts.reduce((s, c) => s + c.paidAmount, 0);
+    const totalBilled = contracts.reduce((s, c) => s + Number(c.total_amount), 0);
+    const totalPaid = contracts
+      .filter((c) => c.payment_status === "Paid")
+      .reduce((s, c) => s + Number(c.total_amount), 0);
     const totalOutstanding = Math.max(0, totalBilled - totalPaid);
     return { totalBilled, totalPaid, totalOutstanding };
   }, [contracts]);
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Client">
+        <div className="h-24 text-center text-sm text-muted-foreground pt-10">Loading...</div>
+      </DashboardLayout>
+    );
+  }
 
   if (!client) {
     return (
@@ -62,7 +117,7 @@ const ClientDetail = () => {
   }
 
   return (
-    <DashboardLayout title={client.name} subtitle="Client details">
+    <DashboardLayout title={client.full_name} subtitle="Client details">
       <div className="flex flex-col gap-5">
         <div>
           <Button asChild variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground">
@@ -73,22 +128,20 @@ const ClientDetail = () => {
           </Button>
         </div>
 
-        {/* Info card */}
         <div className="rounded-xl border border-border bg-card p-6">
           <h2 className="text-sm font-semibold text-foreground">Client Information</h2>
           <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 md:grid-cols-4">
-            <InfoRow label="Full Name" value={client.name} />
+            <InfoRow label="Full Name" value={client.full_name} />
             <InfoRow label="Phone" value={client.phone} />
             <InfoRow label="Email" value={client.email} />
             <InfoRow label="Nationality" value={client.nationality} />
-            <InfoRow label="Emirates ID" value={client.emiratesId} />
-            <InfoRow label="License Number" value={client.licenseNumber} />
-            <InfoRow label="License Expiry" value={client.licenseExpiry ? formatDate(client.licenseExpiry) : ""} />
-            <InfoRow label="Passport Number" value={client.passportNumber} />
+            <InfoRow label="Emirates ID" value={client.emirates_id} />
+            <InfoRow label="License Number" value={client.license_number} />
+            <InfoRow label="License Expiry" value={formatDate(client.license_expiry)} />
+            <InfoRow label="Passport Number" value={client.passport_number} />
           </div>
         </div>
 
-        {/* Totals */}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="text-xs text-muted-foreground">Total Billed</div>
@@ -109,7 +162,6 @@ const ClientDetail = () => {
           </div>
         </div>
 
-        {/* Contracts */}
         <div className="rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-3">
             <h2 className="text-sm font-semibold text-foreground">Contracts</h2>
@@ -118,38 +170,47 @@ const ClientDetail = () => {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="px-5 text-xs">Contract #</TableHead>
-                <TableHead className="text-xs">Car</TableHead>
+                <TableHead className="px-5 text-xs">Car</TableHead>
                 <TableHead className="text-xs">Start</TableHead>
                 <TableHead className="text-xs">End</TableHead>
                 <TableHead className="text-xs">Total</TableHead>
-                <TableHead className="text-xs">Paid</TableHead>
+                <TableHead className="text-xs">Payment</TableHead>
                 <TableHead className="px-5 text-xs">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {contracts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
                     No contracts yet.
                   </TableCell>
                 </TableRow>
               ) : (
                 contracts.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="px-5 font-mono text-xs text-foreground">{c.number}</TableCell>
-                    <TableCell>
-                      <div className="font-mono text-xs text-foreground">{c.carPlate}</div>
-                      <div className="text-xs text-muted-foreground">{c.carModel}</div>
+                    <TableCell className="px-5">
+                      <div className="font-mono text-xs text-foreground">{c.cars?.plate ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">{c.cars ? `${c.cars.make} ${c.cars.model}` : ""}</div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(c.startDate)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(c.endDate)}</TableCell>
-                    <TableCell className="text-sm font-medium text-foreground">AED {c.totalAmount.toLocaleString()}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">AED {c.paidAmount.toLocaleString()}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(c.start_date)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(c.end_date)}</TableCell>
+                    <TableCell className="text-sm font-medium text-foreground">AED {Number(c.total_amount).toLocaleString()}</TableCell>
+                    <TableCell>
+                      <span className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                        c.payment_status === "Paid"
+                          ? "bg-tint-green text-tint-green-foreground"
+                          : c.payment_status === "Partial"
+                          ? "bg-tint-amber text-tint-amber-foreground"
+                          : "bg-tint-rose text-tint-rose-foreground",
+                      )}>
+                        {c.payment_status}
+                      </span>
+                    </TableCell>
                     <TableCell className="px-5">
                       <span className={cn(
                         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        statusClasses[c.status],
+                        statusClasses[c.status] ?? "bg-muted text-muted-foreground",
                       )}>
                         {c.status}
                       </span>
