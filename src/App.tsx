@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Index from "./pages/Index.tsx";
 import Fleet from "./pages/Fleet.tsx";
 import Contracts from "./pages/Contracts.tsx";
+import Clients from "./pages/Clients.tsx";
+import ClientDetail from "./pages/ClientDetail.tsx";
 import Placeholder from "./pages/Placeholder.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -21,7 +23,8 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/fleet" element={<Fleet />} />
           <Route path="/contracts" element={<Contracts />} />
-          <Route path="/clients" element={<Placeholder title="Clients" />} />
+          <Route path="/clients" element={<Clients />} />
+          <Route path="/clients/:id" element={<ClientDetail />} />
           <Route path="/fines" element={<Placeholder title="Fines & Salik" />} />
           <Route path="/payments" element={<Placeholder title="Payments" />} />
           <Route path="/reports" element={<Placeholder title="Reports" />} />
