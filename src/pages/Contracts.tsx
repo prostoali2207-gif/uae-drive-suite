@@ -123,15 +123,9 @@ const filters: ("All" | ContractStatus)[] = ["All", "Active", "Expiring Soon", "
 
 const Contracts = () => {
   const [contracts, setContracts] = useState<Contract[]>(initialContracts);
+  const [clientList, setClientList] = useState<ClientOption[]>(clients);
   const [filter, setFilter] = useState<"All" | ContractStatus>("All");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    clientId: "",
-    carId: "",
-    startDate: "",
-    endDate: "",
-    dailyRate: 100,
-  });
 
   const enriched = useMemo(
     () => contracts.map((c) => ({ ...c, status: deriveStatus(c) })),
@@ -151,20 +145,18 @@ const Contracts = () => {
     [enriched, filter],
   );
 
-  const formDuration = useMemo(
-    () => (form.startDate && form.endDate ? durationDays(form.startDate, form.endDate) : 0),
-    [form.startDate, form.endDate],
-  );
-  const formTotal = formDuration * Number(form.dailyRate || 0);
+  const handleCreateClient = (input: NewClientInput): ClientOption => {
+    const created: ClientOption = { id: crypto.randomUUID(), name: input.fullName.trim() };
+    setClientList((prev) => [...prev, created]);
+    return created;
+  };
 
-  const availableCars = cars.filter((c) => c.available);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const client = clients.find((c) => c.id === form.clientId);
-    const car = cars.find((c) => c.id === form.carId);
+  const handleSubmit = (values: Parameters<React.ComponentProps<typeof ContractForm>["onSubmit"]>[0]) => {
+    const client = clientList.find((c) => c.id === values.clientId);
+    const car = cars.find((c) => c.id === values.carId);
     if (!client || !car) return;
     const nextNum = `CT-${1042 + contracts.length + 1}`;
+    const dailyEquivalent = values.durationDays > 0 ? values.total / values.durationDays : values.rate;
     setContracts((prev) => [
       {
         id: crypto.randomUUID(),
@@ -172,15 +164,14 @@ const Contracts = () => {
         clientName: client.name,
         carPlate: car.plate,
         carModel: car.model,
-        startDate: form.startDate,
-        endDate: form.endDate,
-        dailyRate: Number(form.dailyRate),
+        startDate: values.startDate,
+        endDate: values.endDate,
+        dailyRate: Math.round(dailyEquivalent),
         paymentStatus: "Unpaid",
       },
       ...prev,
     ]);
     setOpen(false);
-    setForm({ clientId: "", carId: "", startDate: "", endDate: "", dailyRate: 100 });
   };
 
   return (
@@ -212,89 +203,20 @@ const Contracts = () => {
                 New Contract
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[520px]">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
               <DialogHeader>
                 <DialogTitle>Create new contract</DialogTitle>
                 <DialogDescription>Total amount is calculated automatically.</DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleSubmit} className="grid gap-4 py-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="client">Client</Label>
-                  <Select value={form.clientId} onValueChange={(v) => setForm({ ...form, clientId: v })}>
-                    <SelectTrigger id="client">
-                      <SelectValue placeholder="Select a client" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="car">Car (Available only)</Label>
-                  <Select value={form.carId} onValueChange={(v) => setForm({ ...form, carId: v })}>
-                    <SelectTrigger id="car">
-                      <SelectValue placeholder="Select a car" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableCars.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.plate} — {c.model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="start">Start Date</Label>
-                    <Input
-                      id="start"
-                      type="date"
-                      required
-                      value={form.startDate}
-                      onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="end">End Date</Label>
-                    <Input
-                      id="end"
-                      type="date"
-                      required
-                      value={form.endDate}
-                      onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="rate">Daily Rate (AED)</Label>
-                    <Input
-                      id="rate"
-                      type="number"
-                      min={0}
-                      required
-                      value={form.dailyRate}
-                      onChange={(e) => setForm({ ...form, dailyRate: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label>Total Amount</Label>
-                    <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm font-medium text-foreground">
-                      AED {formTotal.toLocaleString()}
-                      <span className="ml-2 text-xs text-muted-foreground">({formDuration} days)</span>
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">Create Contract</Button>
-                </DialogFooter>
-              </form>
+              {open && (
+                <ContractForm
+                  clients={clientList}
+                  cars={cars}
+                  onSubmit={handleSubmit}
+                  onCancel={() => setOpen(false)}
+                  onCreateClient={handleCreateClient}
+                />
+              )}
             </DialogContent>
           </Dialog>
         </div>
