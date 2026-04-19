@@ -8,6 +8,7 @@ interface StatCardProps {
   value: string;
   icon: LucideIcon;
   tint?: Tint;
+  highlight?: Tint;
 }
 
 const tintClasses: Record<Tint, string> = {
@@ -18,9 +19,22 @@ const tintClasses: Record<Tint, string> = {
   violet: "bg-tint-violet text-tint-violet-foreground",
 };
 
-export function StatCard({ label, value, icon: Icon, tint = "blue" }: StatCardProps) {
+const highlightClasses: Record<Tint, string> = {
+  blue: "border-tint-blue-foreground/30 bg-tint-blue/40",
+  green: "border-tint-green-foreground/30 bg-tint-green/40",
+  amber: "border-tint-amber-foreground/30 bg-tint-amber/40",
+  rose: "border-tint-rose-foreground/30 bg-tint-rose/40",
+  violet: "border-tint-violet-foreground/30 bg-tint-violet/40",
+};
+
+export function StatCard({ label, value, icon: Icon, tint = "blue", highlight }: StatCardProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-foreground/15">
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-card p-5 transition-colors hover:border-foreground/15",
+        highlight && highlightClasses[highlight],
+      )}
+    >
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
         <div
