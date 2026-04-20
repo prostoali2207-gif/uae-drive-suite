@@ -1,32 +1,44 @@
+import { useEffect, useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
-type Status = "Active" | "Expiring" | "Overdue";
-
-interface Contract {
+interface ContractRow {
   id: string;
-  client: string;
-  plate: string;
-  start: string;
-  end: string;
-  status: Status;
+  start_date: string;
+  end_date: string;
+  status: string;
+  clients: { full_name: string } | null;
+  cars: { plate: string } | null;
 }
 
-const contracts: Contract[] = [
-  { id: "1", client: "Ahmed Al Mansoori", plate: "DXB A 12345", start: "12 Mar 2026", end: "12 May 2026", status: "Active" },
-  { id: "2", client: "Sara Hassan", plate: "DXB F 87231", start: "02 Feb 2026", end: "22 Apr 2026", status: "Expiring" },
-  { id: "3", client: "Mohammed Khan", plate: "AUH B 44120", start: "18 Jan 2026", end: "18 Apr 2026", status: "Overdue" },
-  { id: "4", client: "Layla Ibrahim", plate: "DXB N 55891", start: "05 Apr 2026", end: "05 Jul 2026", status: "Active" },
-  { id: "5", client: "Omar Saeed", plate: "SHJ 1 22019", start: "20 Mar 2026", end: "23 Apr 2026", status: "Expiring" },
-];
-
-const statusClasses: Record<Status, string> = {
+const statusClasses: Record<string, string> = {
   Active: "bg-tint-green text-tint-green-foreground",
-  Expiring: "bg-tint-amber text-tint-amber-foreground",
+  "Expiring Soon": "bg-tint-amber text-tint-amber-foreground",
   Overdue: "bg-tint-rose text-tint-rose-foreground",
+  Completed: "bg-muted text-muted-foreground",
 };
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export function RecentContracts() {
+  const [contracts, setContracts] = useState<ContractRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from("contracts")
+      .select("id, start_date, end_date, status, clients(full_name), cars(plate)")
+      .order("created_at", { ascending: false })
+      .limit(5)
+      .then(({ data, error }) => {
+        if (!error) setContracts((data as ContractRow[]) || []);
+        setLoading(false);
+      });
+  }, []);
+
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -46,24 +58,29 @@ export function RecentContracts() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {contracts.map((c) => (
-            <TableRow key={c.id}>
-              <TableCell className="px-5 font-medium text-foreground">{c.client}</TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{c.plate}</TableCell>
-              <TableCell className="text-muted-foreground">{c.start}</TableCell>
-              <TableCell className="text-muted-foreground">{c.end}</TableCell>
-              <TableCell className="px-5 text-right">
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                    statusClasses[c.status],
-                  )}
-                >
-                  {c.status}
-                </span>
-              </TableCell>
+          {loading ? (
+            <TableRow>
+              <TableCell colSpan={5} className="h-20 text-center text-sm text-muted-foreground">Loading...</TableCell>
             </TableRow>
-          ))}
+          ) : contracts.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} className="h-20 text-center text-sm text-muted-foreground">No contracts yet.</TableCell>
+            </TableRow>
+          ) : (
+            contracts.map((c) => (
+              <TableRow key={c.id}>
+                <TableCell className="px-5 font-medium text-foreground">{c.clients?.full_name ?? "—"}</TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">{c.cars?.plate ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{formatDate(c.start_date)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatDate(c.end_date)}</TableCell>
+                <TableCell className="px-5 text-right">
+                  <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[c.status] ?? "bg-muted text-muted-foreground")}>
+                    {c.status}
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
         </TableBody>
       </Table>
     </div>
