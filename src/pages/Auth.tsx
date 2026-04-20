@@ -19,6 +19,9 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSending, setForgotSending] = useState(false);
 
   useEffect(() => {
     if (user && !loading) navigate(from, { replace: true });
@@ -47,6 +50,23 @@ const Auth = () => {
     setSubmitting(false);
     if (error) toast.error(error.message);
     else toast.success("Account created — you're signed in");
+  };
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setForgotSending(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setForgotSending(false);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Check your email for a reset link");
+      setForgotOpen(false);
+      setForgotEmail("");
+    }
   };
 
   if (loading) return null;
@@ -79,7 +99,16 @@ const Auth = () => {
                   <Input id="si-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="si-password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="si-password">Password</Label>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotEmail(email); setForgotOpen(true); }}
+                      className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      Forgot?
+                    </button>
+                  </div>
                   <Input id="si-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
                 <Button type="submit" disabled={submitting}>
