@@ -352,7 +352,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      compute_contract_status: {
+        Args: { _current_status: string; _end_date: string }
+        Returns: string
+      }
+      refresh_contract_statuses: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
