@@ -14,7 +14,318 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cars: {
+        Row: {
+          created_at: string
+          id: string
+          insurance_expiry: string | null
+          make: string
+          model: string
+          mulkiya_expiry: string | null
+          plate: string
+          status: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          insurance_expiry?: string | null
+          make?: string
+          model?: string
+          mulkiya_expiry?: string | null
+          plate?: string
+          status?: string
+          year?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          insurance_expiry?: string | null
+          make?: string
+          model?: string
+          mulkiya_expiry?: string | null
+          plate?: string
+          status?: string
+          year?: number
+        }
+        Relationships: []
+      }
+      clients: {
+        Row: {
+          created_at: string
+          email: string | null
+          emirates_id: string
+          full_name: string
+          id: string
+          license_expiry: string | null
+          license_number: string
+          nationality: string
+          passport_number: string
+          phone: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          emirates_id?: string
+          full_name?: string
+          id?: string
+          license_expiry?: string | null
+          license_number?: string
+          nationality?: string
+          passport_number?: string
+          phone?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          emirates_id?: string
+          full_name?: string
+          id?: string
+          license_expiry?: string | null
+          license_number?: string
+          nationality?: string
+          passport_number?: string
+          phone?: string
+        }
+        Relationships: []
+      }
+      contracts: {
+        Row: {
+          car_id: string
+          client_id: string
+          created_at: string
+          deposit_amount: number
+          end_date: string
+          fuel_level: string
+          id: string
+          initial_mileage: number
+          payment_status: string
+          rate_amount: number
+          rate_type: string
+          start_date: string
+          status: string
+          total_amount: number
+        }
+        Insert: {
+          car_id: string
+          client_id: string
+          created_at?: string
+          deposit_amount?: number
+          end_date: string
+          fuel_level?: string
+          id?: string
+          initial_mileage?: number
+          payment_status?: string
+          rate_amount?: number
+          rate_type?: string
+          start_date: string
+          status?: string
+          total_amount?: number
+        }
+        Update: {
+          car_id?: string
+          client_id?: string
+          created_at?: string
+          deposit_amount?: number
+          end_date?: string
+          fuel_level?: string
+          id?: string
+          initial_mileage?: number
+          payment_status?: string
+          rate_amount?: number
+          rate_type?: string
+          start_date?: string
+          status?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fines: {
+        Row: {
+          amount: number
+          car_id: string | null
+          client_id: string | null
+          created_at: string
+          fine_date: string
+          fine_type: string
+          id: string
+          notes: string | null
+          source: string
+          status: string
+        }
+        Insert: {
+          amount?: number
+          car_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          fine_date: string
+          fine_type?: string
+          id?: string
+          notes?: string | null
+          source?: string
+          status?: string
+        }
+        Update: {
+          amount?: number
+          car_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          fine_date?: string
+          fine_type?: string
+          id?: string
+          notes?: string | null
+          source?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fines_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fines_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          client_id: string
+          contract_id: string | null
+          created_at: string
+          id: string
+          method: string
+          payment_date: string
+          status: string
+        }
+        Insert: {
+          amount?: number
+          client_id: string
+          contract_id?: string | null
+          created_at?: string
+          id?: string
+          method?: string
+          payment_date: string
+          status?: string
+        }
+        Update: {
+          amount?: number
+          client_id?: string
+          contract_id?: string | null
+          created_at?: string
+          id?: string
+          method?: string
+          payment_date?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          company_name: string
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          company_name?: string
+          created_at?: string
+          email?: string
+          id: string
+        }
+        Update: {
+          company_name?: string
+          created_at?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      salik: {
+        Row: {
+          amount: number
+          car_id: string | null
+          charge_date: string
+          client_id: string | null
+          created_at: string
+          id: string
+          status: string
+          trips: number
+        }
+        Insert: {
+          amount?: number
+          car_id?: string | null
+          charge_date: string
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          trips?: number
+        }
+        Update: {
+          amount?: number
+          car_id?: string | null
+          charge_date?: string
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          trips?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salik_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salik_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
