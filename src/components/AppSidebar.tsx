@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CreditCard,
   BarChart3,
+  Settings as SettingsIcon,
   LogOut,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -29,6 +30,7 @@ const items = [
   { title: "Fines & Salik", url: "/fines", icon: AlertTriangle },
   { title: "Payments", url: "/payments", icon: CreditCard },
   { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "Settings", url: "/settings", icon: SettingsIcon },
 ];
 
 export function AppSidebar() {
