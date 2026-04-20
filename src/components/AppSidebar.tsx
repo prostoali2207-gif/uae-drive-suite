@@ -32,6 +32,7 @@ const items = [
 ];
 
 export function AppSidebar() {
+  const { user, signOut } = useAuth();
   return (
     <Sidebar collapsible="icon">
       <SidebarContent className="bg-sidebar">
@@ -73,6 +74,19 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="bg-sidebar border-t border-sidebar-border">
+        <div className="flex flex-col gap-1 p-2">
+          {user?.email && (
+            <div className="px-2.5 py-1 text-[11px] text-sidebar-foreground/60 truncate group-data-[collapsible=icon]:hidden">
+              {user.email}
+            </div>
+          )}
+          <SidebarMenuButton onClick={signOut} tooltip="Sign out" className="text-sidebar-foreground hover:bg-sidebar-accent/60">
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
+          </SidebarMenuButton>
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 }
