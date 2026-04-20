@@ -22,6 +22,7 @@ export type Database = {
           make: string
           model: string
           mulkiya_expiry: string | null
+          owner_id: string
           plate: string
           status: string
           year: number
@@ -33,6 +34,7 @@ export type Database = {
           make?: string
           model?: string
           mulkiya_expiry?: string | null
+          owner_id?: string
           plate?: string
           status?: string
           year?: number
@@ -44,6 +46,7 @@ export type Database = {
           make?: string
           model?: string
           mulkiya_expiry?: string | null
+          owner_id?: string
           plate?: string
           status?: string
           year?: number
@@ -60,6 +63,7 @@ export type Database = {
           license_expiry: string | null
           license_number: string
           nationality: string
+          owner_id: string
           passport_number: string
           phone: string
         }
@@ -72,6 +76,7 @@ export type Database = {
           license_expiry?: string | null
           license_number?: string
           nationality?: string
+          owner_id?: string
           passport_number?: string
           phone?: string
         }
@@ -84,6 +89,7 @@ export type Database = {
           license_expiry?: string | null
           license_number?: string
           nationality?: string
+          owner_id?: string
           passport_number?: string
           phone?: string
         }
@@ -99,6 +105,7 @@ export type Database = {
           fuel_level: string
           id: string
           initial_mileage: number
+          owner_id: string
           payment_status: string
           rate_amount: number
           rate_type: string
@@ -115,6 +122,7 @@ export type Database = {
           fuel_level?: string
           id?: string
           initial_mileage?: number
+          owner_id?: string
           payment_status?: string
           rate_amount?: number
           rate_type?: string
@@ -131,6 +139,7 @@ export type Database = {
           fuel_level?: string
           id?: string
           initial_mileage?: number
+          owner_id?: string
           payment_status?: string
           rate_amount?: number
           rate_type?: string
@@ -165,6 +174,7 @@ export type Database = {
           fine_type: string
           id: string
           notes: string | null
+          owner_id: string
           source: string
           status: string
         }
@@ -177,6 +187,7 @@ export type Database = {
           fine_type?: string
           id?: string
           notes?: string | null
+          owner_id?: string
           source?: string
           status?: string
         }
@@ -189,6 +200,7 @@ export type Database = {
           fine_type?: string
           id?: string
           notes?: string | null
+          owner_id?: string
           source?: string
           status?: string
         }
@@ -217,6 +229,7 @@ export type Database = {
           created_at: string
           id: string
           method: string
+          owner_id: string
           payment_date: string
           status: string
         }
@@ -227,6 +240,7 @@ export type Database = {
           created_at?: string
           id?: string
           method?: string
+          owner_id?: string
           payment_date: string
           status?: string
         }
@@ -237,6 +251,7 @@ export type Database = {
           created_at?: string
           id?: string
           method?: string
+          owner_id?: string
           payment_date?: string
           status?: string
         }
@@ -263,18 +278,21 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          logo_url: string | null
         }
         Insert: {
           company_name?: string
           created_at?: string
           email?: string
           id: string
+          logo_url?: string | null
         }
         Update: {
           company_name?: string
           created_at?: string
           email?: string
           id?: string
+          logo_url?: string | null
         }
         Relationships: []
       }
@@ -286,6 +304,7 @@ export type Database = {
           client_id: string | null
           created_at: string
           id: string
+          owner_id: string
           status: string
           trips: number
         }
@@ -296,6 +315,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           id?: string
+          owner_id?: string
           status?: string
           trips?: number
         }
@@ -306,6 +326,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           id?: string
+          owner_id?: string
           status?: string
           trips?: number
         }
