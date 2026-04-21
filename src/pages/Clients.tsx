@@ -171,24 +171,28 @@ const Clients = () => {
                     <Input id="eid" required value={form.emirates_id} onChange={(e) => setForm({ ...form, emirates_id: e.target.value })} />
                   </div>
                   <div className="grid gap-1.5">
+                    <Label htmlFor="pass">Passport Number</Label>
+                    <Input id="pass" required value={form.passport_number} onChange={(e) => setForm({ ...form, passport_number: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1.5">
                     <Label htmlFor="nat">Nationality</Label>
-                    <Input id="nat" required value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} />
+                    <NationalityCombobox
+                      id="nat"
+                      value={form.nationality}
+                      onChange={(v) => setForm({ ...form, nationality: v })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="lic">License Number</Label>
+                    <Input id="lic" required value={form.license_number} onChange={(e) => setForm({ ...form, license_number: e.target.value })} />
                   </div>
                   <div className="col-span-2 grid gap-1.5">
                     <Label htmlFor="email">Email <span className="text-muted-foreground">(optional)</span></Label>
                     <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="lic">License Number</Label>
-                    <Input id="lic" required value={form.license_number} onChange={(e) => setForm({ ...form, license_number: e.target.value })} />
-                  </div>
-                  <div className="grid gap-1.5">
                     <Label htmlFor="licexp">License Expiry</Label>
                     <Input id="licexp" type="date" value={form.license_expiry} onChange={(e) => setForm({ ...form, license_expiry: e.target.value })} />
-                  </div>
-                  <div className="col-span-2 grid gap-1.5">
-                    <Label htmlFor="pass">Passport Number</Label>
-                    <Input id="pass" required value={form.passport_number} onChange={(e) => setForm({ ...form, passport_number: e.target.value })} />
                   </div>
                 </div>
                 <DialogFooter>
