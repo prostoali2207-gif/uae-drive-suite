@@ -52,12 +52,15 @@ interface ContractRow {
 const emptyForm = {
   full_name: "",
   phone: "",
+  client_type: "Resident" as ClientType,
   emirates_id: "",
+  emirates_id_expiry: "",
+  passport_number: "",
+  passport_expiry: "",
   nationality: "",
   email: "",
   license_number: "",
   license_expiry: "",
-  passport_number: "",
 };
 
 const Clients = () => {
