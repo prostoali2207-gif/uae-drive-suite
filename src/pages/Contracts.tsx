@@ -88,6 +88,19 @@ function diffDays(start: string, end: string): number {
   return Math.max(0, Math.round((e - s) / 86_400_000));
 }
 
+const emptyNewClient = {
+  full_name: "",
+  phone: "",
+  client_type: "Resident" as ClientType,
+  emirates_id: "",
+  emirates_id_expiry: "",
+  passport_number: "",
+  passport_expiry: "",
+  nationality: "",
+  license_number: "",
+  license_expiry: "",
+};
+
 const emptyForm = {
   client_id: "",
   car_id: "",
