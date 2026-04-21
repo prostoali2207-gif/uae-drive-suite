@@ -268,14 +268,75 @@ const Contracts = () => {
                 <DialogDescription>Total amount is calculated automatically.</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4 py-2">
-                <div className="grid gap-1.5">
-                  <Label>Client</Label>
-                  <Select value={form.client_id} onValueChange={(v) => setForm({ ...form, client_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select a client" /></SelectTrigger>
-                    <SelectContent>
-                      {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label className="text-sm">Client</Label>
+                    <div className="inline-flex rounded-lg border border-border bg-card p-1">
+                      {(["existing", "new"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setClientMode(m)}
+                          className={cn(
+                            "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                            clientMode === m
+                              ? "bg-foreground text-background"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {m === "existing" ? "Existing Client" : "New Client"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {clientMode === "existing" ? (
+                    <Select value={form.client_id} onValueChange={(v) => setForm({ ...form, client_id: v })}>
+                      <SelectTrigger><SelectValue placeholder="Select a client" /></SelectTrigger>
+                      <SelectContent>
+                        {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="nc-name" className="text-xs">Full Name</Label>
+                        <Input id="nc-name" required value={newClient.full_name} onChange={(e) => setNewClient({ ...newClient, full_name: e.target.value })} />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="nc-phone" className="text-xs">Phone</Label>
+                        <Input id="nc-phone" required value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="nc-nat" className="text-xs">Nationality</Label>
+                        <NationalityCombobox
+                          id="nc-nat"
+                          value={newClient.nationality}
+                          onChange={(v) => setNewClient({ ...newClient, nationality: v })}
+                        />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="nc-lic" className="text-xs">License Number</Label>
+                        <Input id="nc-lic" required value={newClient.license_number} onChange={(e) => setNewClient({ ...newClient, license_number: e.target.value })} />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="nc-licexp" className="text-xs">License Expiry</Label>
+                        <Input id="nc-licexp" type="date" value={newClient.license_expiry} onChange={(e) => setNewClient({ ...newClient, license_expiry: e.target.value })} />
+                      </div>
+                      <ClientTypeFields
+                        idPrefix="nc"
+                        compact
+                        value={{
+                          client_type: newClient.client_type,
+                          emirates_id: newClient.emirates_id,
+                          emirates_id_expiry: newClient.emirates_id_expiry,
+                          passport_number: newClient.passport_number,
+                          passport_expiry: newClient.passport_expiry,
+                        }}
+                        onChange={(v) => setNewClient({ ...newClient, ...v })}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Car (Available only)</Label>
