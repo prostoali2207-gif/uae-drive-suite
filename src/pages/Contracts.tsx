@@ -169,10 +169,45 @@ const Contracts = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.client_id || !form.car_id) return;
-    setSaving(true);
+    if (!form.car_id) return;
+
+    let clientId = form.client_id;
+
+    if (clientMode === "new") {
+      if (!newClient.full_name.trim()) {
+        toast.error("Enter the new client's full name");
+        return;
+      }
+      setSaving(true);
+      const { data: created, error: clientErr } = await supabase
+        .from("clients")
+        .insert({
+          full_name: newClient.full_name.trim(),
+          phone: newClient.phone.trim(),
+          client_type: newClient.client_type,
+          emirates_id: newClient.client_type === "Resident" ? newClient.emirates_id.trim() : "",
+          emirates_id_expiry: newClient.client_type === "Resident" ? (newClient.emirates_id_expiry || null) : null,
+          passport_number: newClient.client_type === "Tourist" ? newClient.passport_number.trim() : "",
+          passport_expiry: newClient.client_type === "Tourist" ? (newClient.passport_expiry || null) : null,
+          nationality: newClient.nationality.trim(),
+          license_number: newClient.license_number.trim(),
+          license_expiry: newClient.license_expiry || null,
+        })
+        .select("id")
+        .single();
+      if (clientErr || !created) {
+        setSaving(false);
+        toast.error("Failed to create client: " + (clientErr?.message ?? "unknown"));
+        return;
+      }
+      clientId = created.id;
+    } else {
+      if (!clientId) return;
+      setSaving(true);
+    }
+
     const { error } = await supabase.from("contracts").insert({
-      client_id: form.client_id,
+      client_id: clientId,
       car_id: form.car_id,
       start_date: form.start_date,
       end_date: form.end_date,
@@ -189,8 +224,10 @@ const Contracts = () => {
     if (error) {
       toast.error("Failed to create contract: " + error.message);
     } else {
-      toast.success("Contract created");
+      toast.success(clientMode === "new" ? "Client and contract created" : "Contract created");
       setForm(emptyForm);
+      setNewClient(emptyNewClient);
+      setClientMode("existing");
       setOpen(false);
       fetchData();
     }
