@@ -173,14 +173,17 @@ const Clients = () => {
                     <Label htmlFor="phone">Phone</Label>
                     <Input id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="eid">Emirates ID</Label>
-                    <Input id="eid" required value={form.emirates_id} onChange={(e) => setForm({ ...form, emirates_id: e.target.value })} />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="pass">Passport Number</Label>
-                    <Input id="pass" required value={form.passport_number} onChange={(e) => setForm({ ...form, passport_number: e.target.value })} />
-                  </div>
+                  <ClientTypeFields
+                    idPrefix="add"
+                    value={{
+                      client_type: form.client_type,
+                      emirates_id: form.emirates_id,
+                      emirates_id_expiry: form.emirates_id_expiry,
+                      passport_number: form.passport_number,
+                      passport_expiry: form.passport_expiry,
+                    }}
+                    onChange={(v) => setForm({ ...form, ...v })}
+                  />
                   <div className="grid gap-1.5">
                     <Label htmlFor="nat">Nationality</Label>
                     <NationalityCombobox
