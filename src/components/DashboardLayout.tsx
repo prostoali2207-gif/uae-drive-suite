@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
+import { NotificationBell } from "./NotificationBell";
 
 interface DashboardLayoutProps {
   title: string;
@@ -19,6 +20,9 @@ export function DashboardLayout({ title, subtitle, children }: DashboardLayoutPr
             <div className="flex flex-col">
               <h1 className="text-sm font-semibold text-foreground">{title}</h1>
               {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+            </div>
+            <div className="ml-auto">
+              <NotificationBell />
             </div>
           </header>
           <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
