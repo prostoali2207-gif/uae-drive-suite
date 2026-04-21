@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
+import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 
 interface ClientRecord {
@@ -51,12 +52,15 @@ interface ContractRow {
 const emptyForm = {
   full_name: "",
   phone: "",
+  client_type: "Resident" as ClientType,
   emirates_id: "",
+  emirates_id_expiry: "",
+  passport_number: "",
+  passport_expiry: "",
   nationality: "",
   email: "",
   license_number: "",
   license_expiry: "",
-  passport_number: "",
 };
 
 const Clients = () => {
@@ -112,12 +116,15 @@ const Clients = () => {
     const { error } = await supabase.from("clients").insert({
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
-      emirates_id: form.emirates_id.trim(),
+      client_type: form.client_type,
+      emirates_id: form.client_type === "Resident" ? form.emirates_id.trim() : "",
+      emirates_id_expiry: form.client_type === "Resident" ? (form.emirates_id_expiry || null) : null,
+      passport_number: form.client_type === "Tourist" ? form.passport_number.trim() : "",
+      passport_expiry: form.client_type === "Tourist" ? (form.passport_expiry || null) : null,
       nationality: form.nationality.trim(),
       email: form.email.trim() || null,
       license_number: form.license_number.trim(),
       license_expiry: form.license_expiry || null,
-      passport_number: form.passport_number.trim(),
     });
     setSaving(false);
     if (error) {
@@ -166,14 +173,17 @@ const Clients = () => {
                     <Label htmlFor="phone">Phone</Label>
                     <Input id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="eid">Emirates ID</Label>
-                    <Input id="eid" required value={form.emirates_id} onChange={(e) => setForm({ ...form, emirates_id: e.target.value })} />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="pass">Passport Number</Label>
-                    <Input id="pass" required value={form.passport_number} onChange={(e) => setForm({ ...form, passport_number: e.target.value })} />
-                  </div>
+                  <ClientTypeFields
+                    idPrefix="add"
+                    value={{
+                      client_type: form.client_type,
+                      emirates_id: form.emirates_id,
+                      emirates_id_expiry: form.emirates_id_expiry,
+                      passport_number: form.passport_number,
+                      passport_expiry: form.passport_expiry,
+                    }}
+                    onChange={(v) => setForm({ ...form, ...v })}
+                  />
                   <div className="grid gap-1.5">
                     <Label htmlFor="nat">Nationality</Label>
                     <NationalityCombobox

@@ -55,42 +55,51 @@ export type Database = {
       }
       clients: {
         Row: {
+          client_type: string
           created_at: string
           email: string | null
-          emirates_id: string
+          emirates_id: string | null
+          emirates_id_expiry: string | null
           full_name: string
           id: string
           license_expiry: string | null
           license_number: string
           nationality: string
           owner_id: string
-          passport_number: string
+          passport_expiry: string | null
+          passport_number: string | null
           phone: string
         }
         Insert: {
+          client_type?: string
           created_at?: string
           email?: string | null
-          emirates_id?: string
+          emirates_id?: string | null
+          emirates_id_expiry?: string | null
           full_name?: string
           id?: string
           license_expiry?: string | null
           license_number?: string
           nationality?: string
           owner_id?: string
-          passport_number?: string
+          passport_expiry?: string | null
+          passport_number?: string | null
           phone?: string
         }
         Update: {
+          client_type?: string
           created_at?: string
           email?: string | null
-          emirates_id?: string
+          emirates_id?: string | null
+          emirates_id_expiry?: string | null
           full_name?: string
           id?: string
           license_expiry?: string | null
           license_number?: string
           nationality?: string
           owner_id?: string
-          passport_number?: string
+          passport_expiry?: string | null
+          passport_number?: string | null
           phone?: string
         }
         Relationships: []
