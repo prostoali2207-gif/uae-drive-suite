@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { toast } from "sonner";
 
 interface ClientRecord {
