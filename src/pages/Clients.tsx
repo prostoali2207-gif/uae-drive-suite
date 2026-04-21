@@ -116,12 +116,15 @@ const Clients = () => {
     const { error } = await supabase.from("clients").insert({
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
-      emirates_id: form.emirates_id.trim(),
+      client_type: form.client_type,
+      emirates_id: form.client_type === "Resident" ? form.emirates_id.trim() : "",
+      emirates_id_expiry: form.client_type === "Resident" ? (form.emirates_id_expiry || null) : null,
+      passport_number: form.client_type === "Tourist" ? form.passport_number.trim() : "",
+      passport_expiry: form.client_type === "Tourist" ? (form.passport_expiry || null) : null,
       nationality: form.nationality.trim(),
       email: form.email.trim() || null,
       license_number: form.license_number.trim(),
       license_expiry: form.license_expiry || null,
-      passport_number: form.passport_number.trim(),
     });
     setSaving(false);
     if (error) {
