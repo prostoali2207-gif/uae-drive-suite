@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { NationalityCombobox } from "@/components/NationalityCombobox";
+import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 
 type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
