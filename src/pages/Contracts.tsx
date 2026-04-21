@@ -123,6 +123,8 @@ const Contracts = () => {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
+  const [newClient, setNewClient] = useState(emptyNewClient);
 
   const fetchData = async () => {
     const [contractsRes, clientsRes, carsRes] = await Promise.all([
