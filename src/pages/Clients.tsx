@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
+import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 
 interface ClientRecord {
