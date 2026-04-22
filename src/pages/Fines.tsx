@@ -65,8 +65,6 @@ interface SalikRow {
 interface CarOption { id: string; plate: string; make: string; model: string; }
 interface ClientOption { id: string; full_name: string; }
 
-const SALIK_BALANCE = 1240;
-
 const fineTypes = ["Speeding", "Parking", "Signal", "Phone Use", "Other"];
 const fineSources = ["Dubai Police", "Abu Dhabi Police", "Sharjah Police", "RTA"];
 
