@@ -67,12 +67,14 @@ interface ClientOption { id: string; full_name: string; }
 
 const SALIK_BALANCE = 1240;
 
-const fineTypes = ["Speeding", "Parking", "Signal", "Other"];
-const fineSources = ["Dubai Police", "Abu Dhabi Police", "Sharjah"];
+const fineTypes = ["Speeding", "Parking", "Signal", "Phone Use", "Other"];
+const fineSources = ["Dubai Police", "Abu Dhabi Police", "Sharjah Police", "RTA"];
 
 const statusClasses: Record<string, string> = {
   Unpaid: "bg-tint-rose text-tint-rose-foreground",
   "Charged to Client": "bg-tint-amber text-tint-amber-foreground",
+  "Paid by Client": "bg-tint-green text-tint-green-foreground",
+  "Paid by Company": "bg-tint-blue text-tint-blue-foreground",
   Paid: "bg-tint-green text-tint-green-foreground",
 };
 
