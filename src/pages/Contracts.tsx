@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Download } from "lucide-react";
+import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,8 +55,8 @@ interface ContractRow {
   fuel_level: string;
   status: string;
   payment_status: string;
-  clients: { full_name: string } | null;
-  cars: { plate: string; make: string; model: string } | null;
+  clients: { full_name: string; phone: string; nationality: string; client_type: string; emirates_id: string | null; passport_number: string | null } | null;
+  cars: { plate: string; make: string; model: string; year: number } | null;
 }
 
 interface ClientOption { id: string; full_name: string; }
@@ -130,7 +131,7 @@ const Contracts = () => {
     const [contractsRes, clientsRes, carsRes] = await Promise.all([
       supabase
         .from("contracts")
-        .select("*, clients(full_name), cars(plate, make, model)")
+        .select("*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number), cars(plate, make, model, year)")
         .order("created_at", { ascending: false }),
       supabase.from("clients").select("id, full_name").order("full_name"),
       supabase.from("cars").select("id, plate, make, model, status").order("plate"),
@@ -425,17 +426,18 @@ const Contracts = () => {
                 <TableHead className="text-xs">Days</TableHead>
                 <TableHead className="text-xs">Total</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
-                <TableHead className="px-5 text-xs">Payment</TableHead>
+                <TableHead className="text-xs">Payment</TableHead>
+                <TableHead className="px-5 text-xs text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">Loading contracts...</TableCell>
+                  <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">Loading contracts...</TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">No contracts match this filter.</TableCell>
+                  <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No contracts match this filter.</TableCell>
                 </TableRow>
               ) : (
                 filtered.map((c) => {
@@ -460,6 +462,25 @@ const Contracts = () => {
                         <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", paymentClasses[c.payment_status] ?? "bg-muted text-muted-foreground")}>
                           {c.payment_status}
                         </span>
+                      </TableCell>
+                      <TableCell className="px-5 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-xs"
+                          onClick={async () => {
+                            try {
+                              await generateContractPdf(c);
+                              toast.success("Contract PDF downloaded");
+                            } catch (err) {
+                              toast.error("Failed to generate PDF");
+                              console.error(err);
+                            }
+                          }}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
