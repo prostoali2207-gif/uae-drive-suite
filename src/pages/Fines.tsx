@@ -65,8 +65,6 @@ interface SalikRow {
 interface CarOption { id: string; plate: string; make: string; model: string; }
 interface ClientOption { id: string; full_name: string; }
 
-const SALIK_BALANCE = 1240;
-
 const fineTypes = ["Speeding", "Parking", "Signal", "Phone Use", "Other"];
 const fineSources = ["Dubai Police", "Abu Dhabi Police", "Sharjah Police", "RTA"];
 
@@ -138,6 +136,11 @@ const Fines = () => {
 
   const totalUnpaidSalik = useMemo(
     () => salik.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + Number(s.amount), 0),
+    [salik],
+  );
+
+  const salikBalance = useMemo(
+    () => salik.reduce((sum, s) => sum + Number(s.amount), 0),
     [salik],
   );
 
@@ -361,8 +364,8 @@ const Fines = () => {
               <Wallet className="h-4 w-4" />
             </div>
             <div className="flex-1">
-              <div className="text-xs text-muted-foreground">Current Salik Balance</div>
-              <div className="text-base font-semibold text-foreground">AED {SALIK_BALANCE.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">Total Salik Charges</div>
+              <div className="text-base font-semibold text-foreground">AED {salikBalance.toLocaleString()}</div>
             </div>
             {totalUnpaidSalik > 0 && (
               <div className="text-right">
