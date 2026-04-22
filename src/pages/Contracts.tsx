@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, Download } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -116,6 +117,7 @@ const emptyForm = {
 };
 
 const Contracts = () => {
+  const navigate = useNavigate();
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
@@ -443,7 +445,11 @@ const Contracts = () => {
                 filtered.map((c) => {
                   const d = diffDays(c.start_date, c.end_date);
                   return (
-                    <TableRow key={c.id}>
+                    <TableRow
+                      key={c.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/contracts/${c.id}`)}
+                    >
                       <TableCell className="px-5 font-medium text-foreground">{c.clients?.full_name ?? "—"}</TableCell>
                       <TableCell>
                         <div className="font-mono text-xs text-foreground">{c.cars?.plate ?? "—"}</div>
@@ -468,7 +474,8 @@ const Contracts = () => {
                           size="sm"
                           variant="outline"
                           className="h-7 gap-1 text-xs"
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             try {
                               await generateContractPdf(c);
                               toast.success("Contract PDF downloaded");
