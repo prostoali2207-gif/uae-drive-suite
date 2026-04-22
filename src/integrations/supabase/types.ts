@@ -114,6 +114,7 @@ export type Database = {
           fuel_level: string
           id: string
           initial_mileage: number
+          notes: string | null
           owner_id: string
           payment_status: string
           rate_amount: number
@@ -131,6 +132,7 @@ export type Database = {
           fuel_level?: string
           id?: string
           initial_mileage?: number
+          notes?: string | null
           owner_id?: string
           payment_status?: string
           rate_amount?: number
@@ -148,6 +150,7 @@ export type Database = {
           fuel_level?: string
           id?: string
           initial_mileage?: number
+          notes?: string | null
           owner_id?: string
           payment_status?: string
           rate_amount?: number
