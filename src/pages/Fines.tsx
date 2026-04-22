@@ -141,6 +141,11 @@ const Fines = () => {
     [salik],
   );
 
+  const salikBalance = useMemo(
+    () => salik.reduce((sum, s) => sum + Number(s.amount), 0),
+    [salik],
+  );
+
   const chargeFineToClient = async (id: string) => {
     const { error } = await supabase.from("fines").update({ status: "Charged to Client" }).eq("id", id);
     if (error) {
@@ -361,8 +366,8 @@ const Fines = () => {
               <Wallet className="h-4 w-4" />
             </div>
             <div className="flex-1">
-              <div className="text-xs text-muted-foreground">Current Salik Balance</div>
-              <div className="text-base font-semibold text-foreground">AED {SALIK_BALANCE.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">Total Salik Charges</div>
+              <div className="text-base font-semibold text-foreground">AED {salikBalance.toLocaleString()}</div>
             </div>
             {totalUnpaidSalik > 0 && (
               <div className="text-right">
