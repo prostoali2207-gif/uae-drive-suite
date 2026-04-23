@@ -337,7 +337,7 @@ const FinancialsAccordion = ({
 
   return (
     <div className="space-y-2">
-      <AccordionRow label="Rental" count={1} total={rentalTotal} accent="#3b82f6">
+      <AccordionRow label="Rental" count={1} total={rentalTotal} accent="blue">
         <EntryRow>
           <div className="flex flex-1 min-w-0 flex-col gap-0.5">
             <span className="text-[11px] text-muted-foreground">
@@ -358,8 +358,8 @@ const FinancialsAccordion = ({
         label="Traffic Fines"
         count={fines.length}
         total={finesTotal}
-        accent="#f87171"
-        totalClass="text-red-400"
+        accent="red"
+        totalClass="text-tint-rose-foreground"
       >
         {fines.map((f) => (
           <EntryRow key={f.id}>
@@ -370,20 +370,20 @@ const FinancialsAccordion = ({
               {f.fine_type} · {f.source}
             </span>
             <StatusPill status={f.status} />
-            <span className="w-24 text-right text-sm font-bold tabular-nums text-red-400">
+            <span className="w-24 text-right text-sm font-bold tabular-nums text-tint-rose-foreground">
               {fmtAed(Number(f.amount))}
             </span>
           </EntryRow>
         ))}
       </AccordionRow>
 
-      <AccordionRow label="Salik" count={salik.length} total={salikTotal} accent="#38bdf8">
+      <AccordionRow label="Salik" count={salik.length} total={salikTotal} accent="cyan">
         {salik.map((s) => (
           <EntryRow key={s.id}>
             <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
               {formatDate(s.charge_date)}
             </span>
-            <span className="inline-flex items-center rounded-full bg-cyan-950/60 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+            <span className="inline-flex items-center rounded-full bg-tint-blue px-2 py-0.5 text-[10px] font-medium text-tint-blue-foreground">
               {s.trips} trips
             </span>
             <span className="flex-1" />
@@ -399,13 +399,13 @@ const FinancialsAccordion = ({
         label="Other Fees"
         count={otherFees.length}
         total={otherTotal}
-        accent="#a78bfa"
+        accent="purple"
       >
         {otherFees.map((o) => {
           const typeColors: Record<string, string> = {
-            Delivery: "bg-blue-950/60 text-blue-300",
-            Pickup: "bg-cyan-950/60 text-cyan-300",
-            Damage: "bg-orange-950/60 text-orange-300",
+            Delivery: "bg-tint-blue text-tint-blue-foreground",
+            Pickup: "bg-tint-blue text-tint-blue-foreground",
+            Damage: "bg-tint-amber text-tint-amber-foreground",
           };
           return (
             <EntryRow key={o.id}>
@@ -440,7 +440,7 @@ const FinancialsAccordion = ({
           </span>
           <span className="text-muted-foreground">
             Paid:{" "}
-            <span className="font-semibold tabular-nums text-emerald-400">
+            <span className="font-semibold tabular-nums text-tint-green-foreground">
               {fmtAed(totals.credits)}
             </span>
           </span>
@@ -449,7 +449,7 @@ const FinancialsAccordion = ({
           className={cn(
             "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold tabular-nums",
             totals.outstanding > 0
-              ? "border-red-500/50 bg-red-950/40 text-red-300"
+              ? "border-tint-rose-foreground/40 bg-tint-rose text-tint-rose-foreground"
               : "border-border bg-muted text-foreground",
           )}
         >
