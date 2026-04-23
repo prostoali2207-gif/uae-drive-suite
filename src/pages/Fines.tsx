@@ -89,6 +89,28 @@ const Fines = () => {
   const [loading, setLoading] = useState(true);
   const [fineOpen, setFineOpen] = useState(false);
   const [salikOpen, setSalikOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<{ kind: "Fines" | "Salik"; summary: ImportSummary } | null>(null);
+  const finesFileRef = useRef<HTMLInputElement>(null);
+  const salikFileRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: "Fines" | "Salik") => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const summary = kind === "Fines" ? await importFinesExcel(file) : await importSalikExcel(file);
+      setImportSummary({ kind, summary });
+      if (summary.imported > 0) toast.success(`${summary.imported} ${kind.toLowerCase()} imported`);
+      else if (summary.errors.length) toast.error(summary.errors[0]);
+      fetchData();
+    } catch (err) {
+      toast.error(`Import failed: ${(err as Error).message}`);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const [fineForm, setFineForm] = useState({
     fine_date: "",
