@@ -20,14 +20,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -189,6 +182,272 @@ const EmptyState = ({
     {action}
   </div>
 );
+
+// ---------- Financials Accordion ----------
+
+const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> = {
+  Paid: { dot: "bg-emerald-400", bg: "bg-emerald-950/60", text: "text-emerald-300" },
+  "Expiring Soon": { dot: "bg-orange-400", bg: "bg-orange-950/60", text: "text-orange-300" },
+  Upcoming: { dot: "bg-blue-400", bg: "bg-blue-950/60", text: "text-blue-300" },
+  "Charged to Client": { dot: "bg-purple-400", bg: "bg-purple-950/60", text: "text-purple-300" },
+  Unpaid: { dot: "bg-red-400", bg: "bg-red-950/60", text: "text-red-300" },
+  Disputed: { dot: "bg-orange-400", bg: "bg-yellow-950/60", text: "text-orange-300" },
+  Active: { dot: "bg-blue-400", bg: "bg-blue-950/60", text: "text-blue-300" },
+  Held: { dot: "bg-purple-400", bg: "bg-purple-950/60", text: "text-purple-300" },
+};
+
+const StatusPill = ({ status }: { status: string }) => {
+  const s = STATUS_STYLES[status] ?? {
+    dot: "bg-muted-foreground",
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        s.bg,
+        s.text,
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
+      {status}
+    </span>
+  );
+};
+
+type AccordionRowProps = {
+  label: string;
+  count: number;
+  total: number;
+  accent: string;
+  totalClass?: string;
+  children: React.ReactNode;
+};
+
+const AccordionRow = ({
+  label,
+  count,
+  total,
+  accent,
+  totalClass,
+  children,
+}: AccordionRowProps) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-md border transition-colors",
+        open ? "bg-[#0d1422]" : "bg-[#0f1626]",
+      )}
+      style={{ borderColor: open ? accent : "hsl(var(--border))" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-stretch gap-0 text-left"
+      >
+        <span className="w-[3px] shrink-0" style={{ backgroundColor: accent }} aria-hidden />
+        <div className="flex flex-1 items-center justify-between gap-3 px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">
+              {label}
+            </span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+              {count}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={cn("text-sm font-bold tabular-nums", totalClass ?? "text-foreground")}>
+              {fmtAed(total)}
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                open && "rotate-180",
+              )}
+            />
+          </div>
+        </div>
+      </button>
+      <div
+        className={cn(
+          "grid transition-all duration-200 ease-out",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="max-h-[280px] overflow-y-auto bg-[#0a0f1a] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
+            {count === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-muted-foreground">No entries.</div>
+            ) : (
+              children
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const EntryRow = ({ children }: { children: React.ReactNode }) => (
+  <div className="flex items-center gap-3 border-b border-border/40 px-3 py-2.5 last:border-b-0">
+    {children}
+  </div>
+);
+
+type FinancialsAccordionProps = {
+  contract: ContractRecord;
+  days: number;
+  fines: FineRow[];
+  salik: SalikRow[];
+  totals: { charges: number; credits: number; outstanding: number };
+};
+
+const FinancialsAccordion = ({
+  contract,
+  days,
+  fines,
+  salik,
+  totals,
+}: FinancialsAccordionProps) => {
+  const rentalTotal = Number(contract.total_amount);
+  const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
+  const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
+  const otherFees: {
+    id: string;
+    date: string;
+    type: string;
+    description: string;
+    status: string;
+    amount: number;
+  }[] = [];
+  const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
+
+  return (
+    <div className="space-y-2">
+      <AccordionRow label="Rental" count={1} total={rentalTotal} accent="#3b82f6">
+        <EntryRow>
+          <div className="flex flex-1 min-w-0 flex-col gap-0.5">
+            <span className="text-[11px] text-muted-foreground">
+              {formatDate(contract.start_date)} – {formatDate(contract.end_date)} · {days} days
+            </span>
+            <span className="text-xs text-foreground/80">
+              {contract.rate_type} @ {fmtAed(contract.rate_amount)}
+            </span>
+          </div>
+          <StatusPill status={contract.status} />
+          <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
+            {fmtAed(rentalTotal)}
+          </span>
+        </EntryRow>
+      </AccordionRow>
+
+      <AccordionRow
+        label="Traffic Fines"
+        count={fines.length}
+        total={finesTotal}
+        accent="#f87171"
+        totalClass="text-red-400"
+      >
+        {fines.map((f) => (
+          <EntryRow key={f.id}>
+            <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
+              {formatDate(f.fine_date)}
+            </span>
+            <span className="flex-1 truncate text-xs text-foreground/90">
+              {f.fine_type} · {f.source}
+            </span>
+            <StatusPill status={f.status} />
+            <span className="w-24 text-right text-sm font-bold tabular-nums text-red-400">
+              {fmtAed(Number(f.amount))}
+            </span>
+          </EntryRow>
+        ))}
+      </AccordionRow>
+
+      <AccordionRow label="Salik" count={salik.length} total={salikTotal} accent="#38bdf8">
+        {salik.map((s) => (
+          <EntryRow key={s.id}>
+            <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
+              {formatDate(s.charge_date)}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-cyan-950/60 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+              {s.trips} trips
+            </span>
+            <span className="flex-1" />
+            <StatusPill status={s.status} />
+            <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
+              {fmtAed(Number(s.amount))}
+            </span>
+          </EntryRow>
+        ))}
+      </AccordionRow>
+
+      <AccordionRow
+        label="Other Fees"
+        count={otherFees.length}
+        total={otherTotal}
+        accent="#a78bfa"
+      >
+        {otherFees.map((o) => {
+          const typeColors: Record<string, string> = {
+            Delivery: "bg-blue-950/60 text-blue-300",
+            Pickup: "bg-cyan-950/60 text-cyan-300",
+            Damage: "bg-orange-950/60 text-orange-300",
+          };
+          return (
+            <EntryRow key={o.id}>
+              <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                {formatDate(o.date)}
+              </span>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                  typeColors[o.type] ?? "bg-muted text-muted-foreground",
+                )}
+              >
+                {o.type}
+              </span>
+              <span className="flex-1 truncate text-xs text-foreground/90">{o.description}</span>
+              <StatusPill status={o.status} />
+              <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
+                {fmtAed(o.amount)}
+              </span>
+            </EntryRow>
+          );
+        })}
+      </AccordionRow>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
+          <span className="text-muted-foreground">
+            Total charges:{" "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {fmtAed(totals.charges - Number(contract.deposit_amount))}
+            </span>
+          </span>
+          <span className="text-muted-foreground">
+            Paid:{" "}
+            <span className="font-semibold tabular-nums text-emerald-400">
+              {fmtAed(totals.credits)}
+            </span>
+          </span>
+        </div>
+        <span
+          className={cn(
+            "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold tabular-nums",
+            totals.outstanding > 0
+              ? "border-red-500/50 bg-red-950/40 text-red-300"
+              : "border-border bg-muted text-foreground",
+          )}
+        >
+          Balance Due: {fmtAed(totals.outstanding)}
+        </span>
+      </div>
+    </div>
+  );
+};
 
 const ContractDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -589,118 +848,13 @@ const ContractDetail = () => {
               </div>
             </div>
 
-            <Panel title="Transaction Ledger" icon={Receipt} className="overflow-hidden">
-              {ledger.length === 0 ? (
-                <EmptyState
-                  icon={Receipt}
-                  title="No transactions found"
-                  description="Charges, fines and payments will appear here as they happen."
-                  action={
-                    <Button size="sm" variant="outline" className="mt-2 h-8 gap-1.5" disabled>
-                      <Plus className="h-3.5 w-3.5" />
-                      Record first payment
-                    </Button>
-                  }
-                />
-              ) : (
-                <div className="-mx-4 -my-3">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-border hover:bg-transparent">
-                        <TableHead className="h-9 px-4 text-[11px] uppercase tracking-wide">Date</TableHead>
-                        <TableHead className="h-9 text-[11px] uppercase tracking-wide">Type</TableHead>
-                        <TableHead className="h-9 text-[11px] uppercase tracking-wide">Description</TableHead>
-                        <TableHead className="h-9 text-[11px] uppercase tracking-wide">Status</TableHead>
-                        <TableHead className="h-9 text-right text-[11px] uppercase tracking-wide">
-                          Debit
-                        </TableHead>
-                        <TableHead className="h-9 text-right text-[11px] uppercase tracking-wide">
-                          Credit
-                        </TableHead>
-                        <TableHead className="h-9 px-4 text-right text-[11px] uppercase tracking-wide">
-                          Balance
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(() => {
-                        let running = 0;
-                        return ledger.map((e) => {
-                          running += e.debit - e.credit;
-                          const isCredit = e.credit > 0;
-                          const isDebit = e.debit > 0 && e.type !== "Deposit";
-                          return (
-                            <TableRow key={e.id} className="border-border">
-                              <TableCell className="px-4 py-2 text-sm text-muted-foreground tabular-nums">
-                                {formatDate(e.date)}
-                              </TableCell>
-                              <TableCell className="py-2">
-                                <span
-                                  className={cn(
-                                    "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                                    e.type === "Payment" && "bg-tint-green text-tint-green-foreground",
-                                    e.type === "Fine" && "bg-tint-rose text-tint-rose-foreground",
-                                    e.type === "Salik" && "bg-tint-amber text-tint-amber-foreground",
-                                    e.type === "Rental" && "bg-tint-blue text-tint-blue-foreground",
-                                    e.type === "Deposit" && "bg-tint-violet text-tint-violet-foreground",
-                                  )}
-                                >
-                                  {e.type}
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-2 text-sm text-foreground">
-                                {e.description}
-                              </TableCell>
-                              <TableCell className="py-2 text-xs text-muted-foreground">
-                                {e.status}
-                              </TableCell>
-                              <TableCell
-                                className={cn(
-                                  "py-2 text-right text-sm tabular-nums",
-                                  isDebit ? "text-tint-rose-foreground" : "text-muted-foreground/60",
-                                )}
-                              >
-                                {e.debit > 0 ? fmtAed(e.debit) : "—"}
-                              </TableCell>
-                              <TableCell
-                                className={cn(
-                                  "py-2 text-right text-sm tabular-nums",
-                                  isCredit ? "text-tint-green-foreground" : "text-muted-foreground/60",
-                                )}
-                              >
-                                {e.credit > 0 ? fmtAed(e.credit) : "—"}
-                              </TableCell>
-                              <TableCell className="px-4 py-2 text-right text-sm font-semibold tabular-nums text-foreground">
-                                {fmtAed(running)}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        });
-                      })()}
-                      <TableRow className="border-border bg-muted/40 hover:bg-muted/40">
-                        <TableCell colSpan={4} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Totals
-                        </TableCell>
-                        <TableCell className="py-2 text-right text-sm font-semibold tabular-nums text-foreground">
-                          {fmtAed(totals.charges)}
-                        </TableCell>
-                        <TableCell className="py-2 text-right text-sm font-semibold tabular-nums text-tint-green-foreground">
-                          {fmtAed(totals.credits)}
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            "px-4 py-2 text-right text-sm font-bold tabular-nums",
-                            isOverdue ? "text-tint-rose-foreground" : "text-foreground",
-                          )}
-                        >
-                          {fmtAed(totals.outstanding)}
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </Panel>
+            <FinancialsAccordion
+              contract={contract}
+              days={days}
+              fines={fines}
+              salik={salik}
+              totals={totals}
+            />
           </TabsContent>
 
           {/* DOCUMENTS */}
