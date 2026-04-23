@@ -281,6 +281,26 @@ const AccordionRow = ({
   );
 };
 
+const StatusPill = ({ status }: { status: string }) => {
+  const s = STATUS_STYLES[status] ?? {
+    dot: "bg-muted-foreground",
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        s.bg,
+        s.text,
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
+      {status}
+    </span>
+  );
+};
+
 const EntryRow = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center gap-3 border-b border-border/40 px-3 py-2.5 last:border-b-0">
     {children}
