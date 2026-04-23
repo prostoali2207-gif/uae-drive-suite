@@ -218,7 +218,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   }
 
   if (toInsert.length) {
-    const { error, data } = await supabase.from("salik").insert(toInsert).select("id");
+    const { error, data } = await supabase.from("salik").insert(toInsert as never).select("id");
     if (error) summary.errors.push(error.message);
     else summary.imported = data?.length ?? toInsert.length;
   }
