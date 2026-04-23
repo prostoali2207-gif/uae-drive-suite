@@ -403,7 +403,12 @@ const Fines = () => {
             )}
           </div>
 
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <input ref={salikFileRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Salik")} />
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => salikFileRef.current?.click()}>
+              <Upload className="h-4 w-4" />
+              {importing ? "Importing..." : "Import Salik (Excel)"}
+            </Button>
             <Dialog open={salikOpen} onOpenChange={setSalikOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5">
