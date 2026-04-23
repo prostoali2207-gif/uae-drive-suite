@@ -197,38 +197,20 @@ const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> =
   Completed: { dot: "bg-tint-green-foreground", bg: "bg-tint-green", text: "text-tint-green-foreground" },
 };
 
-const ACCENT_HSL: Record<string, string> = {
+type AccentKey = "blue" | "red" | "cyan" | "purple";
+
+const ACCENT_VAR: Record<AccentKey, string> = {
   blue: "hsl(var(--tint-blue-foreground))",
   red: "hsl(var(--tint-rose-foreground))",
   cyan: "hsl(var(--tint-blue-foreground))",
   purple: "hsl(var(--tint-violet-foreground))",
 };
 
-const StatusPill = ({ status }: { status: string }) => {
-  const s = STATUS_STYLES[status] ?? {
-    dot: "bg-muted-foreground",
-    bg: "bg-muted",
-    text: "text-muted-foreground",
-  };
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium",
-        s.bg,
-        s.text,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
-      {status}
-    </span>
-  );
-};
-
 type AccordionRowProps = {
   label: string;
   count: number;
   total: number;
-  accent: string;
+  accent: AccentKey;
   totalClass?: string;
   children: React.ReactNode;
 };
@@ -242,20 +224,21 @@ const AccordionRow = ({
   children,
 }: AccordionRowProps) => {
   const [open, setOpen] = useState(false);
+  const accentColor = ACCENT_VAR[accent];
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-md border transition-colors",
-        open ? "bg-[#0d1422]" : "bg-[#0f1626]",
+        "overflow-hidden rounded-md border bg-card transition-colors",
+        open && "bg-muted/40",
       )}
-      style={{ borderColor: open ? accent : "hsl(var(--border))" }}
+      style={{ borderColor: open ? accentColor : "hsl(var(--border))" }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-stretch gap-0 text-left"
       >
-        <span className="w-[3px] shrink-0" style={{ backgroundColor: accent }} aria-hidden />
+        <span className="w-[3px] shrink-0" style={{ backgroundColor: accentColor }} aria-hidden />
         <div className="flex flex-1 items-center justify-between gap-3 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">
@@ -285,7 +268,7 @@ const AccordionRow = ({
         )}
       >
         <div className="overflow-hidden">
-          <div className="max-h-[280px] overflow-y-auto bg-[#0a0f1a] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
+          <div className="max-h-[280px] overflow-y-auto bg-background/40 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
             {count === 0 ? (
               <div className="px-4 py-6 text-center text-xs text-muted-foreground">No entries.</div>
             ) : (
