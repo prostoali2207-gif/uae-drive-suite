@@ -186,14 +186,22 @@ const EmptyState = ({
 // ---------- Financials Accordion ----------
 
 const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> = {
-  Paid: { dot: "bg-emerald-400", bg: "bg-emerald-950/60", text: "text-emerald-300" },
-  "Expiring Soon": { dot: "bg-orange-400", bg: "bg-orange-950/60", text: "text-orange-300" },
-  Upcoming: { dot: "bg-blue-400", bg: "bg-blue-950/60", text: "text-blue-300" },
-  "Charged to Client": { dot: "bg-purple-400", bg: "bg-purple-950/60", text: "text-purple-300" },
-  Unpaid: { dot: "bg-red-400", bg: "bg-red-950/60", text: "text-red-300" },
-  Disputed: { dot: "bg-orange-400", bg: "bg-yellow-950/60", text: "text-orange-300" },
-  Active: { dot: "bg-blue-400", bg: "bg-blue-950/60", text: "text-blue-300" },
-  Held: { dot: "bg-purple-400", bg: "bg-purple-950/60", text: "text-purple-300" },
+  Paid: { dot: "bg-tint-green-foreground", bg: "bg-tint-green", text: "text-tint-green-foreground" },
+  "Expiring Soon": { dot: "bg-tint-amber-foreground", bg: "bg-tint-amber", text: "text-tint-amber-foreground" },
+  Upcoming: { dot: "bg-tint-blue-foreground", bg: "bg-tint-blue", text: "text-tint-blue-foreground" },
+  "Charged to Client": { dot: "bg-tint-violet-foreground", bg: "bg-tint-violet", text: "text-tint-violet-foreground" },
+  Unpaid: { dot: "bg-tint-rose-foreground", bg: "bg-tint-rose", text: "text-tint-rose-foreground" },
+  Disputed: { dot: "bg-tint-amber-foreground", bg: "bg-tint-amber", text: "text-tint-amber-foreground" },
+  Active: { dot: "bg-tint-blue-foreground", bg: "bg-tint-blue", text: "text-tint-blue-foreground" },
+  Held: { dot: "bg-tint-violet-foreground", bg: "bg-tint-violet", text: "text-tint-violet-foreground" },
+  Completed: { dot: "bg-tint-green-foreground", bg: "bg-tint-green", text: "text-tint-green-foreground" },
+};
+
+const ACCENT_HSL: Record<string, string> = {
+  blue: "hsl(var(--tint-blue-foreground))",
+  red: "hsl(var(--tint-rose-foreground))",
+  cyan: "hsl(var(--tint-blue-foreground))",
+  purple: "hsl(var(--tint-violet-foreground))",
 };
 
 const StatusPill = ({ status }: { status: string }) => {
