@@ -186,41 +186,31 @@ const EmptyState = ({
 // ---------- Financials Accordion ----------
 
 const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> = {
-  Paid: { dot: "bg-emerald-400", bg: "bg-emerald-950/60", text: "text-emerald-300" },
-  "Expiring Soon": { dot: "bg-orange-400", bg: "bg-orange-950/60", text: "text-orange-300" },
-  Upcoming: { dot: "bg-blue-400", bg: "bg-blue-950/60", text: "text-blue-300" },
-  "Charged to Client": { dot: "bg-purple-400", bg: "bg-purple-950/60", text: "text-purple-300" },
-  Unpaid: { dot: "bg-red-400", bg: "bg-red-950/60", text: "text-red-300" },
-  Disputed: { dot: "bg-orange-400", bg: "bg-yellow-950/60", text: "text-orange-300" },
-  Active: { dot: "bg-blue-400", bg: "bg-blue-950/60", text: "text-blue-300" },
-  Held: { dot: "bg-purple-400", bg: "bg-purple-950/60", text: "text-purple-300" },
+  Paid: { dot: "bg-tint-green-foreground", bg: "bg-tint-green", text: "text-tint-green-foreground" },
+  "Expiring Soon": { dot: "bg-tint-amber-foreground", bg: "bg-tint-amber", text: "text-tint-amber-foreground" },
+  Upcoming: { dot: "bg-tint-blue-foreground", bg: "bg-tint-blue", text: "text-tint-blue-foreground" },
+  "Charged to Client": { dot: "bg-tint-violet-foreground", bg: "bg-tint-violet", text: "text-tint-violet-foreground" },
+  Unpaid: { dot: "bg-tint-rose-foreground", bg: "bg-tint-rose", text: "text-tint-rose-foreground" },
+  Disputed: { dot: "bg-tint-amber-foreground", bg: "bg-tint-amber", text: "text-tint-amber-foreground" },
+  Active: { dot: "bg-tint-blue-foreground", bg: "bg-tint-blue", text: "text-tint-blue-foreground" },
+  Held: { dot: "bg-tint-violet-foreground", bg: "bg-tint-violet", text: "text-tint-violet-foreground" },
+  Completed: { dot: "bg-tint-green-foreground", bg: "bg-tint-green", text: "text-tint-green-foreground" },
 };
 
-const StatusPill = ({ status }: { status: string }) => {
-  const s = STATUS_STYLES[status] ?? {
-    dot: "bg-muted-foreground",
-    bg: "bg-muted",
-    text: "text-muted-foreground",
-  };
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium",
-        s.bg,
-        s.text,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
-      {status}
-    </span>
-  );
+type AccentKey = "blue" | "red" | "cyan" | "purple";
+
+const ACCENT_VAR: Record<AccentKey, string> = {
+  blue: "hsl(var(--tint-blue-foreground))",
+  red: "hsl(var(--tint-rose-foreground))",
+  cyan: "hsl(var(--tint-blue-foreground))",
+  purple: "hsl(var(--tint-violet-foreground))",
 };
 
 type AccordionRowProps = {
   label: string;
   count: number;
   total: number;
-  accent: string;
+  accent: AccentKey;
   totalClass?: string;
   children: React.ReactNode;
 };
@@ -234,20 +224,21 @@ const AccordionRow = ({
   children,
 }: AccordionRowProps) => {
   const [open, setOpen] = useState(false);
+  const accentColor = ACCENT_VAR[accent];
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-md border transition-colors",
-        open ? "bg-[#0d1422]" : "bg-[#0f1626]",
+        "overflow-hidden rounded-md border bg-card transition-colors",
+        open && "bg-muted/40",
       )}
-      style={{ borderColor: open ? accent : "hsl(var(--border))" }}
+      style={{ borderColor: open ? accentColor : "hsl(var(--border))" }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-stretch gap-0 text-left"
       >
-        <span className="w-[3px] shrink-0" style={{ backgroundColor: accent }} aria-hidden />
+        <span className="w-[3px] shrink-0" style={{ backgroundColor: accentColor }} aria-hidden />
         <div className="flex flex-1 items-center justify-between gap-3 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">
@@ -277,7 +268,7 @@ const AccordionRow = ({
         )}
       >
         <div className="overflow-hidden">
-          <div className="max-h-[280px] overflow-y-auto bg-[#0a0f1a] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
+          <div className="max-h-[280px] overflow-y-auto bg-background/40 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
             {count === 0 ? (
               <div className="px-4 py-6 text-center text-xs text-muted-foreground">No entries.</div>
             ) : (
@@ -287,6 +278,26 @@ const AccordionRow = ({
         </div>
       </div>
     </div>
+  );
+};
+
+const StatusPill = ({ status }: { status: string }) => {
+  const s = STATUS_STYLES[status] ?? {
+    dot: "bg-muted-foreground",
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        s.bg,
+        s.text,
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
+      {status}
+    </span>
   );
 };
 
@@ -326,7 +337,7 @@ const FinancialsAccordion = ({
 
   return (
     <div className="space-y-2">
-      <AccordionRow label="Rental" count={1} total={rentalTotal} accent="#3b82f6">
+      <AccordionRow label="Rental" count={1} total={rentalTotal} accent="blue">
         <EntryRow>
           <div className="flex flex-1 min-w-0 flex-col gap-0.5">
             <span className="text-[11px] text-muted-foreground">
@@ -347,8 +358,8 @@ const FinancialsAccordion = ({
         label="Traffic Fines"
         count={fines.length}
         total={finesTotal}
-        accent="#f87171"
-        totalClass="text-red-400"
+        accent="red"
+        totalClass="text-tint-rose-foreground"
       >
         {fines.map((f) => (
           <EntryRow key={f.id}>
@@ -359,20 +370,20 @@ const FinancialsAccordion = ({
               {f.fine_type} · {f.source}
             </span>
             <StatusPill status={f.status} />
-            <span className="w-24 text-right text-sm font-bold tabular-nums text-red-400">
+            <span className="w-24 text-right text-sm font-bold tabular-nums text-tint-rose-foreground">
               {fmtAed(Number(f.amount))}
             </span>
           </EntryRow>
         ))}
       </AccordionRow>
 
-      <AccordionRow label="Salik" count={salik.length} total={salikTotal} accent="#38bdf8">
+      <AccordionRow label="Salik" count={salik.length} total={salikTotal} accent="cyan">
         {salik.map((s) => (
           <EntryRow key={s.id}>
             <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
               {formatDate(s.charge_date)}
             </span>
-            <span className="inline-flex items-center rounded-full bg-cyan-950/60 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+            <span className="inline-flex items-center rounded-full bg-tint-blue px-2 py-0.5 text-[10px] font-medium text-tint-blue-foreground">
               {s.trips} trips
             </span>
             <span className="flex-1" />
@@ -388,13 +399,13 @@ const FinancialsAccordion = ({
         label="Other Fees"
         count={otherFees.length}
         total={otherTotal}
-        accent="#a78bfa"
+        accent="purple"
       >
         {otherFees.map((o) => {
           const typeColors: Record<string, string> = {
-            Delivery: "bg-blue-950/60 text-blue-300",
-            Pickup: "bg-cyan-950/60 text-cyan-300",
-            Damage: "bg-orange-950/60 text-orange-300",
+            Delivery: "bg-tint-blue text-tint-blue-foreground",
+            Pickup: "bg-tint-blue text-tint-blue-foreground",
+            Damage: "bg-tint-amber text-tint-amber-foreground",
           };
           return (
             <EntryRow key={o.id}>
@@ -429,7 +440,7 @@ const FinancialsAccordion = ({
           </span>
           <span className="text-muted-foreground">
             Paid:{" "}
-            <span className="font-semibold tabular-nums text-emerald-400">
+            <span className="font-semibold tabular-nums text-tint-green-foreground">
               {fmtAed(totals.credits)}
             </span>
           </span>
@@ -438,7 +449,7 @@ const FinancialsAccordion = ({
           className={cn(
             "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold tabular-nums",
             totals.outstanding > 0
-              ? "border-red-500/50 bg-red-950/40 text-red-300"
+              ? "border-tint-rose-foreground/40 bg-tint-rose text-tint-rose-foreground"
               : "border-border bg-muted text-foreground",
           )}
         >
