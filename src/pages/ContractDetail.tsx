@@ -589,118 +589,13 @@ const ContractDetail = () => {
               </div>
             </div>
 
-            <Panel title="Transaction Ledger" icon={Receipt} className="overflow-hidden">
-              {ledger.length === 0 ? (
-                <EmptyState
-                  icon={Receipt}
-                  title="No transactions found"
-                  description="Charges, fines and payments will appear here as they happen."
-                  action={
-                    <Button size="sm" variant="outline" className="mt-2 h-8 gap-1.5" disabled>
-                      <Plus className="h-3.5 w-3.5" />
-                      Record first payment
-                    </Button>
-                  }
-                />
-              ) : (
-                <div className="-mx-4 -my-3">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-border hover:bg-transparent">
-                        <TableHead className="h-9 px-4 text-[11px] uppercase tracking-wide">Date</TableHead>
-                        <TableHead className="h-9 text-[11px] uppercase tracking-wide">Type</TableHead>
-                        <TableHead className="h-9 text-[11px] uppercase tracking-wide">Description</TableHead>
-                        <TableHead className="h-9 text-[11px] uppercase tracking-wide">Status</TableHead>
-                        <TableHead className="h-9 text-right text-[11px] uppercase tracking-wide">
-                          Debit
-                        </TableHead>
-                        <TableHead className="h-9 text-right text-[11px] uppercase tracking-wide">
-                          Credit
-                        </TableHead>
-                        <TableHead className="h-9 px-4 text-right text-[11px] uppercase tracking-wide">
-                          Balance
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(() => {
-                        let running = 0;
-                        return ledger.map((e) => {
-                          running += e.debit - e.credit;
-                          const isCredit = e.credit > 0;
-                          const isDebit = e.debit > 0 && e.type !== "Deposit";
-                          return (
-                            <TableRow key={e.id} className="border-border">
-                              <TableCell className="px-4 py-2 text-sm text-muted-foreground tabular-nums">
-                                {formatDate(e.date)}
-                              </TableCell>
-                              <TableCell className="py-2">
-                                <span
-                                  className={cn(
-                                    "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                                    e.type === "Payment" && "bg-tint-green text-tint-green-foreground",
-                                    e.type === "Fine" && "bg-tint-rose text-tint-rose-foreground",
-                                    e.type === "Salik" && "bg-tint-amber text-tint-amber-foreground",
-                                    e.type === "Rental" && "bg-tint-blue text-tint-blue-foreground",
-                                    e.type === "Deposit" && "bg-tint-violet text-tint-violet-foreground",
-                                  )}
-                                >
-                                  {e.type}
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-2 text-sm text-foreground">
-                                {e.description}
-                              </TableCell>
-                              <TableCell className="py-2 text-xs text-muted-foreground">
-                                {e.status}
-                              </TableCell>
-                              <TableCell
-                                className={cn(
-                                  "py-2 text-right text-sm tabular-nums",
-                                  isDebit ? "text-tint-rose-foreground" : "text-muted-foreground/60",
-                                )}
-                              >
-                                {e.debit > 0 ? fmtAed(e.debit) : "—"}
-                              </TableCell>
-                              <TableCell
-                                className={cn(
-                                  "py-2 text-right text-sm tabular-nums",
-                                  isCredit ? "text-tint-green-foreground" : "text-muted-foreground/60",
-                                )}
-                              >
-                                {e.credit > 0 ? fmtAed(e.credit) : "—"}
-                              </TableCell>
-                              <TableCell className="px-4 py-2 text-right text-sm font-semibold tabular-nums text-foreground">
-                                {fmtAed(running)}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        });
-                      })()}
-                      <TableRow className="border-border bg-muted/40 hover:bg-muted/40">
-                        <TableCell colSpan={4} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Totals
-                        </TableCell>
-                        <TableCell className="py-2 text-right text-sm font-semibold tabular-nums text-foreground">
-                          {fmtAed(totals.charges)}
-                        </TableCell>
-                        <TableCell className="py-2 text-right text-sm font-semibold tabular-nums text-tint-green-foreground">
-                          {fmtAed(totals.credits)}
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            "px-4 py-2 text-right text-sm font-bold tabular-nums",
-                            isOverdue ? "text-tint-rose-foreground" : "text-foreground",
-                          )}
-                        >
-                          {fmtAed(totals.outstanding)}
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </Panel>
+            <FinancialsAccordion
+              contract={contract}
+              days={days}
+              fines={fines}
+              salik={salik}
+              totals={totals}
+            />
           </TabsContent>
 
           {/* DOCUMENTS */}
