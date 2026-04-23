@@ -513,6 +513,53 @@ const Fines = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!importSummary} onOpenChange={(o) => !o && setImportSummary(null)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>{importSummary?.kind} import summary</DialogTitle>
+            <DialogDescription>Results of the latest Excel import.</DialogDescription>
+          </DialogHeader>
+          {importSummary && (
+            <div className="grid gap-3 py-2 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">Total rows</div>
+                  <div className="text-base font-semibold text-foreground">{importSummary.summary.totalRows}</div>
+                </div>
+                <div className="rounded-lg border border-border bg-tint-green px-3 py-2">
+                  <div className="text-xs text-tint-green-foreground/80">Imported</div>
+                  <div className="text-base font-semibold text-tint-green-foreground">{importSummary.summary.imported}</div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">Skipped (zero amount)</div>
+                  <div className="text-base font-semibold text-foreground">{importSummary.summary.skippedZero}</div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">Skipped (duplicate)</div>
+                  <div className="text-base font-semibold text-foreground">{importSummary.summary.skippedDuplicate}</div>
+                </div>
+              </div>
+              {importSummary.summary.unmatchedPlates.length > 0 && (
+                <div className="rounded-lg border border-tint-amber-foreground/30 bg-tint-amber px-3 py-2">
+                  <div className="text-xs font-semibold text-tint-amber-foreground">No matching vehicle ({importSummary.summary.unmatchedPlates.length})</div>
+                  <div className="mt-1 max-h-32 overflow-y-auto text-xs text-tint-amber-foreground/90">
+                    {importSummary.summary.unmatchedPlates.join(", ")}
+                  </div>
+                </div>
+              )}
+              {importSummary.summary.errors.length > 0 && (
+                <div className="rounded-lg border border-tint-rose-foreground/30 bg-tint-rose px-3 py-2 text-xs text-tint-rose-foreground">
+                  {importSummary.summary.errors.join(" · ")}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setImportSummary(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
