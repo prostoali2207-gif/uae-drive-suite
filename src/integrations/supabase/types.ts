@@ -181,12 +181,16 @@ export type Database = {
           amount: number
           car_id: string | null
           client_id: string | null
+          contract_id: string | null
           created_at: string
           fine_date: string
+          fine_number: string | null
           fine_type: string
           id: string
           notes: string | null
+          original_amount: number
           owner_id: string
+          service_fee: number
           source: string
           status: string
         }
@@ -194,12 +198,16 @@ export type Database = {
           amount?: number
           car_id?: string | null
           client_id?: string | null
+          contract_id?: string | null
           created_at?: string
           fine_date: string
+          fine_number?: string | null
           fine_type?: string
           id?: string
           notes?: string | null
+          original_amount?: number
           owner_id?: string
+          service_fee?: number
           source?: string
           status?: string
         }
@@ -207,12 +215,16 @@ export type Database = {
           amount?: number
           car_id?: string | null
           client_id?: string | null
+          contract_id?: string | null
           created_at?: string
           fine_date?: string
+          fine_number?: string | null
           fine_type?: string
           id?: string
           notes?: string | null
+          original_amount?: number
           owner_id?: string
+          service_fee?: number
           source?: string
           status?: string
         }
@@ -314,10 +326,17 @@ export type Database = {
           car_id: string | null
           charge_date: string
           client_id: string | null
+          contract_id: string | null
           created_at: string
+          direction: string | null
           id: string
+          original_amount: number
           owner_id: string
+          service_fee: number
           status: string
+          tag_number: string | null
+          toll_gate: string | null
+          transaction_id: string | null
           trips: number
         }
         Insert: {
@@ -325,10 +344,17 @@ export type Database = {
           car_id?: string | null
           charge_date: string
           client_id?: string | null
+          contract_id?: string | null
           created_at?: string
+          direction?: string | null
           id?: string
+          original_amount?: number
           owner_id?: string
+          service_fee?: number
           status?: string
+          tag_number?: string | null
+          toll_gate?: string | null
+          transaction_id?: string | null
           trips?: number
         }
         Update: {
@@ -336,10 +362,17 @@ export type Database = {
           car_id?: string | null
           charge_date?: string
           client_id?: string | null
+          contract_id?: string | null
           created_at?: string
+          direction?: string | null
           id?: string
+          original_amount?: number
           owner_id?: string
+          service_fee?: number
           status?: string
+          tag_number?: string | null
+          toll_gate?: string | null
+          transaction_id?: string | null
           trips?: number
         }
         Relationships: [

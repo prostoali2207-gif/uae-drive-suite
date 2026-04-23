@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Plus, TriangleAlert as AlertTriangle, Wallet } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
+import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,28 @@ const Fines = () => {
   const [loading, setLoading] = useState(true);
   const [fineOpen, setFineOpen] = useState(false);
   const [salikOpen, setSalikOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<{ kind: "Fines" | "Salik"; summary: ImportSummary } | null>(null);
+  const finesFileRef = useRef<HTMLInputElement>(null);
+  const salikFileRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: "Fines" | "Salik") => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const summary = kind === "Fines" ? await importFinesExcel(file) : await importSalikExcel(file);
+      setImportSummary({ kind, summary });
+      if (summary.imported > 0) toast.success(`${summary.imported} ${kind.toLowerCase()} imported`);
+      else if (summary.errors.length) toast.error(summary.errors[0]);
+      fetchData();
+    } catch (err) {
+      toast.error(`Import failed: ${(err as Error).message}`);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const [fineForm, setFineForm] = useState({
     fine_date: "",
@@ -231,7 +254,12 @@ const Fines = () => {
             </div>
           )}
 
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <input ref={finesFileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Fines")} />
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => finesFileRef.current?.click()}>
+              <Upload className="h-4 w-4" />
+              {importing ? "Importing..." : "Import Fines (Excel)"}
+            </Button>
             <Dialog open={fineOpen} onOpenChange={setFineOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5">
@@ -375,7 +403,12 @@ const Fines = () => {
             )}
           </div>
 
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <input ref={salikFileRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Salik")} />
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => salikFileRef.current?.click()}>
+              <Upload className="h-4 w-4" />
+              {importing ? "Importing..." : "Import Salik (Excel)"}
+            </Button>
             <Dialog open={salikOpen} onOpenChange={setSalikOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5">
@@ -480,6 +513,53 @@ const Fines = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!importSummary} onOpenChange={(o) => !o && setImportSummary(null)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>{importSummary?.kind} import summary</DialogTitle>
+            <DialogDescription>Results of the latest Excel import.</DialogDescription>
+          </DialogHeader>
+          {importSummary && (
+            <div className="grid gap-3 py-2 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">Total rows</div>
+                  <div className="text-base font-semibold text-foreground">{importSummary.summary.totalRows}</div>
+                </div>
+                <div className="rounded-lg border border-border bg-tint-green px-3 py-2">
+                  <div className="text-xs text-tint-green-foreground/80">Imported</div>
+                  <div className="text-base font-semibold text-tint-green-foreground">{importSummary.summary.imported}</div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">Skipped (zero amount)</div>
+                  <div className="text-base font-semibold text-foreground">{importSummary.summary.skippedZero}</div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">Skipped (duplicate)</div>
+                  <div className="text-base font-semibold text-foreground">{importSummary.summary.skippedDuplicate}</div>
+                </div>
+              </div>
+              {importSummary.summary.unmatchedPlates.length > 0 && (
+                <div className="rounded-lg border border-tint-amber-foreground/30 bg-tint-amber px-3 py-2">
+                  <div className="text-xs font-semibold text-tint-amber-foreground">No matching vehicle ({importSummary.summary.unmatchedPlates.length})</div>
+                  <div className="mt-1 max-h-32 overflow-y-auto text-xs text-tint-amber-foreground/90">
+                    {importSummary.summary.unmatchedPlates.join(", ")}
+                  </div>
+                </div>
+              )}
+              {importSummary.summary.errors.length > 0 && (
+                <div className="rounded-lg border border-tint-rose-foreground/30 bg-tint-rose px-3 py-2 text-xs text-tint-rose-foreground">
+                  {importSummary.summary.errors.join(" · ")}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setImportSummary(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
