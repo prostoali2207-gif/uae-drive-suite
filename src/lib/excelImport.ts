@@ -140,7 +140,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   }
 
   if (toInsert.length) {
-    const { error, data } = await supabase.from("fines").insert(toInsert).select("id");
+    const { error, data } = await supabase.from("fines").insert(toInsert as never).select("id");
     if (error) summary.errors.push(error.message);
     else summary.imported = data?.length ?? toInsert.length;
   }
