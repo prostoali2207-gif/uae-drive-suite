@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,17 @@ const statusClasses: Record<Status, string> = {
 
 const filters: ("All" | Status)[] = ["All", "Available", "Rented", "Service"];
 
+const emptyForm = {
+  plate: "",
+  make: "",
+  model: "",
+  year: new Date().getFullYear(),
+  status: "Available" as Status,
+  insurance_expiry: "",
+  mulkiya_expiry: "",
+  tag_number: "",
+};
+
 function daysUntil(iso: string): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -85,16 +96,8 @@ const Fleet = () => {
   const [filter, setFilter] = useState<"All" | Status>("All");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    plate: "",
-    make: "",
-    model: "",
-    year: new Date().getFullYear(),
-    status: "Available" as Status,
-    insurance_expiry: "",
-    mulkiya_expiry: "",
-    tag_number: "",
-  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
 
   const fetchCars = async () => {
     const { data, error } = await supabase
@@ -128,10 +131,31 @@ const Fleet = () => {
     [cars],
   );
 
+  const openAdd = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setOpen(true);
+  };
+
+  const openEdit = (car: Car) => {
+    setEditingId(car.id);
+    setForm({
+      plate: car.plate,
+      make: car.make,
+      model: car.model,
+      year: car.year,
+      status: car.status,
+      insurance_expiry: car.insurance_expiry ?? "",
+      mulkiya_expiry: car.mulkiya_expiry ?? "",
+      tag_number: car.tag_number ?? "",
+    });
+    setOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase.from("cars").insert({
+    const payload = {
       plate: form.plate.trim(),
       make: form.make.trim(),
       model: form.model.trim(),
@@ -140,23 +164,18 @@ const Fleet = () => {
       insurance_expiry: form.insurance_expiry || null,
       mulkiya_expiry: form.mulkiya_expiry || null,
       tag_number: form.tag_number.trim() || null,
-    });
+    };
+    const { error } = editingId
+      ? await supabase.from("cars").update(payload).eq("id", editingId)
+      : await supabase.from("cars").insert(payload);
     setSaving(false);
     if (error) {
-      toast.error("Failed to add car: " + error.message);
+      toast.error(`Failed to ${editingId ? "update" : "add"} car: ${error.message}`);
     } else {
-      toast.success("Car added to fleet");
+      toast.success(editingId ? "Car updated" : "Car added to fleet");
       setOpen(false);
-      setForm({
-        plate: "",
-        make: "",
-        model: "",
-        year: new Date().getFullYear(),
-        status: "Available",
-        insurance_expiry: "",
-        mulkiya_expiry: "",
-        tag_number: "",
-      });
+      setEditingId(null);
+      setForm(emptyForm);
       fetchCars();
     }
   };
@@ -183,17 +202,19 @@ const Fleet = () => {
             ))}
           </div>
 
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditingId(null); }}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="gap-1.5" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
                 Add Car
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[480px]">
               <DialogHeader>
-                <DialogTitle>Add a new car</DialogTitle>
-                <DialogDescription>Enter the vehicle details below.</DialogDescription>
+                <DialogTitle>{editingId ? "Edit vehicle" : "Add a new car"}</DialogTitle>
+                <DialogDescription>
+                  {editingId ? "Update the vehicle details below." : "Enter the vehicle details below."}
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4 py-2">
                 <div className="grid grid-cols-2 gap-3">
@@ -292,7 +313,7 @@ const Fleet = () => {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={saving}>
-                    {saving ? "Adding..." : "Add Car"}
+                    {saving ? "Saving..." : editingId ? "Save Changes" : "Add Car"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -309,19 +330,20 @@ const Fleet = () => {
                 <TableHead className="text-xs">Year</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs">Insurance Expiry</TableHead>
-                <TableHead className="px-5 text-xs">Mulkiya Expiry</TableHead>
+                <TableHead className="text-xs">Mulkiya Expiry</TableHead>
+                <TableHead className="px-5 text-xs text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
                     Loading fleet...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
                     No cars match this filter.
                   </TableCell>
                 </TableRow>
@@ -346,10 +368,21 @@ const Fleet = () => {
                         {formatDate(car.insurance_expiry)}
                       </span>
                     </TableCell>
-                    <TableCell className="px-5">
+                    <TableCell>
                       <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.mulkiya_expiry))}>
                         {formatDate(car.mulkiya_expiry)}
                       </span>
+                    </TableCell>
+                    <TableCell className="px-5 text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1 text-xs"
+                        onClick={() => openEdit(car)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
