@@ -14,12 +14,19 @@ interface CarRow { id: string; plate: string; }
 interface ContractRow { id: string; car_id: string; client_id: string; start_date: string; end_date: string; }
 
 const norm = (v: unknown) => String(v ?? "").trim();
-const normPlate = (v: unknown) => norm(v).toUpperCase().replace(/\s+/g, "");
+// Match plates by digits only: "AJM A 11532" -> "11532" matches TAMM "11532"
+const normPlate = (v: unknown) => norm(v).replace(/\D+/g, "");
 
 function parseAmount(v: unknown): number {
-  if (v == null) return 0;
-  if (typeof v === "number") return v;
-  const s = String(v).replace(/aed/i, "").replace(/[^\d.\-]/g, "").trim();
+  if (v == null || v === "") return 0;
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  // Strip AED, currency symbols, spaces, commas — keep digits, dot, minus
+  const s = String(v)
+    .replace(/aed/gi, "")
+    .replace(/[,\s\u00A0]/g, "")
+    .replace(/[^\d.\-]/g, "")
+    .trim();
+  if (!s) return 0;
   const n = parseFloat(s);
   return isFinite(n) ? n : 0;
 }
