@@ -161,9 +161,13 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     totalRows: 0, imported: 0, skippedZero: 0, skippedDuplicate: 0,
     unmatchedPlates: [], errors: [],
   };
-  const rows = await readSheet(file);
+  // Force string conversion for legacy .xls where Amount may be misread
+  const rows = await readSheet(file, { raw: false });
   summary.totalRows = rows.length;
   if (!rows.length) return summary;
+
+  // Debug: inspect raw Amount values for the first few rows
+  console.log("[Salik import] first 3 rows:", rows.slice(0, 3));
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
