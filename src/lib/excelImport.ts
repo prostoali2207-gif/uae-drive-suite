@@ -57,12 +57,48 @@ function parseDate(v: unknown): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
-async function readSheet(file: File, opts?: { raw?: boolean }): Promise<Record<string, unknown>[]> {
+async function readSheet(
+  file: File,
+  opts?: { raw?: boolean; headerMarker?: string },
+): Promise<Record<string, unknown>[]> {
   const buf = await file.arrayBuffer();
   const data = new Uint8Array(buf);
   const wb = XLSX.read(data, { type: "buffer", cellDates: true, raw: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
+
+  // Read as 2D array so we can locate the real header row (Salik .xls files
+  // often have a few title/preamble rows before the actual column headers).
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(ws, {
+    header: 1,
+    defval: "",
+    raw: false,
+    blankrows: false,
+  });
+  if (!matrix.length) return [];
+
+  const marker = (opts?.headerMarker || "").toLowerCase().trim();
+  let headerIdx = 0;
+  if (marker) {
+    for (let i = 0; i < Math.min(matrix.length, 50); i++) {
+      const row = matrix[i] || [];
+      const hit = row.some((c) => String(c ?? "").toLowerCase().trim() === marker
+        || String(c ?? "").toLowerCase().includes(marker));
+      if (hit) { headerIdx = i; break; }
+    }
+  }
+
+  const headers = (matrix[headerIdx] || []).map((h) => String(h ?? "").trim());
+  const out: Record<string, unknown>[] = [];
+  for (let i = headerIdx + 1; i < matrix.length; i++) {
+    const row = matrix[i] || [];
+    if (row.every((c) => c === "" || c == null)) continue;
+    const obj: Record<string, unknown> = {};
+    headers.forEach((h, idx) => {
+      if (h) obj[h] = row[idx] ?? "";
+    });
+    out.push(obj);
+  }
+  return out;
 }
 
 function getField(row: Record<string, unknown>, ...keys: string[]): unknown {
