@@ -196,7 +196,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     const dateIso = parseDate(getField(row, "Trip Date", "Date"));
     const tollGate = norm(getField(row, "Toll Gate", "TollGate"));
     const direction = norm(getField(row, "Direction"));
-    const original = parseAmount(getField(row, "Amount"));
+    const original = parseAmount(getField(row, "Amount(AED)", "Amount (AED)", "Amount", "AMOUNT"));
 
     if (original === 0) { summary.skippedZero++; continue; }
     if (!dateIso) { summary.errors.push(`Missing date for txn ${txId || plate}`); continue; }
