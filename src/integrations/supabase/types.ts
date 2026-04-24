@@ -25,6 +25,7 @@ export type Database = {
           owner_id: string
           plate: string
           status: string
+          tag_number: string | null
           year: number
         }
         Insert: {
@@ -37,6 +38,7 @@ export type Database = {
           owner_id?: string
           plate?: string
           status?: string
+          tag_number?: string | null
           year?: number
         }
         Update: {
@@ -49,6 +51,7 @@ export type Database = {
           owner_id?: string
           plate?: string
           status?: string
+          tag_number?: string | null
           year?: number
         }
         Relationships: []
