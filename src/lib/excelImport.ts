@@ -59,10 +59,10 @@ function parseDate(v: unknown): string | null {
 
 async function readSheet(file: File, opts?: { raw?: boolean }): Promise<Record<string, unknown>[]> {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const data = new Uint8Array(buf);
+  const wb = XLSX.read(data, { type: "array", cellDates: true, raw: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const raw = opts?.raw ?? true;
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw });
+  return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
 }
 
 function getField(row: Record<string, unknown>, ...keys: string[]): unknown {
