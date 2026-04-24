@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search } from "lucide-react";
+import { Pencil, Plus, Search } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,12 +32,15 @@ interface ClientRecord {
   id: string;
   full_name: string;
   phone: string;
+  client_type: string;
   emirates_id: string;
+  emirates_id_expiry: string | null;
+  passport_number: string | null;
+  passport_expiry: string | null;
   nationality: string;
   email: string | null;
   license_number: string;
   license_expiry: string | null;
-  passport_number: string;
   created_at: string;
 }
 
@@ -70,6 +73,7 @@ const Clients = () => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
 
   const fetchData = async () => {
@@ -109,11 +113,35 @@ const Clients = () => {
     );
   }, [enriched, query]);
 
+  const openAdd = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setOpen(true);
+  };
+
+  const openEdit = (c: ClientRecord) => {
+    setEditingId(c.id);
+    setForm({
+      full_name: c.full_name,
+      phone: c.phone,
+      client_type: (c.client_type as ClientType) || "Resident",
+      emirates_id: c.emirates_id ?? "",
+      emirates_id_expiry: c.emirates_id_expiry ?? "",
+      passport_number: c.passport_number ?? "",
+      passport_expiry: c.passport_expiry ?? "",
+      nationality: c.nationality ?? "",
+      email: c.email ?? "",
+      license_number: c.license_number ?? "",
+      license_expiry: c.license_expiry ?? "",
+    });
+    setOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.full_name.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from("clients").insert({
+    const payload = {
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
       client_type: form.client_type,
@@ -125,13 +153,17 @@ const Clients = () => {
       email: form.email.trim() || null,
       license_number: form.license_number.trim(),
       license_expiry: form.license_expiry || null,
-    });
+    };
+    const { error } = editingId
+      ? await supabase.from("clients").update(payload).eq("id", editingId)
+      : await supabase.from("clients").insert(payload);
     setSaving(false);
     if (error) {
-      toast.error("Failed to add client: " + error.message);
+      toast.error(`Failed to ${editingId ? "update" : "add"} client: ${error.message}`);
     } else {
-      toast.success("Client added");
+      toast.success(editingId ? "Client updated" : "Client added");
       setForm(emptyForm);
+      setEditingId(null);
       setOpen(false);
       fetchData();
     }
@@ -151,17 +183,19 @@ const Clients = () => {
             />
           </div>
 
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditingId(null); }}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="gap-1.5" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
                 Add Client
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
               <DialogHeader>
-                <DialogTitle>Add new client</DialogTitle>
-                <DialogDescription>Enter the client's details below.</DialogDescription>
+                <DialogTitle>{editingId ? "Edit client" : "Add new client"}</DialogTitle>
+                <DialogDescription>
+                  {editingId ? "Update the client's details below." : "Enter the client's details below."}
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4 py-2">
                 <div className="grid grid-cols-2 gap-3">
@@ -174,7 +208,7 @@ const Clients = () => {
                     <Input id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                   </div>
                   <ClientTypeFields
-                    idPrefix="add"
+                    idPrefix={editingId ? "edit" : "add"}
                     value={{
                       client_type: form.client_type,
                       emirates_id: form.emirates_id,
@@ -207,7 +241,9 @@ const Clients = () => {
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Client"}</Button>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Saving..." : editingId ? "Save Changes" : "Save Client"}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -224,25 +260,26 @@ const Clients = () => {
                 <TableHead className="text-xs">Nationality</TableHead>
                 <TableHead className="text-xs">Total Contracts</TableHead>
                 <TableHead className="text-xs">Active</TableHead>
-                <TableHead className="px-5 text-xs">Outstanding</TableHead>
+                <TableHead className="text-xs">Outstanding</TableHead>
+                <TableHead className="px-5 text-xs text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
                     Loading clients...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
                     No clients found.
                   </TableCell>
                 </TableRow>
               ) : (
                 filtered.map((c) => (
-                  <TableRow key={c.id} className="cursor-pointer">
+                  <TableRow key={c.id}>
                     <TableCell className="px-5 font-medium text-foreground">
                       <Link to={`/clients/${c.id}`} className="hover:underline">
                         {c.full_name}
@@ -263,10 +300,21 @@ const Clients = () => {
                       </span>
                     </TableCell>
                     <TableCell className={cn(
-                      "px-5 text-sm font-medium",
+                      "text-sm font-medium",
                       c.outstanding > 0 ? "text-tint-rose-foreground" : "text-foreground",
                     )}>
                       AED {c.outstanding.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="px-5 text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1 text-xs"
+                        onClick={() => openEdit(c)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
