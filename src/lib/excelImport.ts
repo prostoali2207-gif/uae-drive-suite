@@ -197,8 +197,10 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     totalRows: 0, imported: 0, skippedZero: 0, skippedDuplicate: 0,
     unmatchedPlates: [], errors: [],
   };
-  // Force string conversion for legacy .xls where Amount may be misread
-  const rows = await readSheet(file, { raw: false });
+  // Force string conversion for legacy .xls where Amount may be misread.
+  // Salik exports often have title/preamble rows — locate the real header
+  // by scanning for "Transaction ID".
+  const rows = await readSheet(file, { raw: false, headerMarker: "Transaction ID" });
   summary.totalRows = rows.length;
   if (!rows.length) return summary;
 
