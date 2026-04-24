@@ -10,7 +10,7 @@ export interface ImportSummary {
   errors: string[];
 }
 
-interface CarRow { id: string; plate: string; }
+interface CarRow { id: string; plate: string; tag_number?: string | null; }
 interface ContractRow { id: string; car_id: string; client_id: string; start_date: string; end_date: string; }
 
 const norm = (v: unknown) => String(v ?? "").trim();
@@ -173,7 +173,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
 
   const [carsRes, contractsRes, existingRes] = await Promise.all([
-    supabase.from("cars").select("id, plate"),
+    supabase.from("cars").select("id, plate, tag_number"),
     supabase.from("contracts").select("id, car_id, client_id, start_date, end_date"),
     supabase.from("salik").select("transaction_id").not("transaction_id", "is", null),
   ]);
@@ -182,7 +182,11 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   const existingTx = new Set(((existingRes.data || []) as { transaction_id: string }[]).map((r) => r.transaction_id));
 
   const carByPlate = new Map<string, CarRow>();
-  for (const c of cars) carByPlate.set(normPlate(c.plate), c);
+  const carByTag = new Map<string, CarRow>();
+  for (const c of cars) {
+    carByPlate.set(normPlate(c.plate), c);
+    if (c.tag_number) carByTag.set(norm(c.tag_number), c);
+  }
 
   const unmatched = new Set<string>();
   const toInsert: Record<string, unknown>[] = [];
@@ -206,7 +210,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
       seenInBatch.add(txId);
     }
 
-    const car = carByPlate.get(normPlate(plate));
+    const car = (tagNumber && carByTag.get(tagNumber)) || carByPlate.get(normPlate(plate));
     if (!car) { unmatched.add(plate || tagNumber || "(blank)"); continue; }
     const contract = findContract(contracts, car.id, dateIso);
 

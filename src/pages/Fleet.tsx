@@ -43,6 +43,7 @@ interface Car {
   status: Status;
   insurance_expiry: string | null;
   mulkiya_expiry: string | null;
+  tag_number: string | null;
 }
 
 const statusClasses: Record<Status, string> = {
@@ -92,6 +93,7 @@ const Fleet = () => {
     status: "Available" as Status,
     insurance_expiry: "",
     mulkiya_expiry: "",
+    tag_number: "",
   });
 
   const fetchCars = async () => {
@@ -137,6 +139,7 @@ const Fleet = () => {
       status: form.status,
       insurance_expiry: form.insurance_expiry || null,
       mulkiya_expiry: form.mulkiya_expiry || null,
+      tag_number: form.tag_number.trim() || null,
     });
     setSaving(false);
     if (error) {
@@ -152,6 +155,7 @@ const Fleet = () => {
         status: "Available",
         insurance_expiry: "",
         mulkiya_expiry: "",
+        tag_number: "",
       });
       fetchCars();
     }
@@ -257,6 +261,15 @@ const Fleet = () => {
                       onChange={(e) => setForm({ ...form, mulkiya_expiry: e.target.value })}
                     />
                   </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="tag_number">Salik Tag Number</Label>
+                  <Input
+                    id="tag_number"
+                    value={form.tag_number}
+                    onChange={(e) => setForm({ ...form, tag_number: e.target.value })}
+                    placeholder="10404966"
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="status">Status</Label>
