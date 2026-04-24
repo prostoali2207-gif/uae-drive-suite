@@ -57,11 +57,12 @@ function parseDate(v: unknown): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
-async function readSheet(file: File): Promise<Record<string, unknown>[]> {
+async function readSheet(file: File, opts?: { raw?: boolean }): Promise<Record<string, unknown>[]> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: true });
+  const raw = opts?.raw ?? true;
+  return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw });
 }
 
 function getField(row: Record<string, unknown>, ...keys: string[]): unknown {
