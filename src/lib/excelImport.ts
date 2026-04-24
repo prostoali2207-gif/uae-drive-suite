@@ -14,12 +14,19 @@ interface CarRow { id: string; plate: string; }
 interface ContractRow { id: string; car_id: string; client_id: string; start_date: string; end_date: string; }
 
 const norm = (v: unknown) => String(v ?? "").trim();
-const normPlate = (v: unknown) => norm(v).toUpperCase().replace(/\s+/g, "");
+// Match plates by digits only: "AJM A 11532" -> "11532" matches TAMM "11532"
+const normPlate = (v: unknown) => norm(v).replace(/\D+/g, "");
 
 function parseAmount(v: unknown): number {
-  if (v == null) return 0;
-  if (typeof v === "number") return v;
-  const s = String(v).replace(/aed/i, "").replace(/[^\d.\-]/g, "").trim();
+  if (v == null || v === "") return 0;
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  // Strip AED, currency symbols, spaces, commas — keep digits, dot, minus
+  const s = String(v)
+    .replace(/aed/gi, "")
+    .replace(/[,\s\u00A0]/g, "")
+    .replace(/[^\d.\-]/g, "")
+    .trim();
+  if (!s) return 0;
   const n = parseFloat(s);
   return isFinite(n) ? n : 0;
 }
@@ -50,11 +57,12 @@ function parseDate(v: unknown): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
-async function readSheet(file: File): Promise<Record<string, unknown>[]> {
+async function readSheet(file: File, opts?: { raw?: boolean }): Promise<Record<string, unknown>[]> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: true });
+  const raw = opts?.raw ?? true;
+  return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw });
 }
 
 function getField(row: Record<string, unknown>, ...keys: string[]): unknown {
@@ -153,9 +161,13 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     totalRows: 0, imported: 0, skippedZero: 0, skippedDuplicate: 0,
     unmatchedPlates: [], errors: [],
   };
-  const rows = await readSheet(file);
+  // Force string conversion for legacy .xls where Amount may be misread
+  const rows = await readSheet(file, { raw: false });
   summary.totalRows = rows.length;
   if (!rows.length) return summary;
+
+  // Debug: inspect raw Amount values for the first few rows
+  console.log("[Salik import] first 3 rows:", rows.slice(0, 3));
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
