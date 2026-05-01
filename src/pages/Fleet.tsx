@@ -357,9 +357,11 @@ const Fleet = () => {
                   <Input
                     id="tag_number"
                     value={form.tag_number}
-                    onChange={(e) => setForm({ ...form, tag_number: e.target.value })}
+                    onChange={(e) => { setForm({ ...form, tag_number: e.target.value }); if (errors.tag_number) setErrors({ ...errors, tag_number: undefined }); }}
                     placeholder="10404966"
+                    aria-invalid={!!errors.tag_number}
                   />
+                  {errors.tag_number && <p className="text-xs text-destructive">{errors.tag_number}</p>}
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="status">Status</Label>
@@ -377,17 +379,46 @@ const Fleet = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? "Saving..." : editingId ? "Save Changes" : "Add Car"}
-                  </Button>
+                <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+                  {editingId ? (
+                    <Button type="button" variant="destructive" className="gap-1.5" onClick={() => setConfirmDelete(true)}>
+                      <Trash2 className="h-4 w-4" />
+                      Delete Vehicle
+                    </Button>
+                  ) : <span />}
+                  <div className="flex gap-2 sm:justify-end">
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving..." : editingId ? "Save Changes" : "Add Car"}
+                    </Button>
+                  </div>
                 </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
+
+          <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this vehicle?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The vehicle will be permanently removed from your fleet.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => { e.preventDefault(); handleDelete(); }}
+                  disabled={deleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         <div className="rounded-xl border border-border bg-card">
