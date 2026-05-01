@@ -291,9 +291,11 @@ const Fleet = () => {
                       id="plate"
                       required
                       value={form.plate}
-                      onChange={(e) => setForm({ ...form, plate: e.target.value })}
+                      onChange={(e) => { setForm({ ...form, plate: e.target.value }); if (errors.plate) setErrors({ ...errors, plate: undefined }); }}
                       placeholder="DXB A 12345"
+                      aria-invalid={!!errors.plate}
                     />
+                    {errors.plate && <p className="text-xs text-destructive">{errors.plate}</p>}
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="year">Year</Label>
