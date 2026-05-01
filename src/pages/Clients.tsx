@@ -129,6 +129,7 @@ const Clients = () => {
   const openAdd = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setErrors({});
     setOpen(true);
   };
 
@@ -147,12 +148,24 @@ const Clients = () => {
       license_number: c.license_number ?? "",
       license_expiry: c.license_expiry ?? "",
     });
+    setErrors({});
     setOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.full_name.trim()) return;
+    const phoneNorm = form.phone.trim().replace(/\D/g, "");
+    if (phoneNorm) {
+      const dup = clients.find(
+        (c) => c.phone.trim().replace(/\D/g, "") === phoneNorm && c.id !== editingId,
+      );
+      if (dup) {
+        setErrors({ phone: "This phone number is already registered" });
+        return;
+      }
+    }
+    setErrors({});
     setSaving(true);
     const payload = {
       full_name: form.full_name.trim(),
@@ -178,6 +191,40 @@ const Clients = () => {
       setForm(emptyForm);
       setEditingId(null);
       setOpen(false);
+      fetchData();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingId) return;
+    setDeleting(true);
+    const { data: activeContracts, error: checkErr } = await supabase
+      .from("contracts")
+      .select("id")
+      .eq("client_id", editingId)
+      .in("status", ["Active", "Expiring Soon"])
+      .limit(1);
+    if (checkErr) {
+      setDeleting(false);
+      toast.error("Failed to check contracts");
+      return;
+    }
+    if (activeContracts && activeContracts.length > 0) {
+      setDeleting(false);
+      setConfirmDelete(false);
+      toast.error("Cannot delete: client has active contracts");
+      return;
+    }
+    const { error } = await supabase.from("clients").delete().eq("id", editingId);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (error) {
+      toast.error("Failed to delete client: " + error.message);
+    } else {
+      toast.success("Client deleted");
+      setOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
       fetchData();
     }
   };
