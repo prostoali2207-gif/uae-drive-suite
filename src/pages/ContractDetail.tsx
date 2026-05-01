@@ -726,6 +726,21 @@ const ContractDetail = () => {
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
                 </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={contract.status === "Active" || contract.status === "Expiring Soon"}
+                  title={
+                    contract.status === "Active" || contract.status === "Expiring Soon"
+                      ? "Cannot delete an active contract"
+                      : "Delete contract"
+                  }
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
               </div>
             </div>
           </div>
