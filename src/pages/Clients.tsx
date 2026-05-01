@@ -306,15 +306,44 @@ const Clients = () => {
                     <Input id="licexp" type="date" value={form.license_expiry} onChange={(e) => setForm({ ...form, license_expiry: e.target.value })} />
                   </div>
                 </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? "Saving..." : editingId ? "Save Changes" : "Save Client"}
-                  </Button>
+                <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+                  {editingId ? (
+                    <Button type="button" variant="destructive" className="gap-1.5" onClick={() => setConfirmDelete(true)}>
+                      <Trash2 className="h-4 w-4" />
+                      Delete Client
+                    </Button>
+                  ) : <span />}
+                  <div className="flex gap-2 sm:justify-end">
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving..." : editingId ? "Save Changes" : "Save Client"}
+                    </Button>
+                  </div>
                 </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
+
+          <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this client?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The client will be permanently removed.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => { e.preventDefault(); handleDelete(); }}
+                  disabled={deleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         <div className="rounded-xl border border-border bg-card">
