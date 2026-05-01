@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Pencil,
@@ -15,12 +15,23 @@ import {
   LayoutGrid,
   Wallet,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -462,6 +473,7 @@ const FinancialsAccordion = ({
 
 const ContractDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [fines, setFines] = useState<FineRow[]>([]);
   const [salik, setSalik] = useState<SalikRow[]>([]);
@@ -470,6 +482,8 @@ const ContractDetail = () => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -613,6 +627,25 @@ const ContractDetail = () => {
     setEditingNotes(false);
   };
 
+  const handleDelete = async () => {
+    if (!contract) return;
+    if (contract.status === "Active" || contract.status === "Expiring Soon") {
+      toast.error("Cannot delete an active contract");
+      setConfirmDelete(false);
+      return;
+    }
+    setDeleting(true);
+    const { error } = await supabase.from("contracts").delete().eq("id", contract.id);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (error) {
+      toast.error("Failed to delete contract: " + error.message);
+    } else {
+      toast.success("Contract deleted");
+      navigate("/contracts");
+    }
+  };
+
   if (loading) {
     return (
       <DashboardLayout title="Contract">
@@ -692,6 +725,21 @@ const ContractDetail = () => {
                 <Button size="sm" className="h-8 gap-1.5" disabled>
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={contract.status === "Active" || contract.status === "Expiring Soon"}
+                  title={
+                    contract.status === "Active" || contract.status === "Expiring Soon"
+                      ? "Cannot delete an active contract"
+                      : "Delete contract"
+                  }
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
                 </Button>
               </div>
             </div>
@@ -997,6 +1045,27 @@ const ContractDetail = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this contract?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The contract and all its references will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };

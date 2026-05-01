@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -98,6 +108,9 @@ const Fleet = () => {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [errors, setErrors] = useState<{ plate?: string; tag_number?: string }>({});
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchCars = async () => {
     const { data, error } = await supabase
@@ -134,6 +147,7 @@ const Fleet = () => {
   const openAdd = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setErrors({});
     setOpen(true);
   };
 
@@ -149,11 +163,30 @@ const Fleet = () => {
       mulkiya_expiry: car.mulkiya_expiry ?? "",
       tag_number: car.tag_number ?? "",
     });
+    setErrors({});
     setOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const newErrors: { plate?: string; tag_number?: string } = {};
+    const plateNorm = form.plate.trim().toLowerCase();
+    const tagNorm = form.tag_number.trim();
+    const dupPlate = cars.find(
+      (c) => c.plate.trim().toLowerCase() === plateNorm && c.id !== editingId,
+    );
+    if (dupPlate) newErrors.plate = "This plate number already exists";
+    if (tagNorm) {
+      const dupTag = cars.find(
+        (c) => (c.tag_number ?? "").trim() === tagNorm && c.id !== editingId,
+      );
+      if (dupTag) newErrors.tag_number = "This tag number already exists";
+    }
+    if (Object.keys(newErrors).length) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
     setSaving(true);
     const payload = {
       plate: form.plate.trim(),
@@ -173,6 +206,40 @@ const Fleet = () => {
       toast.error(`Failed to ${editingId ? "update" : "add"} car: ${error.message}`);
     } else {
       toast.success(editingId ? "Car updated" : "Car added to fleet");
+      setOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      fetchCars();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingId) return;
+    setDeleting(true);
+    const { data: activeContracts, error: checkErr } = await supabase
+      .from("contracts")
+      .select("id")
+      .eq("car_id", editingId)
+      .in("status", ["Active", "Expiring Soon"])
+      .limit(1);
+    if (checkErr) {
+      setDeleting(false);
+      toast.error("Failed to check contracts");
+      return;
+    }
+    if (activeContracts && activeContracts.length > 0) {
+      setDeleting(false);
+      setConfirmDelete(false);
+      toast.error("Cannot delete: vehicle has active contracts");
+      return;
+    }
+    const { error } = await supabase.from("cars").delete().eq("id", editingId);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (error) {
+      toast.error("Failed to delete vehicle: " + error.message);
+    } else {
+      toast.success("Vehicle deleted");
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm);
@@ -224,9 +291,11 @@ const Fleet = () => {
                       id="plate"
                       required
                       value={form.plate}
-                      onChange={(e) => setForm({ ...form, plate: e.target.value })}
+                      onChange={(e) => { setForm({ ...form, plate: e.target.value }); if (errors.plate) setErrors({ ...errors, plate: undefined }); }}
                       placeholder="DXB A 12345"
+                      aria-invalid={!!errors.plate}
                     />
+                    {errors.plate && <p className="text-xs text-destructive">{errors.plate}</p>}
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="year">Year</Label>
@@ -288,9 +357,11 @@ const Fleet = () => {
                   <Input
                     id="tag_number"
                     value={form.tag_number}
-                    onChange={(e) => setForm({ ...form, tag_number: e.target.value })}
+                    onChange={(e) => { setForm({ ...form, tag_number: e.target.value }); if (errors.tag_number) setErrors({ ...errors, tag_number: undefined }); }}
                     placeholder="10404966"
+                    aria-invalid={!!errors.tag_number}
                   />
+                  {errors.tag_number && <p className="text-xs text-destructive">{errors.tag_number}</p>}
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="status">Status</Label>
@@ -308,17 +379,46 @@ const Fleet = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? "Saving..." : editingId ? "Save Changes" : "Add Car"}
-                  </Button>
+                <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+                  {editingId ? (
+                    <Button type="button" variant="destructive" className="gap-1.5" onClick={() => setConfirmDelete(true)}>
+                      <Trash2 className="h-4 w-4" />
+                      Delete Vehicle
+                    </Button>
+                  ) : <span />}
+                  <div className="flex gap-2 sm:justify-end">
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving..." : editingId ? "Save Changes" : "Add Car"}
+                    </Button>
+                  </div>
                 </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
+
+          <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this vehicle?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The vehicle will be permanently removed from your fleet.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => { e.preventDefault(); handleDelete(); }}
+                  disabled={deleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         <div className="rounded-xl border border-border bg-card">
