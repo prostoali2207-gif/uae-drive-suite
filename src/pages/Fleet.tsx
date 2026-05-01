@@ -108,6 +108,9 @@ const Fleet = () => {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [errors, setErrors] = useState<{ plate?: string; tag_number?: string }>({});
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchCars = async () => {
     const { data, error } = await supabase
@@ -144,6 +147,7 @@ const Fleet = () => {
   const openAdd = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setErrors({});
     setOpen(true);
   };
 
@@ -159,11 +163,30 @@ const Fleet = () => {
       mulkiya_expiry: car.mulkiya_expiry ?? "",
       tag_number: car.tag_number ?? "",
     });
+    setErrors({});
     setOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const newErrors: { plate?: string; tag_number?: string } = {};
+    const plateNorm = form.plate.trim().toLowerCase();
+    const tagNorm = form.tag_number.trim();
+    const dupPlate = cars.find(
+      (c) => c.plate.trim().toLowerCase() === plateNorm && c.id !== editingId,
+    );
+    if (dupPlate) newErrors.plate = "This plate number already exists";
+    if (tagNorm) {
+      const dupTag = cars.find(
+        (c) => (c.tag_number ?? "").trim() === tagNorm && c.id !== editingId,
+      );
+      if (dupTag) newErrors.tag_number = "This tag number already exists";
+    }
+    if (Object.keys(newErrors).length) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
     setSaving(true);
     const payload = {
       plate: form.plate.trim(),
@@ -183,6 +206,40 @@ const Fleet = () => {
       toast.error(`Failed to ${editingId ? "update" : "add"} car: ${error.message}`);
     } else {
       toast.success(editingId ? "Car updated" : "Car added to fleet");
+      setOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      fetchCars();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingId) return;
+    setDeleting(true);
+    const { data: activeContracts, error: checkErr } = await supabase
+      .from("contracts")
+      .select("id")
+      .eq("car_id", editingId)
+      .in("status", ["Active", "Expiring Soon"])
+      .limit(1);
+    if (checkErr) {
+      setDeleting(false);
+      toast.error("Failed to check contracts");
+      return;
+    }
+    if (activeContracts && activeContracts.length > 0) {
+      setDeleting(false);
+      setConfirmDelete(false);
+      toast.error("Cannot delete: vehicle has active contracts");
+      return;
+    }
+    const { error } = await supabase.from("cars").delete().eq("id", editingId);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (error) {
+      toast.error("Failed to delete vehicle: " + error.message);
+    } else {
+      toast.success("Vehicle deleted");
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm);
