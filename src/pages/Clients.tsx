@@ -265,7 +265,14 @@ const Clients = () => {
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="phone">Phone</Label>
-                    <Input id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    <Input
+                      id="phone"
+                      required
+                      value={form.phone}
+                      onChange={(e) => { setForm({ ...form, phone: e.target.value }); if (errors.phone) setErrors({ ...errors, phone: undefined }); }}
+                      aria-invalid={!!errors.phone}
+                    />
+                    {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
                   </div>
                   <ClientTypeFields
                     idPrefix={editingId ? "edit" : "add"}
