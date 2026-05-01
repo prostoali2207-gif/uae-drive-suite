@@ -473,6 +473,7 @@ const FinancialsAccordion = ({
 
 const ContractDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [fines, setFines] = useState<FineRow[]>([]);
   const [salik, setSalik] = useState<SalikRow[]>([]);
@@ -481,6 +482,8 @@ const ContractDetail = () => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
