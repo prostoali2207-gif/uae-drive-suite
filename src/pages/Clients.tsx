@@ -85,6 +85,9 @@ const Clients = () => {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [errors, setErrors] = useState<{ phone?: string }>({});
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = async () => {
     const [clientsRes, contractsRes] = await Promise.all([
