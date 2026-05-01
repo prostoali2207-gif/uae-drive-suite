@@ -627,6 +627,25 @@ const ContractDetail = () => {
     setEditingNotes(false);
   };
 
+  const handleDelete = async () => {
+    if (!contract) return;
+    if (contract.status === "Active" || contract.status === "Expiring Soon") {
+      toast.error("Cannot delete an active contract");
+      setConfirmDelete(false);
+      return;
+    }
+    setDeleting(true);
+    const { error } = await supabase.from("contracts").delete().eq("id", contract.id);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (error) {
+      toast.error("Failed to delete contract: " + error.message);
+    } else {
+      toast.success("Contract deleted");
+      navigate("/contracts");
+    }
+  };
+
   if (loading) {
     return (
       <DashboardLayout title="Contract">
