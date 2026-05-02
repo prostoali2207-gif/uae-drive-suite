@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Pencil,
@@ -15,27 +15,15 @@ import {
   LayoutGrid,
   Wallet,
   AlertCircle,
-  Trash2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { FinancialsTab } from "@/components/FinancialsTab";
 
 interface ContractRecord {
   id: string;
@@ -474,7 +462,6 @@ const FinancialsAccordion = ({
 
 const ContractDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [fines, setFines] = useState<FineRow[]>([]);
   const [salik, setSalik] = useState<SalikRow[]>([]);
@@ -483,62 +470,57 @@ const ContractDetail = () => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const fetchData = async () => {
-    if (!id) return;
-    const { data: contractData, error: contractErr } = await supabase
-      .from("contracts")
-      .select(
-        "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
-      )
-      .eq("id", id)
-      .maybeSingle();
-
-    if (contractErr) {
-      toast.error("Failed to load contract");
-      setLoading(false);
-      return;
-    }
-
-    const c = contractData as ContractRecord | null;
-    setContract(c);
-    setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
-
-    if (c) {
-      const [paymentsRes, finesRes, salikRes] = await Promise.all([
-        supabase
-          .from("payments")
-          .select("id, payment_date, amount, method, status")
-          .eq("contract_id", c.id)
-          .order("payment_date", { ascending: false }),
-        supabase
-          .from("fines")
-          .select("id, fine_date, fine_type, amount, status, source")
-          .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-          .gte("fine_date", c.start_date)
-          .lte("fine_date", c.end_date)
-          .order("fine_date", { ascending: false }),
-        supabase
-          .from("salik")
-          .select("id, charge_date, trips, amount, status")
-          .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-          .gte("charge_date", c.start_date)
-          .lte("charge_date", c.end_date)
-          .order("charge_date", { ascending: false }),
-      ]);
-      if (!paymentsRes.error) setPayments(paymentsRes.data || []);
-      if (!finesRes.error) setFines(finesRes.data || []);
-      if (!salikRes.error) setSalik(salikRes.data || []);
-    }
-    setLoading(false);
-  };
 
   useEffect(() => {
     if (!id) return;
+    const fetchData = async () => {
+      const { data: contractData, error: contractErr } = await supabase
+        .from("contracts")
+        .select(
+          "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
+        )
+        .eq("id", id)
+        .maybeSingle();
+
+      if (contractErr) {
+        toast.error("Failed to load contract");
+        setLoading(false);
+        return;
+      }
+
+      const c = contractData as ContractRecord | null;
+      setContract(c);
+      setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
+
+      if (c) {
+        const [paymentsRes, finesRes, salikRes] = await Promise.all([
+          supabase
+            .from("payments")
+            .select("id, payment_date, amount, method, status")
+            .eq("contract_id", c.id)
+            .order("payment_date", { ascending: false }),
+          supabase
+            .from("fines")
+            .select("id, fine_date, fine_type, amount, status, source")
+            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
+            .gte("fine_date", c.start_date)
+            .lte("fine_date", c.end_date)
+            .order("fine_date", { ascending: false }),
+          supabase
+            .from("salik")
+            .select("id, charge_date, trips, amount, status")
+            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
+            .gte("charge_date", c.start_date)
+            .lte("charge_date", c.end_date)
+            .order("charge_date", { ascending: false }),
+        ]);
+        if (!paymentsRes.error) setPayments(paymentsRes.data || []);
+        if (!finesRes.error) setFines(finesRes.data || []);
+        if (!salikRes.error) setSalik(salikRes.data || []);
+      }
+      setLoading(false);
+    };
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const days = useMemo(
@@ -631,25 +613,6 @@ const ContractDetail = () => {
     setEditingNotes(false);
   };
 
-  const handleDelete = async () => {
-    if (!contract) return;
-    if (contract.status === "Active" || contract.status === "Expiring Soon") {
-      toast.error("Cannot delete an active contract");
-      setConfirmDelete(false);
-      return;
-    }
-    setDeleting(true);
-    const { error } = await supabase.from("contracts").delete().eq("id", contract.id);
-    setDeleting(false);
-    setConfirmDelete(false);
-    if (error) {
-      toast.error("Failed to delete contract: " + error.message);
-    } else {
-      toast.success("Contract deleted");
-      navigate("/contracts");
-    }
-  };
-
   if (loading) {
     return (
       <DashboardLayout title="Contract">
@@ -729,21 +692,6 @@ const ContractDetail = () => {
                 <Button size="sm" className="h-8 gap-1.5" disabled>
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-8 gap-1.5"
-                  onClick={() => setConfirmDelete(true)}
-                  disabled={contract.status === "Active" || contract.status === "Expiring Soon"}
-                  title={
-                    contract.status === "Active" || contract.status === "Expiring Soon"
-                      ? "Cannot delete an active contract"
-                      : "Delete contract"
-                  }
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
                 </Button>
               </div>
             </div>
@@ -893,15 +841,30 @@ const ContractDetail = () => {
           </TabsContent>
 
           {/* FINANCIALS */}
-          <TabsContent value="financials" className="mt-4">
-            <FinancialsTab
+          <TabsContent value="financials" className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Receipt className="h-3.5 w-3.5" />
+                <span>{ledger.length} ledger entries</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Fee / Fine
+                </Button>
+                <Button size="sm" className="h-8 gap-1.5" disabled>
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Payment
+                </Button>
+              </div>
+            </div>
+
+            <FinancialsAccordion
               contract={contract}
               days={days}
               fines={fines}
               salik={salik}
-              payments={payments}
-              contractNumber={contractNumber}
-              onChanged={fetchData}
+              totals={totals}
             />
           </TabsContent>
 
@@ -1034,27 +997,6 @@ const ContractDetail = () => {
           </TabsContent>
         </Tabs>
       </div>
-
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this contract?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The contract and all its references will be permanently removed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); handleDelete(); }}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </DashboardLayout>
   );
 };
