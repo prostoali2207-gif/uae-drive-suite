@@ -893,30 +893,15 @@ const ContractDetail = () => {
           </TabsContent>
 
           {/* FINANCIALS */}
-          <TabsContent value="financials" className="mt-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Receipt className="h-3.5 w-3.5" />
-                <span>{ledger.length} ledger entries</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Fee / Fine
-                </Button>
-                <Button size="sm" className="h-8 gap-1.5" disabled>
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Payment
-                </Button>
-              </div>
-            </div>
-
-            <FinancialsAccordion
+          <TabsContent value="financials" className="mt-4">
+            <FinancialsTab
               contract={contract}
               days={days}
               fines={fines}
               salik={salik}
-              totals={totals}
+              payments={payments}
+              contractNumber={contractNumber}
+              onChanged={fetchData}
             />
           </TabsContent>
 
