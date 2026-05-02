@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { FinancialsTab } from "@/components/FinancialsTab";
 
 interface ContractRecord {
   id: string;
@@ -485,56 +486,59 @@ const ContractDetail = () => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const fetchData = async () => {
+    if (!id) return;
+    const { data: contractData, error: contractErr } = await supabase
+      .from("contracts")
+      .select(
+        "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
+      )
+      .eq("id", id)
+      .maybeSingle();
+
+    if (contractErr) {
+      toast.error("Failed to load contract");
+      setLoading(false);
+      return;
+    }
+
+    const c = contractData as ContractRecord | null;
+    setContract(c);
+    setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
+
+    if (c) {
+      const [paymentsRes, finesRes, salikRes] = await Promise.all([
+        supabase
+          .from("payments")
+          .select("id, payment_date, amount, method, status")
+          .eq("contract_id", c.id)
+          .order("payment_date", { ascending: false }),
+        supabase
+          .from("fines")
+          .select("id, fine_date, fine_type, amount, status, source")
+          .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
+          .gte("fine_date", c.start_date)
+          .lte("fine_date", c.end_date)
+          .order("fine_date", { ascending: false }),
+        supabase
+          .from("salik")
+          .select("id, charge_date, trips, amount, status")
+          .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
+          .gte("charge_date", c.start_date)
+          .lte("charge_date", c.end_date)
+          .order("charge_date", { ascending: false }),
+      ]);
+      if (!paymentsRes.error) setPayments(paymentsRes.data || []);
+      if (!finesRes.error) setFines(finesRes.data || []);
+      if (!salikRes.error) setSalik(salikRes.data || []);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (!id) return;
-    const fetchData = async () => {
-      const { data: contractData, error: contractErr } = await supabase
-        .from("contracts")
-        .select(
-          "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
-        )
-        .eq("id", id)
-        .maybeSingle();
-
-      if (contractErr) {
-        toast.error("Failed to load contract");
-        setLoading(false);
-        return;
-      }
-
-      const c = contractData as ContractRecord | null;
-      setContract(c);
-      setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
-
-      if (c) {
-        const [paymentsRes, finesRes, salikRes] = await Promise.all([
-          supabase
-            .from("payments")
-            .select("id, payment_date, amount, method, status")
-            .eq("contract_id", c.id)
-            .order("payment_date", { ascending: false }),
-          supabase
-            .from("fines")
-            .select("id, fine_date, fine_type, amount, status, source")
-            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-            .gte("fine_date", c.start_date)
-            .lte("fine_date", c.end_date)
-            .order("fine_date", { ascending: false }),
-          supabase
-            .from("salik")
-            .select("id, charge_date, trips, amount, status")
-            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-            .gte("charge_date", c.start_date)
-            .lte("charge_date", c.end_date)
-            .order("charge_date", { ascending: false }),
-        ]);
-        if (!paymentsRes.error) setPayments(paymentsRes.data || []);
-        if (!finesRes.error) setFines(finesRes.data || []);
-        if (!salikRes.error) setSalik(salikRes.data || []);
-      }
-      setLoading(false);
-    };
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const days = useMemo(
@@ -889,30 +893,15 @@ const ContractDetail = () => {
           </TabsContent>
 
           {/* FINANCIALS */}
-          <TabsContent value="financials" className="mt-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Receipt className="h-3.5 w-3.5" />
-                <span>{ledger.length} ledger entries</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Fee / Fine
-                </Button>
-                <Button size="sm" className="h-8 gap-1.5" disabled>
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Payment
-                </Button>
-              </div>
-            </div>
-
-            <FinancialsAccordion
+          <TabsContent value="financials" className="mt-4">
+            <FinancialsTab
               contract={contract}
               days={days}
               fines={fines}
               salik={salik}
-              totals={totals}
+              payments={payments}
+              contractNumber={contractNumber}
+              onChanged={fetchData}
             />
           </TabsContent>
 
