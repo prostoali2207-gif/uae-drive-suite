@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { FinancialsTab } from "@/components/FinancialsTab";
 
 interface ContractRecord {
   id: string;
