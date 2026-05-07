@@ -19,12 +19,21 @@ interface ClientRecord {
   id: string;
   full_name: string;
   phone: string;
+  client_type: string;
   emirates_id: string;
+  emirates_id_expiry: string | null;
   nationality: string;
   email: string | null;
   license_number: string;
   license_expiry: string | null;
-  passport_number: string;
+  passport_number: string | null;
+  passport_expiry: string | null;
+  date_of_birth: string | null;
+  passport_photo_url: string | null;
+  eid_front_url: string | null;
+  eid_back_url: string | null;
+  license_front_url: string | null;
+  license_back_url: string | null;
 }
 
 interface ContractRow {
@@ -79,7 +88,7 @@ const ClientDetail = () => {
           .order("created_at", { ascending: false }),
       ]);
       if (clientRes.error) toast.error("Failed to load client");
-      else setClient(clientRes.data);
+      else setClient(clientRes.data as unknown as ClientRecord);
       if (!contractsRes.error) setContracts((contractsRes.data as ContractRow[]) || []);
       setLoading(false);
     };
@@ -134,11 +143,65 @@ const ClientDetail = () => {
             <InfoRow label="Full Name" value={client.full_name} />
             <InfoRow label="Phone" value={client.phone} />
             <InfoRow label="Email" value={client.email} />
+            <InfoRow label="Date of Birth" value={formatDate(client.date_of_birth)} />
             <InfoRow label="Nationality" value={client.nationality} />
             <InfoRow label="Emirates ID" value={client.emirates_id} />
             <InfoRow label="License Number" value={client.license_number} />
             <InfoRow label="License Expiry" value={formatDate(client.license_expiry)} />
             <InfoRow label="Passport Number" value={client.passport_number} />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-6">
+          <h2 className="text-sm font-semibold text-foreground">Documents</h2>
+          <div className="mt-4 flex flex-wrap gap-4">
+            {client.client_type === "Resident" && (
+              <>
+                {client.eid_front_url && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">EID Front</span>
+                    <a href={client.eid_front_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
+                      <img src={client.eid_front_url} alt="EID Front" className="h-full w-full object-cover" />
+                    </a>
+                  </div>
+                )}
+                {client.eid_back_url && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">EID Back</span>
+                    <a href={client.eid_back_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
+                      <img src={client.eid_back_url} alt="EID Back" className="h-full w-full object-cover" />
+                    </a>
+                  </div>
+                )}
+              </>
+            )}
+            {client.client_type === "Tourist" && client.passport_photo_url && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Passport</span>
+                <a href={client.passport_photo_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
+                  <img src={client.passport_photo_url} alt="Passport" className="h-full w-full object-cover" />
+                </a>
+              </div>
+            )}
+            {client.license_front_url && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">License Front</span>
+                <a href={client.license_front_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
+                  <img src={client.license_front_url} alt="License Front" className="h-full w-full object-cover" />
+                </a>
+              </div>
+            )}
+            {client.license_back_url && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">License Back</span>
+                <a href={client.license_back_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
+                  <img src={client.license_back_url} alt="License Back" className="h-full w-full object-cover" />
+                </a>
+              </div>
+            )}
+            {!client.eid_front_url && !client.eid_back_url && !client.passport_photo_url && !client.license_front_url && !client.license_back_url && (
+              <span className="text-sm text-muted-foreground italic">No documents uploaded.</span>
+            )}
           </div>
         </div>
 

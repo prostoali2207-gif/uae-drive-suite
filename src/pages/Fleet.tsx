@@ -30,7 +30,18 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Status = "Available" | "Rented" | "Service";
 
@@ -44,6 +55,13 @@ interface Car {
   insurance_expiry: string | null;
   mulkiya_expiry: string | null;
   tag_number: string | null;
+}
+
+function toSupabaseMessage(error: { code?: string; message?: string } | null): string {
+  if (error?.code === "PGRST205") {
+    return "Supabase tables are missing in this project. Run migrations, then retry.";
+  }
+  return error?.message || "unknown error";
 }
 
 const statusClasses: Record<Status, string> = {
@@ -96,16 +114,26 @@ const Fleet = () => {
   const [filter, setFilter] = useState<"All" | Status>("All");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [plateError, setPlateError] = useState("");
+  const [tagError, setTagError] = useState("");
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const fetchCars = async () => {
+    try {
+      await syncVehicleStatusesWithContracts();
+    } catch (syncErr) {
+      console.error("Vehicle status sync failed:", syncErr);
+    }
+
     const { data, error } = await supabase
       .from("cars")
       .select("*")
       .order("created_at", { ascending: false });
     if (error) {
-      toast.error("Failed to load fleet");
+      toast.error(`Failed to load fleet: ${toSupabaseMessage(error)}`);
     } else {
       setCars((data as Car[]) || []);
     }
@@ -134,6 +162,8 @@ const Fleet = () => {
   const openAdd = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setPlateError("");
+    setTagError("");
     setOpen(true);
   };
 
@@ -149,11 +179,53 @@ const Fleet = () => {
       mulkiya_expiry: car.mulkiya_expiry ?? "",
       tag_number: car.tag_number ?? "",
     });
+    setPlateError("");
+    setTagError("");
     setOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Submitting vehicle form...", { form, editingId });
+    setPlateError("");
+    setTagError("");
+
+    if (!editingId) {
+      const plateToCheck = form.plate.trim();
+      if (plateToCheck) {
+        const { data: existingPlate, error: plateDupErr } = await supabase
+          .from("cars")
+          .select("id")
+          .eq("plate", plateToCheck)
+          .limit(1);
+        if (plateDupErr) {
+          toast.error("Could not validate plate number");
+          return;
+        }
+        if (existingPlate && existingPlate.length > 0) {
+          setPlateError("This plate number already exists");
+          return;
+        }
+      }
+
+      const tagToCheck = form.tag_number.trim();
+      if (tagToCheck) {
+        const { data: existingTag, error: tagDupErr } = await supabase
+          .from("cars")
+          .select("id")
+          .eq("tag_number", tagToCheck)
+          .limit(1);
+        if (tagDupErr) {
+          toast.error("Could not validate tag number");
+          return;
+        }
+        if (existingTag && existingTag.length > 0) {
+          setTagError("This tag number already exists");
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     const payload = {
       plate: form.plate.trim(),
@@ -165,19 +237,63 @@ const Fleet = () => {
       mulkiya_expiry: form.mulkiya_expiry || null,
       tag_number: form.tag_number.trim() || null,
     };
-    const { error } = editingId
-      ? await supabase.from("cars").update(payload).eq("id", editingId)
-      : await supabase.from("cars").insert(payload);
-    setSaving(false);
-    if (error) {
-      toast.error(`Failed to ${editingId ? "update" : "add"} car: ${error.message}`);
-    } else {
-      toast.success(editingId ? "Car updated" : "Car added to fleet");
-      setOpen(false);
-      setEditingId(null);
-      setForm(emptyForm);
-      fetchCars();
+
+    try {
+      const { error } = editingId
+        ? await supabase.from("cars").update(payload).eq("id", editingId)
+        : await supabase.from("cars").insert(payload);
+      
+      setSaving(false);
+      if (error) {
+        toast.error(`Failed to ${editingId ? "update" : "add"} car: ${toSupabaseMessage(error)}`);
+        console.error("Vehicle submission error:", error);
+      } else {
+        toast.success(editingId ? "Car updated" : "Car added to fleet");
+        setOpen(false);
+        setEditingId(null);
+        setForm(emptyForm);
+        fetchCars();
+      }
+    } catch (err) {
+      setSaving(false);
+      toast.error("An unexpected error occurred while saving vehicle");
+      console.error(err);
     }
+  };
+
+  const handleDeleteVehicle = async () => {
+    if (!editingId) return;
+    setDeleting(true);
+    const { count, error: activeErr } = await supabase
+      .from("contracts")
+      .select("id", { count: "exact", head: true })
+      .eq("car_id", editingId)
+      .in("status", ["Active", "Expiring Soon"]);
+    if (activeErr) {
+      setDeleting(false);
+      toast.error("Failed to verify active contracts");
+      return;
+    }
+    if ((count ?? 0) > 0) {
+      setDeleting(false);
+      setConfirmDeleteOpen(false);
+      toast.error("Cannot delete vehicle with active contracts");
+      return;
+    }
+
+    const { error: deleteErr } = await supabase.from("cars").delete().eq("id", editingId);
+    setDeleting(false);
+    setConfirmDeleteOpen(false);
+    if (deleteErr) {
+      toast.error(`Failed to delete vehicle: ${deleteErr.message}`);
+      return;
+    }
+
+    toast.success("Vehicle deleted");
+    setOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    fetchCars();
   };
 
   return (
@@ -202,7 +318,7 @@ const Fleet = () => {
             ))}
           </div>
 
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditingId(null); }}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPlateError(""); setTagError(""); } }}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
@@ -224,9 +340,13 @@ const Fleet = () => {
                       id="plate"
                       required
                       value={form.plate}
-                      onChange={(e) => setForm({ ...form, plate: e.target.value })}
+                      onChange={(e) => {
+                        setForm({ ...form, plate: e.target.value });
+                        setPlateError("");
+                      }}
                       placeholder="DXB A 12345"
                     />
+                    {plateError && <p className="text-xs text-destructive">{plateError}</p>}
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="year">Year</Label>
@@ -288,9 +408,13 @@ const Fleet = () => {
                   <Input
                     id="tag_number"
                     value={form.tag_number}
-                    onChange={(e) => setForm({ ...form, tag_number: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, tag_number: e.target.value });
+                      setTagError("");
+                    }}
                     placeholder="10404966"
                   />
+                  {tagError && <p className="text-xs text-destructive">{tagError}</p>}
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="status">Status</Label>
@@ -316,9 +440,39 @@ const Fleet = () => {
                     {saving ? "Saving..." : editingId ? "Save Changes" : "Add Car"}
                   </Button>
                 </DialogFooter>
+                {editingId && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setConfirmDeleteOpen(true)}
+                    disabled={deleting}
+                  >
+                    Delete Vehicle
+                  </Button>
+                )}
               </form>
             </DialogContent>
           </Dialog>
+          <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete vehicle?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The vehicle can be deleted only if there are no active contracts.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteVehicle}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete Vehicle"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         <div className="rounded-xl border border-border bg-card">

@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Car } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -21,11 +20,11 @@ const Auth = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const from = (location.state as { from?: string } | null)?.from || "/";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [companyName, setCompanyName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -35,29 +34,28 @@ const Auth = () => {
     if (user && !loading) navigate(from, { replace: true });
   }, [user, loading, from, navigate]);
 
+  useEffect(() => {
+    if (searchParams.get("confirmed") === "1") {
+      toast.success("Email confirmed! You can now sign in.");
+    }
+    if (searchParams.get("error") === "confirm") {
+      toast.error("Email confirmation failed. Please try the link again.");
+    }
+  }, [searchParams]);
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setSubmitting(false);
-    if (error) toast.error(error.message);
-    else toast.success("Welcome back");
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: { company_name: companyName },
-      },
-    });
-    setSubmitting(false);
-    if (error) toast.error(error.message);
-    else toast.success("Account created — you're signed in");
+    if (error) {
+      const message = error.message.toLowerCase();
+      if (message.includes("email not confirmed") || message.includes("not confirmed")) {
+        toast.error("Please confirm your email first. Check your inbox.");
+      } else {
+        toast.error(error.message);
+      }
+    } else toast.success("Welcome back");
   };
 
   const handleForgot = async (e: React.FormEvent) => {
@@ -94,57 +92,39 @@ const Auth = () => {
         </div>
 
         <div className="rounded-xl border border-border bg-card p-6">
-          <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
+          <div className="mb-4">
+            <h1 className="text-xl font-bold text-foreground">Sign In</h1>
+            <p className="text-sm text-muted-foreground text-balance mt-1">
+              Enter your credentials to access your account
+            </p>
+          </div>
 
-            <TabsContent value="signin" className="mt-5">
-              <form onSubmit={handleSignIn} className="grid gap-4">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="si-email">Email</Label>
-                  <Input id="si-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div className="grid gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="si-password">Password</Label>
-                    <button
-                      type="button"
-                      onClick={() => { setForgotEmail(email); setForgotOpen(true); }}
-                      className="text-xs text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      Forgot?
-                    </button>
-                  </div>
-                  <Input id="si-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? "Signing in..." : "Sign In"}
-                </Button>
-              </form>
-            </TabsContent>
+          <form onSubmit={handleSignIn} className="grid gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="si-email">Email</Label>
+              <Input id="si-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="si-password">Password</Label>
+                <button
+                  type="button"
+                  onClick={() => { setForgotEmail(email); setForgotOpen(true); }}
+                  className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Forgot?
+                </button>
+              </div>
+              <Input id="si-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            </div>
+            <Button type="submit" disabled={submitting} className="w-full">
+              {submitting ? "Signing in..." : "Sign In"}
+            </Button>
+          </form>
 
-            <TabsContent value="signup" className="mt-5">
-              <form onSubmit={handleSignUp} className="grid gap-4">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="su-company">Company Name</Label>
-                  <Input id="su-company" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="My Rentals LLC" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="su-email">Email</Label>
-                  <Input id="su-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="su-password">Password</Label>
-                  <Input id="su-password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? "Creating account..." : "Create Account"}
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            To request access, contact your administrator
+          </p>
         </div>
       </div>
 

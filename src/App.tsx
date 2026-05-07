@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import Auth from "./pages/Auth.tsx";
+import AuthConfirm from "./pages/AuthConfirm.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import Fleet from "./pages/Fleet.tsx";
 import Contracts from "./pages/Contracts.tsx";
@@ -30,6 +31,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/confirm" element={<AuthConfirm />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/fleet" element={<ProtectedRoute><Fleet /></ProtectedRoute>} />

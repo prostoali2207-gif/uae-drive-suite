@@ -114,6 +114,7 @@ export type Database = {
           created_at: string
           deposit_amount: number
           end_date: string
+          end_time: string
           fuel_level: string
           id: string
           initial_mileage: number
@@ -123,6 +124,7 @@ export type Database = {
           rate_amount: number
           rate_type: string
           start_date: string
+          start_time: string
           status: string
           total_amount: number
         }
@@ -132,6 +134,7 @@ export type Database = {
           created_at?: string
           deposit_amount?: number
           end_date: string
+          end_time?: string
           fuel_level?: string
           id?: string
           initial_mileage?: number
@@ -141,6 +144,7 @@ export type Database = {
           rate_amount?: number
           rate_type?: string
           start_date: string
+          start_time?: string
           status?: string
           total_amount?: number
         }
@@ -150,6 +154,7 @@ export type Database = {
           created_at?: string
           deposit_amount?: number
           end_date?: string
+          end_time?: string
           fuel_level?: string
           id?: string
           initial_mileage?: number
@@ -159,6 +164,7 @@ export type Database = {
           rate_amount?: number
           rate_type?: string
           start_date?: string
+          start_time?: string
           status?: string
           total_amount?: number
         }
