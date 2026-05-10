@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.font-dm-sans {
+  font-family: 'DM Sans', sans-serif;
+}
+
+.font-ibm-plex-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeUp {
+  animation: fadeUp 0.5s ease-out forwards;
+}
+
+/* Custom scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #2e3850;
+  border-radius: 2.5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3a4458;
+}
+
+/* Hover states */
+.hover-card:hover {
+  border-color: #2e3850;
+  transition: border-color 0.15s ease;
+}
+
+.hover-nav:hover {
+  background: #1c2333;
+  color: #e8edf5;
+  transition: all 0.15s ease;
+}
+
+.hover-action:hover {
+  background: #2e3850;
+  transition: background 0.15s ease;
+}
