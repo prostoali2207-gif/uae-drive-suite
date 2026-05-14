@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatCard } from "@/components/StatCard";
 import { RevenueChart } from "@/components/RevenueChart";
 import { RecentContracts } from "@/components/RecentContracts";
+import ExpiringContracts from "@/components/ExpiringContracts";
 import { supabase } from "@/integrations/supabase/client";
 
 const formatAED = (n: number) => `AED ${n.toLocaleString("en-AE")}`;
@@ -76,6 +77,8 @@ const Index = () => {
             highlight={stats.renewalsDue > 0 ? "amber" : undefined}
           />
         </div>
+
+        <ExpiringContracts />
 
         <RecentContracts />
       </div>
