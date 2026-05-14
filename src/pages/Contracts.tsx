@@ -147,7 +147,7 @@ const emptyForm = {
   start_time: "12:00",
   end_date: "",
   end_time: "12:00",
-  rate_type: "Daily" as RateType,
+  rate_type: "Daily",
   rate_amount: 100,
   deposit_amount: 0,
   initial_mileage: 0,
