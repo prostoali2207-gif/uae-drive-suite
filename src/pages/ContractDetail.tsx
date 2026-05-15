@@ -430,31 +430,36 @@ const FinancialsAccordion = ({
         })}
       </AccordionRow>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
-          <span className="text-muted-foreground">
-            Total charges:{" "}
-            <span className="font-semibold tabular-nums text-foreground">
-              {fmtAed(totals.charges - Number(contract.deposit_amount))}
-            </span>
-          </span>
-          <span className="text-muted-foreground">
-            Paid:{" "}
-            <span className="font-semibold tabular-nums text-tint-green-foreground">
-              {fmtAed(totals.credits)}
-            </span>
-          </span>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Total charged card */}
+        <div className="rounded-md border border-border bg-muted/30 p-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Total charged
+          </div>
+          <div className="mt-0.5 text-base font-semibold tabular-nums text-foreground">
+            {fmtAed(totals.charges - Number(contract.deposit_amount))}
+          </div>
         </div>
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold tabular-nums",
-            totals.outstanding > 0
-              ? "border-tint-rose-foreground/40 bg-tint-rose text-tint-rose-foreground"
-              : "border-border bg-muted text-foreground",
-          )}
-        >
-          Balance Due: {fmtAed(totals.outstanding)}
-        </span>
+
+        {/* Paid card */}
+        <div className="rounded-md border border-tint-green-foreground/30 bg-[#EAF3DE] p-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Paid
+          </div>
+          <div className="mt-0.5 text-base font-semibold tabular-nums text-[#3B6D11]">
+            {fmtAed(totals.credits)}
+          </div>
+        </div>
+
+        {/* Balance due card */}
+        <div className="rounded-md border border-tint-rose-foreground/30 bg-[#FCEBEB] p-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Balance due
+          </div>
+          <div className="mt-0.5 text-base font-semibold tabular-nums text-[#A32D2D]">
+            {fmtAed(totals.outstanding)}
+          </div>
+        </div>
       </div>
     </div>
   );
