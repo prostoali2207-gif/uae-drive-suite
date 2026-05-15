@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Calendar, Clock } from "lucide-react";
+import RenewContractDialog from "@/components/RenewContractDialog";
 
 interface ContractWithDetails {
   id: string;
   end_date: string;
   rate_type: string;
+  rate_amount: number;
   status: string;
   client: {
     full_name: string;
+    phone: string;
   };
   car: {
     plate: string;
@@ -35,9 +38,11 @@ const ExpiringContracts = () => {
           id,
           end_date,
           rate_type,
+          rate_amount,
           status,
           client:clients (
-            full_name
+            full_name,
+            phone
           ),
           car:cars (
             plate
