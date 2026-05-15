@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Calendar, Clock } from "lucide-react";
+import { Calendar, Clock, RotateCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import RenewContractDialog from "@/components/RenewContractDialog";
 
 interface ContractWithDetails {
@@ -19,6 +20,7 @@ interface ContractWithDetails {
 }
 
 const ExpiringContracts = () => {
+  const [openContractId, setOpenContractId] = useState<string | null>(null);
   const [contracts, setContracts] = useState<ContractWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -129,6 +131,30 @@ const ExpiringContracts = () => {
                 <span>{formatDate(contract.end_date)}</span>
               </div>
             </div>
+          </div>
+          <div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setOpenContractId(contract.id)}
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              Renew
+            </Button>
+            <RenewContractDialog
+              contractId={contract.id}
+              clientName={contract.client.full_name}
+              clientPhone={contract.client.phone}
+              carPlate={contract.car.plate}
+              currentEndDate={contract.end_date}
+              rateType={contract.rate_type}
+              rateAmount={contract.rate_amount}
+              open={openContractId === contract.id}
+              onOpenChange={(open) => {
+                if (!open) setOpenContractId(null);
+              }}
+            />
           </div>
         </div>
       ))}
