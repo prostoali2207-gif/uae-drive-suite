@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   Wallet,
   AlertCircle,
+  MoreHorizontal,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -66,6 +67,7 @@ interface FineRow {
   amount: number;
   status: string;
   source: string;
+  notes?: string | null;
 }
 
 interface SalikRow {
@@ -314,6 +316,7 @@ type FinancialsAccordionProps = {
   fines: FineRow[];
   salik: SalikRow[];
   totals: { charges: number; credits: number; outstanding: number };
+  onUpdateFineNote: (id: string, note: string) => void;
 };
 
 const FinancialsAccordion = ({
@@ -322,6 +325,7 @@ const FinancialsAccordion = ({
   fines,
   salik,
   totals,
+  onUpdateFineNote,
 }: FinancialsAccordionProps) => {
   const rentalTotal = Number(contract.total_amount);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
@@ -336,7 +340,55 @@ const FinancialsAccordion = ({
   }[] = [];
   const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
 
+  const [editingFineId, setEditingFineId] = useState<string | null>(null);
+  const [fineNoteDraft, setFineNoteDraft] = useState("");
+  const [savingFineNote, setSavingFineNote] = useState(false);
+  const [fineMenuState, setFineMenuState] = useState<{
+    id: string;
+    top: number;
+    right: number;
+  } | null>(null);
+
+  const openFineMenu = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    fineId: string,
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setFineMenuState({
+      id: fineId,
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+  };
+
   return (
+    <>
+      {fineMenuState !== null && (
+        <>
+          <div
+            className="fixed inset-0 z-[49]"
+            onClick={() => setFineMenuState(null)}
+          />
+          <div
+            className="fixed z-50 min-w-[120px] rounded-md border border-border bg-card py-1 shadow-md"
+            style={{ top: fineMenuState.top, right: fineMenuState.right }}
+          >
+            <button
+              type="button"
+              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+              onClick={() => {
+                const fine = fines.find((f) => f.id === fineMenuState.id);
+                setEditingFineId(fineMenuState.id);
+                setFineNoteDraft(fine?.notes ?? "");
+                setFineMenuState(null);
+              }}
+            >
+              Add note
+            </button>
+          </div>
+        </>
+      )}
+
     <div className="space-y-2">
       <AccordionRow label="Rental" count={1} total={rentalTotal} accent="blue">
         <EntryRow>
@@ -363,17 +415,77 @@ const FinancialsAccordion = ({
         totalClass="text-tint-rose-foreground"
       >
         {fines.map((f) => (
-          <EntryRow key={f.id}>
-            <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {formatDate(f.fine_date)}
-            </span>
-            <span className="flex-1 truncate text-xs text-foreground/90">
-              {f.fine_type} · {f.source}
-            </span>
-            <span className="w-24 text-right text-sm font-bold tabular-nums text-tint-rose-foreground">
-              {fmtAed(Number(f.amount))}
-            </span>
-          </EntryRow>
+          <div key={f.id} className="border-b border-border/40 last:border-b-0">
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                {formatDate(f.fine_date)}
+              </span>
+              <div className="flex flex-1 min-w-0 flex-col gap-0.5">
+                <span className="truncate text-xs text-foreground/90">
+                  {f.fine_type} · {f.source}
+                </span>
+                {f.notes && (
+                  <span className="truncate text-[10px] text-muted-foreground">
+                    {f.notes}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => openFineMenu(e, f.id)}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+              <span className="w-24 text-right text-sm font-bold tabular-nums text-tint-rose-foreground">
+                {fmtAed(Number(f.amount))}
+              </span>
+            </div>
+            {editingFineId === f.id && (
+              <div className="flex items-start gap-2 border-t border-border/30 bg-muted/30 px-3 py-2">
+                <textarea
+                  autoFocus
+                  rows={2}
+                  placeholder="Add note..."
+                  value={fineNoteDraft}
+                  onChange={(e) => setFineNoteDraft(e.target.value)}
+                  className="flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <div className="flex flex-col gap-1">
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    disabled={savingFineNote}
+                    onClick={async () => {
+                      setSavingFineNote(true);
+                      const { error } = await supabase
+                        .from("fines")
+                        .update({ notes: fineNoteDraft } as never)
+                        .eq("id", f.id);
+                      setSavingFineNote(false);
+                      if (error) {
+                        toast.error("Failed to save note");
+                      } else {
+                        onUpdateFineNote(f.id, fineNoteDraft);
+                        setEditingFineId(null);
+                        toast.success("Note saved");
+                      }
+                    }}
+                  >
+                    {savingFineNote ? "…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setEditingFineId(null)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         ))}
       </AccordionRow>
 
@@ -477,7 +589,7 @@ const ContractDetail = () => {
             .order("payment_date", { ascending: false }),
           supabase
             .from("fines")
-            .select("id, fine_date, fine_type, amount, status, source")
+            .select("id, fine_date, fine_type, amount, status, source, notes")
             .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
             .gte("fine_date", c.start_date)
             .lte("fine_date", c.end_date)
