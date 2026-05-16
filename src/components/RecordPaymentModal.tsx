@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface PaymentModalLedgerEntry {
@@ -103,26 +103,38 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
       if (payError) throw payError;
 
-      // 2. Update status of fully allocated fines/salik
+      // 2. Update status of fully allocated fines/salik.
+      // Ledger entry IDs are prefixed ("fine-<uuid>", "salik-<uuid>", etc.),
+      // so strip the prefix to get the real DB row id.
       for (const entry of unpaidEntries) {
-        const allocated = allocations[entry.id] || 0;
+        const allocated = allocations[entry.id] ?? 0;
         if (allocated >= entry.amount) {
-          const table = entry.type === "Fine" ? "fines" : entry.type === "Salik" ? "salik" : null;
-          if (table) {
+          const dbId = entry.id.replace(/^(fine|salik|rental|deposit|pay)-/, "");
+
+          if (entry.type === "Fine") {
             const { error: updError } = await supabase
-              .from(table)
+              .from("fines")
               .update({ status: "Paid" } as never)
-              .eq("id", entry.id);
-            if (updError) console.error(`Failed to update ${table} ${entry.id}:`, updError);
+              .eq("id", dbId);
+            if (updError) console.error(`Failed to update fine ${dbId}:`, updError);
+          } else if (entry.type === "Salik") {
+            const { error: updError } = await supabase
+              .from("salik")
+              .update({ status: "Paid" } as never)
+              .eq("id", dbId);
+            if (updError) console.error(`Failed to update salik ${dbId}:`, updError);
           }
+          // Rental / Deposit / Payment — no table row to flip
         }
       }
 
       toast.success("Payment recorded successfully");
       onClose();
-    } catch (error: any) {
-      console.error("Payment error:", error);
-      alert(`Failed to record payment: ${error.message || "Unknown error"}`);
+      window.location.reload();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("Payment error:", err);
+      toast.error(`Failed to record payment: ${message}`);
     }
   };
 
