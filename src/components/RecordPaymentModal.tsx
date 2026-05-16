@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-interface LedgerEntry {
+interface PaymentModalLedgerEntry {
   id: string;
   description: string;
   amount: number;
@@ -25,7 +25,7 @@ interface RecordPaymentModalProps {
   onClose: () => void;
   contractId: string;
   balanceDue: number;
-  ledgerEntries: LedgerEntry[];
+  ledgerEntries: PaymentModalLedgerEntry[];
 }
 
 type PaymentMethod = "Cash" | "Card" | "Transfer";

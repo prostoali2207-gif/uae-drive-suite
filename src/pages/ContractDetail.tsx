@@ -16,6 +16,7 @@ import {
   Wallet,
   AlertCircle,
 } from "lucide-react";
+import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -445,6 +446,7 @@ const ContractDetail = () => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -870,7 +872,7 @@ const ContractDetail = () => {
                   <Plus className="h-3.5 w-3.5" />
                   Add Fee / Fine
                 </Button>
-                <Button size="sm" className="h-8 gap-1.5" disabled>
+                <Button size="sm" className="h-8 gap-1.5" onClick={() => setShowPaymentModal(true)}>
                   <Plus className="h-3.5 w-3.5" />
                   Add Payment
                 </Button>
@@ -883,6 +885,18 @@ const ContractDetail = () => {
               fines={fines}
               salik={salik}
               totals={totals}
+            />
+            <RecordPaymentModal
+              open={showPaymentModal}
+              onClose={() => setShowPaymentModal(false)}
+              contractId={contract.id}
+              balanceDue={totals.outstanding}
+              ledgerEntries={ledger.map(e => ({
+                id: e.id,
+                description: e.description,
+                amount: e.debit - e.credit,
+                status: e.status
+              }))}
             />
           </TabsContent>
 
