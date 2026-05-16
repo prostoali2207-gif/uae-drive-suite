@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Pencil,
@@ -20,6 +20,23 @@ import {
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown } from "lucide-react";
@@ -76,6 +93,7 @@ interface SalikRow {
   trips: number;
   amount: number;
   status: string;
+  notes?: string | null;
 }
 
 interface PaymentRow {
@@ -304,8 +322,8 @@ const StatusPill = ({ status }: { status: string }) => {
   );
 };
 
-const EntryRow = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex items-center gap-3 border-b border-border/40 px-3 py-2.5 last:border-b-0">
+const EntryRow = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("flex items-center gap-3 border-b border-border/40 px-3 py-2.5 last:border-b-0", className)}>
     {children}
   </div>
 );
@@ -317,6 +335,7 @@ type FinancialsAccordionProps = {
   salik: SalikRow[];
   totals: { charges: number; credits: number; outstanding: number };
   onUpdateFineNote: (id: string, note: string) => void;
+  onUpdateSalikNote: (id: string, note: string) => void;
 };
 
 const FinancialsAccordion = ({
@@ -326,6 +345,7 @@ const FinancialsAccordion = ({
   salik,
   totals,
   onUpdateFineNote,
+  onUpdateSalikNote,
 }: FinancialsAccordionProps) => {
   const rentalTotal = Number(contract.total_amount);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
@@ -361,6 +381,27 @@ const FinancialsAccordion = ({
     });
   };
 
+  const [editingSalikId, setEditingSalikId] = useState<string | null>(null);
+  const [salikNoteDraft, setSalikNoteDraft] = useState("");
+  const [savingSalikNote, setSavingSalikNote] = useState(false);
+  const [salikMenuState, setSalikMenuState] = useState<{
+    id: string;
+    top: number;
+    right: number;
+  } | null>(null);
+
+  const openSalikMenu = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    salikId: string,
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSalikMenuState({
+      id: salikId,
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+  };
+
   return (
     <>
       {fineMenuState !== null && (
@@ -381,6 +422,32 @@ const FinancialsAccordion = ({
                 setEditingFineId(fineMenuState.id);
                 setFineNoteDraft(fine?.notes ?? "");
                 setFineMenuState(null);
+              }}
+            >
+              Add note
+            </button>
+          </div>
+        </>
+      )}
+
+      {salikMenuState !== null && (
+        <>
+          <div
+            className="fixed inset-0 z-[49]"
+            onClick={() => setSalikMenuState(null)}
+          />
+          <div
+            className="fixed z-50 min-w-[120px] rounded-md border border-border bg-card py-1 shadow-md"
+            style={{ top: salikMenuState.top, right: salikMenuState.right }}
+          >
+            <button
+              type="button"
+              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+              onClick={() => {
+                const entry = salik.find((s) => s.id === salikMenuState.id);
+                setEditingSalikId(salikMenuState.id);
+                setSalikNoteDraft(entry?.notes ?? "");
+                setSalikMenuState(null);
               }}
             >
               Add note
@@ -415,7 +482,7 @@ const FinancialsAccordion = ({
         totalClass="text-tint-rose-foreground"
       >
         {fines.map((f) => (
-          <div key={f.id} className="border-b border-border/40 last:border-b-0">
+          <div key={f.id} className={cn("border-b border-border/40 last:border-b-0", f.status === "Paid" && "opacity-50")}>
             <div className="flex items-center gap-3 px-3 py-2.5">
               <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
                 {formatDate(f.fine_date)}
@@ -491,19 +558,78 @@ const FinancialsAccordion = ({
 
       <AccordionRow label="Salik" count={salik.length} total={salikTotal} accent="cyan">
         {salik.map((s) => (
-          <EntryRow key={s.id}>
-            <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {formatDate(s.charge_date)}
-            </span>
-            <span className="inline-flex items-center rounded-full bg-tint-blue px-2 py-0.5 text-[10px] font-medium text-tint-blue-foreground">
-              {s.trips} trips
-            </span>
-            <span className="flex-1" />
-            <StatusPill status={s.status} />
-            <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
-              {fmtAed(Number(s.amount))}
-            </span>
-          </EntryRow>
+          <div key={s.id} className={cn("border-b border-border/40 last:border-b-0", s.status === "Paid" && "opacity-50")}>
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                {formatDate(s.charge_date)}
+              </span>
+              <div className="flex flex-1 min-w-0 flex-col gap-0.5">
+                <span className="inline-flex items-center rounded-full bg-tint-blue px-2 py-0.5 text-[10px] font-medium text-tint-blue-foreground w-fit">
+                  {s.trips} trips
+                </span>
+                {s.notes && (
+                  <span className="truncate text-[10px] text-muted-foreground">
+                    {s.notes}
+                  </span>
+                )}
+              </div>
+              <StatusPill status={s.status} />
+              <button
+                type="button"
+                onClick={(e) => openSalikMenu(e, s.id)}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+              <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
+                {fmtAed(Number(s.amount))}
+              </span>
+            </div>
+            {editingSalikId === s.id && (
+              <div className="flex items-start gap-2 border-t border-border/30 bg-muted/30 px-3 py-2">
+                <textarea
+                  autoFocus
+                  rows={2}
+                  placeholder="Add note..."
+                  value={salikNoteDraft}
+                  onChange={(e) => setSalikNoteDraft(e.target.value)}
+                  className="flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <div className="flex flex-col gap-1">
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    disabled={savingSalikNote}
+                    onClick={async () => {
+                      setSavingSalikNote(true);
+                      const { error } = await supabase
+                        .from("salik")
+                        .update({ notes: salikNoteDraft } as never)
+                        .eq("id", s.id);
+                      setSavingSalikNote(false);
+                      if (error) {
+                        toast.error("Failed to save note");
+                      } else {
+                        onUpdateSalikNote(s.id, salikNoteDraft);
+                        setEditingSalikId(null);
+                        toast.success("Note saved");
+                      }
+                    }}
+                  >
+                    {savingSalikNote ? "…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setEditingSalikId(null)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         ))}
       </AccordionRow>
 
@@ -545,29 +671,6 @@ const FinancialsAccordion = ({
 
     </div>
 
-    <div className="mt-2 flex items-center justify-between rounded-md border border-border bg-muted/50 px-4 py-2.5 text-[11px]">
-      <span className="text-muted-foreground uppercase tracking-wide font-medium">Summary</span>
-      <div className="flex items-center gap-6">
-        <span className="text-muted-foreground">
-          Total charges:{" "}
-          <span className="font-semibold tabular-nums text-foreground">
-            {fmtAed(totals.charges - Number(contract.deposit_amount))}
-          </span>
-        </span>
-        <span className="text-muted-foreground">
-          Paid:{" "}
-          <span className="font-semibold tabular-nums text-tint-green-foreground">
-            {fmtAed(totals.credits)}
-          </span>
-        </span>
-        <span className="rounded px-2 py-0.5 bg-tint-rose text-muted-foreground">
-          Balance due:{" "}
-          <span className="font-semibold tabular-nums text-tint-rose-foreground">
-            {fmtAed(totals.outstanding)}
-          </span>
-        </span>
-      </div>
-    </div>
     </>
   );
 };
@@ -583,6 +686,13 @@ const ContractDetail = () => {
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeReturnDate, setCloseReturnDate] = useState("");
+  const [closeReceivedBy, setCloseReceivedBy] = useState("");
+  const [closeVehicleStatus, setCloseVehicleStatus] = useState("Available");
+  const [isClosing, setIsClosing] = useState(false);
+
+  const navigate = useNavigate();
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -620,7 +730,7 @@ const ContractDetail = () => {
           .order("fine_date", { ascending: false }),
         supabase
           .from("salik")
-          .select("id, charge_date, trips, amount, status")
+          .select("id, charge_date, trips, amount, status, notes")
           .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
           .gte("charge_date", c.start_date)
           .lte("charge_date", c.end_date)
@@ -727,6 +837,28 @@ const ContractDetail = () => {
     setEditingNotes(false);
   };
 
+  const handleCloseContract = async () => {
+    if (!contract) return;
+    setIsClosing(true);
+    const [contractRes, vehicleRes] = await Promise.all([
+      supabase
+        .from("contracts")
+        .update({ status: "Closed" } as never)
+        .eq("id", contract.id),
+      supabase
+        .from("cars")
+        .update({ status: closeVehicleStatus } as never)
+        .eq("id", contract.car_id),
+    ]);
+    setIsClosing(false);
+    if (contractRes.error || vehicleRes.error) {
+      toast.error("Failed to close contract");
+      return;
+    }
+    toast.success("Contract closed");
+    navigate("/contracts");
+  };
+
   if (loading) {
     return (
       <DashboardLayout title="Contract">
@@ -781,25 +913,23 @@ const ContractDetail = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="flex flex-col items-end leading-tight">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Outstanding Balance
-                </span>
-                <span
-                  className={cn(
-                    "text-xl font-bold tabular-nums tracking-tight",
-                    isOverdue ? "text-tint-rose-foreground" : "text-foreground",
-                  )}
-                >
-                  {fmtAed(totals.outstanding)}
-                </span>
-              </div>
               <div className="flex items-center gap-1.5">
                 <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled>
                   <Download className="h-3.5 w-3.5" />
                   Invoice
                 </Button>
-                <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => {
+                    const d = contract.end_date;
+                    setCloseReturnDate(d.includes("T") ? d.slice(0, 16) : `${d}T00:00`);
+                    setCloseReceivedBy("");
+                    setCloseVehicleStatus("Available");
+                    setShowCloseModal(true);
+                  }}
+                >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Close
                 </Button>
@@ -1027,6 +1157,11 @@ const ContractDetail = () => {
                   prev.map((f) => (f.id === fineId ? { ...f, notes: note } : f)),
                 )
               }
+              onUpdateSalikNote={(salikId, note) =>
+                setSalik((prev) =>
+                  prev.map((s) => (s.id === salikId ? { ...s, notes: note } : s)),
+                )
+              }
             />
             <RecordPaymentModal
               open={showPaymentModal}
@@ -1174,6 +1309,68 @@ const ContractDetail = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={showCloseModal} onOpenChange={(v) => !v && setShowCloseModal(false)}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Close Contract</DialogTitle>
+            <DialogDescription className="text-xs">
+              {contract ? `CTR-${contract.id.slice(0, 8).toUpperCase()}` : ""} · This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Return Date &amp; Time
+              </Label>
+              <input
+                type="datetime-local"
+                value={closeReturnDate}
+                onChange={(e) => setCloseReturnDate(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Received By
+              </Label>
+              <Input
+                placeholder="Staff name"
+                value={closeReceivedBy}
+                onChange={(e) => setCloseReceivedBy(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Vehicle Status After Return
+              </Label>
+              <Select value={closeVehicleStatus} onValueChange={setCloseVehicleStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Available">Available</SelectItem>
+                  <SelectItem value="Under Service">Under Service</SelectItem>
+                  <SelectItem value="Reserved">Reserved</SelectItem>
+                  <SelectItem value="Unavailable">Unavailable</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCloseModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={isClosing} onClick={handleCloseContract}>
+              {isClosing ? "Closing…" : "Confirm Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
