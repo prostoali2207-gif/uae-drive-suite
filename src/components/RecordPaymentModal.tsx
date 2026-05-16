@@ -37,12 +37,16 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   balanceDue,
   ledgerEntries,
 }) => {
-  const [amount, setAmount] = useState<number>(balanceDue);
+  const [amount, setAmount] = useState<number | "">("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
   const [allocations, setAllocations] = useState<Record<string, number>>({});
 
   const unpaidEntries = useMemo(
-    () => ledgerEntries.filter((entry) => entry.status.toLowerCase() !== "paid"),
+    () => ledgerEntries.filter((entry) => {
+      const isPaid = entry.status.toLowerCase() === "paid";
+      const isDeposit = entry.description.toLowerCase().includes("deposit");
+      return !isPaid && !isDeposit;
+    }),
     [ledgerEntries]
   );
 
@@ -51,7 +55,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     [allocations]
   );
 
-  const unallocatedAmount = amount - totalAllocated;
+  const currentAmount = typeof amount === "number" ? amount : 0;
+  const unallocatedAmount = currentAmount - totalAllocated;
 
   const handleAllocationChange = (id: string, value: string, max: number) => {
     const numValue = Math.min(max, Math.max(0, Number(value) || 0));
@@ -62,7 +67,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   };
 
   const fillAllUnpaid = () => {
-    let remaining = amount;
+    let remaining = currentAmount;
     const newAllocations: Record<string, number> = {};
 
     for (const entry of unpaidEntries) {
@@ -76,7 +81,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
   const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
 
-  const isSaveDisabled = amount <= 0 || Math.abs(unallocatedAmount) > 0.01;
+  const isSaveDisabled = currentAmount <= 0 || Math.abs(unallocatedAmount) > 0.01;
 
   return (
     <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
@@ -105,8 +110,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   id="amount"
                   type="number"
                   value={amount}
-                  onChange={(e) => setAmount(Number(e.target.value))}
+                  onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
                   className="pl-12"
+                  placeholder="0.00"
                 />
               </div>
             </div>
