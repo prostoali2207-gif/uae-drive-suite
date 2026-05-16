@@ -849,6 +849,17 @@ const ContractDetail = () => {
               </div>
             </div>
 
+            <div className="flex items-center justify-between rounded-md border border-border p-3 mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
+                <span className="text-base font-semibold tabular-nums">{fmtAed(Number(contract.deposit_amount))}</span>
+                <span className="text-[10px] text-muted-foreground">Held on card</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Held</span>
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Receipt className="h-3.5 w-3.5" />
