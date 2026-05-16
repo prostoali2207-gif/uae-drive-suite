@@ -370,7 +370,6 @@ const FinancialsAccordion = ({
             <span className="flex-1 truncate text-xs text-foreground/90">
               {f.fine_type} · {f.source}
             </span>
-            <StatusPill status={f.status} />
             <span className="w-24 text-right text-sm font-bold tabular-nums text-tint-rose-foreground">
               {fmtAed(Number(f.amount))}
             </span>

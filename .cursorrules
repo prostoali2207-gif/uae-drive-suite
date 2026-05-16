@@ -1,0 +1,21 @@
+# FleetDesk — Cursor Rules
+Read this file before making ANY changes to the codebase.
+These rules are mandatory.
+
+## Stack
+React + TypeScript + Vite, Tailwind CSS, shadcn/ui, Supabase, Bun
+
+## Critical Files — NEVER rewrite
+- src/pages/ContractDetail.tsx
+- src/integrations/supabase/client.ts
+- src/integrations/supabase/types.ts
+- src/App.tsx
+
+## Rules
+1. One task, max 2 files per session
+2. Never rewrite entire files — only targeted edits
+3. Style changes = never touch data fetching logic
+4. New features = new files only
+5. Never modify App.tsx without confirmation
+6. Always report exactly what changed and what was not changed
+7. Stop and ask if task requires touching ContractDetail.tsx or Supabase files
