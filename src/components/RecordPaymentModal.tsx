@@ -27,6 +27,7 @@ interface PaymentModalLedgerEntry {
 interface RecordPaymentModalProps {
   open: boolean;
   onClose: () => void;
+  onSuccess: () => void;
   contractId: string;
   balanceDue: number;
   ledgerEntries: PaymentModalLedgerEntry[];
@@ -38,6 +39,7 @@ type PaymentMethod = "Cash" | "Card" | "Transfer";
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   open,
   onClose,
+  onSuccess,
   contractId,
   balanceDue,
   ledgerEntries,
@@ -130,7 +132,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
       toast.success("Payment recorded successfully");
       onClose();
-      window.location.reload();
+      onSuccess();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("Payment error:", err);

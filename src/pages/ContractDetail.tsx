@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -544,6 +544,7 @@ const FinancialsAccordion = ({
 
 
     </div>
+    </>
   );
 };
 
@@ -559,57 +560,58 @@ const ContractDetail = () => {
   const [savingNotes, setSavingNotes] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!id) return;
-    const fetchData = async () => {
-      const { data: contractData, error: contractErr } = await supabase
-        .from("contracts")
-        .select(
-          "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
-        )
-        .eq("id", id)
-        .maybeSingle();
+    const { data: contractData, error: contractErr } = await supabase
+      .from("contracts")
+      .select(
+        "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
+      )
+      .eq("id", id)
+      .maybeSingle();
 
-      if (contractErr) {
-        toast.error("Failed to load contract");
-        setLoading(false);
-        return;
-      }
-
-      const c = contractData as ContractRecord | null;
-      setContract(c);
-      setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
-
-      if (c) {
-        const [paymentsRes, finesRes, salikRes] = await Promise.all([
-          supabase
-            .from("payments")
-            .select("id, payment_date, amount, method, status")
-            .eq("contract_id", c.id)
-            .order("payment_date", { ascending: false }),
-          supabase
-            .from("fines")
-            .select("id, fine_date, fine_type, amount, status, source, notes")
-            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-            .gte("fine_date", c.start_date)
-            .lte("fine_date", c.end_date)
-            .order("fine_date", { ascending: false }),
-          supabase
-            .from("salik")
-            .select("id, charge_date, trips, amount, status")
-            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-            .gte("charge_date", c.start_date)
-            .lte("charge_date", c.end_date)
-            .order("charge_date", { ascending: false }),
-        ]);
-        if (!paymentsRes.error) setPayments(paymentsRes.data || []);
-        if (!finesRes.error) setFines(finesRes.data || []);
-        if (!salikRes.error) setSalik(salikRes.data || []);
-      }
+    if (contractErr) {
+      toast.error("Failed to load contract");
       setLoading(false);
-    };
-    fetchData();
+      return;
+    }
+
+    const c = contractData as ContractRecord | null;
+    setContract(c);
+    setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
+
+    if (c) {
+      const [paymentsRes, finesRes, salikRes] = await Promise.all([
+        supabase
+          .from("payments")
+          .select("id, payment_date, amount, method, status")
+          .eq("contract_id", c.id)
+          .order("payment_date", { ascending: false }),
+        supabase
+          .from("fines")
+          .select("id, fine_date, fine_type, amount, status, source, notes")
+          .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
+          .gte("fine_date", c.start_date)
+          .lte("fine_date", c.end_date)
+          .order("fine_date", { ascending: false }),
+        supabase
+          .from("salik")
+          .select("id, charge_date, trips, amount, status")
+          .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
+          .gte("charge_date", c.start_date)
+          .lte("charge_date", c.end_date)
+          .order("charge_date", { ascending: false }),
+      ]);
+      if (!paymentsRes.error) setPayments(paymentsRes.data || []);
+      if (!finesRes.error) setFines(finesRes.data || []);
+      if (!salikRes.error) setSalik(salikRes.data || []);
+    }
+    setLoading(false);
   }, [id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const days = useMemo(
     () => (contract ? diffDays(contract.start_date, contract.end_date) : 0),
@@ -996,10 +998,16 @@ const ContractDetail = () => {
               fines={fines}
               salik={salik}
               totals={totals}
+              onUpdateFineNote={(fineId, note) =>
+                setFines((prev) =>
+                  prev.map((f) => (f.id === fineId ? { ...f, notes: note } : f)),
+                )
+              }
             />
             <RecordPaymentModal
               open={showPaymentModal}
               onClose={() => setShowPaymentModal(false)}
+              onSuccess={fetchData}
               contractId={contract.id}
               balanceDue={totals.outstanding}
               clientId={contract.client_id}
