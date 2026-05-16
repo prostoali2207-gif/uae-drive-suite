@@ -891,11 +891,13 @@ const ContractDetail = () => {
               onClose={() => setShowPaymentModal(false)}
               contractId={contract.id}
               balanceDue={totals.outstanding}
+              clientId={contract.client_id}
               ledgerEntries={ledger.map(e => ({
                 id: e.id,
                 description: e.description,
                 amount: e.debit - e.credit,
-                status: e.status
+                status: e.status,
+                type: e.type
               }))}
             />
           </TabsContent>

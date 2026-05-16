@@ -13,11 +13,15 @@ import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+
 interface PaymentModalLedgerEntry {
   id: string;
   description: string;
   amount: number;
   status: string;
+  type: "Rental" | "Salik" | "Payment" | "Fine" | "Deposit";
 }
 
 interface RecordPaymentModalProps {
@@ -26,6 +30,7 @@ interface RecordPaymentModalProps {
   contractId: string;
   balanceDue: number;
   ledgerEntries: PaymentModalLedgerEntry[];
+  clientId: string;
 }
 
 type PaymentMethod = "Cash" | "Card" | "Transfer";
@@ -36,6 +41,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   contractId,
   balanceDue,
   ledgerEntries,
+  clientId,
 }) => {
   const [amount, setAmount] = useState<number | "">("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
@@ -82,6 +88,43 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
 
   const isSaveDisabled = currentAmount <= 0 || Math.abs(unallocatedAmount) > 0.01;
+
+  const handleSave = async () => {
+    try {
+      // 1. Insert into 'payments'
+      const { error: payError } = await supabase.from("payments").insert({
+        contract_id: contractId,
+        client_id: clientId,
+        amount: currentAmount,
+        method: method,
+        payment_date: new Date().toISOString().split("T")[0],
+        status: "Paid",
+      });
+
+      if (payError) throw payError;
+
+      // 2. Update status of fully allocated fines/salik
+      for (const entry of unpaidEntries) {
+        const allocated = allocations[entry.id] || 0;
+        if (allocated >= entry.amount) {
+          const table = entry.type === "Fine" ? "fines" : entry.type === "Salik" ? "salik" : null;
+          if (table) {
+            const { error: updError } = await supabase
+              .from(table)
+              .update({ status: "Paid" } as never)
+              .eq("id", entry.id);
+            if (updError) console.error(`Failed to update ${table} ${entry.id}:`, updError);
+          }
+        }
+      }
+
+      toast.success("Payment recorded successfully");
+      onClose();
+    } catch (error: any) {
+      console.error("Payment error:", error);
+      alert(`Failed to record payment: ${error.message || "Unknown error"}`);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
@@ -145,14 +188,13 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                 Allocate payment
               </Label>
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
+                type="button"
                 onClick={fillAllUnpaid}
-                className="h-6 text-[10px] uppercase font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2"
+                className="h-6 text-[10px] uppercase font-bold text-blue-600 hover:text-blue-700 px-2"
               >
                 Fill all unpaid
-              </Button>
+              </button>
             </div>
 
             <ScrollArea className="h-[200px] rounded-md border border-border p-2">
@@ -172,9 +214,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
                           AED
                         </span>
-                        <Input
+                        <input
                           type="number"
-                          className="h-8 pl-8 text-right text-xs"
+                          className="h-8 w-full rounded-md border border-input bg-background px-3 py-2 pl-8 text-right text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                           value={allocations[entry.id] || ""}
                           placeholder="0.00"
                           max={entry.amount}
@@ -199,7 +241,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button disabled={isSaveDisabled} className="w-full sm:w-auto">
+          <Button disabled={isSaveDisabled} onClick={handleSave} className="w-full sm:w-auto">
             Record payment
           </Button>
         </DialogFooter>
