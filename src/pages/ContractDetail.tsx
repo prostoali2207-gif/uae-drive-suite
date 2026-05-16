@@ -544,6 +544,30 @@ const FinancialsAccordion = ({
 
 
     </div>
+
+    <div className="mt-2 flex items-center justify-between rounded-md border border-border bg-muted/50 px-4 py-2.5 text-[11px]">
+      <span className="text-muted-foreground uppercase tracking-wide font-medium">Summary</span>
+      <div className="flex items-center gap-6">
+        <span className="text-muted-foreground">
+          Total charges:{" "}
+          <span className="font-semibold tabular-nums text-foreground">
+            {fmtAed(totals.charges - Number(contract.deposit_amount))}
+          </span>
+        </span>
+        <span className="text-muted-foreground">
+          Paid:{" "}
+          <span className="font-semibold tabular-nums text-tint-green-foreground">
+            {fmtAed(totals.credits)}
+          </span>
+        </span>
+        <span className="rounded px-2 py-0.5 bg-tint-rose text-muted-foreground">
+          Balance due:{" "}
+          <span className="font-semibold tabular-nums text-tint-rose-foreground">
+            {fmtAed(totals.outstanding)}
+          </span>
+        </span>
+      </div>
+    </div>
     </>
   );
 };
