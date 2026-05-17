@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,12 +15,18 @@ interface Profile {
   email: string;
   company_name: string;
   logo_url: string | null;
+  phone_number?: string | null;
+  terms_en?: string | null;
+  terms_ar?: string | null;
 }
 
 const Settings = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [companyName, setCompanyName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [termsEn, setTermsEn] = useState("");
+  const [termsAr, setTermsAr] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoSignedUrl, setLogoSignedUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +58,9 @@ const Settings = () => {
       const p = data as Profile;
       setProfile(p);
       setCompanyName(p.company_name || "");
+      setPhoneNumber(p.phone_number || "");
+      setTermsEn(p.terms_en || "");
+      setTermsAr(p.terms_ar || "");
       setLogoUrl(p.logo_url);
       loadLogoPreview(p.logo_url);
     }
@@ -65,10 +75,20 @@ const Settings = () => {
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    const { error } = await supabase
+    const profileData = {
+      id: user.id,
+      email: profile?.email ?? user.email ?? "",
+      company_name: companyName.trim(),
+      phone_number: phoneNumber.trim() || null,
+      terms_en: termsEn.trim() || null,
+      terms_ar: termsAr.trim() || null,
+    };
+    console.log("Saving profile:", JSON.stringify(profileData));
+    const { data, error } = await supabase
       .from("profiles")
-      .update({ company_name: companyName.trim() })
-      .eq("id", user.id);
+      .upsert(profileData)
+      .select();
+    console.log("Supabase update result:", data, error);
     setSaving(false);
     if (error) toast.error("Failed to save: " + error.message);
     else toast.success("Company settings saved");
@@ -161,6 +181,41 @@ const Settings = () => {
                 <div className="grid gap-1.5">
                   <Label>Email</Label>
                   <Input value={profile?.email ?? user?.email ?? ""} disabled />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="+971 50 000 0000"
+                  />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="terms-en">Terms &amp; Conditions (English)</Label>
+                  <Textarea
+                    id="terms-en"
+                    value={termsEn}
+                    onChange={(e) => setTermsEn(e.target.value)}
+                    placeholder="Enter your rental terms and conditions in English..."
+                    rows={6}
+                    className="resize-y"
+                  />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="terms-ar">Terms &amp; Conditions (Arabic)</Label>
+                  <Textarea
+                    id="terms-ar"
+                    value={termsAr}
+                    onChange={(e) => setTermsAr(e.target.value)}
+                    placeholder="أدخل الشروط والأحكام بالعربية..."
+                    rows={6}
+                    className="resize-y text-right"
+                    dir="rtl"
+                  />
                 </div>
 
                 <div className="flex justify-end">
