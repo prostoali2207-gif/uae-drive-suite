@@ -174,6 +174,7 @@ export function SignContractModal({
   const [clientSigDataUrl, setClientSigDataUrl] = useState("");
   // Captured in handleSave so it's available for the Download PDF button on step 4
   const [managerSigDataUrl, setManagerSigDataUrl] = useState("");
+  const [pdfUrl, setPdfUrl] = useState("");
 
   const clientSigRef = useRef<SigRef>(null);
   const managerSigRef = useRef<SigRef>(null);
@@ -275,6 +276,27 @@ export function SignContractModal({
       return;
     }
     setManagerSigDataUrl(managerSignature);
+    try {
+      const blob = await generateContractPdf(
+        {
+          ...summary!.pdfData,
+          client_signature: clientSignature,
+          manager_signature: managerSignature,
+        },
+        { returnBlob: true },
+      ) as Blob;
+      const filePath = `${contractId}.pdf`;
+      await supabase.storage.from("contract-pdfs").upload(filePath, blob, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+      const { data: publicData } = supabase.storage
+        .from("contract-pdfs")
+        .getPublicUrl(filePath);
+      if (publicData?.publicUrl) setPdfUrl(publicData.publicUrl);
+    } catch (err) {
+      console.error("PDF upload failed:", err);
+    }
     toast.success("Contract signed successfully");
     setStep(4);
   };
@@ -521,7 +543,9 @@ export function SignContractModal({
                     phone = "+971" + phone;
                   }
                   const text = encodeURIComponent(
-                    `Your rental contract is ready. Contract ID: ${contractId}`,
+                    pdfUrl
+                      ? `Your rental contract is ready: ${pdfUrl}`
+                      : `Your rental contract is ready. Contract ID: ${contractId}`,
                   );
                   window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
                 }}

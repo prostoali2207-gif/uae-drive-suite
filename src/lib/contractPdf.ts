@@ -56,7 +56,7 @@ async function loadImage(url: string): Promise<{ dataUrl: string; w: number; h: 
   }
 }
 
-export async function generateContractPdf(contract: ContractPdfData) {
+export async function generateContractPdf(contract: ContractPdfData, options?: { returnBlob?: boolean }): Promise<Blob | void> {
   // Fetch company profile (logo + name + phone + terms)
   const { data: { user } } = await supabase.auth.getUser();
   let companyName = "Rental Company";
@@ -334,5 +334,9 @@ export async function generateContractPdf(contract: ContractPdfData) {
   doc.text(`Document ID: ${contractNumber}`, pageW - margin, footerY, { align: "right" });
 
   const filename = `Contract_${contractNumber}_${(c?.full_name || "client").replace(/\s+/g, "_")}.pdf`;
-  doc.save(filename);
+  if (options?.returnBlob) {
+    return doc.output("blob");
+  } else {
+    doc.save(filename);
+  }
 }
