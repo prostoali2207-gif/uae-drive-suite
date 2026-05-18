@@ -12,6 +12,8 @@ interface ContractPdfData {
   initial_mileage: number;
   fuel_level: string;
   special_conditions?: string | null;
+  client_signature?: string | null;
+  manager_signature?: string | null;
   clients: {
     full_name: string;
     phone: string;
@@ -272,6 +274,7 @@ export async function generateContractPdf(contract: ContractPdfData) {
   y += 20;
 
   // ── SIGNATURES ──────────────────────────────────────────────────────────────
+  console.log("contract signatures:", !!contract.client_signature, !!contract.manager_signature);
   const sigBoxH = 60;
   const sigBoxW = (pageW - margin * 2 - 24) / 2;
   let sigY = y + 10;
@@ -280,6 +283,8 @@ export async function generateContractPdf(contract: ContractPdfData) {
     sigY = margin;
   }
 
+  // Left box coords: x=margin, y=sigY, w=sigBoxW, h=sigBoxH
+  // Right box coords: x=margin+sigBoxW+24, y=sigY, w=sigBoxW, h=sigBoxH
   doc.setDrawColor(160, 160, 160);
   doc.setLineWidth(0.8);
   doc.setLineDashPattern([5, 3], 0);
@@ -287,6 +292,20 @@ export async function generateContractPdf(contract: ContractPdfData) {
   doc.rect(margin + sigBoxW + 24, sigY, sigBoxW, sigBoxH);
   doc.setLineDashPattern([], 0);
   doc.setLineWidth(0.5);
+
+  // Left box — client signature
+  if (contract.client_signature && contract.client_signature.startsWith("data:image")) {
+    try {
+      doc.addImage(contract.client_signature, "PNG", margin + 8, sigY + 8, sigBoxW - 16, sigBoxH - 16);
+    } catch (e) { console.log("client sig error", e); }
+  }
+
+  // Right box — manager signature
+  if (contract.manager_signature && contract.manager_signature.startsWith("data:image")) {
+    try {
+      doc.addImage(contract.manager_signature, "PNG", margin + sigBoxW + 24 + 8, sigY + 8, sigBoxW - 16, sigBoxH - 16);
+    } catch (e) { console.log("manager sig error", e); }
+  }
 
   const boxBottom = sigY + sigBoxH + 12;
   doc.setFont("helvetica", "bold");

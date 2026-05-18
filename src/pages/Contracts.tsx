@@ -46,6 +46,7 @@ import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
+import { SignContractModal } from "@/components/SignContractModal";
 
 type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
@@ -69,6 +70,8 @@ interface ContractRow {
   status: string;
   payment_status: string;
   paid_amount?: number;
+  client_signature?: string | null;
+  manager_signature?: string | null;
   clients: { full_name: string; phone: string; nationality: string; client_type: string; emirates_id: string | null; passport_number: string | null } | null;
   cars: { plate: string; make: string; model: string; year: number } | null;
 }
@@ -175,6 +178,9 @@ const Contracts = () => {
   const [carSearch, setCarSearch] = useState("");
   const [sortBy, setSortBy] = useState<"client" | "car" | "start" | "balance">("start");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [newContractId, setNewContractId] = useState("");
+  const [newClientName, setNewClientName] = useState("");
 
   const fetchData = async () => {
     try {
@@ -384,7 +390,7 @@ const Contracts = () => {
 
     try {
 
-      const { error } = await supabase.from("contracts").insert({
+      const { data: insertedContract, error } = await supabase.from("contracts").insert({
         client_id: clientId,
         car_id: form.car_id,
         start_date: form.start_date,
@@ -397,7 +403,7 @@ const Contracts = () => {
         fuel_level: form.fuel_level,
         status: "Active",
         payment_status: "Unpaid",
-      });
+      }).select("id").single();
 
       setSaving(false);
       if (error) {
@@ -420,6 +426,10 @@ const Contracts = () => {
           console.error("Vehicle status reconciliation failed:", syncErr);
         }
 
+        const resolvedClientName =
+          clientMode === "new"
+            ? newClient.full_name.trim()
+            : clients.find((cl) => cl.id === clientId)?.full_name ?? "";
         toast.success(clientMode === "new" ? "Client and contract created" : "Contract created");
         setForm(emptyForm);
         setEndTimeManuallyEdited(false);
@@ -428,6 +438,12 @@ const Contracts = () => {
         setNewClient(emptyNewClient);
         setClientMode("existing");
         setOpen(false);
+        if (insertedContract) {
+          const createdId = (insertedContract as { id: string }).id;
+          setNewContractId(createdId);
+          setNewClientName(resolvedClientName);
+          setShowSignModal(true);
+        }
         fetchData();
       }
     } catch (err) {
@@ -865,6 +881,25 @@ const Contracts = () => {
           </Table>
         </div>
       </div>
+
+      {newContractId && (
+        <SignContractModal
+          contractId={newContractId}
+          clientName={newClientName}
+          open={showSignModal}
+          onComplete={() => {
+            setShowSignModal(false);
+            setOpen(false);
+            setForm(emptyForm);
+            setNewClient(emptyNewClient);
+            setClientMode("existing");
+            setEndTimeManuallyEdited(false);
+            setClientSearch("");
+            setCarSearch("");
+            fetchData();
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 };
