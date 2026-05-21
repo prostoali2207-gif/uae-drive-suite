@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Car,
@@ -21,6 +22,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -35,6 +37,25 @@ const items = [
 
 export function AppSidebar() {
   const { user, signOut } = useAuth();
+  const [newClientsCount, setNewClientsCount] = useState(0);
+
+  useEffect(() => {
+    const fetchNewClientsCount = async () => {
+      const { count, error } = await supabase
+        .from("clients")
+        .select("id", { count: "exact" })
+        .eq("is_new" as never, true);
+
+      if (!error && count !== null) {
+        setNewClientsCount(count);
+      }
+    };
+
+    fetchNewClientsCount();
+    const interval = setInterval(fetchNewClientsCount, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <Sidebar collapsible="icon">
       <SidebarContent className="bg-sidebar">
@@ -68,6 +89,11 @@ export function AppSidebar() {
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
                       <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                      {item.title === "Clients" && newClientsCount > 0 && (
+                        <span className="ml-auto bg-blue-600 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                          {newClientsCount}
+                        </span>
+                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

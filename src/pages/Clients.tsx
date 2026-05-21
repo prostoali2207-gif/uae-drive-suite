@@ -58,6 +58,7 @@ interface ClientRecord {
   license_front_url: string | null;
   license_back_url: string | null;
   created_at: string;
+  is_new?: boolean | null;
 }
 
 interface ContractRow {
@@ -609,6 +610,9 @@ const Clients = () => {
                       <Link to={`/clients/${c.id}`} className="hover:underline">
                         {c.full_name}
                       </Link>
+                      {c.is_new === true && (
+                        <span className="ml-2 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full px-2 py-0.5">New</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.phone}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
