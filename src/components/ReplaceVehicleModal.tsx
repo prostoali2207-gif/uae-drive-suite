@@ -89,6 +89,8 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   
   const [availableCars, setAvailableCars] = useState<Car[]>([]);
   const [loadingCars, setLoadingCars] = useState(false);
+  const [currentCar, setCurrentCar] = useState<Car | null>(null);
+  const [loadingCurrentCar, setLoadingCurrentCar] = useState(false);
   const [selectedNewCarId, setSelectedNewCarId] = useState<string>("");
   
   const [handoverTime, setHandoverTime] = useState<string>("");
@@ -114,35 +116,47 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setHandoverTime(formatted);
       setPickupTime(formatted);
       setSelectedNewCarId("");
+      setCurrentCar(null);
       
-      const fetchAvailableCars = async () => {
+      const fetchModalData = async () => {
         setLoadingCars(true);
+        setLoadingCurrentCar(true);
         try {
-          const { data, error } = await supabase
-            .from("cars")
-            .select("id, plate, make, model, year")
-            .eq("status", "Available")
-            .order("plate");
+          const [availableRes, currentRes] = await Promise.all([
+            supabase
+              .from("cars")
+              .select("id, plate, make, model, year")
+              .eq("status", "Available")
+              .order("plate"),
+            supabase
+              .from("cars")
+              .select("id, plate, make, model, year")
+              .eq("id", currentCarId)
+              .maybeSingle()
+          ]);
 
-          if (error) throw error;
-          
-          setAvailableCars((data as Car[]) || []);
+          if (availableRes.error) throw availableRes.error;
+          setAvailableCars((availableRes.data as Car[]) || []);
+
+          if (currentRes.error) throw currentRes.error;
+          setCurrentCar(currentRes.data as Car | null);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Unknown error";
-          console.error("Error fetching available cars:", err);
+          console.error("Error fetching modal data:", err);
           toast({
             title: "Error",
-            description: `Failed to load available vehicles: ${message}`,
+            description: `Failed to load vehicles data: ${message}`,
             variant: "destructive",
           });
         } finally {
           setLoadingCars(false);
+          setLoadingCurrentCar(false);
         }
       };
 
-      fetchAvailableCars();
+      fetchModalData();
     }
-  }, [isOpen, toast]);
+  }, [isOpen, currentCarId, toast]);
 
   // Sync handover time with pickup time
   const handleHandoverTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -252,10 +266,16 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             
             <div className="space-y-2">
               <Label className="text-xs text-white/50 uppercase tracking-wider">
-                Current Vehicle ID
+                Current Vehicle
               </Label>
               <div className="font-ibm-plex-mono bg-[#1a1a1a] border border-white/10 rounded-md px-3 py-2 text-sm text-white/70">
-                {currentCarId.slice(0, 8).toUpperCase()}
+                {loadingCurrentCar ? (
+                  <span className="text-xs text-white/40 italic">Loading vehicle info...</span>
+                ) : currentCar ? (
+                  `${currentCar.plate} — ${currentCar.make} ${currentCar.model} (${currentCar.year})`
+                ) : (
+                  currentCarId.slice(0, 8).toUpperCase()
+                )}
               </div>
             </div>
 
