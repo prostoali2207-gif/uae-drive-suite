@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
+import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -891,6 +892,7 @@ const ContractDetail = () => {
   const [editCarId, setEditCarId] = useState("");
   const [availableCars, setAvailableCars] = useState<AvailableCarRow[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [replaceVehicleOpen, setReplaceVehicleOpen] = useState(false);
 
   const navigate = useNavigate();
 
@@ -1204,6 +1206,15 @@ const ContractDetail = () => {
               <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Details
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                onClick={() => setReplaceVehicleOpen(true)}
+                disabled={contract.status === "Closed"}
+              >
+                Replace Vehicle
               </Button>
             </div>
 
@@ -1662,6 +1673,17 @@ const ContractDetail = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ReplaceVehicleModal
+        contractId={contract.id}
+        currentCarId={contract.car_id}
+        contractStartDate={contract.start_date}
+        isOpen={replaceVehicleOpen}
+        onClose={() => setReplaceVehicleOpen(false)}
+        onSuccess={() => {
+          setReplaceVehicleOpen(false);
+          fetchData();
+        }}
+      />
     </DashboardLayout>
   );
 };
