@@ -16,9 +16,11 @@ import {
   Wallet,
   AlertCircle,
   MoreHorizontal,
+  History,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
+import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -893,6 +895,8 @@ const ContractDetail = () => {
   const [availableCars, setAvailableCars] = useState<AvailableCarRow[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [replaceVehicleOpen, setReplaceVehicleOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [replacementCount, setReplacementCount] = useState(0);
 
   const navigate = useNavigate();
 
@@ -944,6 +948,17 @@ const ContractDetail = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!contract?.id) return;
+    (supabase as unknown as any)
+      .from("contract_vehicles")
+      .select("id", { count: "exact", head: true })
+      .eq("contract_id", contract.id)
+      .then(({ count }: { count: number | null }) => {
+        setReplacementCount(count ?? 0);
+      });
+  }, [contract?.id]);
 
   const days = useMemo(
     () => (contract ? diffDays(contract.start_date, contract.end_date) : 0),
@@ -1260,6 +1275,19 @@ const ContractDetail = () => {
                     value={`${contract.initial_mileage.toLocaleString()} km`}
                   />
                 </div>
+                {replacementCount > 0 && (
+                  <button
+                    onClick={() => setHistoryOpen(true)}
+                    className="w-full flex items-center justify-between mt-3 pt-3 border-t border-white/[0.07] text-left hover:bg-white/[0.02] rounded px-0.5 transition-colors"
+                  >
+                    <span className="flex items-center gap-2 text-[12px] font-medium text-white/50">
+                      <History className="w-4 h-4" />
+                      Vehicle replacements
+                      <span className="font-mono text-[10px] text-blue-400 bg-blue-400/10 border border-blue-400/20 rounded px-1.5 py-0.5">{replacementCount}</span>
+                    </span>
+                    <span className="text-white/30 text-xs">→</span>
+                  </button>
+                )}
               </Panel>
 
               <Panel title="Rental Period">
@@ -1684,6 +1712,7 @@ const ContractDetail = () => {
           fetchData();
         }}
       />
+      <VehicleHistorySheet contractId={contract.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </DashboardLayout>
   );
 };
