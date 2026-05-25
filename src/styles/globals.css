@@ -39,6 +39,25 @@
     --input: 0 0% 10.2%;
     --ring: 229 91.8% 63.9%;
     --radius: 0.625rem;
+
+    /* Deep Navy theme */
+    --fd-bg: #121830;
+    --fd-nav: #0F1428;
+    --fd-surface: #1A2040;
+    --fd-surface2: #222A4E;
+    --fd-border: rgba(91, 110, 245, 0.12);
+    --fd-border2: rgba(91, 110, 245, 0.22);
+    --fd-text: #E8ECF8;
+    --fd-muted: #6B7A9E;
+    --fd-subtle: #3D4A6A;
+    --fd-accent: #5B6EF5;
+    --fd-accent-dim: rgba(91, 110, 245, 0.15);
+    --fd-green: #0FCA8A;
+    --fd-green-dim: rgba(15, 202, 138, 0.12);
+    --fd-amber: #F8AC1A;
+    --fd-amber-dim: rgba(248, 172, 26, 0.12);
+    --fd-red: #F04E4E;
+    --fd-red-dim: rgba(240, 78, 78, 0.10);
   }
 
   html, body {

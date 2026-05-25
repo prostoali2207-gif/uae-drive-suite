@@ -92,8 +92,19 @@ const Index = () => {
             icon={AlertTriangle}
             tint="rose"
             highlight={stats.finesUnpaid > 0 ? "rose" : undefined}
+            containerClassName="bg-[rgba(240,78,78,0.10)] border-[rgba(240,78,78,0.22)]"
+            valueClassName="text-[#F04E4E]"
+            labelClassName="text-[#F87171]"
           />
-          <StatCard label="Salik Unpaid" value={formatAED(stats.salikUnpaid)} icon={Wallet} tint="violet" />
+          <StatCard
+            label="Salik Unpaid"
+            value={formatAED(stats.salikUnpaid)}
+            icon={Wallet}
+            tint="violet"
+            containerClassName="bg-[rgba(248,172,26,0.12)] border-[rgba(248,172,26,0.22)]"
+            valueClassName="text-[#F8AC1A]"
+            labelClassName="text-[#FCD34D]"
+          />
           <StatCard
             label="Renewals Due This Week"
             value={String(stats.renewalsDue)}
@@ -114,7 +125,7 @@ const Index = () => {
           </div>
 
           {newClients.length === 0 ? (
-            <p className="px-5 py-6 text-sm text-gray-500">No new registrations</p>
+            <p className="px-5 py-6 text-sm text-fd-subtle">No new registrations</p>
           ) : (
             <div>
               {newClients.map((client) => (
@@ -137,8 +148,8 @@ const Index = () => {
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-4">
-                    <span className="font-mono text-sm text-gray-500">{client.phone}</span>
-                    <span className="text-sm text-gray-400">
+                    <span className="font-mono text-sm text-fd-subtle">{client.phone}</span>
+                    <span className="text-sm text-fd-muted">
                       {formatDistanceToNow(new Date(client.created_at), { addSuffix: true })}
                     </span>
                   </div>
