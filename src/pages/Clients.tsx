@@ -341,21 +341,21 @@ const Clients = () => {
 
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setStep(1); } }}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5" onClick={openAdd}>
+              <Button size="sm" className="gap-1.5 bg-fd-accent text-white hover:bg-fd-accent/90" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
                 Add Client
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px] bg-zinc-900 border-zinc-800 text-white font-dm-sans">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px] text-foreground font-dm-sans">
               <DialogHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <DialogTitle className="text-white">{editingId ? "Edit client" : "Add new client"}</DialogTitle>
-                    <DialogDescription className="text-zinc-400">
+                    <DialogTitle className="text-foreground">{editingId ? "Edit client" : "Add new client"}</DialogTitle>
+                    <DialogDescription className="text-muted-foreground">
                       {editingId ? "Update the client's details below." : "Enter the client's details below."}
                     </DialogDescription>
                   </div>
-                  <div className="bg-zinc-800 px-3 py-1 rounded-full text-xs font-medium text-zinc-300">
+                  <div className="bg-muted px-3 py-1 rounded-full text-xs font-medium text-muted-foreground">
                     Step {step} of 2
                   </div>
                 </div>
@@ -365,17 +365,17 @@ const Clients = () => {
                 {step === 1 ? (
                   <div className="grid gap-4">
                     <div className="grid gap-1.5">
-                      <Label htmlFor="name" className="text-zinc-300">Full Name <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="name" className="text-foreground">Full Name <span className="text-red-500">*</span></Label>
                       <Input 
                         id="name" 
                         required 
                         value={form.full_name} 
                         onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                        className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600"
+                        className="bg-input border-border text-foreground focus-visible:ring-ring"
                       />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="phone" className="text-zinc-300">Phone <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="phone" className="text-foreground">Phone <span className="text-red-500">*</span></Label>
                       <Input
                         id="phone"
                         required
@@ -384,34 +384,34 @@ const Clients = () => {
                           setForm({ ...form, phone: e.target.value });
                           setPhoneError("");
                         }}
-                        className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600"
+                        className="bg-input border-border text-foreground focus-visible:ring-ring"
                       />
                       {phoneError && <p className="text-xs text-red-400">{phoneError}</p>}
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="dob" className="text-zinc-300">Date of Birth <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-red-500">*</span></Label>
                       <Input 
                         id="dob" 
                         type="date" 
                         required
                         value={form.date_of_birth || ""} 
                         onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
-                        className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600 [color-scheme:dark]"
+                        className="bg-input border-border text-foreground [color-scheme:dark]"
                       />
                     </div>
                   </div>
                 ) : (
                   <div className="grid gap-4">
                     <div className="grid gap-1.5">
-                      <Label className="text-zinc-300">Client Type</Label>
+                      <Label className="text-foreground">Client Type</Label>
                       <Tabs 
                         value={form.client_type} 
                         onValueChange={(v) => setForm({ ...form, client_type: v as ClientType })}
                         className="w-full"
                       >
-                        <TabsList className="grid w-full grid-cols-2 bg-zinc-800">
-                          <TabsTrigger value="Resident" className="data-[state=active]:bg-zinc-700 data-[state=active]:text-white">Resident</TabsTrigger>
-                          <TabsTrigger value="Tourist" className="data-[state=active]:bg-zinc-700 data-[state=active]:text-white">Tourist</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-2 bg-muted">
+                          <TabsTrigger value="Resident" className="data-[state=active]:bg-background data-[state=active]:text-foreground">Resident</TabsTrigger>
+                          <TabsTrigger value="Tourist" className="data-[state=active]:bg-background data-[state=active]:text-foreground">Tourist</TabsTrigger>
                         </TabsList>
                       </Tabs>
                     </div>
@@ -420,48 +420,48 @@ const Clients = () => {
                       {form.client_type === "Resident" ? (
                         <>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="eid" className="text-zinc-300">Emirates ID <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="eid" className="text-foreground">Emirates ID <span className="text-red-500">*</span></Label>
                             <Input
                               id="eid"
                               required
                               value={form.emirates_id}
                               onChange={(e) => setForm({ ...form, emirates_id: e.target.value })}
-                              className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600"
+                              className="bg-input border-border text-foreground focus-visible:ring-ring"
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="eidexp" className="text-zinc-300">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="eidexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
                             <Input
                               id="eidexp"
                               type="date"
                               required
                               value={form.emirates_id_expiry}
                               onChange={(e) => setForm({ ...form, emirates_id_expiry: e.target.value })}
-                              className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600 [color-scheme:dark]"
+                              className="bg-input border-border text-foreground [color-scheme:dark]"
                             />
                           </div>
                         </>
                       ) : (
                         <>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="pass" className="text-zinc-300">Passport Number <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="pass" className="text-foreground">Passport Number <span className="text-red-500">*</span></Label>
                             <Input
                               id="pass"
                               required
                               value={form.passport_number}
                               onChange={(e) => setForm({ ...form, passport_number: e.target.value })}
-                              className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600"
+                              className="bg-input border-border text-foreground focus-visible:ring-ring"
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="passexp" className="text-zinc-300">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="passexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
                             <Input
                               id="passexp"
                               type="date"
                               required
                               value={form.passport_expiry}
                               onChange={(e) => setForm({ ...form, passport_expiry: e.target.value })}
-                              className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600 [color-scheme:dark]"
+                              className="bg-input border-border text-foreground [color-scheme:dark]"
                             />
                           </div>
                         </>
@@ -470,7 +470,7 @@ const Clients = () => {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-1.5">
-                        <Label htmlFor="nat" className="text-zinc-300">Nationality <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="nat" className="text-foreground">Nationality <span className="text-red-500">*</span></Label>
                         <NationalityCombobox
                           id="nat"
                           value={form.nationality}
@@ -481,53 +481,53 @@ const Clients = () => {
                         />
                       </div>
                       <div className="grid gap-1.5">
-                        <Label htmlFor="lic" className="text-zinc-300">License Number <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="lic" className="text-foreground">License Number <span className="text-red-500">*</span></Label>
                         <Input 
                           id="lic" 
                           required 
                           value={form.license_number} 
                           onChange={(e) => setForm({ ...form, license_number: e.target.value })}
-                          className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600"
+                          className="bg-input border-border text-foreground focus-visible:ring-ring"
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-1.5">
-                        <Label htmlFor="licexp" className="text-zinc-300">License Expiry <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="licexp" className="text-foreground">License Expiry <span className="text-red-500">*</span></Label>
                         <Input 
                           id="licexp" 
                           type="date" 
                           required
                           value={form.license_expiry || ""} 
                           onChange={(e) => setForm({ ...form, license_expiry: e.target.value })}
-                          className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600 [color-scheme:dark]"
+                          className="bg-input border-border text-foreground [color-scheme:dark]"
                         />
                       </div>
                       <div className="grid gap-1.5">
-                        <Label htmlFor="email" className="text-zinc-300">Email (optional)</Label>
+                        <Label htmlFor="email" className="text-foreground">Email (optional)</Label>
                         <Input 
                           id="email" 
                           type="email" 
                           value={form.email || ""} 
                           onChange={(e) => setForm({ ...form, email: e.target.value })}
-                          className="bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-600"
+                          className="bg-input border-border text-foreground focus-visible:ring-ring"
                         />
                       </div>
                     </div>
 
-                    <div className="grid gap-3 pt-2 border-t border-zinc-800 mt-2">
-                      <Label className="text-sm font-semibold text-zinc-300">Documents</Label>
+                    <div className="grid gap-3 pt-2 border-t border-border mt-2">
+                      <Label className="text-sm font-semibold text-foreground">Documents</Label>
                       
                       <div className="grid grid-cols-2 gap-3">
                         {form.client_type === "Tourist" && (
-                          <label className="bg-zinc-800 border border-dashed border-zinc-600 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-zinc-400 transition-colors">
-                            <div className="bg-zinc-700 rounded p-2">
-                              <IdCard className="h-4 w-4 text-zinc-300" />
+                          <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                            <div className="bg-background rounded p-2">
+                              <IdCard className="h-4 w-4 text-foreground" />
                             </div>
                             <div className="flex flex-col text-left">
-                              <span className="text-zinc-300 text-sm font-medium">Passport Photo</span>
-                              <span className="text-zinc-500 text-xs">Tap to upload</span>
+                              <span className="text-foreground text-sm font-medium">Passport Photo</span>
+                              <span className="text-muted-foreground text-xs">Tap to upload</span>
                             </div>
                             <input
                               type="file"
@@ -553,13 +553,13 @@ const Clients = () => {
                         
                         {form.client_type === "Resident" && (
                           <>
-                            <label className="bg-zinc-800 border border-dashed border-zinc-600 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-zinc-400 transition-colors">
-                              <div className="bg-zinc-700 rounded p-2">
-                                <IdCard className="h-4 w-4 text-zinc-300" />
+                            <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                              <div className="bg-background rounded p-2">
+                                <IdCard className="h-4 w-4 text-foreground" />
                               </div>
                               <div className="flex flex-col text-left">
-                                <span className="text-zinc-300 text-sm font-medium">Emirates ID Front</span>
-                                <span className="text-zinc-500 text-xs">Tap to upload</span>
+                                <span className="text-foreground text-sm font-medium">Emirates ID Front</span>
+                                <span className="text-muted-foreground text-xs">Tap to upload</span>
                               </div>
                               <input
                                 type="file"
@@ -581,13 +581,13 @@ const Clients = () => {
                                 className="hidden"
                               />
                             </label>
-                            <label className="bg-zinc-800 border border-dashed border-zinc-600 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-zinc-400 transition-colors">
-                              <div className="bg-zinc-700 rounded p-2">
-                                <IdCard className="h-4 w-4 text-zinc-300" />
+                            <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                              <div className="bg-background rounded p-2">
+                                <IdCard className="h-4 w-4 text-foreground" />
                               </div>
                               <div className="flex flex-col text-left">
-                                <span className="text-zinc-300 text-sm font-medium">Emirates ID Back</span>
-                                <span className="text-zinc-500 text-xs">Tap to upload</span>
+                                <span className="text-foreground text-sm font-medium">Emirates ID Back</span>
+                                <span className="text-muted-foreground text-xs">Tap to upload</span>
                               </div>
                               <input
                                 type="file"
@@ -612,13 +612,13 @@ const Clients = () => {
                           </>
                         )}
 
-                        <label className="bg-zinc-800 border border-dashed border-zinc-600 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-zinc-400 transition-colors">
-                          <div className="bg-zinc-700 rounded p-2">
-                            <FileText className="h-4 w-4 text-zinc-300" />
+                        <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                          <div className="bg-background rounded p-2">
+                            <FileText className="h-4 w-4 text-foreground" />
                           </div>
                           <div className="flex flex-col text-left">
-                            <span className="text-zinc-300 text-sm font-medium">License Front</span>
-                            <span className="text-zinc-500 text-xs">Tap to upload</span>
+                            <span className="text-foreground text-sm font-medium">License Front</span>
+                            <span className="text-muted-foreground text-xs">Tap to upload</span>
                           </div>
                           <input
                             type="file"
@@ -641,13 +641,13 @@ const Clients = () => {
                           />
                         </label>
 
-                        <label className="bg-zinc-800 border border-dashed border-zinc-600 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-zinc-400 transition-colors">
-                          <div className="bg-zinc-700 rounded p-2">
-                            <FileText className="h-4 w-4 text-zinc-300" />
+                        <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                          <div className="bg-background rounded p-2">
+                            <FileText className="h-4 w-4 text-foreground" />
                           </div>
                           <div className="flex flex-col text-left">
-                            <span className="text-zinc-300 text-sm font-medium">License Back</span>
-                            <span className="text-zinc-500 text-xs">Tap to upload</span>
+                            <span className="text-foreground text-sm font-medium">License Back</span>
+                            <span className="text-muted-foreground text-xs">Tap to upload</span>
                           </div>
                           <input
                             type="file"
@@ -677,7 +677,7 @@ const Clients = () => {
                 <DialogFooter className="gap-2 sm:gap-0 mt-4">
                   {step === 1 ? (
                     <div className="flex w-full justify-between gap-3">
-                      <Button type="button" variant="outline" onClick={() => setOpen(false)} className="bg-transparent border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white">
+                      <Button type="button" variant="outline" onClick={() => setOpen(false)} className="bg-transparent border-border text-muted-foreground hover:bg-muted hover:text-foreground">
                         Cancel
                       </Button>
                       <Button 
@@ -689,18 +689,18 @@ const Clients = () => {
                           }
                           setStep(2);
                         }}
-                        className="bg-white text-black hover:bg-zinc-200"
+                        className="bg-fd-accent text-white hover:bg-fd-accent/90"
                       >
                         Next <ChevronRight className="ml-1 h-4 w-4" />
                       </Button>
                     </div>
                   ) : (
                     <div className="flex w-full justify-between gap-3">
-                      <Button type="button" variant="outline" onClick={() => setStep(1)} className="bg-transparent border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white">
+                      <Button type="button" variant="outline" onClick={() => setStep(1)} className="bg-transparent border-border text-muted-foreground hover:bg-muted hover:text-foreground">
                         <ChevronLeft className="mr-1 h-4 w-4" /> Back
                       </Button>
                       <div className="flex gap-3">
-                        <Button type="submit" disabled={saving} className="bg-white text-black hover:bg-zinc-200">
+                        <Button type="submit" disabled={saving} className="bg-fd-accent text-white hover:bg-fd-accent/90">
                           {saving ? "Saving..." : editingId ? "Save Changes" : "Save Client"}
                         </Button>
                       </div>

@@ -57,7 +57,7 @@ const formatAed = (n: number) =>
 const monthKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
 
 const config = {
-  revenue: { label: "Revenue (AED)", color: "hsl(var(--foreground))" },
+  revenue: { label: "Revenue (AED)", color: "var(--fd-accent)" },
 } satisfies ChartConfig;
 
 const Reports = () => {
@@ -242,7 +242,7 @@ const Reports = () => {
               <CardContent>
                 <ChartContainer config={config} className="h-[240px] w-full">
                   <BarChart data={revenue.chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" />
                     <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} className="text-xs" />
                     <YAxis
                       tickLine={false}
@@ -252,7 +252,7 @@ const Reports = () => {
                       className="text-xs"
                     />
                     <ChartTooltip cursor={{ fill: "hsl(var(--muted))" }} content={<ChartTooltipContent hideLabel={false} />} />
-                    <Bar dataKey="revenue" fill="hsl(var(--foreground))" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                    <Bar dataKey="revenue" fill="#5B6EF5" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ChartContainer>
               </CardContent>

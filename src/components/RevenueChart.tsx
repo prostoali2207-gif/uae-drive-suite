@@ -9,7 +9,7 @@ interface MonthBucket {
 }
 
 const config = {
-  revenue: { label: "Revenue (AED)", color: "hsl(var(--foreground))" },
+  revenue: { label: "Revenue (AED)", color: "#5B6EF5" },
 } satisfies ChartConfig;
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -77,7 +77,7 @@ export function RevenueChart() {
       </div>
       <ChartContainer config={config} className="h-[220px] w-full">
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+          <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" />
           <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} className="text-xs" />
           <YAxis
             tickLine={false}
@@ -87,7 +87,7 @@ export function RevenueChart() {
             className="text-xs"
           />
           <ChartTooltip cursor={{ fill: "hsl(var(--muted))" }} content={<ChartTooltipContent hideLabel={false} />} />
-          <Bar dataKey="revenue" fill="hsl(var(--foreground))" radius={[4, 4, 0, 0]} maxBarSize={48} />
+          <Bar dataKey="revenue" fill="#5B6EF5" radius={[4, 4, 0, 0]} maxBarSize={48} />
         </BarChart>
       </ChartContainer>
     </div>
