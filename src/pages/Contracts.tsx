@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,16 @@ import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 import { SignContractModal } from "@/components/SignContractModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
@@ -58,9 +68,9 @@ interface ContractRow {
   client_id: string;
   car_id: string;
   start_date: string;
-  start_time?: string;
+  start_time: string;
   end_date: string;
-  end_time?: string;
+  end_time: string;
   rate_type: string;
   rate_amount: number;
   total_amount: number;
@@ -104,6 +114,31 @@ const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatTimeForDb(time: string | undefined): string {
+  if (time == null || time.trim() === "") return "12:00:00";
+  const trimmed = time.trim();
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+  return "12:00:00";
+}
+
+function formatTimeDisplay(time: string | null | undefined): string {
+  if (!time) return "";
+  const match = time.match(/^(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : "";
+}
+
+function formatDateWithTime(date: string, time?: string | null) {
+  const dateStr = formatDate(date);
+  const timeStr = formatTimeDisplay(time);
+  if (!timeStr) return dateStr;
+  return (
+    <>
+      {dateStr} · <span className="font-mono">{timeStr}</span>
+    </>
+  );
 }
 
 function diffDays(start: string, end: string): number {
@@ -181,6 +216,9 @@ const Contracts = () => {
   const [showSignModal, setShowSignModal] = useState(false);
   const [newContractId, setNewContractId] = useState("");
   const [newClientName, setNewClientName] = useState("");
+  const [reopenTargetId, setReopenTargetId] = useState<string | null>(null);
+  const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
+  const [docExpiredWarnings, setDocExpiredWarnings] = useState<string[]>([]);
 
   const fetchData = async () => {
     try {
@@ -232,6 +270,34 @@ const Contracts = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (clientMode !== "existing" || !form.client_id) {
+      setDocExpiredWarnings([]);
+      return;
+    }
+    const checkExpiry = async () => {
+      const { data } = await supabase
+        .from("clients")
+        .select("emirates_id_expiry, passport_expiry, license_expiry")
+        .eq("id", form.client_id)
+        .single();
+      if (!data) return;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const warnings: string[] = [];
+      const check = (value: string | null, label: string) => {
+        if (!value) return;
+        const d = new Date(value);
+        if (d < today) warnings.push(`${label} expired on ${d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`);
+      };
+      check((data as any).emirates_id_expiry, "Emirates ID");
+      check((data as any).passport_expiry, "Passport");
+      check((data as any).license_expiry, "Driving License");
+      setDocExpiredWarnings(warnings);
+    };
+    checkExpiry();
+  }, [form.client_id, clientMode]);
 
   const availableCars = useMemo(
     () => cars.filter((c) => c.status?.trim().toLowerCase() === "available"),
@@ -390,11 +456,15 @@ const Contracts = () => {
 
     try {
 
+      console.log("start_time value:", form.start_time);
+
       const { data: insertedContract, error } = await supabase.from("contracts").insert({
         client_id: clientId,
         car_id: form.car_id,
         start_date: form.start_date,
         end_date: form.end_date,
+        start_time: formatTimeForDb(form.start_time),
+        end_time: formatTimeForDb(form.end_time),
         rate_type: form.rate_type,
         rate_amount: Number(form.rate_amount),
         total_amount: total,
@@ -453,6 +523,22 @@ const Contracts = () => {
     }
   };
 
+  const handleReopenContract = async () => {
+    if (!reopenTargetId) return;
+    const { error } = await supabase
+      .from("contracts")
+      .update({ status: "returned" } as any)
+      .eq("id", reopenTargetId);
+    setReopenConfirmOpen(false);
+    setReopenTargetId(null);
+    if (error) {
+      toast.error("Failed to reopen contract: " + error.message);
+    } else {
+      toast.success("Contract reopened — status set to Returned");
+      fetchData();
+    }
+  };
+
   return (
     <DashboardLayout title="Contracts" subtitle="Manage rental agreements">
       <div className="flex flex-col gap-5">
@@ -475,7 +561,7 @@ const Contracts = () => {
             ))}
           </div>
 
-          <Dialog open={open} onOpenChange={setOpen}>
+            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setDocExpiredWarnings([]); }}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5">
                 <Plus className="h-4 w-4" />
@@ -537,7 +623,7 @@ const Contracts = () => {
                                   key={c.id}
                                   value={c.id}
                                   onSelect={() => {
-                                    setForm({ ...form, client_id: c.id });
+                                    setForm((prev) => ({ ...prev, client_id: c.id }));
                                     setClientSelectOpen(false);
                                     setClientSearch("");
                                   }}
@@ -597,6 +683,15 @@ const Contracts = () => {
                     </div>
                   )}
                 </div>
+                {docExpiredWarnings.length > 0 && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1">
+                    {docExpiredWarnings.map((w, i) => (
+                      <div key={i} className="text-sm text-destructive">
+                        ⚠️ Warning: <span className="font-mono">{w}</span>. Contract cannot be created.
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="grid gap-1.5">
                   <Label>Car (Available only)</Label>
                   <Popover open={carSelectOpen} onOpenChange={setCarSelectOpen}>
@@ -623,7 +718,7 @@ const Contracts = () => {
                                 key={c.id}
                                 value={c.id}
                                 onSelect={() => {
-                                  setForm({ ...form, car_id: c.id });
+                                  setForm((prev) => ({ ...prev, car_id: c.id }));
                                   setCarSelectOpen(false);
                                   setCarSearch("");
                                 }}
@@ -646,11 +741,11 @@ const Contracts = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
                     <Label htmlFor="start">Start Date</Label>
-                    <Input id="start" type="date" required value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+                    <Input id="start" type="date" required value={form.start_date} onChange={(e) => setForm((prev) => ({ ...prev, start_date: e.target.value }))} />
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="end">End Date</Label>
-                    <Input id="end" type="date" required value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
+                    <Input id="end" type="date" required value={form.end_date} onChange={(e) => setForm((prev) => ({ ...prev, end_date: e.target.value }))} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -680,7 +775,7 @@ const Contracts = () => {
                       value={form.end_time}
                       onChange={(e) => {
                         setEndTimeManuallyEdited(true);
-                        setForm({ ...form, end_time: e.target.value });
+                        setForm((prev) => ({ ...prev, end_time: e.target.value }));
                       }}
                     />
                   </div>
@@ -763,7 +858,7 @@ const Contracts = () => {
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={saving}>{saving ? "Creating..." : "Create Contract"}</Button>
+                  <Button type="submit" disabled={saving || docExpiredWarnings.length > 0}>{saving ? "Creating..." : "Create Contract"}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -841,8 +936,8 @@ const Contracts = () => {
                         <div className="font-mono text-xs text-foreground">{c.cars?.plate ?? "—"}</div>
                         <div className="text-xs text-muted-foreground">{c.cars ? `${c.cars.make} ${c.cars.model}` : ""}</div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(c.start_date)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(c.end_date)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDateWithTime(c.start_date, c.start_time)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDateWithTime(c.end_date, c.end_time)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{d}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(c.total_amount).toLocaleString()}</TableCell>
                       <TableCell>
@@ -854,24 +949,41 @@ const Contracts = () => {
                         AED {balance.toLocaleString()}
                       </TableCell>
                       <TableCell className="px-5 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 gap-1 text-xs"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              await generateContractPdf(c);
-                              toast.success("Contract PDF downloaded");
-                            } catch (err) {
-                              toast.error("Failed to generate PDF");
-                              console.error(err);
-                            }
-                          }}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 text-xs"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await generateContractPdf(c);
+                                toast.success("Contract PDF downloaded");
+                              } catch (err) {
+                                toast.error("Failed to generate PDF");
+                                console.error(err);
+                              }
+                            }}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download
+                          </Button>
+                          {c.status === "closed" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 gap-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReopenTargetId(c.id);
+                                setReopenConfirmOpen(true);
+                              }}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Reopen
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -881,6 +993,21 @@ const Contracts = () => {
           </Table>
         </div>
       </div>
+
+      <AlertDialog open={reopenConfirmOpen} onOpenChange={(v) => { setReopenConfirmOpen(v); if (!v) setReopenTargetId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reopen this contract?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Status will change to <span className="font-mono">Returned</span>. The contract can be closed again afterwards.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReopenContract}>Reopen</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {newContractId && (
         <SignContractModal

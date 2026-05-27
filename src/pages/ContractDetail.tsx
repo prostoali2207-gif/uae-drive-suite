@@ -17,12 +17,23 @@ import {
   AlertCircle,
   MoreHorizontal,
   History,
+  Trash2,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -897,6 +908,7 @@ const ContractDetail = () => {
   const [replaceVehicleOpen, setReplaceVehicleOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [replacementCount, setReplacementCount] = useState(0);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const navigate = useNavigate();
 
@@ -1070,6 +1082,40 @@ const ContractDetail = () => {
     }
     toast.success("Contract closed");
     navigate("/contracts");
+  };
+
+  const handleDeleteContract = async () => {
+    if (!id) return;
+
+    try {
+      // 1. Delete related payments
+      const { error: payErr } = await supabase
+        .from("payments")
+        .delete()
+        .eq("contract_id", id);
+      if (payErr) throw payErr;
+
+      // 2. Delete related contract_vehicles
+      const { error: vehErr } = await (supabase as any)
+        .from("contract_vehicles")
+        .delete()
+        .eq("contract_id", id);
+      if (vehErr) throw vehErr;
+
+      // 3. Delete the contract itself
+      const { error: contractErr } = await supabase
+        .from("contracts")
+        .delete()
+        .eq("id", id);
+      if (contractErr) throw contractErr;
+
+      toast.success("Contract deleted");
+      navigate("/contracts");
+    } catch (error: any) {
+      toast.error("Failed to delete contract: " + error.message);
+    } finally {
+      setDeleteConfirmOpen(false);
+    }
   };
 
   const handleOpenEditModal = async () => {
@@ -1574,7 +1620,38 @@ const ContractDetail = () => {
             </Panel>
           </TabsContent>
         </Tabs>
+        <div className="mt-8 pb-8 text-right">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-500 hover:bg-red-500/10 hover:text-red-600 gap-1.5"
+            onClick={() => setDeleteConfirmOpen(true)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete Contract
+          </Button>
+        </div>
       </div>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this contract?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete this contract and all its payments? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteContract}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Contract
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={showEditModal} onOpenChange={(v) => !v && setShowEditModal(false)}>
         <DialogContent className="sm:max-w-[440px]">

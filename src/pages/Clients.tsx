@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText } from "lucide-react";
+import { Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,6 +115,9 @@ const Clients = () => {
   const [form, setForm] = useState(emptyForm);
   const [phoneError, setPhoneError] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [dupError, setDupError] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteTargetName, setDeleteTargetName] = useState("");
 
   const fetchData = async () => {
     const [clientsRes, contractsRes] = await Promise.all([
@@ -169,6 +172,7 @@ const Clients = () => {
     setEditingId(null);
     setForm(emptyForm);
     setPhoneError("");
+    setDupError("");
     setStep(1);
     setOpen(true);
   };
@@ -195,6 +199,7 @@ const Clients = () => {
       license_back_url: c.license_back_url ?? "",
     });
     setPhoneError("");
+    setDupError("");
     setStep(1);
     setOpen(true);
   };
@@ -209,21 +214,26 @@ const Clients = () => {
     }
 
     setPhoneError("");
+    setDupError("");
 
     if (!editingId) {
       const phoneToCheck = form.phone.trim();
-      if (phoneToCheck) {
+      const emailToCheck = form.email.trim();
+      const orParts: string[] = [];
+      if (phoneToCheck) orParts.push(`phone.eq.${phoneToCheck}`);
+      if (emailToCheck) orParts.push(`email.eq.${emailToCheck}`);
+      if (orParts.length > 0) {
         const { data: existing, error: dupErr } = await supabase
           .from("clients")
-          .select("id")
-          .eq("phone", phoneToCheck)
+          .select("id, full_name")
+          .or(orParts.join(","))
           .limit(1);
         if (dupErr) {
-          toast.error("Could not validate phone number");
+          toast.error("Could not validate phone/email");
           return;
         }
         if (existing && existing.length > 0) {
-          setPhoneError("This phone number is already registered");
+          setDupError(`A client with this phone or email already exists: ${(existing[0] as any).full_name}`);
           return;
         }
       }
@@ -274,12 +284,13 @@ const Clients = () => {
   };
 
   const handleDeleteClient = async () => {
-    if (!editingId) return;
+    const targetId = deleteTargetId || editingId;
+    if (!targetId) return;
     setDeleting(true);
     const { count, error: activeErr } = await supabase
       .from("contracts")
       .select("id", { count: "exact", head: true })
-      .eq("client_id", editingId)
+      .eq("client_id", targetId)
       .in("status", ["Active", "Expiring Soon"]);
     if (activeErr) {
       setDeleting(false);
@@ -289,11 +300,11 @@ const Clients = () => {
     if ((count ?? 0) > 0) {
       setDeleting(false);
       setConfirmDeleteOpen(false);
-      toast.error("Cannot delete client with active contracts");
+      toast.error("Cannot delete — client has active contracts.");
       return;
     }
 
-    const { error: deleteErr } = await supabase.from("clients").delete().eq("id", editingId);
+    const { error: deleteErr } = await supabase.from("clients").delete().eq("id", targetId);
     setDeleting(false);
     setConfirmDeleteOpen(false);
     if (deleteErr) {
@@ -302,9 +313,13 @@ const Clients = () => {
     }
 
     toast.success("Client deleted");
-    setOpen(false);
-    setEditingId(null);
-    setForm(emptyForm);
+    setDeleteTargetId(null);
+    setDeleteTargetName("");
+    if (editingId) {
+      setOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
+    }
     fetchData();
   };
 
@@ -339,7 +354,7 @@ const Clients = () => {
             ))}
           </div>
 
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setStep(1); } }}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setDupError(""); setStep(1); } }}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5 bg-fd-accent text-white hover:bg-fd-accent/90" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
@@ -362,6 +377,11 @@ const Clients = () => {
               </DialogHeader>
               
               <form onSubmit={handleSubmit} className="grid gap-4 py-2">
+                {dupError && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive">
+                    {dupError}
+                  </div>
+                )}
                 {step === 1 ? (
                   <div className="grid gap-4">
                     <div className="grid gap-1.5">
@@ -376,13 +396,14 @@ const Clients = () => {
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="phone" className="text-foreground">Phone <span className="text-red-500">*</span></Label>
-                      <Input
+                        <Input
                         id="phone"
                         required
                         value={form.phone}
                         onChange={(e) => {
                           setForm({ ...form, phone: e.target.value });
                           setPhoneError("");
+                          setDupError("");
                         }}
                         className="bg-input border-border text-foreground focus-visible:ring-ring"
                       />
@@ -510,7 +531,7 @@ const Clients = () => {
                           id="email" 
                           type="email" 
                           value={form.email || ""} 
-                          onChange={(e) => setForm({ ...form, email: e.target.value })}
+                          onChange={(e) => { setForm({ ...form, email: e.target.value }); setDupError(""); }}
                           className="bg-input border-border text-foreground focus-visible:ring-ring"
                         />
                       </div>
@@ -721,12 +742,12 @@ const Clients = () => {
               </form>
             </DialogContent>
           </Dialog>
-          <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+          <AlertDialog open={confirmDeleteOpen} onOpenChange={(v) => { setConfirmDeleteOpen(v); if (!v) { setDeleteTargetId(null); setDeleteTargetName(""); } }}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete client?</AlertDialogTitle>
+                <AlertDialogTitle>Delete {deleteTargetName || form.full_name || "client"}?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. The client can be deleted only if there are no active contracts.
+                  This cannot be undone. Only clients without active contracts can be deleted.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -808,15 +829,30 @@ const Clients = () => {
                       AED {c.outstanding.toLocaleString()}
                     </TableCell>
                     <TableCell className="px-5 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 gap-1 text-xs"
-                        onClick={() => openEdit(c)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => openEdit(c)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTargetId(c.id);
+                            setDeleteTargetName(c.full_name);
+                            setConfirmDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
