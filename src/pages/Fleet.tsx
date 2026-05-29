@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Wrench } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { MaintenancePanel } from "@/components/MaintenancePanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -120,6 +121,7 @@ const Fleet = () => {
   const [plateError, setPlateError] = useState("");
   const [tagError, setTagError] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [selectedMaintenanceCarId, setSelectedMaintenanceCarId] = useState<string | null>(null);
 
   const fetchCars = async () => {
     try {
@@ -528,15 +530,26 @@ const Fleet = () => {
                       </span>
                     </TableCell>
                     <TableCell className="px-5 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 gap-1 text-xs"
-                        onClick={() => openEdit(car)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => setSelectedMaintenanceCarId(car.id)}
+                        >
+                          <Wrench className="h-3.5 w-3.5" />
+                          Service
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => openEdit(car)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -545,6 +558,11 @@ const Fleet = () => {
           </Table>
         </div>
       </div>
+      <MaintenancePanel
+        carId={selectedMaintenanceCarId ?? ""}
+        open={!!selectedMaintenanceCarId}
+        onClose={() => setSelectedMaintenanceCarId(null)}
+      />
     </DashboardLayout>
   );
 };

@@ -1,6 +1,5 @@
 # FLEETDESK_CONTEXT.md
-> Вставляй этот файл в начало каждой сессии с Claude.
-> Источник истины: src/integrations/supabase/types.ts
+> Источник истины по схеме БД и структуре проекта для Codex.
 > Последнее обновление: май 2026
 
 ---
@@ -87,7 +86,7 @@ src/App.tsx                        # роутер
 | Settings | ✅ Работает | |
 | Dashboard | ⚠️ Неполный | Данные есть, визуал не готов |
 | PDF Export | ⚠️ Неполный | jsPDF в contractPdf.ts |
-| Tally Webhook | ❌ Сломан | Tally форма удалена, server.js на порту 3000 |
+| server.js | ❌ Мёртвый код | Webhook удалён, файл не используется |
 
 ---
 
@@ -96,11 +95,14 @@ src/App.tsx                        # роутер
 ### profiles
 | Колонка | Тип | Nullable |
 |---|---|---|
-| id | string (uuid) | NO |
-| email | string | NO |
-| company_name | string | NO |
-| logo_url | string | YES |
-| created_at | string | NO |
+| id | uuid | NO |
+| email | text | NO |
+| company_name | text | NO |
+| logo_url | text | YES |
+| phone_number | text | YES |
+| terms_en | text | YES |
+| terms_ar | text | YES |
+| created_at | timestamptz | NO |
 
 ### cars
 | Колонка | Тип | Nullable |
@@ -225,6 +227,18 @@ TypeScript их не знает. При использовании нужен к
 | owner_id | string | NO |
 | created_at | string | NO |
 
+### car_maintenance
+| Колонка | Тип | Nullable |
+|---|---|---|
+| id | uuid | NO |
+| car_id | uuid | YES |
+| last_service_date | date | YES |
+| next_service_date | date | YES |
+| current_mileage | integer | YES |
+| notes | text | YES |
+| owner_id | uuid | YES |
+| created_at | timestamptz | YES |
+
 ---
 
 ## DB функции (из types.ts)
@@ -269,10 +283,10 @@ TypeScript их не знает. При использовании нужен к
 | Проблема | Статус | Детали |
 |---|---|---|
 | PDF скачивается как текст | ⚠️ Не решён | jsPDF в contractPdf.ts |
-| Tally webhook | ❌ Сломан | Tally форма удалена, server.js порт 3000 |
-| end_time в contracts | ⚠️ Осторожно | Колонка есть, ранее вызывала баг при insert |
+| server.js | ❌ Мёртвый код | Не удалять, просто игнорировать |
+| end_time в contracts | ✅ Колонка существует | Ранее вызывала баг при insert — сейчас безопасна |
 | ContractDetail.tsx | ⚠️ История | Сломан AI-перезаписью, восстановлен через git |
-| Фото документов клиентов | ⚠️ Неясно | Колонок нет в types.ts — возможно добавлены через Dashboard без миграции |
+| Фото документов клиентов | ⚠️ Техдолг | Колонок нет в types.ts — добавлены через Dashboard без миграции, использовать каст `(client as any).field` |
 
 ---
 
@@ -303,93 +317,3 @@ git show HEAD~1:src/pages/FileName.tsx > src/pages/FileName.tsx
 - **client_type: Tourist** — есть паспорт, нет Emirates ID
 - **Депозит** — берётся при подписании контракта, возвращается при закрытии за вычетом ущерба/штрафов
 - **Типичные боли**: поздние платежи, штрафы после сдачи машины, споры по депозиту при возврате, мультиязычный персонал, WhatsApp как основной канал коммуникации
-- 
-ANALYSIS SUMMARY
-
-Выполнено
-
-1. Анализ проекта
-2. UX-аудит
-3. Операционный план
-
-Найдено
-
-Есть:
-
-- React + TS + Vite
-- Supabase
-- Clients
-- Contracts
-- Fleet
-- Payments
-- Fines
-- Salik
-- Reports
-
-Частично:
-
-- Contracts
-- Clients fields
-- Reports
-- Company profile
-
-Техдолг:
-
-- расхождение БД / types / UI
-- дубли статусов
-- логика строками
-- смешение UI и логики
-- старый код
-
-Мёртвое:
-
-- server.js
-- Placeholder
-- старые данные
-- лишние lock файлы
-
-UX выводы
-
-Проблемы:
-
-- перегружен Clients
-- тяжёлый Contract flow
-- повторный ввод
-- длинные формы
-- тяжёлый ContractDetail
-
-Нужно:
-
-- автоподстановка
-- сокращение кликов
-- подготовка OCR
-- упрощение сценариев
-
-Операционный порядок
-
-Фаза 1:
-Clients
-Contracts
-Fleet sync
-Payments
-
-Фаза 2:
-Выдача
-Продление
-Возврат
-
-Фаза 3:
-Подготовка OCR
-
-Фаза 4:
-Автоматизация
-
-Запреты
-
-Не запускать OCR рано
-
-Не делать AI раньше стабилизации
-
-Не менять дизайн ради дизайна
-
-Сначала стабилизация данных
