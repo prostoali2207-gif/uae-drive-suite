@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Wrench } from "lucide-react";
+import { Pencil, Plus, Upload, Wrench } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { MaintenancePanel } from "@/components/MaintenancePanel";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,8 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
+import { Badge } from "@/components/ui/badge";
+import { previewLegacyFleetImport, type LegacyFleetImportPreview } from "@/lib/fleetImport";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -109,6 +111,16 @@ function expiryCellClass(iso: string | null): string {
   return "text-muted-foreground";
 }
 
+function isCarIncomplete(car: Car): boolean {
+  return !car.plate?.trim()
+    || !car.make?.trim()
+    || !car.model?.trim()
+    || !car.year
+    || !car.tag_number?.trim()
+    || !car.insurance_expiry
+    || !car.mulkiya_expiry;
+}
+
 const Fleet = () => {
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +134,10 @@ const Fleet = () => {
   const [tagError, setTagError] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [selectedMaintenanceCarId, setSelectedMaintenanceCarId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<LegacyFleetImportPreview | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const fetchCars = async () => {
     try {
@@ -184,6 +200,54 @@ const Fleet = () => {
     setPlateError("");
     setTagError("");
     setOpen(true);
+  };
+
+  const handleImportFile = async (file: File | undefined) => {
+    if (!file) return;
+    setImportLoading(true);
+    setImportPreview(null);
+    try {
+      const preview = await previewLegacyFleetImport(file, cars.map((car) => ({ plate: car.plate })));
+      setImportPreview(preview);
+    } catch (error) {
+      console.error("Fleet import preview error:", error);
+      toast.error("Could not read this XLSX file");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportReadyRows = async () => {
+    if (!importPreview) return;
+    const readyRows = importPreview.rows.filter((row) => row.ready && row.year !== null);
+    if (!readyRows.length) {
+      toast.error("No rows are ready to import");
+      return;
+    }
+
+    setImporting(true);
+    const payload = readyRows.map((row) => ({
+      plate: row.plate,
+      make: row.make,
+      model: row.model,
+      year: row.year,
+      status: row.status,
+      tag_number: row.tag_number,
+      insurance_expiry: row.insurance_expiry,
+      mulkiya_expiry: row.mulkiya_expiry,
+    }));
+
+    const { error } = await supabase.from("cars").insert(payload as never);
+    setImporting(false);
+    if (error) {
+      toast.error(`Failed to import fleet: ${toSupabaseMessage(error)}`);
+      return;
+    }
+
+    toast.success(`Imported ${readyRows.length} cars`);
+    setImportOpen(false);
+    setImportPreview(null);
+    fetchCars();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -319,6 +383,115 @@ const Fleet = () => {
               </button>
             ))}
           </div>
+
+          <Dialog open={importOpen} onOpenChange={(v) => { setImportOpen(v); if (!v) setImportPreview(null); }}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1.5 bg-transparent" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4" />
+                Import XLSX
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px] text-foreground font-dm-sans">
+              <DialogHeader>
+                <DialogTitle className="text-foreground">Import legacy fleet</DialogTitle>
+                <DialogDescription className="text-muted-foreground">
+                  Preview old XLSX vehicles before inserting them. Existing plate numbers are skipped.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-2">
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center hover:border-foreground/30">
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm font-medium text-foreground">
+                    {importLoading ? "Reading XLSX..." : "Choose XLSX file"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">No rows are imported until you confirm.</span>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                    className="hidden"
+                    disabled={importLoading || importing}
+                    onChange={(event) => handleImportFile(event.target.files?.[0])}
+                  />
+                </label>
+
+                {importPreview && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {[
+                        ["Total rows", importPreview.totalRows],
+                        ["Ready rows", importPreview.rowsReady],
+                        ["Duplicate plates", importPreview.duplicatePlates],
+                        ["Missing required", importPreview.missingRequiredData],
+                        ["Skipped rows", importPreview.skippedRows],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-lg border border-border bg-card px-3 py-2">
+                          <div className="text-[11px] uppercase text-muted-foreground">{label}</div>
+                          <div className="font-mono text-lg font-semibold text-foreground">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {importPreview.missingRequiredData > 0 && (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                        {importPreview.missingRequiredData} rows are missing plate, make, model, or year and will be skipped.
+                      </div>
+                    )}
+
+                    <div className="max-h-64 overflow-auto rounded-lg border border-border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="text-xs">Row</TableHead>
+                            <TableHead className="text-xs">Plate</TableHead>
+                            <TableHead className="text-xs">Make & Model</TableHead>
+                            <TableHead className="text-xs">Year</TableHead>
+                            <TableHead className="text-xs">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {importPreview.rows.slice(0, 50).map((row) => (
+                            <TableRow key={row.rowNumber}>
+                              <TableCell className="font-mono text-xs">{row.rowNumber}</TableCell>
+                              <TableCell className="font-mono text-xs">{row.plate || "—"}</TableCell>
+                              <TableCell className="text-sm">{row.make || "—"} {row.model || ""}</TableCell>
+                              <TableCell className="font-mono text-xs">{row.year ?? "—"}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={row.ready ? "secondary" : "outline"}
+                                  className={cn(
+                                    "text-[11px]",
+                                    row.ready
+                                      ? "bg-tint-green text-tint-green-foreground"
+                                      : "border-amber-500/40 text-amber-700",
+                                  )}
+                                >
+                                  {row.ready ? "Ready" : row.skipReason}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button type="button" variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleImportReadyRows}
+                  disabled={!importPreview || importPreview.rowsReady === 0 || importing}
+                >
+                  {importing ? "Importing..." : `Import ${importPreview?.rowsReady ?? 0} ready rows`}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPlateError(""); setTagError(""); } }}>
             <DialogTrigger asChild>
@@ -485,6 +658,7 @@ const Fleet = () => {
                 <TableHead className="text-xs">Make & Model</TableHead>
                 <TableHead className="text-xs">Year</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
+                <TableHead className="text-xs">Info</TableHead>
                 <TableHead className="text-xs">Insurance Expiry</TableHead>
                 <TableHead className="text-xs">Mulkiya Expiry</TableHead>
                 <TableHead className="px-5 text-xs text-right">Actions</TableHead>
@@ -493,13 +667,13 @@ const Fleet = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
                     Loading fleet...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
                     No cars match this filter.
                   </TableCell>
                 </TableRow>
@@ -518,6 +692,19 @@ const Fleet = () => {
                       >
                         {car.status}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={isCarIncomplete(car) ? "outline" : "secondary"}
+                        className={cn(
+                          "text-[11px]",
+                          isCarIncomplete(car)
+                            ? "border-amber-500/40 text-amber-700"
+                            : "bg-tint-green text-tint-green-foreground",
+                        )}
+                      >
+                        {isCarIncomplete(car) ? "Missing info" : "Complete"}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.insurance_expiry))}>
