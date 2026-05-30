@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,8 @@ import { supabase } from "@/lib/supabase";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { previewLegacyClientImport, type LegacyClientImportPreview } from "@/lib/clientImport";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,6 +83,13 @@ function toSupabaseMessage(error: { code?: string; message?: string } | null): s
   return error?.message || "unknown error";
 }
 
+function isClientIncomplete(client: ClientRecord): boolean {
+  const missingBase = !client.phone?.trim() || !client.nationality?.trim() || !client.license_number?.trim() || !client.license_expiry;
+  if (missingBase) return true;
+  if (client.client_type === "Resident") return !client.emirates_id?.trim() || !client.emirates_id_expiry;
+  return !client.passport_number?.trim() || !client.passport_expiry;
+}
+
 const emptyForm = {
   full_name: "",
   phone: "",
@@ -118,6 +127,10 @@ const Clients = () => {
   const [dupError, setDupError] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<LegacyClientImportPreview | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const fetchData = async () => {
     const [clientsRes, contractsRes] = await Promise.all([
@@ -202,6 +215,57 @@ const Clients = () => {
     setDupError("");
     setStep(1);
     setOpen(true);
+  };
+
+  const handleImportFile = async (file: File | undefined) => {
+    if (!file) return;
+    setImportLoading(true);
+    setImportPreview(null);
+    try {
+      const preview = await previewLegacyClientImport(file, clients.map((client) => ({ phone: client.phone })));
+      setImportPreview(preview);
+    } catch (error) {
+      console.error("Client import preview error:", error);
+      toast.error("Could not read this CSV file");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportReadyRows = async () => {
+    if (!importPreview) return;
+    const readyRows = importPreview.rows.filter((row) => row.ready);
+    if (!readyRows.length) {
+      toast.error("No rows are ready to import");
+      return;
+    }
+
+    setImporting(true);
+    const payload = readyRows.map((row) => ({
+      full_name: row.full_name,
+      phone: row.phone,
+      email: row.email,
+      nationality: row.nationality,
+      client_type: row.client_type,
+      emirates_id: row.emirates_id,
+      passport_number: row.passport_number,
+      license_number: row.license_number,
+      license_expiry: row.license_expiry,
+      emirates_id_expiry: row.emirates_id_expiry,
+      passport_expiry: row.passport_expiry,
+    }));
+
+    const { error } = await supabase.from("clients").insert(payload as never);
+    setImporting(false);
+    if (error) {
+      toast.error(`Failed to import clients: ${toSupabaseMessage(error)}`);
+      return;
+    }
+
+    toast.success(`Imported ${readyRows.length} clients`);
+    setImportOpen(false);
+    setImportPreview(null);
+    fetchData();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -353,6 +417,117 @@ const Clients = () => {
               </button>
             ))}
           </div>
+
+          <Dialog open={importOpen} onOpenChange={(v) => { setImportOpen(v); if (!v) setImportPreview(null); }}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1.5 bg-transparent" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4" />
+                Import CSV
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px] text-foreground font-dm-sans">
+              <DialogHeader>
+                <DialogTitle className="text-foreground">Import legacy clients</DialogTitle>
+                <DialogDescription className="text-muted-foreground">
+                  Preview old CSV clients before inserting them. Existing phone numbers are skipped.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-2">
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center hover:border-foreground/30">
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm font-medium text-foreground">
+                    {importLoading ? "Reading CSV..." : "Choose CSV file"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">No rows are imported until you confirm.</span>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    disabled={importLoading || importing}
+                    onChange={(event) => handleImportFile(event.target.files?.[0])}
+                  />
+                </label>
+
+                {importPreview && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {[
+                        ["Total rows", importPreview.totalRows],
+                        ["Residents", importPreview.residents],
+                        ["Tourists", importPreview.tourists],
+                        ["Missing documents", importPreview.missingDocuments],
+                        ["Duplicate phones", importPreview.duplicatesByPhone],
+                        ["Ready to import", importPreview.rowsReady],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-lg border border-border bg-card px-3 py-2">
+                          <div className="text-[11px] uppercase text-muted-foreground">{label}</div>
+                          <div className="font-mono text-lg font-semibold text-foreground">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {importPreview.skippedMissingRequired > 0 && (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                        {importPreview.skippedMissingRequired} rows are missing full name or phone and will be skipped.
+                      </div>
+                    )}
+
+                    <div className="max-h-64 overflow-auto rounded-lg border border-border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="text-xs">Row</TableHead>
+                            <TableHead className="text-xs">Name</TableHead>
+                            <TableHead className="text-xs">Phone</TableHead>
+                            <TableHead className="text-xs">Type</TableHead>
+                            <TableHead className="text-xs">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {importPreview.rows.slice(0, 50).map((row) => (
+                            <TableRow key={row.rowNumber}>
+                              <TableCell className="font-mono text-xs">{row.rowNumber}</TableCell>
+                              <TableCell className="text-sm">{row.full_name || "—"}</TableCell>
+                              <TableCell className="font-mono text-xs">{row.phone || "—"}</TableCell>
+                              <TableCell className="text-sm">{row.client_type}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={row.ready ? "secondary" : "outline"}
+                                  className={cn(
+                                    "text-[11px]",
+                                    row.ready
+                                      ? "bg-tint-green text-tint-green-foreground"
+                                      : "border-amber-500/40 text-amber-700",
+                                  )}
+                                >
+                                  {row.ready ? "Ready" : row.skipReason}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button type="button" variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleImportReadyRows}
+                  disabled={!importPreview || importPreview.rowsReady === 0 || importing}
+                  className="bg-fd-accent text-white hover:bg-fd-accent/90"
+                >
+                  {importing ? "Importing..." : `Import ${importPreview?.rowsReady ?? 0} ready rows`}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setDupError(""); setStep(1); } }}>
             <DialogTrigger asChild>
@@ -772,6 +947,7 @@ const Clients = () => {
                 <TableHead className="text-xs">Phone</TableHead>
                 <TableHead className="text-xs">Document</TableHead>
                 <TableHead className="text-xs">Nationality</TableHead>
+                <TableHead className="text-xs">Info</TableHead>
                 <TableHead className="text-xs">Total Contracts</TableHead>
                 <TableHead className="text-xs">Active</TableHead>
                 <TableHead className="text-xs">Outstanding</TableHead>
@@ -781,13 +957,13 @@ const Clients = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">
                     Loading clients...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">
                     No clients found.
                   </TableCell>
                 </TableRow>
@@ -811,6 +987,19 @@ const Clients = () => {
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.nationality}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={isClientIncomplete(c) ? "outline" : "secondary"}
+                        className={cn(
+                          "text-[11px]",
+                          isClientIncomplete(c)
+                            ? "border-amber-500/40 text-amber-700"
+                            : "bg-tint-green text-tint-green-foreground",
+                        )}
+                      >
+                        {isClientIncomplete(c) ? "Missing info" : "Complete"}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-sm text-foreground">{c.totalContracts}</TableCell>
                     <TableCell>
                       <span className={cn(
