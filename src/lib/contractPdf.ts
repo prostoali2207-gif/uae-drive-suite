@@ -95,11 +95,79 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const today = fmtDate(new Date().toISOString());
   const c = contract.clients;
   const car = contract.cars;
+  const navy: [number, number, number] = [15, 23, 42];
+  const slate: [number, number, number] = [148, 163, 184];
+  const lightLine: [number, number, number] = [226, 232, 240];
+
+  const addFooter = () => {
+    const footerY = pageH - 24;
+    doc.setDrawColor(...lightLine);
+    doc.setLineWidth(0.5);
+    doc.line(margin, footerY - 8, pageW - margin, footerY - 8);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...slate);
+    doc.text(`Date of Issue: ${today}`, margin, footerY);
+    doc.text(`Document ID: ${contractNumber}`, pageW - margin, footerY, { align: "right" });
+  };
+
+  const addPageWithFooter = () => {
+    addFooter();
+    doc.addPage();
+    y = margin;
+  };
+
+  const sectionHeading = (title: string) => {
+    doc.setDrawColor(...lightLine);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageW - margin, y);
+    y += 11;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...slate);
+    doc.text(title.toUpperCase(), margin, y);
+    y += 18;
+  };
+
+  const fuelFillCount = (fuelLevel: string) => {
+    const normalized = String(fuelLevel || "").trim().toLowerCase();
+    if (normalized === "full") return 5;
+    if (normalized === "3/4") return 3;
+    if (normalized === "1/2" || normalized === "half") return 2;
+    if (normalized === "1/4") return 1;
+    return 0;
+  };
+
+  const drawFuelIndicator = (x: number, baseY: number, fuelLevel: string) => {
+    const fillCount = fuelFillCount(fuelLevel);
+    const square = 6;
+    const gap = 2;
+    const top = baseY + 3;
+    for (let i = 0; i < 5; i++) {
+      const squareX = x + i * (square + gap);
+      doc.setDrawColor(...slate);
+      doc.setLineWidth(0.6);
+      if (i < fillCount) {
+        doc.setFillColor(...navy);
+        doc.rect(squareX, top, square, square, "F");
+      } else {
+        doc.rect(squareX, top, square, square);
+      }
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...navy);
+    doc.text(String(fuelLevel || "—"), x + 5 * square + 5 * gap + 4, baseY + 10);
+  };
 
   // ── HEADER ─────────────────────────────────────────────────────────────────
   const headerTopY = y;
+  const headerH = 76;
+  doc.setFillColor(...navy);
+  doc.rect(0, headerTopY - 8, pageW, headerH, "F");
 
   // Left: logo — resolve storage path to a signed URL before fetching
+  let logoDrawn = false;
   if (logoUrl) {
     let fetchUrl = logoUrl;
     if (!logoUrl.startsWith("http")) {
@@ -110,80 +178,74 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     }
     const img = await loadImage(fetchUrl);
     if (img) {
-      const h = 40;
-      const w = (img.w / img.h) * h;
+      const h = 34;
+      const w = Math.min((img.w / img.h) * h, 34);
       try {
-        doc.addImage(img.dataUrl, "PNG", margin, y, w, h);
+        doc.setFillColor(255, 255, 255);
+        doc.circle(margin + 18, headerTopY + 24, 20, "F");
+        doc.addImage(img.dataUrl, "PNG", margin + 18 - w / 2, headerTopY + 7, w, h);
+        logoDrawn = true;
       } catch {
-        try { doc.addImage(img.dataUrl, "JPEG", margin, y, w, h); } catch { /* ignore */ }
+        try {
+          doc.setFillColor(255, 255, 255);
+          doc.circle(margin + 18, headerTopY + 24, 20, "F");
+          doc.addImage(img.dataUrl, "JPEG", margin + 18 - w / 2, headerTopY + 7, w, h);
+          logoDrawn = true;
+        } catch { /* ignore */ }
       }
-      y += h + 8;
     }
+  }
+  if (!logoDrawn) {
+    doc.setFillColor(255, 255, 255);
+    doc.circle(margin + 18, headerTopY + 24, 20, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(...navy);
+    doc.text(companyName.charAt(0).toUpperCase(), margin + 18, headerTopY + 29, { align: "center" });
   }
 
   // Left: company name, phone, email
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(20, 20, 20);
-  doc.text(companyName, margin, y);
-  y += 14;
+  doc.setFontSize(13);
+  doc.setTextColor(255, 255, 255);
+  doc.text(companyName, margin + 52, headerTopY + 18, { maxWidth: pageW / 2 - 80 });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.setTextColor(120, 120, 120);
-  if (companyPhone) { doc.text(companyPhone, margin, y); y += 12; }
-  if (companyEmail) { doc.text(companyEmail, margin, y); y += 12; }
+  doc.setTextColor(203, 213, 225);
+  let contactY = headerTopY + 34;
+  if (companyPhone) { doc.text(companyPhone, margin + 52, contactY); contactY += 11; }
+  if (companyEmail) { doc.text(companyEmail, margin + 52, contactY); }
 
   // Right: large title + subtitle
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(17);
-  doc.setTextColor(41, 98, 255);
-  doc.text("CAR RENTAL AGREEMENT", pageW - margin, headerTopY + 22, { align: "right" });
+  doc.setFontSize(16);
+  doc.setTextColor(255, 255, 255);
+  doc.text("CAR RENTAL AGREEMENT", pageW - margin, headerTopY + 24, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.setTextColor(150, 150, 150);
-  doc.text("Electronic Copy \u2022 Digital Format", pageW - margin, headerTopY + 38, { align: "right" });
+  doc.setTextColor(203, 213, 225);
+  doc.text("Signed by both parties \u2014 legally binding", pageW - margin, headerTopY + 41, { align: "right" });
 
-  y = Math.max(y, headerTopY + 90);
-
-  // Thick blue horizontal line
-  doc.setDrawColor(41, 98, 255);
-  doc.setLineWidth(2.5);
-  doc.line(margin, y, pageW - margin, y);
-  doc.setLineWidth(0.5);
-  y += 20;
+  y = headerTopY + headerH + 18;
 
   // Document ID + Date of Issue row
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.setTextColor(150, 150, 150);
+  doc.setTextColor(...slate);
   doc.text(`Document ID: ${contractNumber}`, margin, y);
   doc.text(`Date of Issue: ${today}`, pageW - margin, y, { align: "right" });
   y += 22;
 
   // ── SECTION HELPER ──────────────────────────────────────────────────────────
-  let sectionNum = 0;
   const colW = (pageW - margin * 2) / 2;
 
-  const section = (title: string, rows: [string, string][]) => {
-    sectionNum++;
+  const section = (title: string, rows: [string, string, "fuel"?][]) => {
     const rowCount = Math.ceil(rows.length / 2);
     if (y + 32 + rowCount * 28 + 14 > pageH - margin - 160) {
-      doc.addPage();
-      y = margin;
+      addPageWithFooter();
     }
 
-    // Numbered blue uppercase title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(41, 98, 255);
-    doc.text(`${sectionNum}. ${title.toUpperCase()}`, margin, y);
-    y += 8;
-
-    // Thin gray separator
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
-    doc.line(margin, y, pageW - margin, y);
-    y += 20;
+    sectionHeading(title);
 
     // Two-column rows: small gray uppercase label, bold black value below
     for (let r = 0; r < rowCount; r++) {
@@ -191,16 +253,20 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
         const idx = r * 2 + col;
         if (idx >= rows.length) continue;
         const x = margin + col * colW;
-        const [label, value] = rows[idx];
+        const [label, value, kind] = rows[idx];
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(140, 140, 140);
+        doc.setTextColor(...slate);
         doc.setFontSize(8);
         doc.text(label.toUpperCase(), x, y);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(20, 20, 20);
-        doc.setFontSize(10);
+        if (kind === "fuel") {
+          drawFuelIndicator(x, y + 8, value);
+        } else {
+          doc.setFont(String(value).startsWith("AED ") ? "courier" : "helvetica", "bold");
+          doc.setTextColor(...navy);
+          doc.setFontSize(10);
         doc.text(String(value || "—"), x, y + 12, { maxWidth: colW - 16 });
       }
+        }
       y += 34;
     }
     y += 24;
@@ -216,6 +282,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     ["Full Name", c?.full_name || "—"],
     ["Phone", c?.phone || "—"],
     ["Nationality", c?.nationality || "—"],
+    ["License Number", (c as any)?.license_number || "—"],
     [idLabel, idValue],
   ]);
 
@@ -232,22 +299,12 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     [`${contract.rate_type} Rate`, `AED ${Number(contract.rate_amount).toLocaleString()}`],
     ["Total Amount", `AED ${Number(contract.total_amount).toLocaleString()}`],
     ["Deposit", `AED ${Number(contract.deposit_amount).toLocaleString()}`],
-    ["Fuel Level", contract.fuel_level],
+    ["Fuel Level", contract.fuel_level, "fuel"],
   ]);
 
   // ── SECTION 4: TERMS OF USE ─────────────────────────────────────────────────
-  sectionNum++;
-  if (y + 60 > pageH - margin - 160) { doc.addPage(); y = margin; }
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(41, 98, 255);
-  doc.text(`${sectionNum}. TERMS OF USE`, margin, y);
-  y += 8;
-  doc.setDrawColor(200, 200, 200);
-  doc.setLineWidth(0.5);
-  doc.line(margin, y, pageW - margin, y);
-  y += 14;
+  if (y + 60 > pageH - margin - 160) { addPageWithFooter(); }
+  sectionHeading("Terms of Use");
 
   const termsText = termsEn.trim() ||
     "The renter agrees to return the vehicle in the same condition as received.\n\nAny traffic fines, Salik charges, or damages incurred during the rental period are the responsibility of the renter.\n\nThe deposit will be refunded after inspection upon vehicle return.";
@@ -264,12 +321,21 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.setTextColor(60, 60, 60);
+  doc.setTextColor(...navy);
   for (const bullet of rawBullets) {
-    if (y > pageH - margin - 160) { doc.addPage(); y = margin; }
-    const split = doc.splitTextToSize(`\u2022 ${bullet}`, pageW - margin * 2 - 8);
-    doc.text(split, margin, y);
-    y += split.length * 13 + 6;
+    if (y > pageH - margin - 160) { addPageWithFooter(); }
+    const numbered = bullet.match(/^(\(?\d+\)?[.)]?)\s*(.*)$/);
+    const clauseNumber = numbered?.[1] || "\u2022";
+    const clauseText = numbered?.[2] || bullet;
+    const split = doc.splitTextToSize(clauseText, pageW - margin * 2 - 26);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...slate);
+    doc.text(clauseNumber, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...navy);
+    doc.text(split, margin + 22, y);
+    y += split.length * 13 + 4;
   }
   y += 20;
 
@@ -277,11 +343,19 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   console.log("contract signatures:", !!contract.client_signature, !!contract.manager_signature);
   const sigBoxH = 60;
   const sigBoxW = (pageW - margin * 2 - 24) / 2;
-  let sigY = y + 10;
+  let summaryY = y + 8;
+  let sigY = summaryY + 28;
   if (sigY + sigBoxH + 70 > pageH - 36) {
-    doc.addPage();
-    sigY = margin;
+    addPageWithFooter();
+    summaryY = margin;
+    sigY = summaryY + 28;
   }
+
+  doc.setFont("courier", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...navy);
+  doc.text(`Total Rental Amount: AED ${Number(contract.total_amount).toLocaleString()}`, margin, summaryY);
+  doc.text(`Deposit Held: AED ${Number(contract.deposit_amount).toLocaleString()}`, pageW - margin, summaryY, { align: "right" });
 
   // Left box coords: x=margin, y=sigY, w=sigBoxW, h=sigBoxH
   // Right box coords: x=margin+sigBoxW+24, y=sigY, w=sigBoxW, h=sigBoxH
@@ -323,15 +397,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.text(`Date: ${today}`, margin + sigBoxW + 24, boxBottom + 26);
 
   // ── FOOTER ──────────────────────────────────────────────────────────────────
-  const footerY = pageH - 24;
-  doc.setDrawColor(200, 200, 200);
-  doc.setLineWidth(0.5);
-  doc.line(margin, footerY - 8, pageW - margin, footerY - 8);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(160, 160, 160);
-  doc.text(`Date of Issue: ${today}`, margin, footerY);
-  doc.text(`Document ID: ${contractNumber}`, pageW - margin, footerY, { align: "right" });
+  addFooter();
 
   const filename = `Contract_${contractNumber}_${(c?.full_name || "client").replace(/\s+/g, "_")}.pdf`;
   if (options?.returnBlob) {
