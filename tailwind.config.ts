@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 export default {
-  darkMode: ["class"],
+  darkMode: "class",
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   prefix: "",
   theme: {
@@ -63,6 +63,25 @@ export default {
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
+        },
+        fd: {
+          bg: "var(--fd-bg)",
+          nav: "var(--fd-nav)",
+          surface: "var(--fd-surface)",
+          surface2: "var(--fd-surface2)",
+          border: "var(--fd-border)",
+          border2: "var(--fd-border2)",
+          text: "var(--fd-text)",
+          muted: "var(--fd-muted)",
+          subtle: "var(--fd-subtle)",
+          accent: "var(--fd-accent)",
+          "accent-dim": "var(--fd-accent-dim)",
+          green: "var(--fd-green)",
+          "green-dim": "var(--fd-green-dim)",
+          amber: "var(--fd-amber)",
+          "amber-dim": "var(--fd-amber-dim)",
+          red: "var(--fd-red)",
+          "red-dim": "var(--fd-red-dim)",
         },
       },
       borderRadius: {

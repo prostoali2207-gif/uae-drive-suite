@@ -88,7 +88,14 @@ const ClientDetail = () => {
           .order("created_at", { ascending: false }),
       ]);
       if (clientRes.error) toast.error("Failed to load client");
-      else setClient(clientRes.data as unknown as ClientRecord);
+      else {
+        setClient(clientRes.data as unknown as ClientRecord);
+        supabase
+          .from("clients")
+          .update({ is_new: false } as never)
+          .eq("id", id)
+          .then(() => {});
+      }
       if (!contractsRes.error) setContracts((contractsRes.data as ContractRow[]) || []);
       setLoading(false);
     };

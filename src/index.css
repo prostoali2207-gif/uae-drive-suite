@@ -8,47 +8,66 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 20% 14%;
+    --background: 228 45% 13%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 20% 14%;
+    --card: 231 42% 18%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 20% 14%;
+    --popover: 231 42% 18%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 222 20% 14%;
-    --primary-foreground: 0 0% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 20% 14%;
+    --secondary: 229 39% 22%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 229 39% 22%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 220 14% 96%;
-    --accent-foreground: 222 20% 14%;
+    --accent: 229 39% 22%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 222 20% 14%;
+    --border: 228 30% 20%;
+    --input: 229 39% 22%;
+    --ring: 217 91% 60%;
 
     --radius: 0.625rem;
 
-    /* Soft, muted accent tints for stat icons (Linear/Notion-inspired) */
-    --tint-blue: 214 32% 95%;
-    --tint-blue-foreground: 217 60% 45%;
-    --tint-green: 150 30% 94%;
-    --tint-green-foreground: 152 45% 35%;
-    --tint-amber: 38 50% 94%;
-    --tint-amber-foreground: 30 55% 40%;
-    --tint-rose: 350 50% 96%;
-    --tint-rose-foreground: 350 55% 45%;
-    --tint-violet: 260 40% 96%;
-    --tint-violet-foreground: 258 40% 50%;
+    /* Deep Navy fd-* design tokens */
+    --fd-bg: #121830;
+    --fd-nav: #0F1428;
+    --fd-surface: #1A2040;
+    --fd-surface2: #222A4E;
+    --fd-border: rgba(91, 110, 245, 0.12);
+    --fd-border2: rgba(91, 110, 245, 0.22);
+    --fd-text: #E8ECF8;
+    --fd-muted: #6B7A9E;
+    --fd-subtle: #3D4A6A;
+    --fd-accent: #5B6EF5;
+    --fd-accent-dim: rgba(91, 110, 245, 0.15);
+    --fd-green: #0FCA8A;
+    --fd-green-dim: rgba(15, 202, 138, 0.12);
+    --fd-amber: #F8AC1A;
+    --fd-amber-dim: rgba(248, 172, 26, 0.12);
+    --fd-red: #F04E4E;
+    --fd-red-dim: rgba(240, 78, 78, 0.10);
+
+    /* Soft, muted accent tints for stat icons — dark-compatible */
+    --tint-blue: 217 60% 18%;
+    --tint-blue-foreground: 217 80% 72%;
+    --tint-green: 152 55% 14%;
+    --tint-green-foreground: 152 65% 55%;
+    --tint-amber: 38 70% 16%;
+    --tint-amber-foreground: 38 85% 62%;
+    --tint-rose: 350 65% 16%;
+    --tint-rose-foreground: 350 70% 68%;
+    --tint-violet: 260 55% 18%;
+    --tint-violet-foreground: 260 70% 72%;
 
     /* Dark sidebar (Linear-style) */
     --sidebar-background: 222 18% 11%;

@@ -4,6 +4,69 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    /* Exact theme custom properties */
+    --bg-page: #121830;
+    --bg-card: #1A2040;
+    --bg-input: #222A4E;
+    --border-color: rgba(91, 110, 245, 0.22);
+    --text-primary: #f0f0f0;
+    --text-secondary: #6B7A9E;
+    --accent-color: #4f6ef7;
+    --destructive-color: #ef4444;
+    --success-color: #22c55e;
+    --warning-color: #f59e0b;
+
+    /* HSL theme variables for Tailwind CSS */
+    --background: 0 0% 3.9%;
+    --foreground: 210 40% 98%;
+    --card: 0 0% 6.7%;
+    --card-foreground: 210 40% 98%;
+    --popover: 0 0% 6.7%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 10.2%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 0 0% 10.2%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 0 0% 10.2%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84.3% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 16.5%;
+    --input: 0 0% 10.2%;
+    --ring: 229 91.8% 63.9%;
+    --radius: 0.625rem;
+
+    /* Deep Navy theme */
+    --fd-bg: #121830;
+    --fd-nav: #0F1428;
+    --fd-surface: #1A2040;
+    --fd-surface2: #222A4E;
+    --fd-border: rgba(91, 110, 245, 0.12);
+    --fd-border2: rgba(91, 110, 245, 0.22);
+    --fd-text: #E8ECF8;
+    --fd-muted: #6B7A9E;
+    --fd-subtle: #3D4A6A;
+    --fd-accent: #5B6EF5;
+    --fd-accent-dim: rgba(91, 110, 245, 0.15);
+    --fd-green: #0FCA8A;
+    --fd-green-dim: rgba(15, 202, 138, 0.12);
+    --fd-amber: #F8AC1A;
+    --fd-amber-dim: rgba(248, 172, 26, 0.12);
+    --fd-red: #F04E4E;
+    --fd-red-dim: rgba(240, 78, 78, 0.10);
+  }
+
+  html, body {
+    background-color: #121830;
+    color: #E8ECF8;
+  }
+}
+
+
 .font-dm-sans {
   font-family: 'DM Sans', sans-serif;
 }

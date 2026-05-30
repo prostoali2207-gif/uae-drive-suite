@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Pencil,
@@ -15,10 +15,51 @@ import {
   LayoutGrid,
   Wallet,
   AlertCircle,
+  MoreHorizontal,
+  History,
+  Trash2,
 } from "lucide-react";
+import { RecordPaymentModal } from "@/components/RecordPaymentModal";
+import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
+import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,21 +99,36 @@ interface ContractRecord {
   } | null;
 }
 
+interface AvailableCarRow {
+  id: string;
+  plate: string;
+  make: string;
+  model: string;
+  year: number;
+  status: string;
+}
+
 interface FineRow {
   id: string;
   fine_date: string;
+  fine_number?: string | null;
   fine_type: string;
   amount: number;
   status: string;
   source: string;
+  notes?: string | null;
 }
 
 interface SalikRow {
   id: string;
   charge_date: string;
+  transaction_id?: string | null;
+  toll_gate?: string | null;
+  direction?: string | null;
   trips: number;
   amount: number;
   status: string;
+  notes?: string | null;
 }
 
 interface PaymentRow {
@@ -301,8 +357,8 @@ const StatusPill = ({ status }: { status: string }) => {
   );
 };
 
-const EntryRow = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex items-center gap-3 border-b border-border/40 px-3 py-2.5 last:border-b-0">
+const EntryRow = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("flex items-center gap-3 border-b border-border/40 px-3 py-2.5 last:border-b-0", className)}>
     {children}
   </div>
 );
@@ -313,6 +369,8 @@ type FinancialsAccordionProps = {
   fines: FineRow[];
   salik: SalikRow[];
   totals: { charges: number; credits: number; outstanding: number };
+  onUpdateFineNote: (id: string, note: string) => void;
+  onUpdateSalikNote: (id: string, note: string) => void;
 };
 
 const FinancialsAccordion = ({
@@ -321,6 +379,8 @@ const FinancialsAccordion = ({
   fines,
   salik,
   totals,
+  onUpdateFineNote,
+  onUpdateSalikNote,
 }: FinancialsAccordionProps) => {
   const rentalTotal = Number(contract.total_amount);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
@@ -335,7 +395,114 @@ const FinancialsAccordion = ({
   }[] = [];
   const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
 
+  const [editingFineId, setEditingFineId] = useState<string | null>(null);
+  const [fineNoteDraft, setFineNoteDraft] = useState("");
+  const [savingFineNote, setSavingFineNote] = useState(false);
+  const [fineMenuState, setFineMenuState] = useState<{
+    id: string;
+    top: number;
+    right: number;
+  } | null>(null);
+
+  const openFineMenu = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    fineId: string,
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setFineMenuState({
+      id: fineId,
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+  };
+
+  const [editingSalikId, setEditingSalikId] = useState<string | null>(null);
+  const [salikNoteDraft, setSalikNoteDraft] = useState("");
+  const [savingSalikNote, setSavingSalikNote] = useState(false);
+  const [salikMenuState, setSalikMenuState] = useState<{
+    id: string;
+    top: number;
+    right: number;
+  } | null>(null);
+
+  const openSalikMenu = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    salikId: string,
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSalikMenuState({
+      id: salikId,
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+  };
+
+  const [showFinesModal, setShowFinesModal] = useState(false);
+  const [showSalikModal, setShowSalikModal] = useState(false);
+
+  const FINES_PAGE_SIZE = 10;
+  const SALIK_PAGE_SIZE = 20;
+  const [finePage, setFinePage] = useState(0);
+  const [salikPage, setSalikPage] = useState(0);
+  const finesTotalPages = Math.max(1, Math.ceil(fines.length / FINES_PAGE_SIZE));
+  const salikTotalPages = Math.max(1, Math.ceil(salik.length / SALIK_PAGE_SIZE));
+  const finesPageItems = fines.slice(finePage * FINES_PAGE_SIZE, (finePage + 1) * FINES_PAGE_SIZE);
+  const salikPageItems = salik.slice(salikPage * SALIK_PAGE_SIZE, (salikPage + 1) * SALIK_PAGE_SIZE);
+
   return (
+    <>
+      {fineMenuState !== null && (
+        <>
+          <div
+            className="fixed inset-0 z-[100]"
+            onClick={() => setFineMenuState(null)}
+          />
+          <div
+            className="fixed z-[101] min-w-[120px] rounded-md border border-border bg-card py-1 shadow-md"
+            style={{ top: fineMenuState.top, right: fineMenuState.right }}
+          >
+            <button
+              type="button"
+              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+              onClick={() => {
+                const fine = fines.find((f) => f.id === fineMenuState.id);
+                setEditingFineId(fineMenuState.id);
+                setFineNoteDraft(fine?.notes ?? "");
+                setFineMenuState(null);
+              }}
+            >
+              Add note
+            </button>
+          </div>
+        </>
+      )}
+
+      {salikMenuState !== null && (
+        <>
+          <div
+            className="fixed inset-0 z-[100]"
+            onClick={() => setSalikMenuState(null)}
+          />
+          <div
+            className="fixed z-[101] min-w-[120px] rounded-md border border-border bg-card py-1 shadow-md"
+            style={{ top: salikMenuState.top, right: salikMenuState.right }}
+          >
+            <button
+              type="button"
+              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+              onClick={() => {
+                const entry = salik.find((s) => s.id === salikMenuState.id);
+                setEditingSalikId(salikMenuState.id);
+                setSalikNoteDraft(entry?.notes ?? "");
+                setSalikMenuState(null);
+              }}
+            >
+              Add note
+            </button>
+          </div>
+        </>
+      )}
+
     <div className="space-y-2">
       <AccordionRow label="Rental" count={1} total={rentalTotal} accent="blue">
         <EntryRow>
@@ -354,46 +521,325 @@ const FinancialsAccordion = ({
         </EntryRow>
       </AccordionRow>
 
-      <AccordionRow
-        label="Traffic Fines"
-        count={fines.length}
-        total={finesTotal}
-        accent="red"
-        totalClass="text-tint-rose-foreground"
+      {/* Traffic Fines — summary row */}
+      <button
+        type="button"
+        onClick={() => { setFinePage(0); setShowFinesModal(true); }}
+        className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5 text-left transition-colors hover:bg-muted/40"
       >
-        {fines.map((f) => (
-          <EntryRow key={f.id}>
-            <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {formatDate(f.fine_date)}
-            </span>
-            <span className="flex-1 truncate text-xs text-foreground/90">
-              {f.fine_type} · {f.source}
-            </span>
-            <StatusPill status={f.status} />
-            <span className="w-24 text-right text-sm font-bold tabular-nums text-tint-rose-foreground">
-              {fmtAed(Number(f.amount))}
-            </span>
-          </EntryRow>
-        ))}
-      </AccordionRow>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Traffic Fines</span>
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+            {fines.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold tabular-nums text-tint-rose-foreground">{fmtAed(finesTotal)}</span>
+          <span className="text-[11px] text-muted-foreground">View All →</span>
+        </div>
+      </button>
 
-      <AccordionRow label="Salik" count={salik.length} total={salikTotal} accent="cyan">
-        {salik.map((s) => (
-          <EntryRow key={s.id}>
-            <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {formatDate(s.charge_date)}
-            </span>
-            <span className="inline-flex items-center rounded-full bg-tint-blue px-2 py-0.5 text-[10px] font-medium text-tint-blue-foreground">
-              {s.trips} trips
-            </span>
-            <span className="flex-1" />
-            <StatusPill status={s.status} />
-            <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
-              {fmtAed(Number(s.amount))}
-            </span>
-          </EntryRow>
-        ))}
-      </AccordionRow>
+      <Dialog open={showFinesModal} onOpenChange={setShowFinesModal}>
+        <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col gap-0 p-0">
+          <DialogHeader className="border-b border-border px-6 py-4">
+            <DialogTitle className="text-sm font-semibold">Traffic Fines</DialogTitle>
+            <DialogDescription className="text-xs">
+              {fines.length} records · Total {fmtAed(finesTotal)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {fines.length === 0 ? (
+              <div className="px-6 py-10 text-center text-xs text-muted-foreground">No fines.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-9 px-4 text-[11px]">Date</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px]">Fine No.</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px]">Type</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px]">Source</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px] text-right">Amount</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px]">Status</TableHead>
+                    <TableHead className="h-9 w-8 px-2" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {finesPageItems.map((f) => (
+                    <Fragment key={f.id}>
+                      <TableRow className={cn(f.status === "Paid" && "opacity-50")}>
+                        <TableCell className="px-4 py-2 text-[11px] tabular-nums text-muted-foreground whitespace-nowrap">
+                          {formatDate(f.fine_date)}
+                        </TableCell>
+                        <TableCell className="px-4 py-2 font-mono text-xs">
+                          {f.fine_number ?? "—"}
+                        </TableCell>
+                        <TableCell className="px-4 py-2 text-xs">
+                          <div>{f.fine_type}</div>
+                          {f.notes && (
+                            <div className="mt-0.5 max-w-[180px] truncate text-[10px] text-muted-foreground">
+                              {f.notes}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-2 text-xs">{f.source}</TableCell>
+                        <TableCell className="px-4 py-2 text-right font-mono text-xs font-bold text-tint-rose-foreground whitespace-nowrap">
+                          {fmtAed(Number(f.amount))}
+                        </TableCell>
+                        <TableCell className="px-4 py-2">
+                          <StatusPill status={f.status} />
+                        </TableCell>
+                        <TableCell className="px-2 py-2 w-8">
+                          <button
+                            type="button"
+                            onClick={(e) => openFineMenu(e, f.id)}
+                            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                      {editingFineId === f.id && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={7} className="bg-muted/30 px-4 py-2">
+                            <div className="flex items-start gap-2">
+                              <textarea
+                                autoFocus
+                                rows={2}
+                                placeholder="Add note..."
+                                value={fineNoteDraft}
+                                onChange={(e) => setFineNoteDraft(e.target.value)}
+                                className="flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              />
+                              <div className="flex flex-col gap-1">
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={savingFineNote}
+                                  onClick={async () => {
+                                    setSavingFineNote(true);
+                                    const { error } = await supabase
+                                      .from("fines")
+                                      .update({ notes: fineNoteDraft } as never)
+                                      .eq("id", f.id);
+                                    setSavingFineNote(false);
+                                    if (error) {
+                                      toast.error("Failed to save note");
+                                    } else {
+                                      onUpdateFineNote(f.id, fineNoteDraft);
+                                      setEditingFineId(null);
+                                      toast.success("Note saved");
+                                    }
+                                  }}
+                                >
+                                  {savingFineNote ? "…" : "Save"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setEditingFineId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          {finesTotalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-border px-6 py-3">
+              <span className="text-[11px] text-muted-foreground">
+                Page {finePage + 1} of {finesTotalPages} · {fines.length} total
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  disabled={finePage === 0}
+                  onClick={() => setFinePage((p) => p - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  disabled={finePage >= finesTotalPages - 1}
+                  onClick={() => setFinePage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Salik — summary row */}
+      <button
+        type="button"
+        onClick={() => { setSalikPage(0); setShowSalikModal(true); }}
+        className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5 text-left transition-colors hover:bg-muted/40"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Salik</span>
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+            {salik.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold tabular-nums text-foreground">{fmtAed(salikTotal)}</span>
+          <span className="text-[11px] text-muted-foreground">View All →</span>
+        </div>
+      </button>
+
+      <Dialog open={showSalikModal} onOpenChange={setShowSalikModal}>
+        <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col gap-0 p-0">
+          <DialogHeader className="border-b border-border px-6 py-4">
+            <DialogTitle className="text-sm font-semibold">Salik Charges</DialogTitle>
+            <DialogDescription className="text-xs">
+              {salik.length} records · Total {fmtAed(salikTotal)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {salik.length === 0 ? (
+              <div className="px-6 py-10 text-center text-xs text-muted-foreground">No Salik charges.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-9 px-4 text-[11px]">Date</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px]">Transaction ID</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px]">Toll Gate</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px]">Direction</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px] text-right">Trips</TableHead>
+                    <TableHead className="h-9 px-4 text-[11px] text-right">Amount</TableHead>
+                    <TableHead className="h-9 w-8 px-2" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {salikPageItems.map((s) => (
+                    <Fragment key={s.id}>
+                      <TableRow className={cn(s.status === "Paid" && "opacity-50")}>
+                        <TableCell className="px-4 py-2 text-[11px] tabular-nums text-muted-foreground whitespace-nowrap">
+                          {formatDate(s.charge_date)}
+                        </TableCell>
+                        <TableCell className="px-4 py-2 font-mono text-xs">
+                          <div>{s.transaction_id ?? "—"}</div>
+                          {s.notes && (
+                            <div className="mt-0.5 max-w-[180px] truncate text-[10px] text-muted-foreground">
+                              {s.notes}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-2 text-xs">{s.toll_gate ?? "—"}</TableCell>
+                        <TableCell className="px-4 py-2 text-xs">{s.direction ?? "—"}</TableCell>
+                        <TableCell className="px-4 py-2 text-right font-mono text-xs tabular-nums">
+                          {s.trips}
+                        </TableCell>
+                        <TableCell className="px-4 py-2 text-right font-mono text-xs font-bold tabular-nums whitespace-nowrap">
+                          {fmtAed(Number(s.amount))}
+                        </TableCell>
+                        <TableCell className="px-2 py-2 w-8">
+                          <button
+                            type="button"
+                            onClick={(e) => openSalikMenu(e, s.id)}
+                            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                      {editingSalikId === s.id && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={7} className="bg-muted/30 px-4 py-2">
+                            <div className="flex items-start gap-2">
+                              <textarea
+                                autoFocus
+                                rows={2}
+                                placeholder="Add note..."
+                                value={salikNoteDraft}
+                                onChange={(e) => setSalikNoteDraft(e.target.value)}
+                                className="flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              />
+                              <div className="flex flex-col gap-1">
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={savingSalikNote}
+                                  onClick={async () => {
+                                    setSavingSalikNote(true);
+                                    const { error } = await supabase
+                                      .from("salik")
+                                      .update({ notes: salikNoteDraft } as never)
+                                      .eq("id", s.id);
+                                    setSavingSalikNote(false);
+                                    if (error) {
+                                      toast.error("Failed to save note");
+                                    } else {
+                                      onUpdateSalikNote(s.id, salikNoteDraft);
+                                      setEditingSalikId(null);
+                                      toast.success("Note saved");
+                                    }
+                                  }}
+                                >
+                                  {savingSalikNote ? "…" : "Save"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setEditingSalikId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          {salikTotalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-border px-6 py-3">
+              <span className="text-[11px] text-muted-foreground">
+                Page {salikPage + 1} of {salikTotalPages} · {salik.length} total
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  disabled={salikPage === 0}
+                  onClick={() => setSalikPage((p) => p - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  disabled={salikPage >= salikTotalPages - 1}
+                  onClick={() => setSalikPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AccordionRow
         label="Other Fees"
@@ -430,33 +876,10 @@ const FinancialsAccordion = ({
         })}
       </AccordionRow>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
-          <span className="text-muted-foreground">
-            Total charges:{" "}
-            <span className="font-semibold tabular-nums text-foreground">
-              {fmtAed(totals.charges - Number(contract.deposit_amount))}
-            </span>
-          </span>
-          <span className="text-muted-foreground">
-            Paid:{" "}
-            <span className="font-semibold tabular-nums text-tint-green-foreground">
-              {fmtAed(totals.credits)}
-            </span>
-          </span>
-        </div>
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold tabular-nums",
-            totals.outstanding > 0
-              ? "border-tint-rose-foreground/40 bg-tint-rose text-tint-rose-foreground"
-              : "border-border bg-muted text-foreground",
-          )}
-        >
-          Balance Due: {fmtAed(totals.outstanding)}
-        </span>
-      </div>
+
     </div>
+
+    </>
   );
 };
 
@@ -470,58 +893,84 @@ const ContractDetail = () => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeReturnDate, setCloseReturnDate] = useState("");
+  const [closeReceivedBy, setCloseReceivedBy] = useState("");
+  const [closeVehicleStatus, setCloseVehicleStatus] = useState("Available");
+  const [isClosing, setIsClosing] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editEndDate, setEditEndDate] = useState("");
+  const [editCarId, setEditCarId] = useState("");
+  const [availableCars, setAvailableCars] = useState<AvailableCarRow[]>([]);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [replaceVehicleOpen, setReplaceVehicleOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [replacementCount, setReplacementCount] = useState(0);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const navigate = useNavigate();
+
+  const fetchData = useCallback(async () => {
+    if (!id) return;
+    const { data: contractData, error: contractErr } = await supabase
+      .from("contracts")
+      .select(
+        "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
+      )
+      .eq("id", id)
+      .maybeSingle();
+
+    if (contractErr) {
+      toast.error("Failed to load contract");
+      setLoading(false);
+      return;
+    }
+
+    const c = contractData as ContractRecord | null;
+    setContract(c);
+    setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
+
+    if (c) {
+      const [paymentsRes, finesRes, salikRes] = await Promise.all([
+        supabase
+          .from("payments")
+          .select("id, payment_date, amount, method, status")
+          .eq("contract_id", c.id)
+          .order("payment_date", { ascending: false }),
+        supabase
+          .from("fines")
+          .select("id, fine_date, fine_number, fine_type, amount, status, source, notes")
+          .eq("contract_id", c.id)
+          .order("fine_date", { ascending: false }),
+        supabase
+          .from("salik")
+          .select("id, charge_date, transaction_id, toll_gate, direction, trips, amount, status, notes")
+          .eq("contract_id", c.id)
+          .order("charge_date", { ascending: false }),
+      ]);
+      if (!paymentsRes.error) setPayments(paymentsRes.data || []);
+      if (!finesRes.error) setFines(finesRes.data || []);
+      if (!salikRes.error) setSalik(salikRes.data || []);
+    }
+    setLoading(false);
+  }, [id]);
 
   useEffect(() => {
-    if (!id) return;
-    const fetchData = async () => {
-      const { data: contractData, error: contractErr } = await supabase
-        .from("contracts")
-        .select(
-          "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year)",
-        )
-        .eq("id", id)
-        .maybeSingle();
-
-      if (contractErr) {
-        toast.error("Failed to load contract");
-        setLoading(false);
-        return;
-      }
-
-      const c = contractData as ContractRecord | null;
-      setContract(c);
-      setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
-
-      if (c) {
-        const [paymentsRes, finesRes, salikRes] = await Promise.all([
-          supabase
-            .from("payments")
-            .select("id, payment_date, amount, method, status")
-            .eq("contract_id", c.id)
-            .order("payment_date", { ascending: false }),
-          supabase
-            .from("fines")
-            .select("id, fine_date, fine_type, amount, status, source")
-            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-            .gte("fine_date", c.start_date)
-            .lte("fine_date", c.end_date)
-            .order("fine_date", { ascending: false }),
-          supabase
-            .from("salik")
-            .select("id, charge_date, trips, amount, status")
-            .or(`car_id.eq.${c.car_id},client_id.eq.${c.client_id}`)
-            .gte("charge_date", c.start_date)
-            .lte("charge_date", c.end_date)
-            .order("charge_date", { ascending: false }),
-        ]);
-        if (!paymentsRes.error) setPayments(paymentsRes.data || []);
-        if (!finesRes.error) setFines(finesRes.data || []);
-        if (!salikRes.error) setSalik(salikRes.data || []);
-      }
-      setLoading(false);
-    };
     fetchData();
-  }, [id]);
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (!contract?.id) return;
+    (supabase as unknown as any)
+      .from("contract_vehicles")
+      .select("id", { count: "exact", head: true })
+      .eq("contract_id", contract.id)
+      .then(({ count }: { count: number | null }) => {
+        setReplacementCount(count ?? 0);
+      });
+  }, [contract?.id]);
 
   const days = useMemo(
     () => (contract ? diffDays(contract.start_date, contract.end_date) : 0),
@@ -613,6 +1062,93 @@ const ContractDetail = () => {
     setEditingNotes(false);
   };
 
+  const handleCloseContract = async () => {
+    if (!contract) return;
+    setIsClosing(true);
+    const [contractRes, vehicleRes] = await Promise.all([
+      supabase
+        .from("contracts")
+        .update({ status: "Closed" } as never)
+        .eq("id", contract.id),
+      supabase
+        .from("cars")
+        .update({ status: closeVehicleStatus } as never)
+        .eq("id", contract.car_id),
+    ]);
+    setIsClosing(false);
+    if (contractRes.error || vehicleRes.error) {
+      toast.error("Failed to close contract");
+      return;
+    }
+    toast.success("Contract closed");
+    navigate("/contracts");
+  };
+
+  const handleDeleteContract = async () => {
+    if (!id) return;
+
+    try {
+      // 1. Delete related payments
+      const { error: payErr } = await supabase
+        .from("payments")
+        .delete()
+        .eq("contract_id", id);
+      if (payErr) throw payErr;
+
+      // 2. Delete related contract_vehicles
+      const { error: vehErr } = await (supabase as any)
+        .from("contract_vehicles")
+        .delete()
+        .eq("contract_id", id);
+      if (vehErr) throw vehErr;
+
+      // 3. Delete the contract itself
+      const { error: contractErr } = await supabase
+        .from("contracts")
+        .delete()
+        .eq("id", id);
+      if (contractErr) throw contractErr;
+
+      toast.success("Contract deleted");
+      navigate("/contracts");
+    } catch (error: any) {
+      toast.error("Failed to delete contract: " + error.message);
+    } finally {
+      setDeleteConfirmOpen(false);
+    }
+  };
+
+  const handleOpenEditModal = async () => {
+    if (!contract) return;
+    setEditStartDate(contract.start_date);
+    setEditEndDate(contract.end_date);
+    setEditCarId(contract.car_id);
+    const { data } = await supabase
+      .from("cars")
+      .select("id, plate, make, model, year, status")
+      .eq("status", "available")
+      .order("plate");
+    setAvailableCars((data as AvailableCarRow[]) ?? []);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!contract) return;
+    setIsSavingEdit(true);
+    const { error } = await supabase
+      .from("contracts")
+      .update({ start_date: editStartDate, end_date: editEndDate, car_id: editCarId } as never)
+      .eq("id", contract.id);
+    setIsSavingEdit(false);
+    if (error) {
+      toast.error("Failed to save changes");
+      return;
+    }
+    toast.success("Contract updated");
+    setShowEditModal(false);
+    fetchData();
+  };
+
   if (loading) {
     return (
       <DashboardLayout title="Contract">
@@ -667,29 +1203,27 @@ const ContractDetail = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="flex flex-col items-end leading-tight">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Outstanding Balance
-                </span>
-                <span
-                  className={cn(
-                    "text-xl font-bold tabular-nums tracking-tight",
-                    isOverdue ? "text-tint-rose-foreground" : "text-foreground",
-                  )}
-                >
-                  {fmtAed(totals.outstanding)}
-                </span>
-              </div>
               <div className="flex items-center gap-1.5">
                 <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled>
                   <Download className="h-3.5 w-3.5" />
                   Invoice
                 </Button>
-                <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => {
+                    const d = contract.end_date;
+                    setCloseReturnDate(d.includes("T") ? d.slice(0, 16) : `${d}T00:00`);
+                    setCloseReceivedBy("");
+                    setCloseVehicleStatus("Available");
+                    setShowCloseModal(true);
+                  }}
+                >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Close
                 </Button>
-                <Button size="sm" className="h-8 gap-1.5" disabled>
+                <Button size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
                 </Button>
@@ -733,6 +1267,15 @@ const ContractDetail = () => {
               <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Details
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                onClick={() => setReplaceVehicleOpen(true)}
+                disabled={contract.status === "Closed"}
+              >
+                Replace Vehicle
               </Button>
             </div>
 
@@ -778,6 +1321,19 @@ const ContractDetail = () => {
                     value={`${contract.initial_mileage.toLocaleString()} km`}
                   />
                 </div>
+                {replacementCount > 0 && (
+                  <button
+                    onClick={() => setHistoryOpen(true)}
+                    className="w-full flex items-center justify-between mt-3 pt-3 border-t border-white/[0.07] text-left hover:bg-white/[0.02] rounded px-0.5 transition-colors"
+                  >
+                    <span className="flex items-center gap-2 text-[12px] font-medium text-white/50">
+                      <History className="w-4 h-4" />
+                      Vehicle replacements
+                      <span className="font-mono text-[10px] text-blue-400 bg-blue-400/10 border border-blue-400/20 rounded px-1.5 py-0.5">{replacementCount}</span>
+                    </span>
+                    <span className="text-white/30 text-xs">→</span>
+                  </button>
+                )}
               </Panel>
 
               <Panel title="Rental Period">
@@ -842,6 +1398,49 @@ const ContractDetail = () => {
 
           {/* FINANCIALS */}
           <TabsContent value="financials" className="mt-4 space-y-3">
+            <div className="flex flex-row gap-3 mb-4">
+              {/* Total charged card */}
+              <div className="flex-1 rounded-md border border-border bg-muted/30 p-3">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Total charged
+                </div>
+                <div className="mt-0.5 text-base font-semibold tabular-nums text-foreground">
+                  {fmtAed(totals.charges - Number(contract.deposit_amount))}
+                </div>
+              </div>
+
+              {/* Paid card */}
+              <div className="flex-1 rounded-md border border-tint-green-foreground/30 bg-[#EAF3DE] p-3">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Paid
+                </div>
+                <div className="mt-0.5 text-base font-semibold tabular-nums text-[#3B6D11]">
+                  {fmtAed(totals.credits)}
+                </div>
+              </div>
+
+              {/* Balance due card */}
+              <div className="flex-1 rounded-md border border-tint-rose-foreground/30 bg-[#FCEBEB] p-3">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Balance due
+                </div>
+                <div className="mt-0.5 text-base font-semibold tabular-nums text-[#A32D2D]">
+                  {fmtAed(totals.outstanding)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-md border border-border p-3 mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
+                <span className="text-base font-semibold tabular-nums">{fmtAed(Number(contract.deposit_amount))}</span>
+                <span className="text-[10px] text-muted-foreground">Held on card</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Held</span>
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Receipt className="h-3.5 w-3.5" />
@@ -852,7 +1451,7 @@ const ContractDetail = () => {
                   <Plus className="h-3.5 w-3.5" />
                   Add Fee / Fine
                 </Button>
-                <Button size="sm" className="h-8 gap-1.5" disabled>
+                <Button size="sm" className="h-8 gap-1.5" onClick={() => setShowPaymentModal(true)}>
                   <Plus className="h-3.5 w-3.5" />
                   Add Payment
                 </Button>
@@ -865,6 +1464,31 @@ const ContractDetail = () => {
               fines={fines}
               salik={salik}
               totals={totals}
+              onUpdateFineNote={(fineId, note) =>
+                setFines((prev) =>
+                  prev.map((f) => (f.id === fineId ? { ...f, notes: note } : f)),
+                )
+              }
+              onUpdateSalikNote={(salikId, note) =>
+                setSalik((prev) =>
+                  prev.map((s) => (s.id === salikId ? { ...s, notes: note } : s)),
+                )
+              }
+            />
+            <RecordPaymentModal
+              open={showPaymentModal}
+              onClose={() => setShowPaymentModal(false)}
+              onSuccess={fetchData}
+              contractId={contract.id}
+              balanceDue={totals.outstanding}
+              clientId={contract.client_id}
+              ledgerEntries={ledger.map(e => ({
+                id: e.id,
+                description: e.description,
+                amount: e.debit - e.credit,
+                status: e.status,
+                type: e.type
+              }))}
             />
           </TabsContent>
 
@@ -996,7 +1620,176 @@ const ContractDetail = () => {
             </Panel>
           </TabsContent>
         </Tabs>
+        <div className="mt-8 pb-8 text-right">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-500 hover:bg-red-500/10 hover:text-red-600 gap-1.5"
+            onClick={() => setDeleteConfirmOpen(true)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete Contract
+          </Button>
+        </div>
       </div>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this contract?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete this contract and all its payments? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteContract}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Contract
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={showEditModal} onOpenChange={(v) => !v && setShowEditModal(false)}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Edit Contract</DialogTitle>
+            <DialogDescription className="text-xs">
+              {contract ? `CTR-${contract.id.slice(0, 8).toUpperCase()}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Start Date
+              </Label>
+              <input
+                type="date"
+                value={editStartDate}
+                onChange={(e) => setEditStartDate(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                End Date
+              </Label>
+              <input
+                type="date"
+                value={editEndDate}
+                onChange={(e) => setEditEndDate(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Vehicle
+              </Label>
+              <Select value={editCarId} onValueChange={setEditCarId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select vehicle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCars.map((car) => (
+                    <SelectItem key={car.id} value={car.id}>
+                      {car.plate} · {car.year} {car.make} {car.model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditModal(false)}>
+              Cancel
+            </Button>
+            <Button disabled={isSavingEdit || !editStartDate || !editEndDate || !editCarId} onClick={handleSaveEdit}>
+              {isSavingEdit ? "Saving…" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCloseModal} onOpenChange={(v) => !v && setShowCloseModal(false)}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Close Contract</DialogTitle>
+            <DialogDescription className="text-xs">
+              {contract ? `CTR-${contract.id.slice(0, 8).toUpperCase()}` : ""} · This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Return Date &amp; Time
+              </Label>
+              <input
+                type="datetime-local"
+                value={closeReturnDate}
+                onChange={(e) => setCloseReturnDate(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Received By
+              </Label>
+              <Input
+                placeholder="Staff name"
+                value={closeReceivedBy}
+                onChange={(e) => setCloseReceivedBy(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Vehicle Status After Return
+              </Label>
+              <Select value={closeVehicleStatus} onValueChange={setCloseVehicleStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Available">Available</SelectItem>
+                  <SelectItem value="Under Service">Under Service</SelectItem>
+                  <SelectItem value="Reserved">Reserved</SelectItem>
+                  <SelectItem value="Unavailable">Unavailable</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCloseModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={isClosing} onClick={handleCloseContract}>
+              {isClosing ? "Closing…" : "Confirm Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ReplaceVehicleModal
+        contractId={contract.id}
+        currentCarId={contract.car_id}
+        contractStartDate={contract.start_date}
+        isOpen={replaceVehicleOpen}
+        onClose={() => setReplaceVehicleOpen(false)}
+        onSuccess={() => {
+          setReplaceVehicleOpen(false);
+          fetchData();
+        }}
+      />
+      <VehicleHistorySheet contractId={contract.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </DashboardLayout>
   );
 };

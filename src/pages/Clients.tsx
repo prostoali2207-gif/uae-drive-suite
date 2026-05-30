@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, Plus, Search } from "lucide-react";
+import { Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,10 +22,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
-import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
+import { ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -58,6 +63,7 @@ interface ClientRecord {
   license_front_url: string | null;
   license_back_url: string | null;
   created_at: string;
+  is_new?: boolean | null;
 }
 
 interface ContractRow {
@@ -102,12 +108,16 @@ const Clients = () => {
   const [query, setQuery] = useState("");
   const [docFilter, setDocFilter] = useState<"All" | "Emirates ID" | "Passport">("All");
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [phoneError, setPhoneError] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [dupError, setDupError] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteTargetName, setDeleteTargetName] = useState("");
 
   const fetchData = async () => {
     const [clientsRes, contractsRes] = await Promise.all([
@@ -162,6 +172,8 @@ const Clients = () => {
     setEditingId(null);
     setForm(emptyForm);
     setPhoneError("");
+    setDupError("");
+    setStep(1);
     setOpen(true);
   };
 
@@ -187,6 +199,8 @@ const Clients = () => {
       license_back_url: c.license_back_url ?? "",
     });
     setPhoneError("");
+    setDupError("");
+    setStep(1);
     setOpen(true);
   };
 
@@ -200,21 +214,26 @@ const Clients = () => {
     }
 
     setPhoneError("");
+    setDupError("");
 
     if (!editingId) {
       const phoneToCheck = form.phone.trim();
-      if (phoneToCheck) {
+      const emailToCheck = form.email.trim();
+      const orParts: string[] = [];
+      if (phoneToCheck) orParts.push(`phone.eq.${phoneToCheck}`);
+      if (emailToCheck) orParts.push(`email.eq.${emailToCheck}`);
+      if (orParts.length > 0) {
         const { data: existing, error: dupErr } = await supabase
           .from("clients")
-          .select("id")
-          .eq("phone", phoneToCheck)
+          .select("id, full_name")
+          .or(orParts.join(","))
           .limit(1);
         if (dupErr) {
-          toast.error("Could not validate phone number");
+          toast.error("Could not validate phone/email");
           return;
         }
         if (existing && existing.length > 0) {
-          setPhoneError("This phone number is already registered");
+          setDupError(`A client with this phone or email already exists: ${(existing[0] as any).full_name}`);
           return;
         }
       }
@@ -265,12 +284,13 @@ const Clients = () => {
   };
 
   const handleDeleteClient = async () => {
-    if (!editingId) return;
+    const targetId = deleteTargetId || editingId;
+    if (!targetId) return;
     setDeleting(true);
     const { count, error: activeErr } = await supabase
       .from("contracts")
       .select("id", { count: "exact", head: true })
-      .eq("client_id", editingId)
+      .eq("client_id", targetId)
       .in("status", ["Active", "Expiring Soon"]);
     if (activeErr) {
       setDeleting(false);
@@ -280,11 +300,11 @@ const Clients = () => {
     if ((count ?? 0) > 0) {
       setDeleting(false);
       setConfirmDeleteOpen(false);
-      toast.error("Cannot delete client with active contracts");
+      toast.error("Cannot delete — client has active contracts.");
       return;
     }
 
-    const { error: deleteErr } = await supabase.from("clients").delete().eq("id", editingId);
+    const { error: deleteErr } = await supabase.from("clients").delete().eq("id", targetId);
     setDeleting(false);
     setConfirmDeleteOpen(false);
     if (deleteErr) {
@@ -293,9 +313,13 @@ const Clients = () => {
     }
 
     toast.success("Client deleted");
-    setOpen(false);
-    setEditingId(null);
-    setForm(emptyForm);
+    setDeleteTargetId(null);
+    setDeleteTargetName("");
+    if (editingId) {
+      setOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
+    }
     fetchData();
   };
 
@@ -330,83 +354,294 @@ const Clients = () => {
             ))}
           </div>
 
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); } }}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setDupError(""); setStep(1); } }}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5" onClick={openAdd}>
+              <Button size="sm" className="gap-1.5 bg-fd-accent text-white hover:bg-fd-accent/90" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
                 Add Client
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px] text-foreground font-dm-sans">
               <DialogHeader>
-                <DialogTitle>{editingId ? "Edit client" : "Add new client"}</DialogTitle>
-                <DialogDescription>
-                  {editingId ? "Update the client's details below." : "Enter the client's details below."}
-                </DialogDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <DialogTitle className="text-foreground">{editingId ? "Edit client" : "Add new client"}</DialogTitle>
+                    <DialogDescription className="text-muted-foreground">
+                      {editingId ? "Update the client's details below." : "Enter the client's details below."}
+                    </DialogDescription>
+                  </div>
+                  <div className="bg-muted px-3 py-1 rounded-full text-xs font-medium text-muted-foreground">
+                    Step {step} of 2
+                  </div>
+                </div>
               </DialogHeader>
+              
               <form onSubmit={handleSubmit} className="grid gap-4 py-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="name">Full Name</Label>
-                    <Input id="name" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+                {dupError && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive">
+                    {dupError}
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input
-                      id="phone"
-                      required
-                      value={form.phone}
-                      onChange={(e) => {
-                        setForm({ ...form, phone: e.target.value });
-                        setPhoneError("");
-                      }}
-                    />
-                    {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
+                )}
+                {step === 1 ? (
+                  <div className="grid gap-4">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="name" className="text-foreground">Full Name <span className="text-red-500">*</span></Label>
+                      <Input 
+                        id="name" 
+                        required 
+                        value={form.full_name} 
+                        onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                        className="bg-input border-border text-foreground focus-visible:ring-ring"
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="phone" className="text-foreground">Phone <span className="text-red-500">*</span></Label>
+                        <Input
+                        id="phone"
+                        required
+                        value={form.phone}
+                        onChange={(e) => {
+                          setForm({ ...form, phone: e.target.value });
+                          setPhoneError("");
+                          setDupError("");
+                        }}
+                        className="bg-input border-border text-foreground focus-visible:ring-ring"
+                      />
+                      {phoneError && <p className="text-xs text-red-400">{phoneError}</p>}
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-red-500">*</span></Label>
+                      <Input 
+                        id="dob" 
+                        type="date" 
+                        required
+                        value={form.date_of_birth || ""} 
+                        onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
+                        className="bg-input border-border text-foreground [color-scheme:dark]"
+                      />
+                    </div>
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="dob">Date of Birth</Label>
-                    <Input id="dob" type="date" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} />
-                  </div>
-                  <ClientTypeFields
-                    idPrefix={editingId ? "edit" : "add"}
-                    value={{
-                      client_type: form.client_type,
-                      emirates_id: form.emirates_id,
-                      emirates_id_expiry: form.emirates_id_expiry,
-                      passport_number: form.passport_number,
-                      passport_expiry: form.passport_expiry,
-                    }}
-                    onChange={(v) => setForm({ ...form, ...v })}
-                  />
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="nat">Nationality</Label>
-                    <NationalityCombobox
-                      id="nat"
-                      value={form.nationality}
-                      onChange={(v) => setForm({ ...form, nationality: v })}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="lic">License Number</Label>
-                    <Input id="lic" required value={form.license_number} onChange={(e) => setForm({ ...form, license_number: e.target.value })} />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="licexp">License Expiry</Label>
-                    <Input id="licexp" type="date" value={form.license_expiry} onChange={(e) => setForm({ ...form, license_expiry: e.target.value })} />
-                  </div>
-                  <div className="col-span-2 grid gap-1.5">
-                    <Label htmlFor="email">Email <span className="text-muted-foreground">(optional)</span></Label>
-                    <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    <div className="grid gap-1.5">
+                      <Label className="text-foreground">Client Type</Label>
+                      <Tabs 
+                        value={form.client_type} 
+                        onValueChange={(v) => setForm({ ...form, client_type: v as ClientType })}
+                        className="w-full"
+                      >
+                        <TabsList className="grid w-full grid-cols-2 bg-muted">
+                          <TabsTrigger value="Resident" className="data-[state=active]:bg-background data-[state=active]:text-foreground">Resident</TabsTrigger>
+                          <TabsTrigger value="Tourist" className="data-[state=active]:bg-background data-[state=active]:text-foreground">Tourist</TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                    </div>
 
-                  <div className="col-span-2 grid gap-3 pt-2 border-t border-border mt-2">
-                    <Label className="text-sm font-semibold">Documents</Label>
-                    
                     <div className="grid grid-cols-2 gap-3">
-                      {form.client_type === "Tourist" && (
-                        <div className="grid gap-1.5">
-                          <Label>Passport Photo</Label>
-                          <Input
+                      {form.client_type === "Resident" ? (
+                        <>
+                          <div className="grid gap-1.5">
+                            <Label htmlFor="eid" className="text-foreground">Emirates ID <span className="text-red-500">*</span></Label>
+                            <Input
+                              id="eid"
+                              required
+                              value={form.emirates_id}
+                              onChange={(e) => setForm({ ...form, emirates_id: e.target.value })}
+                              className="bg-input border-border text-foreground focus-visible:ring-ring"
+                            />
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label htmlFor="eidexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Input
+                              id="eidexp"
+                              type="date"
+                              required
+                              value={form.emirates_id_expiry}
+                              onChange={(e) => setForm({ ...form, emirates_id_expiry: e.target.value })}
+                              className="bg-input border-border text-foreground [color-scheme:dark]"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="grid gap-1.5">
+                            <Label htmlFor="pass" className="text-foreground">Passport Number <span className="text-red-500">*</span></Label>
+                            <Input
+                              id="pass"
+                              required
+                              value={form.passport_number}
+                              onChange={(e) => setForm({ ...form, passport_number: e.target.value })}
+                              className="bg-input border-border text-foreground focus-visible:ring-ring"
+                            />
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label htmlFor="passexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Input
+                              id="passexp"
+                              type="date"
+                              required
+                              value={form.passport_expiry}
+                              onChange={(e) => setForm({ ...form, passport_expiry: e.target.value })}
+                              className="bg-input border-border text-foreground [color-scheme:dark]"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="nat" className="text-foreground">Nationality <span className="text-red-500">*</span></Label>
+                        <NationalityCombobox
+                          id="nat"
+                          value={form.nationality}
+                          onChange={(v) => setForm({ ...form, nationality: v })}
+                          // Note: NationalityCombobox might need internal styling for dark mode, 
+                          // but I am restricted from editing it if it's a separate file.
+                          // Assuming it handles its own styling or works with parent classes.
+                        />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="lic" className="text-foreground">License Number <span className="text-red-500">*</span></Label>
+                        <Input 
+                          id="lic" 
+                          required 
+                          value={form.license_number} 
+                          onChange={(e) => setForm({ ...form, license_number: e.target.value })}
+                          className="bg-input border-border text-foreground focus-visible:ring-ring"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="licexp" className="text-foreground">License Expiry <span className="text-red-500">*</span></Label>
+                        <Input 
+                          id="licexp" 
+                          type="date" 
+                          required
+                          value={form.license_expiry || ""} 
+                          onChange={(e) => setForm({ ...form, license_expiry: e.target.value })}
+                          className="bg-input border-border text-foreground [color-scheme:dark]"
+                        />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="email" className="text-foreground">Email (optional)</Label>
+                        <Input 
+                          id="email" 
+                          type="email" 
+                          value={form.email || ""} 
+                          onChange={(e) => { setForm({ ...form, email: e.target.value }); setDupError(""); }}
+                          className="bg-input border-border text-foreground focus-visible:ring-ring"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 pt-2 border-t border-border mt-2">
+                      <Label className="text-sm font-semibold text-foreground">Documents</Label>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        {form.client_type === "Tourist" && (
+                          <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                            <div className="bg-background rounded p-2">
+                              <IdCard className="h-4 w-4 text-foreground" />
+                            </div>
+                            <div className="flex flex-col text-left">
+                              <span className="text-foreground text-sm font-medium">Passport Photo</span>
+                              <span className="text-muted-foreground text-xs">Tap to upload</span>
+                            </div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const path = `client-documents/${Date.now()}_${file.name}`;
+                                  const { data: uploadData, error: uploadError } = await supabase.storage
+                                    .from("client-documents")
+                                    .upload(path, file, { upsert: true });
+                                  
+                                  if (!uploadError) {
+                                    const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
+                                    setForm(prev => ({ ...prev, passport_photo_url: publicUrl }));
+                                  }
+                                }
+                              }}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
+                        
+                        {form.client_type === "Resident" && (
+                          <>
+                            <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                              <div className="bg-background rounded p-2">
+                                <IdCard className="h-4 w-4 text-foreground" />
+                              </div>
+                              <div className="flex flex-col text-left">
+                                <span className="text-foreground text-sm font-medium">Emirates ID Front</span>
+                                <span className="text-muted-foreground text-xs">Tap to upload</span>
+                              </div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const path = `client-documents/${Date.now()}_${file.name}`;
+                                    const { data: uploadData, error: uploadError } = await supabase.storage
+                                      .from("client-documents")
+                                      .upload(path, file, { upsert: true });
+                                    
+                                    if (!uploadError) {
+                                      const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
+                                      setForm(prev => ({ ...prev, eid_front_url: publicUrl }));
+                                    }
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                              <div className="bg-background rounded p-2">
+                                <IdCard className="h-4 w-4 text-foreground" />
+                              </div>
+                              <div className="flex flex-col text-left">
+                                <span className="text-foreground text-sm font-medium">Emirates ID Back</span>
+                                <span className="text-muted-foreground text-xs">Tap to upload</span>
+                              </div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const path = `client-documents/${Date.now()}_${file.name}`;
+                                    const { data: uploadData, error: uploadError } = await supabase.storage
+                                      .from("client-documents")
+                                      .upload(path, file, { upsert: true });
+                                    
+                                    if (!uploadError) {
+                                      const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
+                                      setForm(prev => ({ ...prev, eid_back_url: publicUrl }));
+                                    }
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </>
+                        )}
+
+                        <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                          <div className="bg-background rounded p-2">
+                            <FileText className="h-4 w-4 text-foreground" />
+                          </div>
+                          <div className="flex flex-col text-left">
+                            <span className="text-foreground text-sm font-medium">License Front</span>
+                            <span className="text-muted-foreground text-xs">Tap to upload</span>
+                          </div>
+                          <input
                             type="file"
                             accept="image/*"
                             onChange={async (e) => {
@@ -416,136 +651,90 @@ const Clients = () => {
                                 const { data: uploadData, error: uploadError } = await supabase.storage
                                   .from("client-documents")
                                   .upload(path, file, { upsert: true });
-                                
-                                console.log('Upload error:', JSON.stringify(uploadError));
-                                console.log('Upload data:', JSON.stringify(uploadData));
-
+                                  
                                 if (!uploadError) {
                                   const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                  setForm(prev => ({ ...prev, passport_photo_url: publicUrl }));
+                                  setForm(prev => ({ ...prev, license_front_url: publicUrl }));
                                 }
                               }
                             }}
+                            className="hidden"
                           />
-                        </div>
-                      )}
-                      
-                      {form.client_type === "Resident" && (
-                        <>
-                          <div className="grid gap-1.5">
-                            <Label>Emirates ID Front</Label>
-                            <Input
-                              type="file"
-                              accept="image/*"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const path = `client-documents/${Date.now()}_${file.name}`;
-                                  const { data: uploadData, error: uploadError } = await supabase.storage
-                                    .from("client-documents")
-                                    .upload(path, file, { upsert: true });
-                                  
-                                  console.log('Upload error:', JSON.stringify(uploadError));
-                                  console.log('Upload data:', JSON.stringify(uploadData));
+                        </label>
 
-                                  if (!uploadError) {
-                                    const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                    setForm(prev => ({ ...prev, eid_front_url: publicUrl }));
-                                  }
-                                }
-                              }}
-                            />
+                        <label className="bg-muted border border-dashed border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-foreground/30 transition-colors">
+                          <div className="bg-background rounded p-2">
+                            <FileText className="h-4 w-4 text-foreground" />
                           </div>
-                          <div className="grid gap-1.5">
-                            <Label>Emirates ID Back</Label>
-                            <Input
-                              type="file"
-                              accept="image/*"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const path = `client-documents/${Date.now()}_${file.name}`;
-                                  const { data: uploadData, error: uploadError } = await supabase.storage
-                                    .from("client-documents")
-                                    .upload(path, file, { upsert: true });
-                                  
-                                  console.log("Upload error:", JSON.stringify(uploadError));
-                                  console.log("Upload data:", JSON.stringify(uploadData));
-                                  if (!uploadError) {
-                                    const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                    setForm(prev => ({ ...prev, eid_back_url: publicUrl }));
-                                  }
-                                }
-                              }}
-                            />
+                          <div className="flex flex-col text-left">
+                            <span className="text-foreground text-sm font-medium">License Back</span>
+                            <span className="text-muted-foreground text-xs">Tap to upload</span>
                           </div>
-                        </>
-                      )}
-
-                      <div className="grid gap-1.5">
-                        <Label>License Front</Label>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const path = `client-documents/${Date.now()}_${file.name}`;
-                              const { data: uploadData, error: uploadError } = await supabase.storage
-                                .from("client-documents")
-                                .upload(path, file, { upsert: true });
-                                
-                              console.log('Upload error:', JSON.stringify(uploadError));
-                              console.log('Upload data:', JSON.stringify(uploadData));
-
-                              if (!uploadError) {
-                                const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                setForm(prev => ({ ...prev, license_front_url: publicUrl }));
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const path = `client-documents/${Date.now()}_${file.name}`;
+                                const { data: uploadData, error: uploadError } = await supabase.storage
+                                  .from("client-documents")
+                                  .upload(path, file, { upsert: true });
+                                  
+                                if (!uploadError) {
+                                  const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
+                                  setForm(prev => ({ ...prev, license_back_url: publicUrl }));
+                                }
                               }
-                            }
-                          }}
-                        />
-                      </div>
-
-                      <div className="grid gap-1.5">
-                        <Label>License Back</Label>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const path = `client-documents/${Date.now()}_${file.name}`;
-                              const { data: uploadData, error: uploadError } = await supabase.storage
-                                .from("client-documents")
-                                .upload(path, file, { upsert: true });
-                                
-                              console.log('Upload error:', JSON.stringify(uploadError));
-                              console.log('Upload data:', JSON.stringify(uploadData));
-
-                              if (!uploadError) {
-                                const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                setForm(prev => ({ ...prev, license_back_url: publicUrl }));
-                              }
-                            }
-                          }}
-                        />
+                            }}
+                            className="hidden"
+                          />
+                        </label>
                       </div>
                     </div>
                   </div>
-                </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? "Saving..." : editingId ? "Save Changes" : "Save Client"}
-                  </Button>
+                )}
+
+                <DialogFooter className="gap-2 sm:gap-0 mt-4">
+                  {step === 1 ? (
+                    <div className="flex w-full justify-between gap-3">
+                      <Button type="button" variant="outline" onClick={() => setOpen(false)} className="bg-transparent border-border text-muted-foreground hover:bg-muted hover:text-foreground">
+                        Cancel
+                      </Button>
+                      <Button 
+                        type="button" 
+                        onClick={() => {
+                          if (!form.full_name.trim() || !form.phone.trim() || !form.date_of_birth) {
+                            toast.error("Please fill in all required fields");
+                            return;
+                          }
+                          setStep(2);
+                        }}
+                        className="bg-fd-accent text-white hover:bg-fd-accent/90"
+                      >
+                        Next <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex w-full justify-between gap-3">
+                      <Button type="button" variant="outline" onClick={() => setStep(1)} className="bg-transparent border-border text-muted-foreground hover:bg-muted hover:text-foreground">
+                        <ChevronLeft className="mr-1 h-4 w-4" /> Back
+                      </Button>
+                      <div className="flex gap-3">
+                        <Button type="submit" disabled={saving} className="bg-fd-accent text-white hover:bg-fd-accent/90">
+                          {saving ? "Saving..." : editingId ? "Save Changes" : "Save Client"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </DialogFooter>
-                {editingId && (
+                {editingId && step === 2 && (
                   <Button
                     type="button"
                     variant="destructive"
                     onClick={() => setConfirmDeleteOpen(true)}
                     disabled={deleting}
+                    className="mt-2"
                   >
                     Delete Client
                   </Button>
@@ -553,12 +742,12 @@ const Clients = () => {
               </form>
             </DialogContent>
           </Dialog>
-          <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+          <AlertDialog open={confirmDeleteOpen} onOpenChange={(v) => { setConfirmDeleteOpen(v); if (!v) { setDeleteTargetId(null); setDeleteTargetName(""); } }}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete client?</AlertDialogTitle>
+                <AlertDialogTitle>Delete {deleteTargetName || form.full_name || "client"}?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. The client can be deleted only if there are no active contracts.
+                  This cannot be undone. Only clients without active contracts can be deleted.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -609,6 +798,9 @@ const Clients = () => {
                       <Link to={`/clients/${c.id}`} className="hover:underline">
                         {c.full_name}
                       </Link>
+                      {c.is_new === true && (
+                        <span className="ml-2 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full px-2 py-0.5">New</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.phone}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
@@ -637,15 +829,30 @@ const Clients = () => {
                       AED {c.outstanding.toLocaleString()}
                     </TableCell>
                     <TableCell className="px-5 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 gap-1 text-xs"
-                        onClick={() => openEdit(c)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => openEdit(c)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTargetId(c.id);
+                            setDeleteTargetName(c.full_name);
+                            setConfirmDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
