@@ -74,7 +74,9 @@ interface ContractRecord {
   client_id: string;
   car_id: string;
   start_date: string;
+  start_time: string;
   end_date: string;
+  end_time: string;
   rate_type: string;
   rate_amount: number;
   total_amount: number;
@@ -199,6 +201,53 @@ function diffDays(start: string, end: string): number {
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
   return Math.max(0, Math.round((e - s) / 86_400_000));
+}
+
+function formatTimeForDb(time: string | undefined): string {
+  if (!time || time.trim() === "") return "12:00:00";
+  const trimmed = time.trim();
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+  return "12:00:00";
+}
+
+function formatTimeDisplay(time: string | null | undefined): string {
+  if (!time) return "12:00";
+  const match = time.match(/^(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : "12:00";
+}
+
+function toDateTimeInput(date: string, time: string | null | undefined): string {
+  if (!date) return "";
+  return `${date.slice(0, 10)}T${formatTimeDisplay(time)}`;
+}
+
+function parseDateTime(date: string, time: string | null | undefined): Date {
+  return new Date(toDateTimeInput(date, time));
+}
+
+function formatDateTime(date: string, time: string | null | undefined): string {
+  return `${formatDate(date)} · ${formatTimeDisplay(time)}`;
+}
+
+function describeDuration(hours: number): string {
+  const safeHours = Math.max(0, Math.ceil(hours));
+  const days = Math.floor(safeHours / 24);
+  const remainingHours = safeHours % 24;
+  if (days && remainingHours) return `${days} days ${remainingHours} hours`;
+  if (days) return `${days} days`;
+  return `${remainingHours} hours`;
+}
+
+function calculateRentalTotal(rateType: string, rateAmount: number, totalHours: number): number {
+  const hours = Math.max(0, totalHours);
+  const hourlyRate =
+    rateType === "Monthly"
+      ? rateAmount / (30 * 24)
+      : rateType === "Yearly"
+        ? rateAmount / (365 * 24)
+        : rateAmount / 24;
+  return Math.round(hourlyRate * hours * 100) / 100;
 }
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
@@ -920,6 +969,10 @@ const ContractDetail = () => {
   const [closeReceivedBy, setCloseReceivedBy] = useState("");
   const [closeVehicleStatus, setCloseVehicleStatus] = useState("Available");
   const [isClosing, setIsClosing] = useState(false);
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [extendEndDateTime, setExtendEndDateTime] = useState("");
+  const [extendError, setExtendError] = useState("");
+  const [isExtending, setIsExtending] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editStartDate, setEditStartDate] = useState("");
   const [editEndDate, setEditEndDate] = useState("");
@@ -1094,6 +1147,27 @@ const ContractDetail = () => {
     return { charges, credits, outstanding };
   }, [ledger, contract]);
 
+  const extensionPreview = useMemo(() => {
+    if (!contract || !extendEndDateTime) {
+      return { extraHours: 0, durationText: "0 hours", addedAmount: 0, newTotal: Number(contract?.total_amount ?? 0) };
+    }
+
+    const currentEnd = parseDateTime(contract.end_date, contract.end_time);
+    const newEnd = new Date(extendEndDateTime);
+    const extraHours = (newEnd.getTime() - currentEnd.getTime()) / 3_600_000;
+    const addedAmount =
+      extraHours > 0
+        ? calculateRentalTotal(contract.rate_type, Number(contract.rate_amount), extraHours)
+        : 0;
+
+    return {
+      extraHours,
+      durationText: describeDuration(extraHours),
+      addedAmount,
+      newTotal: Math.round((Number(contract.total_amount) + addedAmount) * 100) / 100,
+    };
+  }, [contract, extendEndDateTime]);
+
   const saveNotes = async () => {
     if (!contract) return;
     setSavingNotes(true);
@@ -1109,6 +1183,84 @@ const ContractDetail = () => {
     toast.success("Notes saved");
     setContract({ ...contract, notes: notesDraft });
     setEditingNotes(false);
+  };
+
+  const openExtendModal = () => {
+    if (!contract) return;
+    setExtendEndDateTime(toDateTimeInput(contract.end_date, contract.end_time));
+    setExtendError("");
+    setShowExtendModal(true);
+  };
+
+  const handleExtendContract = async () => {
+    if (!contract) return;
+    setExtendError("");
+
+    const currentEnd = parseDateTime(contract.end_date, contract.end_time);
+    const newEnd = new Date(extendEndDateTime);
+    if (!extendEndDateTime || Number.isNaN(newEnd.getTime()) || newEnd <= currentEnd) {
+      setExtendError("New end date and time must be later than the current end.");
+      return;
+    }
+
+    setIsExtending(true);
+    const oldEndIso = currentEnd.toISOString();
+    const newEndIso = newEnd.toISOString();
+    const newEndDate = extendEndDateTime.slice(0, 10);
+    const newEndTime = formatTimeForDb(extendEndDateTime.slice(11, 16));
+
+    const { data: candidates, error: availabilityError } = await supabase
+      .from("contracts")
+      .select("id, start_date, start_time, end_date, end_time, status, clients(full_name)")
+      .eq("car_id", contract.car_id)
+      .neq("id", contract.id)
+      .neq("status", "Cancelled")
+      .lte("start_date", newEndDate)
+      .gte("end_date", contract.end_date);
+
+    if (availabilityError) {
+      setIsExtending(false);
+      setExtendError("Could not check vehicle availability. Try again.");
+      return;
+    }
+
+    const overlap = ((candidates ?? []) as any[]).find((item) => {
+      const candidateStart = parseDateTime(item.start_date, item.start_time).toISOString();
+      const candidateEnd = parseDateTime(item.end_date, item.end_time).toISOString();
+      return candidateStart < newEndIso && candidateEnd > oldEndIso;
+    });
+
+    if (overlap) {
+      setIsExtending(false);
+      const clientName = overlap.clients?.full_name ? ` for ${overlap.clients.full_name}` : "";
+      setExtendError(`Vehicle is already booked${clientName} during the requested extension window.`);
+      return;
+    }
+
+    const oldEndLabel = formatDateTime(contract.end_date, contract.end_time);
+    const newEndLabel = formatDateTime(newEndDate, newEndTime);
+    const timelineEntry = `Contract extended from ${oldEndLabel} to ${newEndLabel}. Added ${extensionPreview.durationText} (${fmtAed(extensionPreview.addedAmount)}).`;
+    const nextNotes = contract.notes ? `${contract.notes}\n\n${timelineEntry}` : timelineEntry;
+
+    const { error } = await supabase
+      .from("contracts")
+      .update({
+        end_date: newEndDate,
+        end_time: newEndTime,
+        total_amount: extensionPreview.newTotal,
+        notes: nextNotes,
+      } as never)
+      .eq("id", contract.id);
+
+    setIsExtending(false);
+    if (error) {
+      toast.error("Failed to extend contract");
+      return;
+    }
+
+    toast.success("Contract extended");
+    setShowExtendModal(false);
+    fetchData();
   };
 
   const handleCloseContract = async () => {
@@ -1267,6 +1419,7 @@ const ContractDetail = () => {
 
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
   const isOverdue = totals.outstanding > 0 && contract.status !== "Cancelled";
+  const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());
   const paymentAllocationDues = {
     rental: Number(contract.total_amount),
     fines: fines
@@ -1313,6 +1466,12 @@ const ContractDetail = () => {
                   <Download className="h-3.5 w-3.5" />
                   Invoice
                 </Button>
+                {canExtendContract && (
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={openExtendModal}>
+                    <CalendarPlus className="h-3.5 w-3.5" />
+                    Extend
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1365,10 +1524,12 @@ const ContractDetail = () => {
           {/* OVERVIEW */}
           <TabsContent value="overview" className="mt-4 space-y-3">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
-                <CalendarPlus className="h-3.5 w-3.5" />
-                Extend Rental
-              </Button>
+              {canExtendContract && (
+                <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={openExtendModal}>
+                  <CalendarPlus className="h-3.5 w-3.5" />
+                  Extend Rental
+                </Button>
+              )}
               <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Details
