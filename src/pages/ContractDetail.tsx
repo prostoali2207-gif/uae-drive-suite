@@ -522,11 +522,7 @@ const FinancialsAccordion = ({
       </AccordionRow>
 
       {/* Traffic Fines — summary row */}
-      <button
-        type="button"
-        onClick={() => { setFinePage(0); setShowFinesModal(true); }}
-        className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5 text-left transition-colors hover:bg-muted/40"
-      >
+      <div className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Traffic Fines</span>
           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
@@ -535,9 +531,15 @@ const FinancialsAccordion = ({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold tabular-nums text-tint-rose-foreground">{fmtAed(finesTotal)}</span>
-          <span className="text-[11px] text-muted-foreground">View All →</span>
+          <button
+            type="button"
+            onClick={() => { setFinePage(0); setShowFinesModal(true); }}
+            className="text-[11px] font-medium text-tint-blue-foreground hover:underline"
+          >
+            View All →
+          </button>
         </div>
-      </button>
+      </div>
 
       <Dialog open={showFinesModal} onOpenChange={setShowFinesModal}>
         <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col gap-0 p-0">
@@ -683,11 +685,7 @@ const FinancialsAccordion = ({
       </Dialog>
 
       {/* Salik — summary row */}
-      <button
-        type="button"
-        onClick={() => { setSalikPage(0); setShowSalikModal(true); }}
-        className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5 text-left transition-colors hover:bg-muted/40"
-      >
+      <div className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Salik</span>
           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
@@ -696,9 +694,15 @@ const FinancialsAccordion = ({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold tabular-nums text-foreground">{fmtAed(salikTotal)}</span>
-          <span className="text-[11px] text-muted-foreground">View All →</span>
+          <button
+            type="button"
+            onClick={() => { setSalikPage(0); setShowSalikModal(true); }}
+            className="text-[11px] font-medium text-tint-blue-foreground hover:underline"
+          >
+            View All →
+          </button>
         </div>
-      </button>
+      </div>
 
       <Dialog open={showSalikModal} onOpenChange={setShowSalikModal}>
         <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col gap-0 p-0">
