@@ -32,9 +32,16 @@ interface RecordPaymentModalProps {
   balanceDue: number;
   ledgerEntries: PaymentModalLedgerEntry[];
   clientId: string;
+  allocationDues?: {
+    rental: number;
+    fines: number;
+    salik: number;
+    fees: number;
+  };
 }
 
 type PaymentMethod = "Cash" | "Card" | "Transfer";
+type AllocationKey = "rental" | "fines" | "salik" | "fees";
 
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   open,
@@ -44,10 +51,16 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   balanceDue,
   ledgerEntries,
   clientId,
+  allocationDues,
 }) => {
   const [amount, setAmount] = useState<number | "">("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
-  const [allocations, setAllocations] = useState<Record<string, number>>({});
+  const [allocations, setAllocations] = useState<Record<AllocationKey, number>>({
+    rental: 0,
+    fines: 0,
+    salik: 0,
+    fees: 0,
+  });
 
   const unpaidEntries = useMemo(
     () => ledgerEntries.filter((entry) => {
@@ -65,8 +78,29 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
   const currentAmount = typeof amount === "number" ? amount : 0;
   const unallocatedAmount = currentAmount - totalAllocated;
+  const allocationRows: { key: AllocationKey; label: string; due: number }[] = useMemo(() => {
+    const dues = allocationDues ?? {
+      rental: unpaidEntries
+        .filter((entry) => entry.type === "Rental")
+        .reduce((sum, entry) => sum + Number(entry.amount), 0),
+      fines: unpaidEntries
+        .filter((entry) => entry.type === "Fine")
+        .reduce((sum, entry) => sum + Number(entry.amount), 0),
+      salik: unpaidEntries
+        .filter((entry) => entry.type === "Salik")
+        .reduce((sum, entry) => sum + Number(entry.amount), 0),
+      fees: 0,
+    };
 
-  const handleAllocationChange = (id: string, value: string, max: number) => {
+    return [
+      { key: "rental", label: "Monthly rental", due: Number(dues.rental) },
+      { key: "fines", label: "Traffic Fines", due: Number(dues.fines) },
+      { key: "salik", label: "Salik", due: Number(dues.salik) },
+      { key: "fees", label: "Other Fees", due: Number(dues.fees) },
+    ].filter((row) => row.due > 0);
+  }, [allocationDues, unpaidEntries]);
+
+  const handleAllocationChange = (id: AllocationKey, value: string, max: number) => {
     const numValue = Math.min(max, Math.max(0, Number(value) || 0));
     setAllocations((prev) => ({
       ...prev,
@@ -78,13 +112,18 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     let remaining = currentAmount;
     const newAllocations: Record<string, number> = {};
 
-    for (const entry of unpaidEntries) {
-      const allocate = Math.min(remaining, entry.amount);
-      newAllocations[entry.id] = allocate;
+    for (const row of allocationRows) {
+      const allocate = Math.min(remaining, row.due);
+      newAllocations[row.key] = allocate;
       remaining -= allocate;
     }
 
-    setAllocations(newAllocations);
+    setAllocations({
+      rental: newAllocations.rental ?? 0,
+      fines: newAllocations.fines ?? 0,
+      salik: newAllocations.salik ?? 0,
+      fees: newAllocations.fees ?? 0,
+    });
   };
 
   const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
@@ -101,6 +140,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         method: method,
         payment_date: new Date().toISOString().split("T")[0],
         status: "Paid",
+        allocations,
       });
 
       if (payError) throw payError;
@@ -109,8 +149,12 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       // Ledger entry IDs are prefixed ("fine-<uuid>", "salik-<uuid>", etc.),
       // so strip the prefix to get the real DB row id.
       for (const entry of unpaidEntries) {
-        const allocated = allocations[entry.id] ?? 0;
-        if (allocated >= entry.amount) {
+        const allocationKey = entry.type === "Fine" ? "fines" : entry.type === "Salik" ? "salik" : null;
+        const typeDue =
+          allocationKey ? allocationRows.find((row) => row.key === allocationKey)?.due ?? 0 : 0;
+        const typeFullyAllocated = allocationKey ? (allocations[allocationKey] ?? 0) >= typeDue : false;
+
+        if (typeFullyAllocated) {
           const dbId = entry.id.replace(/^(fine|salik|rental|deposit|pay)-/, "");
 
           if (entry.type === "Fine") {
@@ -212,17 +256,17 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             </div>
 
             <ScrollArea className="h-[200px] rounded-md border border-border p-2">
-              {unpaidEntries.length === 0 ? (
+              {allocationRows.length === 0 ? (
                 <div className="text-center py-8 text-xs text-muted-foreground italic">
                   No unpaid ledger entries
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {unpaidEntries.map((entry) => (
-                    <div key={entry.id} className="flex items-center gap-3 text-xs">
+                  {allocationRows.map((row) => (
+                    <div key={row.key} className="flex items-center gap-3 text-xs">
                       <div className="flex-1 min-w-0">
-                        <p className="truncate font-medium text-foreground">{entry.description}</p>
-                        <p className="text-muted-foreground font-mono text-[10px]">Due: {fmtAed(entry.amount)}</p>
+                        <p className="truncate font-medium text-foreground">{row.label}</p>
+                        <p className="text-muted-foreground font-mono text-[10px]">Due: {fmtAed(row.due)}</p>
                       </div>
                       <div className="relative w-28">
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
@@ -230,11 +274,11 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                         </span>
                         <input
                           type="number"
-                          className="h-8 w-full rounded-md border border-input bg-background px-3 py-2 pl-8 text-right text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          value={allocations[entry.id] || ""}
+                          className="h-8 w-full rounded-md border border-input bg-background px-3 py-2 pl-8 text-right font-mono text-xs tabular-nums ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          value={allocations[row.key] || ""}
                           placeholder="0.00"
-                          max={entry.amount}
-                          onChange={(e) => handleAllocationChange(entry.id, e.target.value, entry.amount)}
+                          max={row.due}
+                          onChange={(e) => handleAllocationChange(row.key, e.target.value, row.due)}
                         />
                       </div>
                     </div>

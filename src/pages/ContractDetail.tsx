@@ -1267,6 +1267,16 @@ const ContractDetail = () => {
 
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
   const isOverdue = totals.outstanding > 0 && contract.status !== "Cancelled";
+  const paymentAllocationDues = {
+    rental: Number(contract.total_amount),
+    fines: fines
+      .filter((fine) => fine.status.toLowerCase() !== "paid")
+      .reduce((sum, fine) => sum + Number(fine.amount), 0),
+    salik: salik
+      .filter((charge) => charge.status.toLowerCase() !== "paid")
+      .reduce((sum, charge) => sum + Number(charge.amount), 0),
+    fees: contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0),
+  };
 
   return (
     <DashboardLayout title={contractNumber} subtitle="Contract details">
@@ -1620,6 +1630,7 @@ const ContractDetail = () => {
               contractId={contract.id}
               balanceDue={totals.outstanding}
               clientId={contract.client_id}
+              allocationDues={paymentAllocationDues}
               ledgerEntries={ledger.map(e => ({
                 id: e.id,
                 description: e.description,
