@@ -144,6 +144,16 @@ interface PaymentRow {
   status: string;
 }
 
+interface ExtensionCandidateRow {
+  id: string;
+  start_date: string;
+  start_time: string;
+  end_date: string;
+  end_time: string;
+  status: string;
+  clients: { full_name: string } | null;
+}
+
 type FeeCategory =
   | "delivery"
   | "pickup"
@@ -1224,7 +1234,7 @@ const ContractDetail = () => {
       return;
     }
 
-    const overlap = ((candidates ?? []) as any[]).find((item) => {
+    const overlap = ((candidates ?? []) as ExtensionCandidateRow[]).find((item) => {
       const candidateStart = parseDateTime(item.start_date, item.start_time).toISOString();
       const candidateEnd = parseDateTime(item.end_date, item.end_time).toISOString();
       return candidateStart < newEndIso && candidateEnd > oldEndIso;
@@ -2101,6 +2111,82 @@ const ContractDetail = () => {
             </Button>
             <Button disabled={isSavingEdit || !editStartDate || !editEndDate || !editCarId} onClick={handleSaveEdit}>
               {isSavingEdit ? "Saving…" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showExtendModal} onOpenChange={(v) => !v && setShowExtendModal(false)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Extend Contract</DialogTitle>
+            <DialogDescription className="text-xs">
+              {contract ? `CTR-${contract.id.slice(0, 8).toUpperCase()}` : ""} · Vehicle availability will be checked before saving.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Current End Date &amp; Time
+              </Label>
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                {formatDateTime(contract.end_date, contract.end_time)}
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                New End Date &amp; Time
+              </Label>
+              <input
+                type="datetime-local"
+                value={extendEndDateTime}
+                onChange={(e) => {
+                  setExtendEndDateTime(e.target.value);
+                  setExtendError("");
+                }}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Extra Time</div>
+                <div className="mt-1 font-mono text-sm font-semibold tabular-nums">
+                  {extensionPreview.durationText}
+                </div>
+              </div>
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Added Rent</div>
+                <div className="mt-1 font-mono text-sm font-semibold tabular-nums">
+                  {fmtAed(extensionPreview.addedAmount)}
+                </div>
+              </div>
+              <div className="col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">New Rental Total</div>
+                <div className="mt-1 font-mono text-sm font-semibold tabular-nums">
+                  {fmtAed(extensionPreview.newTotal)}
+                </div>
+              </div>
+            </div>
+
+            {extendError && (
+              <div className="rounded-md border border-tint-rose-foreground/20 bg-tint-rose px-3 py-2 text-xs text-tint-rose-foreground">
+                {extendError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExtendModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={isExtending || !extendEndDateTime || extensionPreview.extraHours <= 0}
+              onClick={handleExtendContract}
+            >
+              {isExtending ? "Checking..." : "Confirm Extension"}
             </Button>
           </DialogFooter>
         </DialogContent>
