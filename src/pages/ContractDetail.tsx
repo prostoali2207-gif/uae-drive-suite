@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   History,
   Trash2,
+  Lock,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
@@ -1402,46 +1403,45 @@ const ContractDetail = () => {
 
           {/* FINANCIALS */}
           <TabsContent value="financials" className="mt-4 space-y-3">
-            <div className="flex flex-row gap-3 mb-4">
+            <div className="grid grid-cols-3 gap-2 mb-4">
               {/* Total charged card */}
-              <div className="flex-1 rounded-md border border-border bg-muted/30 p-3">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
                   Total charged
                 </div>
-                <div className="mt-0.5 text-base font-semibold tabular-nums text-foreground">
+                <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-foreground">
                   {fmtAed(totals.charges - Number(contract.deposit_amount))}
                 </div>
               </div>
 
               {/* Paid card */}
-              <div className="flex-1 rounded-md border border-tint-green-foreground/30 bg-[#EAF3DE] p-3">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-md border border-green-900/20 bg-green-950/10 p-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
                   Paid
                 </div>
-                <div className="mt-0.5 text-base font-semibold tabular-nums text-[#3B6D11]">
+                <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-[#3B6D11]">
                   {fmtAed(totals.credits)}
                 </div>
               </div>
 
               {/* Balance due card */}
-              <div className="flex-1 rounded-md border border-tint-rose-foreground/30 bg-[#FCEBEB] p-3">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div
+                className={cn(
+                  "rounded-md border p-3",
+                  totals.outstanding > 0 ? "border-red-900/20 bg-red-950/10" : "border-border bg-muted/30",
+                )}
+              >
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
                   Balance due
                 </div>
-                <div className="mt-0.5 text-base font-semibold tabular-nums text-[#A32D2D]">
+                <div
+                  className={cn(
+                    "mt-0.5 font-mono text-base font-semibold tabular-nums",
+                    totals.outstanding > 0 ? "text-[#A32D2D]" : "text-foreground",
+                  )}
+                >
                   {fmtAed(totals.outstanding)}
                 </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-md border border-border p-3 mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
-                <span className="text-base font-semibold tabular-nums">{fmtAed(Number(contract.deposit_amount))}</span>
-                <span className="text-[10px] text-muted-foreground">Held on card</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Held</span>
               </div>
             </div>
 
@@ -1453,9 +1453,9 @@ const ContractDetail = () => {
               <div className="flex items-center gap-1.5">
                 <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
                   <Plus className="h-3.5 w-3.5" />
-                  Add Fee / Fine
+                  Add Fee
                 </Button>
-                <Button size="sm" className="h-8 gap-1.5" onClick={() => setShowPaymentModal(true)}>
+                <Button size="sm" className="h-8 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setShowPaymentModal(true)}>
                   <Plus className="h-3.5 w-3.5" />
                   Add Payment
                 </Button>
@@ -1479,6 +1479,44 @@ const ContractDetail = () => {
                 )
               }
             />
+            <div className="flex items-center justify-between rounded-md border border-border p-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
+                    <span className="text-base font-semibold tabular-nums">{fmtAed(Number(contract.deposit_amount))}</span>
+                    {((contract as any).deposit_collection_method || (contract as any).deposit_method || (contract as any).deposit_payment_method) && (
+                      <span className="text-[10px] text-muted-foreground">
+                        Collected via {(contract as any).deposit_collection_method || (contract as any).deposit_method || (contract as any).deposit_payment_method}
+                      </span>
+                    )}
+                  </div>
+                  {contract.status.toLowerCase() === "closed" && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Refundable after 15 days from close date
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "text-[10px] px-2 py-0.5 rounded-full",
+                    ((contract as any).deposit_status ?? "Held").toLowerCase() === "refunded" &&
+                      "bg-tint-green text-tint-green-foreground",
+                    ((contract as any).deposit_status ?? "Held").toLowerCase() === "deducted" &&
+                      "bg-tint-rose text-tint-rose-foreground",
+                    !["refunded", "deducted"].includes(((contract as any).deposit_status ?? "Held").toLowerCase()) &&
+                      "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {(contract as any).deposit_status ?? "Held"}
+                </span>
+              </div>
+            </div>
             <RecordPaymentModal
               open={showPaymentModal}
               onClose={() => setShowPaymentModal(false)}
