@@ -19,6 +19,7 @@ import {
   History,
   Trash2,
   Lock,
+  Tag,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
@@ -64,7 +65,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 interface ContractRecord {
@@ -140,6 +142,22 @@ interface PaymentRow {
   status: string;
 }
 
+type FeeCategory =
+  | "delivery"
+  | "pickup"
+  | "fuel"
+  | "extra_mileage"
+  | "damage"
+  | "detailing"
+  | "other";
+
+interface ContractFeeRow {
+  id: string;
+  category: FeeCategory;
+  label: string;
+  amount: number;
+}
+
 type LedgerEntry = {
   id: string;
   date: string;
@@ -184,6 +202,16 @@ function diffDays(start: string, end: string): number {
 }
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
+
+const FEE_CATEGORIES: { value: FeeCategory; label: string; defaultLabel: string }[] = [
+  { value: "delivery", label: "Delivery", defaultLabel: "Delivery" },
+  { value: "pickup", label: "Pickup", defaultLabel: "Pickup" },
+  { value: "fuel", label: "Fuel", defaultLabel: "Fuel" },
+  { value: "extra_mileage", label: "Extra Mileage", defaultLabel: "Extra Mileage" },
+  { value: "damage", label: "Damage", defaultLabel: "Damage" },
+  { value: "detailing", label: "Detailing", defaultLabel: "Detailing" },
+  { value: "other", label: "Other", defaultLabel: "" },
+];
 
 const Field = ({ label, value }: { label: string; value?: string | number | null }) => (
   <div className="flex flex-col gap-0.5 py-1.5">
@@ -369,6 +397,7 @@ type FinancialsAccordionProps = {
   days: number;
   fines: FineRow[];
   salik: SalikRow[];
+  contractFees: ContractFeeRow[];
   totals: { charges: number; credits: number; outstanding: number };
   onUpdateFineNote: (id: string, note: string) => void;
   onUpdateSalikNote: (id: string, note: string) => void;
@@ -379,6 +408,7 @@ const FinancialsAccordion = ({
   days,
   fines,
   salik,
+  contractFees,
   totals,
   onUpdateFineNote,
   onUpdateSalikNote,
@@ -386,14 +416,7 @@ const FinancialsAccordion = ({
   const rentalTotal = Number(contract.total_amount);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
-  const otherFees: {
-    id: string;
-    date: string;
-    type: string;
-    description: string;
-    status: string;
-    amount: number;
-  }[] = [];
+  const otherFees = contractFees;
   const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
 
   const [editingFineId, setEditingFineId] = useState<string | null>(null);
@@ -851,34 +874,19 @@ const FinancialsAccordion = ({
         count={otherFees.length}
         total={otherTotal}
         accent="purple"
+        totalClass="font-mono text-foreground"
       >
-        {otherFees.map((o) => {
-          const typeColors: Record<string, string> = {
-            Delivery: "bg-tint-blue text-tint-blue-foreground",
-            Pickup: "bg-tint-blue text-tint-blue-foreground",
-            Damage: "bg-tint-amber text-tint-amber-foreground",
-          };
-          return (
-            <EntryRow key={o.id}>
-              <span className="w-24 shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                {formatDate(o.date)}
-              </span>
-              <span
-                className={cn(
-                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                  typeColors[o.type] ?? "bg-muted text-muted-foreground",
-                )}
-              >
-                {o.type}
-              </span>
-              <span className="flex-1 truncate text-xs text-foreground/90">{o.description}</span>
-              <StatusPill status={o.status} />
-              <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
-                {fmtAed(o.amount)}
-              </span>
-            </EntryRow>
-          );
-        })}
+        {otherFees.map((o) => (
+          <EntryRow key={o.id}>
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+            </span>
+            <span className="flex-1 truncate text-xs text-foreground/90">{o.label}</span>
+            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
+              {fmtAed(o.amount)}
+            </span>
+          </EntryRow>
+        ))}
       </AccordionRow>
 
 
@@ -890,15 +898,23 @@ const FinancialsAccordion = ({
 
 const ContractDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [fines, setFines] = useState<FineRow[]>([]);
   const [salik, setSalik] = useState<SalikRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [contractFees, setContractFees] = useState<ContractFeeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showFeeModal, setShowFeeModal] = useState(false);
+  const [feeCategory, setFeeCategory] = useState<FeeCategory>("delivery");
+  const [feeLabel, setFeeLabel] = useState("Delivery");
+  const [feeAmount, setFeeAmount] = useState("");
+  const [savingFee, setSavingFee] = useState(false);
+  const [feeRefreshKey, setFeeRefreshKey] = useState(0);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeReturnDate, setCloseReturnDate] = useState("");
   const [closeReceivedBy, setCloseReceivedBy] = useState("");
@@ -916,6 +932,30 @@ const ContractDetail = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const navigate = useNavigate();
+
+  const fetchContractFees = useCallback(async () => {
+    if (!contract?.id) {
+      setContractFees([]);
+      return;
+    }
+    const { data, error } = await (supabase as any)
+      .from("contract_fees")
+      .select("id, category, label, amount")
+      .eq("contract_id", contract.id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      toast.error("Failed to load fees");
+      return;
+    }
+
+    setContractFees(
+      ((data ?? []) as ContractFeeRow[]).map((fee) => ({
+        ...fee,
+        amount: Number(fee.amount),
+      })),
+    );
+  }, [contract?.id]);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -976,6 +1016,10 @@ const ContractDetail = () => {
         setReplacementCount(count ?? 0);
       });
   }, [contract?.id]);
+
+  useEffect(() => {
+    fetchContractFees();
+  }, [fetchContractFees, feeRefreshKey]);
 
   const days = useMemo(
     () => (contract ? diffDays(contract.start_date, contract.end_date) : 0),
@@ -1152,6 +1196,52 @@ const ContractDetail = () => {
     toast.success("Contract updated");
     setShowEditModal(false);
     fetchData();
+  };
+
+  const resetFeeForm = () => {
+    setFeeCategory("delivery");
+    setFeeLabel("Delivery");
+    setFeeAmount("");
+  };
+
+  const selectFeeCategory = (category: FeeCategory) => {
+    const selected = FEE_CATEGORIES.find((item) => item.value === category);
+    setFeeCategory(category);
+    setFeeLabel(selected?.defaultLabel ?? "");
+  };
+
+  const handleAddFee = async () => {
+    if (!contract || !user) return;
+
+    const amount = Number(feeAmount);
+    const label = feeLabel.trim();
+
+    if (!label || !Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a fee label and amount");
+      return;
+    }
+
+    setSavingFee(true);
+    const { error } = await (supabase as any)
+      .from("contract_fees")
+      .insert({
+        contract_id: contract.id,
+        category: feeCategory,
+        label,
+        amount,
+        owner_id: user.id,
+      });
+    setSavingFee(false);
+
+    if (error) {
+      toast.error("Failed to add fee");
+      return;
+    }
+
+    toast.success("Fee added");
+    setShowFeeModal(false);
+    resetFeeForm();
+    setFeeRefreshKey((key) => key + 1);
   };
 
   if (loading) {
@@ -1451,7 +1541,12 @@ const ContractDetail = () => {
                 <span>{ledger.length} ledger entries</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5"
+                  onClick={() => setShowFeeModal(true)}
+                >
                   <Plus className="h-3.5 w-3.5" />
                   Add Fee
                 </Button>
@@ -1467,6 +1562,7 @@ const ContractDetail = () => {
               days={days}
               fines={fines}
               salik={salik}
+              contractFees={contractFees}
               totals={totals}
               onUpdateFineNote={(fineId, note) =>
                 setFines((prev) =>
@@ -1532,6 +1628,85 @@ const ContractDetail = () => {
                 type: e.type
               }))}
             />
+            <Dialog
+              open={showFeeModal}
+              onOpenChange={(open) => {
+                setShowFeeModal(open);
+                if (!open) resetFeeForm();
+              }}
+            >
+              <DialogContent className="sm:max-w-[440px]">
+                <DialogHeader>
+                  <DialogTitle>Add Fee</DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Add a contract fee without changing deposits, payments, fines, or Salik.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Category</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {FEE_CATEGORIES.map((category) => (
+                        <Button
+                          key={category.value}
+                          type="button"
+                          variant={feeCategory === category.value ? "default" : "outline"}
+                          size="sm"
+                          className="h-8 rounded-full px-3 text-xs"
+                          onClick={() => selectFeeCategory(category.value)}
+                        >
+                          {category.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="fee-label" className="text-xs">
+                      Label
+                    </Label>
+                    <Input
+                      id="fee-label"
+                      value={feeLabel}
+                      onChange={(e) => setFeeLabel(e.target.value)}
+                      placeholder="Fee label"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="fee-amount" className="text-xs">
+                      Amount (AED)
+                    </Label>
+                    <Input
+                      id="fee-amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={feeAmount}
+                      onChange={(e) => setFeeAmount(e.target.value)}
+                      className="font-mono tabular-nums"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowFeeModal(false)}
+                    disabled={savingFee}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={handleAddFee} disabled={savingFee}>
+                    {savingFee ? "Adding..." : "Add Fee"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* DOCUMENTS */}
