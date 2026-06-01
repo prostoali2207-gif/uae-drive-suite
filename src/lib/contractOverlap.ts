@@ -9,17 +9,36 @@ export interface ContractOverlapRow {
 }
 
 interface VehicleOverlapInput {
-  carId: string;
+  carId?: string;
+  vehicleId?: string;
   startDate: string;
   startTime?: string | null;
   endDate: string;
   endTime?: string | null;
   excludeContractId?: string;
+  operation?: string;
 }
 
 export const VEHICLE_OVERLAP_MESSAGE = "This vehicle is already booked/rented during this period.";
 
 const IGNORED_CONTRACT_STATUSES = new Set(["closed", "cancelled", "canceled"]);
+
+const CONTRACT_FIELD_SETS = [
+  {
+    vehicleField: "car_id",
+    startDateField: "start_date",
+    startTimeField: "start_time",
+    endDateField: "end_date",
+    endTimeField: "end_time",
+  },
+  {
+    vehicleField: "vehicle_id",
+    startDateField: "start_date",
+    startTimeField: "start_time",
+    endDateField: "end_date",
+    endTimeField: "end_time",
+  },
+] as const;
 
 export function formatTimeForOverlap(time: string | null | undefined): string {
   if (!time || time.trim() === "") return "12:00:00";
@@ -72,25 +91,70 @@ export function formatContractOverlapMessage(contract: ContractOverlapRow): stri
 }
 
 export async function findVehicleContractOverlap(db: any, input: VehicleOverlapInput): Promise<ContractOverlapRow | null> {
+  const vehicleId = input.carId ?? input.vehicleId;
+  if (!vehicleId) throw new Error("Vehicle is required before checking availability.");
+
   const newStart = parseContractDateTime(input.startDate, input.startTime);
   const newEnd = parseContractDateTime(input.endDate, input.endTime);
   if (Number.isNaN(newStart.getTime()) || Number.isNaN(newEnd.getTime()) || newEnd <= newStart) {
     throw new Error("End date and time must be after start date and time.");
   }
 
-  let query = db
-    .from("contracts")
-    .select("id, start_date, start_time, end_date, end_time, status, clients(full_name)")
-    .eq("car_id", input.carId)
-    .lte("start_date", input.endDate)
-    .gte("end_date", input.startDate);
+  const attemptedErrors: string[] = [];
 
-  if (input.excludeContractId) {
-    query = query.neq("id", input.excludeContractId);
+  for (const fields of CONTRACT_FIELD_SETS) {
+    let query = db
+      .from("contracts")
+      .select(
+        [
+          "id",
+          "status",
+          `start_date:${fields.startDateField}`,
+          `start_time:${fields.startTimeField}`,
+          `end_date:${fields.endDateField}`,
+          `end_time:${fields.endTimeField}`,
+          "clients(full_name)",
+        ].join(", "),
+      )
+      .eq(fields.vehicleField, vehicleId)
+      .lte(fields.startDateField, input.endDate)
+      .gte(fields.endDateField, input.startDate);
+
+    if (input.excludeContractId) {
+      query = query.neq("id", input.excludeContractId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      attemptedErrors.push(`${fields.vehicleField}: ${error.message}`);
+      console.info("[FleetDesk overlap check]", {
+        operation: input.operation ?? "unknown",
+        ok: false,
+        vehicleField: fields.vehicleField,
+        startDateField: fields.startDateField,
+        startTimeField: fields.startTimeField,
+        endDateField: fields.endDateField,
+        endTimeField: fields.endTimeField,
+        error: error.message,
+      });
+      continue;
+    }
+
+    const conflict = findOverlappingContract((data ?? []) as ContractOverlapRow[], newStart, newEnd);
+    console.info("[FleetDesk overlap check]", {
+      operation: input.operation ?? "unknown",
+      ok: true,
+      vehicleField: fields.vehicleField,
+      startDateField: fields.startDateField,
+      startTimeField: fields.startTimeField,
+      endDateField: fields.endDateField,
+      endTimeField: fields.endTimeField,
+      candidateCount: data?.length ?? 0,
+      hasConflict: !!conflict,
+    });
+
+    return conflict;
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
-
-  return findOverlappingContract((data ?? []) as ContractOverlapRow[], newStart, newEnd);
+  throw new Error(`Could not check vehicle availability. Tried fields: ${attemptedErrors.join("; ")}`);
 }

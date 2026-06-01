@@ -1229,6 +1229,7 @@ const ContractDetail = () => {
         endDate: newEndDate,
         endTime: newEndTime,
         excludeContractId: contract.id,
+        operation: "contract-extension",
       });
     } catch (error) {
       setIsExtending(false);
@@ -1352,6 +1353,7 @@ const ContractDetail = () => {
         endDate: editEndDate,
         endTime: editEndTime,
         excludeContractId: contract.id,
+        operation: "contract-edit",
       });
       if (conflict) {
         setIsSavingEdit(false);

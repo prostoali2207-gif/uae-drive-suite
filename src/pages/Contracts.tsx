@@ -418,6 +418,7 @@ const Contracts = () => {
           startTime: form.start_time,
           endDate: form.end_date,
           endTime: form.end_time,
+          operation: "contract-create",
         });
         if (conflict) {
           toast.error(formatContractOverlapMessage(conflict));

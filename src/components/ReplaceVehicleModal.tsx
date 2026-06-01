@@ -206,6 +206,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         endDate: (contractPeriod as ContractPeriod).end_date,
         endTime: (contractPeriod as ContractPeriod).end_time,
         excludeContractId: contractId,
+        operation: "vehicle-replacement",
       });
       if (conflict) {
         toast({
