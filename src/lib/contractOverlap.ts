@@ -21,7 +21,7 @@ interface VehicleOverlapInput {
 
 export const VEHICLE_OVERLAP_MESSAGE = "This vehicle is already booked/rented during this period.";
 
-const IGNORED_CONTRACT_STATUSES = new Set(["closed", "cancelled", "canceled"]);
+const IGNORED_CONTRACT_STATUSES = new Set(["cancelled", "canceled", "void", "deleted", "deleted draft"]);
 
 const CONTRACT_FIELD_SETS = [
   {

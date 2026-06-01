@@ -46,13 +46,31 @@ describe("contract overlap protection", () => {
     expect(result).toBeNull();
   });
 
-  it("ignores closed and cancelled contracts", () => {
+  it("blocks closed contracts when their rental period overlaps", () => {
     const closed = { ...baseContract, status: "Closed" };
-    const cancelled = { ...baseContract, status: "Cancelled" };
     const newStart = parseContractDateTime("2026-06-10", "10:00");
     const newEnd = parseContractDateTime("2026-06-15", "10:00");
 
-    expect(findOverlappingContract([closed, cancelled], newStart, newEnd)).toBeNull();
+    expect(findOverlappingContract([closed], newStart, newEnd)).toBe(closed);
+  });
+
+  it("blocks completed and returned contracts when their rental period overlaps", () => {
+    const completed = { ...baseContract, status: "Completed" };
+    const returned = { ...baseContract, status: "Returned" };
+    const newStart = parseContractDateTime("2026-06-10", "10:00");
+    const newEnd = parseContractDateTime("2026-06-15", "10:00");
+
+    expect(findOverlappingContract([completed], newStart, newEnd)).toBe(completed);
+    expect(findOverlappingContract([returned], newStart, newEnd)).toBe(returned);
+  });
+
+  it("ignores only cancelled, void, and deleted draft contracts", () => {
+    const ignoredStatuses = ["Cancelled", "Canceled", "Void", "Deleted", "Deleted Draft"];
+    const contracts = ignoredStatuses.map((status) => ({ ...baseContract, id: `${status}-id`, status }));
+    const newStart = parseContractDateTime("2026-06-10", "10:00");
+    const newEnd = parseContractDateTime("2026-06-15", "10:00");
+
+    expect(findOverlappingContract(contracts, newStart, newEnd)).toBeNull();
   });
 
   it("includes manager-facing conflict details", () => {
