@@ -21,6 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
 
 // Define the interface to support the missing contract_vehicles table
 interface ExtendedDatabase extends Database {
@@ -75,6 +76,19 @@ interface Car {
   make: string;
   model: string;
   year: number;
+}
+
+interface ContractPeriod {
+  id: string;
+  end_date: string;
+  end_time: string | null;
+}
+
+function splitDatetimeLocal(value: string) {
+  return {
+    date: value.slice(0, 10),
+    time: value.slice(11, 16),
+  };
 }
 
 export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
@@ -176,6 +190,32 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
       // Cast supabase client to ExtendedDatabase to handle contract_vehicles
       const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
+
+      const pickup = splitDatetimeLocal(pickupTime);
+      const { data: contractPeriod, error: contractPeriodError } = await extendedDb
+        .from("contracts")
+        .select("id, end_date, end_time")
+        .eq("id", contractId)
+        .single();
+      if (contractPeriodError) throw contractPeriodError;
+
+      const conflict = await findVehicleContractOverlap(extendedDb, {
+        carId: selectedNewCarId,
+        startDate: pickup.date,
+        startTime: pickup.time,
+        endDate: (contractPeriod as ContractPeriod).end_date,
+        endTime: (contractPeriod as ContractPeriod).end_time,
+        excludeContractId: contractId,
+      });
+      if (conflict) {
+        toast({
+          title: "Vehicle unavailable",
+          description: formatContractOverlapMessage(conflict),
+          variant: "destructive",
+        });
+        setConfirmLoading(false);
+        return;
+      }
 
       // a. Insert a row into contract_vehicles table for old car end
       const { error: errOldVehicle } = await extendedDb

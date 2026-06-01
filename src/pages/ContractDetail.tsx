@@ -68,6 +68,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
 
 interface ContractRecord {
   id: string;
@@ -985,7 +986,9 @@ const ContractDetail = () => {
   const [isExtending, setIsExtending] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editStartDate, setEditStartDate] = useState("");
+  const [editStartTime, setEditStartTime] = useState("");
   const [editEndDate, setEditEndDate] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
   const [editCarId, setEditCarId] = useState("");
   const [availableCars, setAvailableCars] = useState<AvailableCarRow[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -1214,36 +1217,29 @@ const ContractDetail = () => {
     }
 
     setIsExtending(true);
-    const oldEndIso = currentEnd.toISOString();
-    const newEndIso = newEnd.toISOString();
     const newEndDate = extendEndDateTime.slice(0, 10);
     const newEndTime = formatTimeForDb(extendEndDateTime.slice(11, 16));
 
-    const { data: candidates, error: availabilityError } = await supabase
-      .from("contracts")
-      .select("id, start_date, start_time, end_date, end_time, status, clients(full_name)")
-      .eq("car_id", contract.car_id)
-      .neq("id", contract.id)
-      .neq("status", "Cancelled")
-      .lte("start_date", newEndDate)
-      .gte("end_date", contract.end_date);
-
-    if (availabilityError) {
+    let overlap = null;
+    try {
+      overlap = await findVehicleContractOverlap(supabase, {
+        carId: contract.car_id,
+        startDate: contract.start_date,
+        startTime: contract.start_time,
+        endDate: newEndDate,
+        endTime: newEndTime,
+        excludeContractId: contract.id,
+      });
+    } catch (error) {
       setIsExtending(false);
-      setExtendError("Could not check vehicle availability. Try again.");
+      const message = error instanceof Error ? error.message : "Could not check vehicle availability. Try again.";
+      setExtendError(message);
       return;
     }
 
-    const overlap = ((candidates ?? []) as ExtensionCandidateRow[]).find((item) => {
-      const candidateStart = parseDateTime(item.start_date, item.start_time).toISOString();
-      const candidateEnd = parseDateTime(item.end_date, item.end_time).toISOString();
-      return candidateStart < newEndIso && candidateEnd > oldEndIso;
-    });
-
     if (overlap) {
       setIsExtending(false);
-      const clientName = overlap.clients?.full_name ? ` for ${overlap.clients.full_name}` : "";
-      setExtendError(`Vehicle is already booked${clientName} during the requested extension window.`);
+      setExtendError(formatContractOverlapMessage(overlap));
       return;
     }
 
@@ -1332,7 +1328,9 @@ const ContractDetail = () => {
   const handleOpenEditModal = async () => {
     if (!contract) return;
     setEditStartDate(contract.start_date);
+    setEditStartTime(formatTimeDisplay(contract.start_time));
     setEditEndDate(contract.end_date);
+    setEditEndTime(formatTimeDisplay(contract.end_time));
     setEditCarId(contract.car_id);
     const { data } = await supabase
       .from("cars")
@@ -1346,9 +1344,35 @@ const ContractDetail = () => {
   const handleSaveEdit = async () => {
     if (!contract) return;
     setIsSavingEdit(true);
+    try {
+      const conflict = await findVehicleContractOverlap(supabase, {
+        carId: editCarId,
+        startDate: editStartDate,
+        startTime: editStartTime,
+        endDate: editEndDate,
+        endTime: editEndTime,
+        excludeContractId: contract.id,
+      });
+      if (conflict) {
+        setIsSavingEdit(false);
+        toast.error(formatContractOverlapMessage(conflict));
+        return;
+      }
+    } catch (error) {
+      setIsSavingEdit(false);
+      const message = error instanceof Error ? error.message : "Could not check vehicle availability.";
+      toast.error(message);
+      return;
+    }
     const { error } = await supabase
       .from("contracts")
-      .update({ start_date: editStartDate, end_date: editEndDate, car_id: editCarId } as never)
+      .update({
+        start_date: editStartDate,
+        start_time: formatTimeForDb(editStartTime),
+        end_date: editEndDate,
+        end_time: formatTimeForDb(editEndTime),
+        car_id: editCarId,
+      } as never)
       .eq("id", contract.id);
     setIsSavingEdit(false);
     if (error) {
@@ -2076,12 +2100,36 @@ const ContractDetail = () => {
 
             <div className="grid gap-1.5">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Start Time
+              </Label>
+              <input
+                type="time"
+                value={editStartTime}
+                onChange={(e) => setEditStartTime(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                 End Date
               </Label>
               <input
                 type="date"
                 value={editEndDate}
                 onChange={(e) => setEditEndDate(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                End Time
+              </Label>
+              <input
+                type="time"
+                value={editEndTime}
+                onChange={(e) => setEditEndTime(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
             </div>
@@ -2109,7 +2157,10 @@ const ContractDetail = () => {
             <Button variant="outline" onClick={() => setShowEditModal(false)}>
               Cancel
             </Button>
-            <Button disabled={isSavingEdit || !editStartDate || !editEndDate || !editCarId} onClick={handleSaveEdit}>
+            <Button
+              disabled={isSavingEdit || !editStartDate || !editStartTime || !editEndDate || !editEndTime || !editCarId}
+              onClick={handleSaveEdit}
+            >
               {isSavingEdit ? "Saving…" : "Save Changes"}
             </Button>
           </DialogFooter>

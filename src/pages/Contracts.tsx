@@ -43,6 +43,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
+import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
@@ -409,12 +410,37 @@ const Contracts = () => {
 
     let clientId = form.client_id;
 
+    const checkVehicleOverlap = async () => {
+      try {
+        const conflict = await findVehicleContractOverlap(supabase, {
+          carId: form.car_id,
+          startDate: form.start_date,
+          startTime: form.start_time,
+          endDate: form.end_date,
+          endTime: form.end_time,
+        });
+        if (conflict) {
+          toast.error(formatContractOverlapMessage(conflict));
+          return true;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not check vehicle availability.";
+        toast.error(message);
+        return true;
+      }
+      return false;
+    };
+
     if (clientMode === "new") {
       if (!newClient.full_name.trim()) {
         toast.error("Enter the new client's full name");
         return;
       }
       setSaving(true);
+      if (await checkVehicleOverlap()) {
+        setSaving(false);
+        return;
+      }
       try {
         const { data: created, error: clientErr } = await supabase
           .from("clients")
@@ -452,6 +478,10 @@ const Contracts = () => {
         return;
       }
       setSaving(true);
+      if (await checkVehicleOverlap()) {
+        setSaving(false);
+        return;
+      }
     }
 
     try {
