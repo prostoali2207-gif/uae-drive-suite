@@ -78,6 +78,49 @@ const fieldClassName =
 
 const labelClassName = "text-sm font-semibold text-slate-800";
 
+const REQUIRED_MESSAGE = "Required";
+
+function toDateInputString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getAdultMaxDate() {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - 18);
+  return toDateInputString(date);
+}
+
+function validateDateOfBirth(value: string) {
+  if (!value) return REQUIRED_MESSAGE;
+  if (value > getAdultMaxDate()) return "Driver must be at least 18 years old.";
+  return "";
+}
+
+function formatEmiratesId(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 15);
+  const parts = [
+    digits.slice(0, 3),
+    digits.slice(3, 7),
+    digits.slice(7, 14),
+    digits.slice(14, 15),
+  ].filter(Boolean);
+  return parts.join("-");
+}
+
+function isValidEmiratesId(value: string) {
+  return /^\d{3}-\d{4}-\d{7}-\d$/.test(value);
+}
+
+function getPhoneError(dialCode: string, phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return REQUIRED_MESSAGE;
+  if (dialCode === "971" && digits.length < 9) return "Enter a valid UAE phone number.";
+  return "";
+}
+
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -87,7 +130,7 @@ const STEPS = [
   { n: 4, label: "Review" },
 ];
 
-function ProgressBar({ current }: { current: number }) {
+function ProgressBar({ current, completedSteps }: { current: number; completedSteps: number[] }) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
       <div className="flex items-start gap-0">
@@ -97,19 +140,19 @@ function ProgressBar({ current }: { current: number }) {
               <div
                 className={cn(
                   "flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold transition-all",
-                  current > s.n
+                  completedSteps.includes(s.n)
                     ? "border-emerald-500 bg-emerald-500 text-white shadow-sm shadow-emerald-200"
                     : current === s.n
                     ? "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200"
                     : "border-slate-200 bg-slate-50 text-slate-400",
                 )}
               >
-                {current > s.n ? <Check className="h-4 w-4" /> : s.n}
+                {completedSteps.includes(s.n) ? <Check className="h-4 w-4" /> : s.n}
               </div>
               <span
                 className={cn(
                   "max-w-[4.75rem] text-center text-[11px] font-semibold leading-tight",
-                  current === s.n ? "text-blue-700" : current > s.n ? "text-emerald-700" : "text-slate-400",
+                  current === s.n ? "text-blue-700" : completedSteps.includes(s.n) ? "text-emerald-700" : "text-slate-400",
                 )}
               >
                 {s.label}
@@ -119,7 +162,7 @@ function ProgressBar({ current }: { current: number }) {
               <div
                 className={cn(
                   "mx-1 mt-5 h-0.5 flex-1 rounded-full transition-all",
-                  current > s.n ? "bg-emerald-400" : "bg-slate-200",
+                  completedSteps.includes(s.n) ? "bg-emerald-400" : "bg-slate-200",
                 )}
               />
             )}
@@ -458,6 +501,98 @@ function PhoneInput({ dialCode, isoCountry, phoneNumber, onChange, hasError }: P
 
 // ── Date validation ───────────────────────────────────────────────────────────
 
+function NationalityCombobox({
+  value,
+  onChange,
+  hasError,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  hasError?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  const query = search.trim().toLowerCase();
+  const options = ALL_COUNTRIES.filter((country) => country.toLowerCase().includes(query));
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        id="nationality"
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={cn(
+          fieldClassName,
+          "flex w-full items-center justify-between px-3 text-left",
+          !value && "text-slate-500",
+          hasError && "border-red-400",
+        )}
+        aria-expanded={open}
+      >
+        <span className="truncate">{value || "Select nationality"}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/80">
+          <div className="border-b border-slate-100 p-3">
+            <input
+              ref={inputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search nationality"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-base text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 [color-scheme:light]"
+            />
+          </div>
+          <div className="max-h-[280px] overflow-y-auto py-1">
+            {options.length === 0 ? (
+              <p className="px-4 py-4 text-center text-sm text-slate-500">No country found</p>
+            ) : (
+              options.map((country) => (
+                <button
+                  key={country}
+                  type="button"
+                  onClick={() => {
+                    onChange(country);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className={cn(
+                    "flex min-h-11 w-full items-center px-4 py-2 text-left text-sm hover:bg-blue-50",
+                    value === country ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-800",
+                  )}
+                >
+                  {country}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type DateValidationStatus = 'empty' | 'expired' | 'expiring_soon' | 'valid';
 
 function getDateValidationStatus(dateValue: string): DateValidationStatus {
@@ -631,6 +766,8 @@ export default function ClientRegisterV2() {
 
   // Step 1 validation
   const [s1Errors, setS1Errors] = useState<Partial<Record<keyof Step1, string>>>({});
+  const [s2Error, setS2Error] = useState("");
+  const [s3Errors, setS3Errors] = useState<Partial<Record<keyof Step3, string>>>({});
 
   // Returning customer lookup
   const [returningOpen, setReturningOpen] = useState(false);
@@ -698,12 +835,40 @@ export default function ClientRegisterV2() {
     window.scrollTo({ top: 0 });
   };
 
-  const handleStep1Continue = () => {
+  const validateStep1 = () => {
     const errs: Partial<Record<keyof Step1, string>> = {};
-    if (!s1.full_name.trim()) errs.full_name = "Required";
-    if (!phoneNumber.trim()) errs.phone = "Required";
-    if (!s1.date_of_birth) errs.date_of_birth = "Required";
-    if (!s1.nationality) errs.nationality = "Required";
+    if (!s1.full_name.trim()) errs.full_name = REQUIRED_MESSAGE;
+    const phoneError = getPhoneError(dialCode, phoneNumber);
+    if (phoneError) errs.phone = phoneError;
+    const dobError = validateDateOfBirth(s1.date_of_birth);
+    if (dobError) errs.date_of_birth = dobError;
+    if (!s1.nationality) errs.nationality = REQUIRED_MESSAGE;
+    return errs;
+  };
+
+  const validateStep2 = () => {
+    return s2.client_type ? "" : REQUIRED_MESSAGE;
+  };
+
+  const validateStep3 = () => {
+    const errs: Partial<Record<keyof Step3, string>> = {};
+    if (!s3.license_number.trim()) errs.license_number = REQUIRED_MESSAGE;
+    if (s2.client_type === "Resident" && s3.emirates_id.trim() && !isValidEmiratesId(s3.emirates_id.trim())) {
+      errs.emirates_id = "Enter a valid Emirates ID.";
+    }
+    return errs;
+  };
+
+  const hasRequiredErrors = () => {
+    return (
+      Object.keys(validateStep1()).length > 0 ||
+      !!validateStep2() ||
+      Object.keys(validateStep3()).length > 0
+    );
+  };
+
+  const handleStep1Continue = () => {
+    const errs = validateStep1();
     if (Object.keys(errs).length) { setS1Errors(errs); return; }
     setS1Errors({});
     goToStep(2);
@@ -729,7 +894,7 @@ export default function ClientRegisterV2() {
     });
 
     setS3({
-      emirates_id: client.emirates_id ?? "",
+      emirates_id: formatEmiratesId(client.emirates_id ?? ""),
       emirates_id_expiry: toDateInputValue(client.emirates_id_expiry),
       passport_number: client.passport_number ?? "",
       passport_expiry: toDateInputValue(client.passport_expiry),
@@ -744,6 +909,9 @@ export default function ClientRegisterV2() {
       license_back: docFromUrl(client.license_back_url),
       passport_photo: docFromUrl(client.passport_photo_url),
     });
+    setS1Errors({});
+    setS2Error("");
+    setS3Errors({});
   };
 
   const handleFindProfile = async () => {
@@ -776,6 +944,19 @@ export default function ClientRegisterV2() {
 
   const handleSubmit = async () => {
     setSubmitError("");
+    const step1Errors = validateStep1();
+    const step2Error = validateStep2();
+    const step3Errors = validateStep3();
+    setS1Errors(step1Errors);
+    setS2Error(step2Error);
+    setS3Errors(step3Errors);
+    if (Object.keys(step1Errors).length || step2Error || Object.keys(step3Errors).length) {
+      setSubmitError("Please complete the required fields before submitting.");
+      if (Object.keys(step1Errors).length) goToStep(1);
+      else if (step2Error) goToStep(2);
+      else goToStep(3);
+      return;
+    }
     setSubmitting(true);
     try {
       const isResident = s2.client_type === "Resident";
@@ -820,6 +1001,23 @@ export default function ClientRegisterV2() {
   };
 
   const isResident = s2.client_type === "Resident";
+  const step1ValidationErrors = validateStep1();
+  const step2ValidationError = validateStep2();
+  const step3ValidationErrors = validateStep3();
+  const completedSteps = [
+    step > 1 && Object.keys(step1ValidationErrors).length === 0 ? 1 : null,
+    step > 2 && !step2ValidationError ? 2 : null,
+    step > 3 && Object.keys(step3ValidationErrors).length === 0 ? 3 : null,
+  ].filter((n): n is number => n !== null);
+  const requiredReviewIssues = [
+    step1ValidationErrors.full_name && "Full Name",
+    step1ValidationErrors.phone && "Phone",
+    step1ValidationErrors.date_of_birth && "Date of Birth",
+    step1ValidationErrors.nationality && "Nationality",
+    step2ValidationError && "Client Type",
+    step3ValidationErrors.license_number && "License Number",
+    step3ValidationErrors.emirates_id && "Emirates ID",
+  ].filter((item): item is string => Boolean(item));
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -841,7 +1039,7 @@ export default function ClientRegisterV2() {
       <div className="mx-auto max-w-lg px-4 pb-16 pt-8 sm:px-6">
         {/* Progress */}
         <div className="mb-8">
-          <ProgressBar current={step} />
+          <ProgressBar current={step} completedSteps={completedSteps} />
         </div>
 
         {returningBanner && (
@@ -883,6 +1081,7 @@ export default function ClientRegisterV2() {
                         <Input
                           id="returning_dob"
                           type="date"
+                          max={getAdultMaxDate()}
                           value={returningDob}
                           onChange={(e) => {
                             setReturningDob(e.target.value);
@@ -938,7 +1137,10 @@ export default function ClientRegisterV2() {
                       if (field === "dialCode") setDialCode(value);
                       else if (field === "isoCountry") setIsoCountry(value);
                       else if (field === "countryCode") setCountryCode(value);
-                      else setPhoneNumber(value);
+                      else {
+                        setPhoneNumber(value.replace(/\D/g, ""));
+                        if (s1Errors.phone) setS1Errors((p) => ({ ...p, phone: "" }));
+                      }
                     }}
                   />
                   {s1Errors.phone && <p className="text-xs text-red-500">{s1Errors.phone}</p>}
@@ -948,8 +1150,12 @@ export default function ClientRegisterV2() {
                   <Input
                     id="dob"
                     type="date"
+                    max={getAdultMaxDate()}
                     value={s1.date_of_birth}
-                    onChange={(e) => setS1((p) => ({ ...p, date_of_birth: e.target.value }))}
+                    onChange={(e) => {
+                      setS1((p) => ({ ...p, date_of_birth: e.target.value }));
+                      if (s1Errors.date_of_birth) setS1Errors((p) => ({ ...p, date_of_birth: "" }));
+                    }}
                     className={cn(fieldClassName, s1Errors.date_of_birth && "border-red-400")}
                   />
                   {s1Errors.date_of_birth && <p className="text-xs text-red-500">{s1Errors.date_of_birth}</p>}
@@ -970,35 +1176,20 @@ export default function ClientRegisterV2() {
 
               <div className="grid gap-2">
                 <Label htmlFor="nationality" className={labelClassName}>Nationality <span className="text-red-500">*</span></Label>
-                <select
-                  id="nationality"
+                <NationalityCombobox
                   value={s1.nationality}
-                  onChange={(e) => setS1((p) => ({ ...p, nationality: e.target.value }))}
-                  className={cn(
-                    fieldClassName,
-                    "focus:outline-none",
-                    s1Errors.nationality && "border-red-400",
-                    !s1.nationality && "text-slate-500",
-                  )}
-                >
-                  <option value="" disabled>Select nationality</option>
-                  <optgroup label="Common">
-                    {PRIORITY_COUNTRIES.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="All countries">
-                    {ALL_COUNTRIES.filter((c) => !PRIORITY_COUNTRIES.includes(c)).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </optgroup>
-                </select>
+                  hasError={!!s1Errors.nationality}
+                  onChange={(value) => {
+                    setS1((p) => ({ ...p, nationality: value }));
+                    if (s1Errors.nationality) setS1Errors((p) => ({ ...p, nationality: "" }));
+                  }}
+                />
                 {s1Errors.nationality && <p className="text-xs text-red-500">{s1Errors.nationality}</p>}
               </div>
             </div>
 
             <div className="mt-8 flex justify-end">
-              <Button onClick={handleStep1Continue} className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700">
+              <Button onClick={handleStep1Continue} className="h-12 w-full gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 sm:w-auto">
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -1008,7 +1199,7 @@ export default function ClientRegisterV2() {
         {/* ── STEP 2: Identity ── */}
         {step === 2 && (
           <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
-            <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-950">Are you a UAE resident?</h1>
+            <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-950">Are you a UAE resident? <span className="text-red-500">*</span></h1>
             <p className="mb-8 text-base leading-6 text-slate-600">Select your residency status.</p>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1031,7 +1222,10 @@ export default function ClientRegisterV2() {
                 <button
                   key={type}
                   type="button"
-                  onClick={() => setS2({ client_type: type })}
+                  onClick={() => {
+                    setS2({ client_type: type });
+                    setS2Error("");
+                  }}
                   className={cn(
                     "relative flex min-h-[154px] flex-col items-center justify-center gap-3 rounded-2xl border p-6 text-center transition-all",
                     s2.client_type === type
@@ -1054,15 +1248,20 @@ export default function ClientRegisterV2() {
                 </button>
               ))}
             </div>
+            {s2Error && <p className="mt-3 text-sm font-medium text-red-600">{s2Error}</p>}
 
-            <div className="mt-8 flex items-center justify-between">
-              <Button variant="ghost" onClick={() => goToStep(1)} className="h-12 gap-1.5 rounded-xl px-4 text-slate-600">
+            <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Button variant="ghost" onClick={() => goToStep(1)} className="h-12 w-full gap-1.5 rounded-xl px-4 text-slate-600 sm:w-auto">
                 <ArrowLeft className="h-4 w-4" /> Back
               </Button>
               <Button
-                onClick={() => s2.client_type && goToStep(3)}
+                onClick={() => {
+                  const error = validateStep2();
+                  setS2Error(error);
+                  if (!error) goToStep(3);
+                }}
                 disabled={!s2.client_type}
-                className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50"
+                className="h-12 w-full gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 sm:w-auto"
               >
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
@@ -1092,10 +1291,15 @@ export default function ClientRegisterV2() {
                       <Input
                         id="eid"
                         placeholder="784-XXXX-XXXXXXX-X"
+                        inputMode="numeric"
                         value={s3.emirates_id}
-                        onChange={(e) => setS3((p) => ({ ...p, emirates_id: e.target.value }))}
-                        className={fieldClassName}
+                        onChange={(e) => {
+                          setS3((p) => ({ ...p, emirates_id: formatEmiratesId(e.target.value) }));
+                          if (s3Errors.emirates_id) setS3Errors((p) => ({ ...p, emirates_id: "" }));
+                        }}
+                        className={cn(fieldClassName, s3Errors.emirates_id && "border-red-400")}
                       />
+                      {s3Errors.emirates_id && <p className="text-xs text-red-500">{s3Errors.emirates_id}</p>}
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="eid_exp" className={labelClassName}>Emirates ID Expiry</Label>
@@ -1139,9 +1343,13 @@ export default function ClientRegisterV2() {
                   <Input
                     id="lic"
                     value={s3.license_number}
-                    onChange={(e) => setS3((p) => ({ ...p, license_number: e.target.value }))}
-                    className={fieldClassName}
+                    onChange={(e) => {
+                      setS3((p) => ({ ...p, license_number: e.target.value }));
+                      if (s3Errors.license_number) setS3Errors((p) => ({ ...p, license_number: "" }));
+                    }}
+                    className={cn(fieldClassName, s3Errors.license_number && "border-red-400")}
                   />
+                  {s3Errors.license_number && <p className="text-xs text-red-500">{s3Errors.license_number}</p>}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="lic_exp" className={labelClassName}>License Expiry</Label>
@@ -1178,22 +1386,23 @@ export default function ClientRegisterV2() {
               </div>
             </div>
 
-            <div className="mt-8 flex items-center justify-between">
-              <Button variant="ghost" onClick={() => goToStep(2)} className="h-12 gap-1.5 rounded-xl px-4 text-slate-600">
+            <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Button variant="ghost" onClick={() => goToStep(2)} className="h-12 w-full gap-1.5 rounded-xl px-4 text-slate-600 sm:w-auto">
                 <ArrowLeft className="h-4 w-4" /> Back
               </Button>
               <Button
                 onClick={() => {
-                  if (!s3.license_number.trim()) return;
+                  const errs = validateStep3();
+                  setS3Errors(errs);
+                  if (Object.keys(errs).length) return;
                   goToStep(4);
                 }}
                 disabled={
-                  !s3.license_number.trim() ||
                   getDateValidationStatus(s3.emirates_id_expiry) === 'expired' ||
                   getDateValidationStatus(s3.passport_expiry) === 'expired' ||
                   getDateValidationStatus(s3.license_expiry) === 'expired'
                 }
-                className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-12 w-full gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
@@ -1207,6 +1416,13 @@ export default function ClientRegisterV2() {
             <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
               <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-950">Review & Submit</h1>
               <p className="mb-8 text-base leading-6 text-slate-600">Please review your details before submitting.</p>
+
+              {requiredReviewIssues.length > 0 && (
+                <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <p className="font-semibold">Required fields need attention:</p>
+                  <p className="mt-1">{requiredReviewIssues.join(", ")}</p>
+                </div>
+              )}
 
               <div className="grid gap-4">
                 <ReviewSection title="Personal Information" onEdit={() => goToStep(1)}>
@@ -1267,14 +1483,14 @@ export default function ClientRegisterV2() {
                 </div>
               )}
 
-              <div className="mt-8 flex items-center justify-between">
-                <Button variant="ghost" onClick={() => goToStep(3)} className="h-12 gap-1.5 rounded-xl px-4 text-slate-600">
+              <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="ghost" onClick={() => goToStep(3)} className="h-12 w-full gap-1.5 rounded-xl px-4 text-slate-600 sm:w-auto">
                   <ArrowLeft className="h-4 w-4" /> Back
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={submitting}
-                  className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700"
+                  disabled={submitting || requiredReviewIssues.length > 0}
+                  className="h-12 w-full gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   {submitting ? (
                     <>
