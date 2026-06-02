@@ -87,6 +87,11 @@ interface ContractRow {
 
 interface ClientOption { id: string; full_name: string; }
 interface CarOption { id: string; plate: string; make: string; model: string; status: string; }
+type VehicleAvailability =
+  | { status: "available" }
+  | { status: "conflict"; conflict: Awaited<ReturnType<typeof findVehicleContractOverlap>> }
+  | { status: "checking" }
+  | { status: "error"; message: string };
 
 function toSupabaseMessage(error: { code?: string; message?: string } | null): string {
   if (error?.code === "PGRST205") {
@@ -213,6 +218,7 @@ const Contracts = () => {
   const [reopenTargetId, setReopenTargetId] = useState<string | null>(null);
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [docExpiredWarnings, setDocExpiredWarnings] = useState<string[]>([]);
+  const [vehicleAvailability, setVehicleAvailability] = useState<VehicleAvailability | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -294,6 +300,41 @@ const Contracts = () => {
     };
     checkExpiry();
   }, [form.client_id]);
+
+  useEffect(() => {
+    if (!form.car_id || !form.start_date || !form.end_date || !form.start_time || !form.end_time) {
+      setVehicleAvailability(null);
+      return;
+    }
+
+    let cancelled = false;
+    setVehicleAvailability({ status: "checking" });
+
+    const checkVehicleAvailability = async () => {
+      try {
+        const conflict = await findVehicleContractOverlap(supabase, {
+          carId: form.car_id,
+          startDate: form.start_date,
+          startTime: form.start_time,
+          endDate: form.end_date,
+          endTime: form.end_time,
+          operation: "contract-create-availability-preview",
+        });
+        if (cancelled) return;
+        setVehicleAvailability(conflict ? { status: "conflict", conflict } : { status: "available" });
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Could not check vehicle availability.";
+        setVehicleAvailability({ status: "error", message });
+      }
+    };
+
+    checkVehicleAvailability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.car_id, form.start_date, form.start_time, form.end_date, form.end_time]);
 
   const availableCars = useMemo(
     () => cars.filter((c) => c.status?.trim().toLowerCase() === "available"),
@@ -395,6 +436,15 @@ const Contracts = () => {
   const sortIcon = (column: "client" | "car" | "start" | "balance") => {
     if (sortBy !== column) return null;
     return sortDir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />;
+  };
+
+  const formatAvailabilityConflictPeriod = (
+    conflict: Extract<VehicleAvailability, { status: "conflict" }>["conflict"],
+  ) => {
+    if (!conflict) return "";
+    const startTime = formatTimeDisplay(conflict.start_time);
+    const endTime = formatTimeDisplay(conflict.end_time);
+    return `${formatDate(conflict.start_date)} ${startTime} to ${formatDate(conflict.end_date)} ${endTime}`;
   };
 
   const counts = useMemo(() => {
@@ -683,6 +733,29 @@ const Contracts = () => {
                       </Command>
                     </PopoverContent>
                   </Popover>
+                  {vehicleAvailability && (
+                    <div
+                      className={cn(
+                        "text-xs",
+                        vehicleAvailability.status === "available" && "text-tint-green-foreground",
+                        vehicleAvailability.status === "conflict" && "text-destructive",
+                        (vehicleAvailability.status === "checking" || vehicleAvailability.status === "error") &&
+                          "text-muted-foreground",
+                      )}
+                    >
+                      {vehicleAvailability.status === "checking" && "Checking availability..."}
+                      {vehicleAvailability.status === "available" && "Available for selected period"}
+                      {vehicleAvailability.status === "conflict" && (
+                        <>
+                          <span>Not available for selected period</span>
+                          <span className="block font-mono">
+                            {formatAvailabilityConflictPeriod(vehicleAvailability.conflict)}
+                          </span>
+                        </>
+                      )}
+                      {vehicleAvailability.status === "error" && vehicleAvailability.message}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
