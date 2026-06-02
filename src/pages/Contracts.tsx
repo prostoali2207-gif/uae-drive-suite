@@ -189,7 +189,7 @@ const emptyForm = {
   rate_type: "Daily",
   rate_amount: 100,
   deposit_amount: 0,
-  initial_mileage: 0,
+  initial_mileage: "",
   fuel_level: "Full" as FuelLevel,
   special_conditions: "",
 };
@@ -464,6 +464,25 @@ const Contracts = () => {
     setDocExpiredWarnings([]);
   };
 
+  const prefillInitialMileage = async (carId: string) => {
+    setForm((prev) => ({ ...prev, car_id: carId, initial_mileage: "" }));
+
+    const { data, error } = await (supabase as any)
+      .from("car_maintenance")
+      .select("current_mileage")
+      .eq("car_id", carId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || data?.current_mileage === null || data?.current_mileage === undefined) return;
+
+    setForm((prev) => ({
+      ...prev,
+      initial_mileage: String(data.current_mileage),
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Submitting contract form...", { form });
@@ -480,6 +499,11 @@ const Contracts = () => {
 
     if (!form.start_date || !form.end_date) {
       toast.error("Please select start and end dates");
+      return;
+    }
+
+    if (String(form.initial_mileage).trim() === "") {
+      toast.error("Please enter initial mileage");
       return;
     }
 
@@ -714,7 +738,7 @@ const Contracts = () => {
                                 key={c.id}
                                 value={c.id}
                                 onSelect={() => {
-                                  setForm((prev) => ({ ...prev, car_id: c.id }));
+                                  prefillInitialMileage(c.id);
                                   setCarSelectOpen(false);
                                   setCarSearch("");
                                 }}
@@ -834,10 +858,8 @@ const Contracts = () => {
                       type="number"
                       min={0}
                       value={form.initial_mileage}
-                      onFocus={(e) => {
-                        if (Number(form.initial_mileage) === 0) e.currentTarget.select();
-                      }}
-                      onChange={(e) => setForm({ ...form, initial_mileage: Number(e.target.value) })}
+                      required
+                      onChange={(e) => setForm({ ...form, initial_mileage: e.target.value })}
                     />
                   </div>
                   <div className="grid gap-1.5">

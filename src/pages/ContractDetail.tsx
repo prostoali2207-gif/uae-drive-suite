@@ -978,6 +978,7 @@ const ContractDetail = () => {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeReturnDate, setCloseReturnDate] = useState("");
   const [closeReceivedBy, setCloseReceivedBy] = useState("");
+  const [closeFinalMileage, setCloseFinalMileage] = useState("");
   const [closeVehicleStatus, setCloseVehicleStatus] = useState("Available");
   const [isClosing, setIsClosing] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
@@ -1272,8 +1273,20 @@ const ContractDetail = () => {
 
   const handleCloseContract = async () => {
     if (!contract) return;
+
+    if (closeFinalMileage.trim() === "") {
+      toast.error("Please enter final mileage");
+      return;
+    }
+
+    const finalMileage = Number(closeFinalMileage);
+    if (finalMileage < Number(contract.initial_mileage)) {
+      toast.error("Final mileage cannot be lower than initial mileage.");
+      return;
+    }
+
     setIsClosing(true);
-    const [contractRes, vehicleRes] = await Promise.all([
+    const [contractRes, vehicleRes, mileageRes] = await Promise.all([
       supabase
         .from("contracts")
         .update({ status: "Closed" } as never)
@@ -1282,9 +1295,17 @@ const ContractDetail = () => {
         .from("cars")
         .update({ status: closeVehicleStatus } as never)
         .eq("id", contract.car_id),
+      (supabase as any)
+        .from("car_maintenance")
+        .insert({
+          car_id: contract.car_id,
+          owner_id: user?.id,
+          current_mileage: finalMileage,
+          notes: `Contract ${contract.id.slice(0, 8).toUpperCase()} return mileage`,
+        }),
     ]);
     setIsClosing(false);
-    if (contractRes.error || vehicleRes.error) {
+    if (contractRes.error || vehicleRes.error || mileageRes.error) {
       toast.error("Failed to close contract");
       return;
     }
@@ -2275,6 +2296,18 @@ const ContractDetail = () => {
                 placeholder="Staff name"
                 value={closeReceivedBy}
                 onChange={(e) => setCloseReceivedBy(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Final Mileage (km)
+              </Label>
+              <Input
+                type="number"
+                min={contract?.initial_mileage ?? 0}
+                value={closeFinalMileage}
+                onChange={(e) => setCloseFinalMileage(e.target.value)}
               />
             </div>
 
