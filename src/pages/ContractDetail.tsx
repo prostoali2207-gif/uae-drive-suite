@@ -1286,7 +1286,22 @@ const ContractDetail = () => {
     }
 
     setIsClosing(true);
-    const [contractRes, vehicleRes, mileageRes] = await Promise.all([
+    const mileageRes = await (supabase as any)
+      .from("car_maintenance")
+      .insert({
+        car_id: contract.car_id,
+        owner_id: user?.id,
+        current_mileage: finalMileage,
+        notes: `Contract ${contract.id.slice(0, 8).toUpperCase()} return mileage`,
+      });
+
+    if (mileageRes.error) {
+      setIsClosing(false);
+      toast.error("Failed to close contract");
+      return;
+    }
+
+    const [contractRes, vehicleRes] = await Promise.all([
       supabase
         .from("contracts")
         .update({ status: "Closed" } as never)
@@ -1295,17 +1310,9 @@ const ContractDetail = () => {
         .from("cars")
         .update({ status: closeVehicleStatus } as never)
         .eq("id", contract.car_id),
-      (supabase as any)
-        .from("car_maintenance")
-        .insert({
-          car_id: contract.car_id,
-          owner_id: user?.id,
-          current_mileage: finalMileage,
-          notes: `Contract ${contract.id.slice(0, 8).toUpperCase()} return mileage`,
-        }),
     ]);
     setIsClosing(false);
-    if (contractRes.error || vehicleRes.error || mileageRes.error) {
+    if (contractRes.error || vehicleRes.error) {
       toast.error("Failed to close contract");
       return;
     }
