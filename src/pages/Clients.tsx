@@ -34,6 +34,7 @@ import { ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { previewLegacyClientImport, type LegacyClientImportPreview } from "@/lib/clientImport";
+import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -131,6 +132,8 @@ const Clients = () => {
   const [importPreview, setImportPreview] = useState<LegacyClientImportPreview | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const fetchData = async () => {
     const [clientsRes, contractsRes] = await Promise.all([
@@ -180,6 +183,20 @@ const Clients = () => {
 
     return result;
   }, [enriched, query, docFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, docFilter, pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [filtered.length, page, pageSize]);
+
+  const paginatedClients = useMemo(
+    () => getPaginatedRows(filtered, page, pageSize),
+    [filtered, page, pageSize],
+  );
 
   const openAdd = () => {
     setEditingId(null);
@@ -968,7 +985,7 @@ const Clients = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((c) => (
+                paginatedClients.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="px-5 font-medium text-foreground">
                       <Link to={`/clients/${c.id}`} className="hover:underline">
@@ -1048,6 +1065,13 @@ const Clients = () => {
               )}
             </TableBody>
           </Table>
+          <ListPagination
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </div>
     </DashboardLayout>

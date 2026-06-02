@@ -31,6 +31,7 @@ import {
 import { CreditCard, Plus, TrendingUp, TriangleAlert as AlertTriangle, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 
 type PaymentMethod = "Cash" | "Bank Transfer" | "Card";
 type PaymentStatus = "Paid" | "Partial" | "Overdue";
@@ -66,6 +67,8 @@ export default function Payments() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [form, setForm] = useState({
     payment_date: new Date().toISOString().slice(0, 10),
     client_id: "",
@@ -91,6 +94,20 @@ export default function Payments() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(payments.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [payments.length, page, pageSize]);
+
+  const paginatedPayments = useMemo(
+    () => getPaginatedRows(payments, page, pageSize),
+    [payments, page, pageSize],
+  );
 
   const clientContracts = useMemo(
     () => contracts.filter((c) => c.client_id === form.client_id),
@@ -306,7 +323,7 @@ export default function Payments() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  payments.map((p) => (
+                  paginatedPayments.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-xs">{p.payment_date}</TableCell>
                       <TableCell className="font-medium">{p.clients?.full_name ?? "—"}</TableCell>
@@ -322,6 +339,13 @@ export default function Payments() {
                 )}
               </TableBody>
             </Table>
+            <ListPagination
+              page={page}
+              pageSize={pageSize}
+              total={payments.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           </CardContent>
         </Card>
       </div>

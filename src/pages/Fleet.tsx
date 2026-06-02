@@ -35,6 +35,7 @@ import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { Badge } from "@/components/ui/badge";
 import { previewLegacyFleetImport, type LegacyFleetImportPreview } from "@/lib/fleetImport";
 import { toast } from "sonner";
+import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -138,6 +139,8 @@ const Fleet = () => {
   const [importPreview, setImportPreview] = useState<LegacyFleetImportPreview | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const fetchCars = async () => {
     try {
@@ -165,6 +168,20 @@ const Fleet = () => {
   const filtered = useMemo(
     () => (filter === "All" ? cars : cars.filter((c) => c.status === filter)),
     [cars, filter],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [filtered.length, page, pageSize]);
+
+  const paginatedCars = useMemo(
+    () => getPaginatedRows(filtered, page, pageSize),
+    [filtered, page, pageSize],
   );
 
   const counts = useMemo(
@@ -678,7 +695,7 @@ const Fleet = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((car) => (
+                paginatedCars.map((car) => (
                   <TableRow key={car.id}>
                     <TableCell className="px-5 font-mono text-xs text-foreground">{car.plate}</TableCell>
                     <TableCell className="font-medium text-foreground">{car.make} {car.model}</TableCell>
@@ -743,6 +760,13 @@ const Fleet = () => {
               )}
             </TableBody>
           </Table>
+          <ListPagination
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </div>
       <MaintenancePanel

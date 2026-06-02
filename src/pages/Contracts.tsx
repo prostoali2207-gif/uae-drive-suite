@@ -48,6 +48,7 @@ import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 import { SignContractModal } from "@/components/SignContractModal";
+import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -220,6 +221,8 @@ const Contracts = () => {
   const [reopenTargetId, setReopenTargetId] = useState<string | null>(null);
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [docExpiredWarnings, setDocExpiredWarnings] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const fetchData = async () => {
     try {
@@ -373,6 +376,20 @@ const Contracts = () => {
       return factor * (new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
     });
   }, [contracts, filter, search, sortBy, sortDir]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search, sortBy, sortDir, pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [filtered.length, page, pageSize]);
+
+  const paginatedContracts = useMemo(
+    () => getPaginatedRows(filtered, page, pageSize),
+    [filtered, page, pageSize],
+  );
 
   const toggleSort = (column: "client" | "car" | "start" | "balance") => {
     if (sortBy === column) {
@@ -949,7 +966,7 @@ const Contracts = () => {
                   <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No contracts match this filter.</TableCell>
                 </TableRow>
               ) : (
-                filtered.map((c) => {
+                paginatedContracts.map((c) => {
                   const d = diffDays(c.start_date, c.end_date);
                   const balance = Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0));
                   return (
@@ -1022,6 +1039,13 @@ const Contracts = () => {
               )}
             </TableBody>
           </Table>
+          <ListPagination
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </div>
 

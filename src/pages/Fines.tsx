@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 
 type ChargeStatus = "Unpaid" | "Charged to Client" | "Paid";
 
@@ -93,6 +94,10 @@ const Fines = () => {
   const [importSummary, setImportSummary] = useState<{ kind: "Fines" | "Salik"; summary: ImportSummary } | null>(null);
   const finesFileRef = useRef<HTMLInputElement>(null);
   const salikFileRef = useRef<HTMLInputElement>(null);
+  const [finesPage, setFinesPage] = useState(1);
+  const [finesPageSize, setFinesPageSize] = useState(25);
+  const [salikPage, setSalikPage] = useState(1);
+  const [salikPageSize, setSalikPageSize] = useState(25);
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: "Fines" | "Salik") => {
     const file = e.target.files?.[0];
@@ -151,6 +156,34 @@ const Fines = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  useEffect(() => {
+    setFinesPage(1);
+  }, [finesPageSize]);
+
+  useEffect(() => {
+    setSalikPage(1);
+  }, [salikPageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(fines.length / finesPageSize));
+    if (finesPage > totalPages) setFinesPage(totalPages);
+  }, [fines.length, finesPage, finesPageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(salik.length / salikPageSize));
+    if (salikPage > totalPages) setSalikPage(totalPages);
+  }, [salik.length, salikPage, salikPageSize]);
+
+  const paginatedFines = useMemo(
+    () => getPaginatedRows(fines, finesPage, finesPageSize),
+    [fines, finesPage, finesPageSize],
+  );
+
+  const paginatedSalik = useMemo(
+    () => getPaginatedRows(salik, salikPage, salikPageSize),
+    [salik, salikPage, salikPageSize],
+  );
 
   const totalUnpaidFines = useMemo(
     () => fines.filter((f) => f.status === "Unpaid").reduce((s, f) => s + Number(f.amount), 0),
@@ -357,7 +390,7 @@ const Fines = () => {
                     <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
                   </TableRow>
                 ) : (
-                  fines.map((f) => (
+                  paginatedFines.map((f) => (
                     <TableRow key={f.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(f.fine_date)}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{f.cars?.plate ?? "—"}</TableCell>
@@ -383,6 +416,13 @@ const Fines = () => {
                 )}
               </TableBody>
             </Table>
+            <ListPagination
+              page={finesPage}
+              pageSize={finesPageSize}
+              total={fines.length}
+              onPageChange={setFinesPage}
+              onPageSizeChange={setFinesPageSize}
+            />
           </div>
         </TabsContent>
 
@@ -486,7 +526,7 @@ const Fines = () => {
                     <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
                   </TableRow>
                 ) : (
-                  salik.map((s) => (
+                  paginatedSalik.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(s.charge_date)}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
@@ -510,6 +550,13 @@ const Fines = () => {
                 )}
               </TableBody>
             </Table>
+            <ListPagination
+              page={salikPage}
+              pageSize={salikPageSize}
+              total={salik.length}
+              onPageChange={setSalikPage}
+              onPageSizeChange={setSalikPageSize}
+            />
           </div>
         </TabsContent>
       </Tabs>
