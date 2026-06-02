@@ -115,12 +115,22 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function getRoundedCurrentTimeInput(): string {
+  const now = new Date();
+  const hasPartialMinute = now.getSeconds() > 0 || now.getMilliseconds() > 0;
+  const minutes = now.getHours() * 60 + now.getMinutes() + (hasPartialMinute ? 1 : 0);
+  const roundedMinutes = Math.ceil(minutes / 5) * 5;
+  const hours = Math.floor(roundedMinutes / 60) % 24;
+  const mins = roundedMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
 function formatTimeForDb(time: string | undefined): string {
-  if (time == null || time.trim() === "") return "12:00:00";
+  if (time == null || time.trim() === "") return `${getRoundedCurrentTimeInput()}:00`;
   const trimmed = time.trim();
   if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
   if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
-  return "12:00:00";
+  return `${getRoundedCurrentTimeInput()}:00`;
 }
 
 function formatTimeDisplay(time: string | null | undefined): string {
@@ -168,9 +178,9 @@ const emptyForm = {
   client_id: "",
   car_id: "",
   start_date: "",
-  start_time: "12:00",
+  start_time: "",
   end_date: "",
-  end_time: "12:00",
+  end_time: "",
   rate_type: "Daily",
   rate_amount: 100,
   deposit_amount: 0,
@@ -393,6 +403,17 @@ const Contracts = () => {
     return base;
   }, [contracts]);
 
+  const handleContractDialogOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      const defaultTime = getRoundedCurrentTimeInput();
+      setForm((prev) => ({ ...prev, start_time: defaultTime, end_time: defaultTime }));
+      setEndTimeManuallyEdited(false);
+      return;
+    }
+    setDocExpiredWarnings([]);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Submitting contract form...", { form });
@@ -544,7 +565,7 @@ const Contracts = () => {
             ))}
           </div>
 
-            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setDocExpiredWarnings([]); }}>
+          <Dialog open={open} onOpenChange={handleContractDialogOpenChange}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5">
                 <Plus className="h-4 w-4" />
