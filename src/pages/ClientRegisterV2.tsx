@@ -920,29 +920,10 @@ export default function ClientRegisterV2() {
   const handleFindProfile = async () => {
     if (!returningName.trim() || !returningDob) return;
 
-    setReturningStatus("loading");
+    // TODO: Rebuild returning-client detection through a safe manager-approved request flow.
+    // Anonymous users must not read active clients directly.
     setReturningBanner(null);
-
-    const { data, error } = await supabase
-      .from("clients")
-      .select("*")
-      .ilike("full_name", returningName.trim())
-      .eq("date_of_birth" as never, returningDob)
-      .eq("owner_id", ownerId)
-      .limit(1)
-      .maybeSingle();
-
-    if (error || !data) {
-      setReturningStatus("not_found");
-      return;
-    }
-
-    const client = data as unknown as ExistingClientRow;
-    prefillFromClient(client);
-    setExistingClientId(client.id);
-    setReturningStatus("found");
-    setReturningBanner(`Welcome back, ${client.full_name}! Your details have been pre-filled.`);
-    setTimeout(() => goToStep(4), 1000);
+    setReturningStatus("not_found");
   };
 
   const handleSubmit = async () => {
@@ -984,17 +965,8 @@ export default function ClientRegisterV2() {
         passport_photo_url: docs.passport_photo?.url ?? null,
       };
 
-      if (existingClientId) {
-        const { owner_id: _ownerId, ...updatePayload } = payload;
-        const { error } = await supabase
-          .from("clients")
-          .update(updatePayload as never)
-          .eq("id", existingClientId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("clients").insert(payload as never);
-        if (error) throw error;
-      }
+      const { error } = await supabase.from("client_registration_requests" as never).insert(payload as never);
+      if (error) throw error;
       setSubmitted(true);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : "Submission failed. Please try again.");
@@ -1107,7 +1079,9 @@ export default function ClientRegisterV2() {
                         <p className="text-sm text-gray-500">Searching...</p>
                       )}
                       {returningStatus === "not_found" && (
-                        <p className="text-sm text-red-600">No profile found. Please fill in your details below.</p>
+                        <p className="text-sm text-slate-600">
+                          Returning-client lookup is temporarily unavailable. Please submit your details for manager review.
+                        </p>
                       )}
                       {returningStatus === "found" && returningBanner && (
                         <p className="text-sm text-green-600">{returningBanner}</p>

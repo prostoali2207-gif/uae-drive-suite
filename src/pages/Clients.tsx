@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload, XCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +77,32 @@ interface ContractRow {
   status: string;
 }
 
+interface ClientRegistrationRequest {
+  id: string;
+  owner_id: string;
+  status: "pending" | "accepted" | "rejected";
+  full_name: string;
+  phone: string;
+  email: string | null;
+  nationality: string;
+  date_of_birth: string | null;
+  client_type: string;
+  emirates_id: string | null;
+  emirates_id_expiry: string | null;
+  passport_number: string | null;
+  passport_expiry: string | null;
+  license_number: string;
+  license_expiry: string | null;
+  passport_photo_url: string | null;
+  eid_front_url: string | null;
+  eid_back_url: string | null;
+  license_front_url: string | null;
+  license_back_url: string | null;
+  rejection_reason: string | null;
+  created_client_id: string | null;
+  created_at: string;
+}
+
 function toSupabaseMessage(error: { code?: string; message?: string } | null): string {
   if (error?.code === "PGRST205") {
     return "Supabase tables are missing in this project. Run migrations, then retry.";
@@ -111,9 +137,47 @@ const emptyForm = {
   license_back_url: "",
 };
 
+const requestToClientPayload = (request: ClientRegistrationRequest) => ({
+  full_name: request.full_name.trim(),
+  phone: request.phone.trim(),
+  client_type: request.client_type,
+  emirates_id: request.client_type === "Resident" ? request.emirates_id ?? "" : "",
+  emirates_id_expiry: request.client_type === "Resident" ? request.emirates_id_expiry : null,
+  passport_number: request.client_type === "Tourist" ? request.passport_number ?? "" : "",
+  passport_expiry: request.client_type === "Tourist" ? request.passport_expiry : null,
+  nationality: request.nationality.trim(),
+  email: request.email?.trim() || null,
+  license_number: request.license_number.trim(),
+  license_expiry: request.license_expiry,
+  date_of_birth: request.date_of_birth,
+  passport_photo_url: request.passport_photo_url,
+  eid_front_url: request.eid_front_url,
+  eid_back_url: request.eid_back_url,
+  license_front_url: request.license_front_url,
+  license_back_url: request.license_back_url,
+});
+
+const formatDate = (value: string | null) => {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-AE", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const documentLinks = (request: ClientRegistrationRequest) => [
+  ["Passport Photo", request.passport_photo_url],
+  ["Emirates ID Front", request.eid_front_url],
+  ["Emirates ID Back", request.eid_back_url],
+  ["License Front", request.license_front_url],
+  ["License Back", request.license_back_url],
+].filter(([, url]) => Boolean(url)) as [string, string][];
+
 const Clients = () => {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
+  const [registrationRequests, setRegistrationRequests] = useState<ClientRegistrationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [docFilter, setDocFilter] = useState<"All" | "Emirates ID" | "Passport">("All");
@@ -134,15 +198,25 @@ const Clients = () => {
   const [importing, setImporting] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [reviewingRequest, setReviewingRequest] = useState<ClientRegistrationRequest | null>(null);
+  const [reviewActionLoading, setReviewActionLoading] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   const fetchData = async () => {
-    const [clientsRes, contractsRes] = await Promise.all([
+    const [clientsRes, contractsRes, requestsRes] = await Promise.all([
       supabase.from("clients").select("*").order("created_at", { ascending: false }),
       supabase.from("contracts").select("id, client_id, total_amount, payment_status, status"),
+      supabase
+        .from("client_registration_requests" as never)
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
     if (clientsRes.error) toast.error(`Failed to load clients: ${toSupabaseMessage(clientsRes.error)}`);
     else setClients((clientsRes.data as any) || []);
     if (!contractsRes.error) setContracts(contractsRes.data || []);
+    if (requestsRes.error) toast.error(`Failed to load registration requests: ${toSupabaseMessage(requestsRes.error)}`);
+    else setRegistrationRequests((requestsRes.data as unknown as ClientRegistrationRequest[]) || []);
     setLoading(false);
   };
 
@@ -196,6 +270,11 @@ const Clients = () => {
   const paginatedClients = useMemo(
     () => getPaginatedRows(filtered, page, pageSize),
     [filtered, page, pageSize],
+  );
+
+  const pendingRequests = useMemo(
+    () => registrationRequests.filter((request) => request.status === "pending"),
+    [registrationRequests],
   );
 
   const openAdd = () => {
@@ -404,6 +483,65 @@ const Clients = () => {
     fetchData();
   };
 
+  const handleAcceptRequest = async (request: ClientRegistrationRequest) => {
+    setReviewActionLoading(true);
+    const { data: insertedClient, error: insertError } = await supabase
+      .from("clients")
+      .insert(requestToClientPayload(request) as never)
+      .select("id")
+      .single();
+
+    if (insertError) {
+      setReviewActionLoading(false);
+      toast.error(`Failed to accept request: ${toSupabaseMessage(insertError)}`);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("client_registration_requests" as never)
+      .update({
+        status: "accepted",
+        reviewed_at: new Date().toISOString(),
+        created_client_id: (insertedClient as any).id,
+      } as never)
+      .eq("id" as never, request.id);
+
+    setReviewActionLoading(false);
+    if (updateError) {
+      toast.error(`Client created, but request was not marked accepted: ${toSupabaseMessage(updateError)}`);
+      fetchData();
+      return;
+    }
+
+    toast.success("Client request accepted");
+    setReviewingRequest(null);
+    setRequestsOpen(false);
+    fetchData();
+  };
+
+  const handleRejectRequest = async (request: ClientRegistrationRequest) => {
+    setReviewActionLoading(true);
+    const { error } = await supabase
+      .from("client_registration_requests" as never)
+      .update({
+        status: "rejected",
+        reviewed_at: new Date().toISOString(),
+        rejection_reason: rejectionReason.trim() || null,
+      } as never)
+      .eq("id" as never, request.id);
+
+    setReviewActionLoading(false);
+    if (error) {
+      toast.error(`Failed to reject request: ${toSupabaseMessage(error)}`);
+      return;
+    }
+
+    toast.success("Client request rejected");
+    setReviewingRequest(null);
+    setRejectionReason("");
+    fetchData();
+  };
+
   return (
     <DashboardLayout title="Clients" subtitle="Manage your renters">
       <div className="flex flex-col gap-5">
@@ -543,6 +681,136 @@ const Clients = () => {
                   {importing ? "Importing..." : `Import ${importPreview?.rowsReady ?? 0} ready rows`}
                 </Button>
               </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={requestsOpen} onOpenChange={(v) => { setRequestsOpen(v); if (!v) { setReviewingRequest(null); setRejectionReason(""); } }}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1.5 bg-transparent" onClick={() => setRequestsOpen(true)}>
+                <Inbox className="h-4 w-4" />
+                Pending Requests
+                {pendingRequests.length > 0 && (
+                  <Badge className="ml-1 bg-fd-accent text-white">{pendingRequests.length}</Badge>
+                )}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[760px] text-foreground font-dm-sans">
+              <DialogHeader>
+                <DialogTitle className="text-foreground">Pending client requests</DialogTitle>
+                <DialogDescription className="text-muted-foreground">
+                  Review public registration submissions before creating active client records.
+                </DialogDescription>
+              </DialogHeader>
+
+              {!reviewingRequest ? (
+                <div className="grid gap-3 py-2">
+                  {pendingRequests.length === 0 ? (
+                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+                      No pending registration requests.
+                    </div>
+                  ) : (
+                    pendingRequests.map((request) => (
+                      <div key={request.id} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="font-medium text-foreground">{request.full_name}</div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span className="font-mono">{request.phone}</span>
+                            <span>{request.client_type}</span>
+                            <span>{formatDate(request.created_at)}</span>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 bg-transparent"
+                          onClick={() => setReviewingRequest(request)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          Review
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-4 py-2">
+                  <div className="rounded-lg border border-border bg-muted/20 p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="font-semibold text-foreground">{reviewingRequest.full_name}</h3>
+                        <p className="text-xs text-muted-foreground">Submitted {formatDate(reviewingRequest.created_at)}</p>
+                      </div>
+                      <Badge variant="outline">{reviewingRequest.client_type}</Badge>
+                    </div>
+                    <div className="grid gap-3 text-sm sm:grid-cols-2">
+                      {[
+                        ["Phone", reviewingRequest.phone],
+                        ["Email", reviewingRequest.email || "—"],
+                        ["Date of Birth", formatDate(reviewingRequest.date_of_birth)],
+                        ["Nationality", reviewingRequest.nationality],
+                        ["Emirates ID", reviewingRequest.emirates_id || "—"],
+                        ["EID Expiry", formatDate(reviewingRequest.emirates_id_expiry)],
+                        ["Passport", reviewingRequest.passport_number || "—"],
+                        ["Passport Expiry", formatDate(reviewingRequest.passport_expiry)],
+                        ["License", reviewingRequest.license_number],
+                        ["License Expiry", formatDate(reviewingRequest.license_expiry)],
+                      ].map(([label, value]) => (
+                        <div key={label}>
+                          <div className="text-[11px] uppercase text-muted-foreground">{label}</div>
+                          <div className="font-medium text-foreground">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <div className="mb-3 text-sm font-semibold text-foreground">Documents</div>
+                    {documentLinks(reviewingRequest).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No documents uploaded.</p>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {documentLinks(reviewingRequest).map(([label, url]) => (
+                          <a
+                            key={label}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                          >
+                            {label}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="reject_reason" className="text-foreground">Reject reason (optional)</Label>
+                    <Input
+                      id="reject_reason"
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      placeholder="Internal note"
+                      className="bg-input border-border text-foreground"
+                    />
+                  </div>
+
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button type="button" variant="outline" onClick={() => { setReviewingRequest(null); setRejectionReason(""); }} disabled={reviewActionLoading}>
+                      Back
+                    </Button>
+                    <Button type="button" variant="destructive" className="gap-1.5" onClick={() => handleRejectRequest(reviewingRequest)} disabled={reviewActionLoading}>
+                      <XCircle className="h-4 w-4" />
+                      Reject
+                    </Button>
+                    <Button type="button" className="gap-1.5 bg-fd-accent text-white hover:bg-fd-accent/90" onClick={() => handleAcceptRequest(reviewingRequest)} disabled={reviewActionLoading}>
+                      <CheckCircle2 className="h-4 w-4" />
+                      Accept
+                    </Button>
+                  </DialogFooter>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
 
