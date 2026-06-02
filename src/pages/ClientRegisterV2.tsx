@@ -73,6 +73,11 @@ const ALL_COUNTRIES = [
   ...COUNTRIES.filter((c) => !PRIORITY_COUNTRIES.includes(c)),
 ];
 
+const fieldClassName =
+  "h-12 rounded-xl border-slate-200 bg-white text-base text-slate-950 shadow-sm shadow-slate-200/60 placeholder:text-slate-400 focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-100 [color-scheme:light]";
+
+const labelClassName = "text-sm font-semibold text-slate-800";
+
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -84,41 +89,43 @@ const STEPS = [
 
 function ProgressBar({ current }: { current: number }) {
   return (
-    <div className="flex items-center gap-0">
-      {STEPS.map((s, i) => (
-        <div key={s.n} className="flex flex-1 items-center">
-          <div className="flex flex-col items-center gap-1">
-            <div
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all",
-                current > s.n
-                  ? "bg-green-500 text-white"
-                  : current === s.n
-                  ? "bg-blue-600 text-white shadow-md shadow-blue-200"
-                  : "bg-gray-100 text-gray-400",
-              )}
-            >
-              {current > s.n ? <Check className="h-4 w-4" /> : s.n}
+    <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+      <div className="flex items-start gap-0">
+        {STEPS.map((s, i) => (
+          <div key={s.n} className="flex flex-1 items-start">
+            <div className="flex min-w-0 flex-col items-center gap-2">
+              <div
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold transition-all",
+                  current > s.n
+                    ? "border-emerald-500 bg-emerald-500 text-white shadow-sm shadow-emerald-200"
+                    : current === s.n
+                    ? "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200"
+                    : "border-slate-200 bg-slate-50 text-slate-400",
+                )}
+              >
+                {current > s.n ? <Check className="h-4 w-4" /> : s.n}
+              </div>
+              <span
+                className={cn(
+                  "max-w-[4.75rem] text-center text-[11px] font-semibold leading-tight",
+                  current === s.n ? "text-blue-700" : current > s.n ? "text-emerald-700" : "text-slate-400",
+                )}
+              >
+                {s.label}
+              </span>
             </div>
-            <span
-              className={cn(
-                "hidden text-[10px] font-medium sm:block",
-                current === s.n ? "text-blue-600" : current > s.n ? "text-green-600" : "text-gray-400",
-              )}
-            >
-              {s.label}
-            </span>
+            {i < STEPS.length - 1 && (
+              <div
+                className={cn(
+                  "mx-1 mt-5 h-0.5 flex-1 rounded-full transition-all",
+                  current > s.n ? "bg-emerald-400" : "bg-slate-200",
+                )}
+              />
+            )}
           </div>
-          {i < STEPS.length - 1 && (
-            <div
-              className={cn(
-                "mx-1 h-0.5 flex-1 transition-all",
-                current > s.n ? "bg-green-400" : "bg-gray-200",
-              )}
-            />
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -170,14 +177,14 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
   };
 
   return (
-    <div className="grid gap-1.5">
-      <Label className="text-sm font-medium text-gray-700">{label}</Label>
+    <div className="grid gap-2">
+      <Label className={labelClassName}>{label}</Label>
       {value ? (
-        <div className="relative flex min-h-[116px] items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-3 pr-16">
+        <div className="relative flex min-h-[128px] items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 pr-16">
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="absolute right-2 top-2 cursor-pointer border-none bg-transparent text-xs text-blue-500 underline"
+            className="absolute right-3 top-3 cursor-pointer border-none bg-transparent text-xs font-semibold text-blue-600 underline"
           >
             Replace
           </button>
@@ -185,16 +192,16 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
             <img
               src={value.url}
               alt={label}
-              className="h-12 w-12 rounded-lg object-cover border border-gray-200"
+              className="h-14 w-14 rounded-xl border border-slate-200 object-cover"
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gray-100 text-gray-500 text-xs font-medium">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-500">
               PDF
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="break-words text-sm font-medium text-gray-900">{value.name}</p>
-            <p className="text-xs text-gray-500">{formatBytes(value.size)}</p>
+            <p className="break-words text-sm font-semibold text-slate-950">{value.name}</p>
+            <p className="text-xs text-slate-500">{formatBytes(value.size)}</p>
             <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
               <Check className="h-3 w-3" /> Uploaded
             </span>
@@ -205,15 +212,17 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
           onClick={() => !uploading && inputRef.current?.click()}
-          className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-7 transition-colors hover:border-blue-400 hover:bg-blue-50 sm:min-h-[165px]"
+          className="flex min-h-[190px] cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-white px-5 py-8 text-center shadow-sm shadow-slate-200/50 transition-colors hover:border-blue-400 hover:bg-blue-50 sm:min-h-[210px]"
         >
-          <CloudUpload className={cn("h-7 w-7", uploading ? "animate-pulse text-blue-400" : "text-gray-400")} />
-          <p className="max-w-[14rem] text-center text-sm leading-5 text-gray-600">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50">
+            <CloudUpload className={cn("h-6 w-6", uploading ? "animate-pulse text-blue-500" : "text-blue-600")} />
+          </div>
+          <p className="max-w-[15rem] text-sm font-semibold leading-5 text-slate-700">
             {uploading ? "Uploading…" : (
               <>
-                <span className="font-medium text-blue-600">Drop file here</span>
+                <span className="text-blue-700">Drop file here</span>
                 {" or "}
-                <span className="font-medium text-blue-600">Choose File</span>
+                <span className="text-blue-700">Choose File</span>
               </>
             )}
           </p>
@@ -250,17 +259,17 @@ function ReviewRow({
 }) {
   const isEmpty = !value || value === "—";
   const valueClassName = cn(
-    "min-w-0 break-words text-sm font-medium sm:text-right",
+    "min-w-0 break-words text-base font-semibold sm:text-right",
     dateStatus === "expired" && "text-red-600",
     dateStatus === "expiring_soon" && "text-yellow-600",
-    dateStatus !== "expired" && dateStatus !== "expiring_soon" && "text-gray-900",
+    dateStatus !== "expired" && dateStatus !== "expiring_soon" && "text-slate-950",
   );
 
   return (
-    <div className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-      <span className="text-sm text-gray-600">{label}</span>
+    <div className="flex flex-col gap-1.5 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <span className="text-sm font-medium text-slate-600">{label}</span>
       {isEmpty ? (
-        <span className="text-sm text-gray-500">Not provided</span>
+        <span className="text-base text-slate-500">Not provided</span>
       ) : (
         <span className={valueClassName}>{value}</span>
       )}
@@ -278,18 +287,18 @@ function ReviewSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">{title}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-700">{title}</p>
         <button
           type="button"
           onClick={onEdit}
-          className="text-xs font-medium text-blue-600 hover:underline"
+          className="text-sm font-semibold text-blue-600 hover:underline"
         >
           Edit
         </button>
       </div>
-      <div className="divide-y divide-gray-100">{children}</div>
+      <div className="divide-y divide-slate-100">{children}</div>
     </div>
   );
 }
@@ -366,23 +375,23 @@ function PhoneInput({ dialCode, isoCountry, phoneNumber, onChange, hasError }: P
     <div ref={wrapRef} className="relative w-full min-w-0">
       <div
         className={cn(
-          "flex h-10 w-full overflow-hidden rounded-lg border bg-white text-sm ring-offset-background focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1",
-          hasError ? "border-red-400" : "border-gray-300",
+          "flex h-12 w-full overflow-hidden rounded-xl border bg-white text-base shadow-sm shadow-slate-200/60 ring-offset-background focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100",
+          hasError ? "border-red-400" : "border-slate-200",
         )}
       >
         {/* Country selector button */}
         <button
           type="button"
           onClick={() => setIsDropdownOpen((o) => !o)}
-          className="flex w-24 shrink-0 items-center justify-between gap-1 border-r border-gray-200 bg-gray-50 px-2 hover:bg-gray-100 focus:outline-none"
+          className="flex w-28 shrink-0 items-center justify-between gap-2 border-r border-slate-200 bg-slate-50 px-3 hover:bg-slate-100 focus:outline-none"
         >
           <img
             src={`https://flagcdn.com/20x15/${isoCountry}.png`}
             alt=""
             className="h-[15px] w-5 shrink-0 rounded-sm object-cover"
           />
-          <span className="font-medium text-gray-800">+{dialCode}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+          <span className="font-semibold text-slate-900">+{dialCode}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" />
         </button>
 
         {/* Local number input — never affected by dropdown state */}
@@ -392,13 +401,13 @@ function PhoneInput({ dialCode, isoCountry, phoneNumber, onChange, hasError }: P
           placeholder="50 123 4567"
           value={phoneNumber}
           onChange={(e) => onChange("phoneNumber", e.target.value)}
-          className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+          className="min-w-0 flex-1 bg-white px-3 py-2 text-base text-slate-950 outline-none placeholder:text-slate-400 [color-scheme:light]"
         />
       </div>
 
       {/* Dropdown */}
       {isDropdownOpen && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-72 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div className="absolute left-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg shadow-slate-200/80">
           <div className="border-b border-gray-100 p-2">
             <input
               autoFocus
@@ -406,7 +415,7 @@ function PhoneInput({ dialCode, isoCountry, phoneNumber, onChange, hasError }: P
               placeholder="Search country or code..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 [color-scheme:light]"
             />
           </div>
           <div className="max-h-[260px] overflow-y-auto">
@@ -815,48 +824,51 @@ export default function ClientRegisterV2() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F9FAFB]">
+    <div className="min-h-screen overflow-x-hidden bg-white">
       {/* Top nav */}
-      <div className="border-b border-gray-100 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-xl items-center justify-between gap-4">
-          <span className="text-lg font-bold text-gray-900 tracking-tight">FleetDesk</span>
-          <a href="mailto:support@fleetdesk.app" className="text-sm text-gray-500 hover:text-blue-600">
+      <div className="border-b border-slate-100 bg-white px-4 py-4">
+        <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
+          <div>
+            <span className="text-xl font-extrabold tracking-tight text-slate-950">FleetDesk</span>
+            <p className="text-xs font-medium text-slate-500">Secure rental registration</p>
+          </div>
+          <a href="mailto:support@fleetdesk.app" className="text-sm font-medium text-slate-500 hover:text-blue-600">
             Need help?
           </a>
         </div>
       </div>
 
-      <div className="mx-auto max-w-xl px-4 pb-16 pt-8">
+      <div className="mx-auto max-w-lg px-4 pb-16 pt-8 sm:px-6">
         {/* Progress */}
         <div className="mb-8">
           <ProgressBar current={step} />
         </div>
 
         {returningBanner && (
-          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
             {returningBanner}
           </div>
         )}
 
         {/* ── STEP 1: Personal Information ── */}
         {step === 1 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-            <h1 className="mb-1 text-xl font-bold text-gray-900">Personal Information</h1>
-            <p className="mb-6 text-sm text-gray-500">Tell us a bit about yourself.</p>
+          <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
+            <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-950">Personal Information</h1>
+            <p className="mb-8 text-base leading-6 text-slate-600">Tell us a bit about yourself.</p>
 
-            <div className="grid gap-4">
-              <div className="grid gap-2">
+            <div className="grid gap-5">
+              <div className="grid gap-3">
                 <button
                   type="button"
                   onClick={() => setReturningOpen((o) => !o)}
-                  className="max-w-full text-left text-sm text-blue-600 underline"
+                  className="max-w-full rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-left text-sm font-semibold text-blue-700"
                 >
                   Already registered? Find your profile →
                 </button>
 
                 {returningOpen && (
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <div className="grid gap-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="grid gap-4">
                       <Input
                         placeholder="Full name as registered"
                         value={returningName}
@@ -864,9 +876,10 @@ export default function ClientRegisterV2() {
                           setReturningName(e.target.value);
                           if (returningStatus !== "idle") setReturningStatus("idle");
                         }}
+                        className={fieldClassName}
                       />
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="returning_dob">Date of Birth</Label>
+                      <div className="grid gap-2">
+                        <Label htmlFor="returning_dob" className={labelClassName}>Date of Birth</Label>
                         <Input
                           id="returning_dob"
                           type="date"
@@ -875,13 +888,14 @@ export default function ClientRegisterV2() {
                             setReturningDob(e.target.value);
                             if (returningStatus !== "idle") setReturningStatus("idle");
                           }}
+                          className={fieldClassName}
                         />
                       </div>
                       <Button
                         type="button"
                         onClick={handleFindProfile}
                         disabled={returningStatus === "loading" || !returningName.trim() || !returningDob}
-                        className="w-full bg-blue-600 hover:bg-blue-700"
+                        className="h-12 w-full rounded-xl bg-blue-600 font-semibold text-white hover:bg-blue-700"
                       >
                         Find my profile
                       </Button>
@@ -899,21 +913,21 @@ export default function ClientRegisterV2() {
                 )}
               </div>
 
-              <div className="grid gap-1.5">
-                <Label htmlFor="full_name">Full Name <span className="text-red-500">*</span></Label>
+              <div className="grid gap-2">
+                <Label htmlFor="full_name" className={labelClassName}>Full Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="full_name"
                   placeholder="As on official ID"
                   value={s1.full_name}
                   onChange={(e) => setS1((p) => ({ ...p, full_name: e.target.value }))}
-                  className={cn(s1Errors.full_name && "border-red-400 focus-visible:ring-red-300")}
+                  className={cn(fieldClassName, s1Errors.full_name && "border-red-400 focus-visible:ring-red-300")}
                 />
                 {s1Errors.full_name && <p className="text-xs text-red-500">{s1Errors.full_name}</p>}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-                <div className="grid min-w-0 gap-1.5">
-                  <Label htmlFor="phone">Phone <span className="text-red-500">*</span></Label>
+              <div className="grid gap-5 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+                <div className="grid min-w-0 gap-2">
+                  <Label htmlFor="phone" className={labelClassName}>Phone <span className="text-red-500">*</span></Label>
                   <PhoneInput
                     dialCode={dialCode}
                     isoCountry={isoCountry}
@@ -929,40 +943,42 @@ export default function ClientRegisterV2() {
                   />
                   {s1Errors.phone && <p className="text-xs text-red-500">{s1Errors.phone}</p>}
                 </div>
-                <div className="grid min-w-0 gap-1.5">
-                  <Label htmlFor="dob">Date of Birth <span className="text-red-500">*</span></Label>
+                <div className="grid min-w-0 gap-2">
+                  <Label htmlFor="dob" className={labelClassName}>Date of Birth <span className="text-red-500">*</span></Label>
                   <Input
                     id="dob"
                     type="date"
                     value={s1.date_of_birth}
                     onChange={(e) => setS1((p) => ({ ...p, date_of_birth: e.target.value }))}
-                    className={cn(s1Errors.date_of_birth && "border-red-400")}
+                    className={cn(fieldClassName, s1Errors.date_of_birth && "border-red-400")}
                   />
                   {s1Errors.date_of_birth && <p className="text-xs text-red-500">{s1Errors.date_of_birth}</p>}
                 </div>
               </div>
 
-              <div className="grid gap-1.5">
-                <Label htmlFor="email">Email <span className="text-gray-400 font-normal">(optional)</span></Label>
+              <div className="grid gap-2">
+                <Label htmlFor="email" className={labelClassName}>Email <span className="font-normal text-slate-500">(optional)</span></Label>
                 <Input
                   id="email"
                   type="email"
                   placeholder="you@email.com"
                   value={s1.email}
                   onChange={(e) => setS1((p) => ({ ...p, email: e.target.value }))}
+                  className={fieldClassName}
                 />
               </div>
 
-              <div className="grid gap-1.5">
-                <Label htmlFor="nationality">Nationality <span className="text-red-500">*</span></Label>
+              <div className="grid gap-2">
+                <Label htmlFor="nationality" className={labelClassName}>Nationality <span className="text-red-500">*</span></Label>
                 <select
                   id="nationality"
                   value={s1.nationality}
                   onChange={(e) => setS1((p) => ({ ...p, nationality: e.target.value }))}
                   className={cn(
-                    "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                    fieldClassName,
+                    "focus:outline-none",
                     s1Errors.nationality && "border-red-400",
-                    !s1.nationality && "text-muted-foreground",
+                    !s1.nationality && "text-slate-500",
                   )}
                 >
                   <option value="" disabled>Select nationality</option>
@@ -981,8 +997,8 @@ export default function ClientRegisterV2() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <Button onClick={handleStep1Continue} className="gap-2 bg-blue-600 hover:bg-blue-700">
+            <div className="mt-8 flex justify-end">
+              <Button onClick={handleStep1Continue} className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700">
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -991,11 +1007,11 @@ export default function ClientRegisterV2() {
 
         {/* ── STEP 2: Identity ── */}
         {step === 2 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-            <h1 className="mb-1 text-xl font-bold text-gray-900">Are you a UAE resident?</h1>
-            <p className="mb-6 text-sm text-gray-500">Select your residency status.</p>
+          <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
+            <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-950">Are you a UAE resident?</h1>
+            <p className="mb-8 text-base leading-6 text-slate-600">Select your residency status.</p>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {(
                 [
                   {
@@ -1017,10 +1033,10 @@ export default function ClientRegisterV2() {
                   type="button"
                   onClick={() => setS2({ client_type: type })}
                   className={cn(
-                    "relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all",
+                    "relative flex min-h-[154px] flex-col items-center justify-center gap-3 rounded-2xl border p-6 text-center transition-all",
                     s2.client_type === type
                       ? "border-blue-600 bg-blue-50 shadow-md shadow-blue-100"
-                      : "border-gray-200 bg-white hover:border-gray-300",
+                      : "border-slate-200 bg-white shadow-sm shadow-slate-200/60 hover:border-blue-200 hover:bg-blue-50/50",
                   )}
                 >
                   {s2.client_type === type && (
@@ -1032,21 +1048,21 @@ export default function ClientRegisterV2() {
                     {icon}
                   </span>
                   <div>
-                    <p className="font-semibold text-gray-900">{title}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{sub}</p>
+                    <p className="text-base font-bold text-slate-950">{title}</p>
+                    <p className="mt-1 text-sm leading-5 text-slate-600">{sub}</p>
                   </div>
                 </button>
               ))}
             </div>
 
-            <div className="mt-6 flex items-center justify-between">
-              <Button variant="ghost" onClick={() => goToStep(1)} className="gap-1.5 text-gray-500">
+            <div className="mt-8 flex items-center justify-between">
+              <Button variant="ghost" onClick={() => goToStep(1)} className="h-12 gap-1.5 rounded-xl px-4 text-slate-600">
                 <ArrowLeft className="h-4 w-4" /> Back
               </Button>
               <Button
                 onClick={() => s2.client_type && goToStep(3)}
                 disabled={!s2.client_type}
-                className="gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50"
               >
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
@@ -1056,86 +1072,92 @@ export default function ClientRegisterV2() {
 
         {/* ── STEP 3: Documents ── */}
         {step === 3 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-            <h1 className="mb-1 text-xl font-bold text-gray-900">Documents</h1>
-            <p className="mb-3 text-sm text-gray-500">
+          <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
+            <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-950">Documents</h1>
+            <p className="mb-4 text-base leading-6 text-slate-600">
               {isResident ? "Provide your Emirates ID and driving license details." : "Provide your passport and driving license details."}
             </p>
-            <div className="mb-6 flex gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-800">
+            <div className="mb-8 flex gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm leading-5 text-blue-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>You can continue without uploads, but documents may be required before handover.</p>
             </div>
 
-            <div className="grid gap-5">
+            <div className="grid gap-6">
               {/* ID fields */}
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-5 lg:grid-cols-2">
                 {isResident ? (
                   <>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="eid">Emirates ID Number</Label>
+                    <div className="grid gap-2">
+                      <Label htmlFor="eid" className={labelClassName}>Emirates ID Number</Label>
                       <Input
                         id="eid"
                         placeholder="784-XXXX-XXXXXXX-X"
                         value={s3.emirates_id}
                         onChange={(e) => setS3((p) => ({ ...p, emirates_id: e.target.value }))}
+                        className={fieldClassName}
                       />
                     </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="eid_exp">Emirates ID Expiry</Label>
+                    <div className="grid gap-2">
+                      <Label htmlFor="eid_exp" className={labelClassName}>Emirates ID Expiry</Label>
                       <Input
                         id="eid_exp"
                         type="date"
                         value={s3.emirates_id_expiry}
                         onChange={(e) => setS3((p) => ({ ...p, emirates_id_expiry: e.target.value }))}
+                        className={fieldClassName}
                       />
                       <DateValidationBadge status={getDateValidationStatus(s3.emirates_id_expiry)} dateValue={s3.emirates_id_expiry} />
                     </div>
                   </>
                 ) : (
                   <>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="pass">Passport Number</Label>
+                    <div className="grid gap-2">
+                      <Label htmlFor="pass" className={labelClassName}>Passport Number</Label>
                       <Input
                         id="pass"
                         value={s3.passport_number}
                         onChange={(e) => setS3((p) => ({ ...p, passport_number: e.target.value }))}
+                        className={fieldClassName}
                       />
                     </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="pass_exp">Passport Expiry</Label>
+                    <div className="grid gap-2">
+                      <Label htmlFor="pass_exp" className={labelClassName}>Passport Expiry</Label>
                       <Input
                         id="pass_exp"
                         type="date"
                         value={s3.passport_expiry}
                         onChange={(e) => setS3((p) => ({ ...p, passport_expiry: e.target.value }))}
+                        className={fieldClassName}
                       />
                       <DateValidationBadge status={getDateValidationStatus(s3.passport_expiry)} dateValue={s3.passport_expiry} />
                     </div>
                   </>
                 )}
 
-                <div className="grid gap-1.5">
-                  <Label htmlFor="lic">License Number <span className="text-red-500">*</span></Label>
+                <div className="grid gap-2">
+                  <Label htmlFor="lic" className={labelClassName}>License Number <span className="text-red-500">*</span></Label>
                   <Input
                     id="lic"
                     value={s3.license_number}
                     onChange={(e) => setS3((p) => ({ ...p, license_number: e.target.value }))}
+                    className={fieldClassName}
                   />
                 </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="lic_exp">License Expiry</Label>
+                <div className="grid gap-2">
+                  <Label htmlFor="lic_exp" className={labelClassName}>License Expiry</Label>
                   <Input
                     id="lic_exp"
                     type="date"
                     value={s3.license_expiry}
                     onChange={(e) => setS3((p) => ({ ...p, license_expiry: e.target.value }))}
+                    className={fieldClassName}
                   />
                   <DateValidationBadge status={getDateValidationStatus(s3.license_expiry)} dateValue={s3.license_expiry} />
                 </div>
               </div>
 
               {/* Upload cards — row 1: ID documents */}
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-5 lg:grid-cols-2">
                 {isResident ? (
                   <>
                     <UploadCard label="Emirates ID Front" value={docs.eid_front} onChange={(v) => setDoc("eid_front", v)} />
@@ -1150,14 +1172,14 @@ export default function ClientRegisterV2() {
               </div>
 
               {/* Upload cards — row 2: License */}
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-5 lg:grid-cols-2">
                 <UploadCard label="License Front" value={docs.license_front} onChange={(v) => setDoc("license_front", v)} />
                 <UploadCard label="License Back" value={docs.license_back} onChange={(v) => setDoc("license_back", v)} />
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-between">
-              <Button variant="ghost" onClick={() => goToStep(2)} className="gap-1.5 text-gray-500">
+            <div className="mt-8 flex items-center justify-between">
+              <Button variant="ghost" onClick={() => goToStep(2)} className="h-12 gap-1.5 rounded-xl px-4 text-slate-600">
                 <ArrowLeft className="h-4 w-4" /> Back
               </Button>
               <Button
@@ -1171,7 +1193,7 @@ export default function ClientRegisterV2() {
                   getDateValidationStatus(s3.passport_expiry) === 'expired' ||
                   getDateValidationStatus(s3.license_expiry) === 'expired'
                 }
-                className="gap-2 bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
@@ -1182,11 +1204,11 @@ export default function ClientRegisterV2() {
         {/* ── STEP 4: Review & Submit ── */}
         {step === 4 && (
           <div className="grid gap-4">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-              <h1 className="mb-1 text-xl font-bold text-gray-900">Review & Submit</h1>
-              <p className="mb-6 text-sm text-gray-500">Please review your details before submitting.</p>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
+              <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-950">Review & Submit</h1>
+              <p className="mb-8 text-base leading-6 text-slate-600">Please review your details before submitting.</p>
 
-              <div className="grid gap-3">
+              <div className="grid gap-4">
                 <ReviewSection title="Personal Information" onEdit={() => goToStep(1)}>
                   <ReviewRow label="Full Name" value={s1.full_name} />
                   <ReviewRow label="Phone" value={phoneNumber ? `+${dialCode} ${phoneNumber}` : ""} />
@@ -1245,14 +1267,14 @@ export default function ClientRegisterV2() {
                 </div>
               )}
 
-              <div className="mt-6 flex items-center justify-between">
-                <Button variant="ghost" onClick={() => goToStep(3)} className="gap-1.5 text-gray-500">
+              <div className="mt-8 flex items-center justify-between">
+                <Button variant="ghost" onClick={() => goToStep(3)} className="h-12 gap-1.5 rounded-xl px-4 text-slate-600">
                   <ArrowLeft className="h-4 w-4" /> Back
                 </Button>
                 <Button
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="gap-2 bg-blue-600 px-6 text-white hover:bg-blue-700"
+                  className="h-12 gap-2 rounded-xl bg-blue-600 px-6 font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700"
                 >
                   {submitting ? (
                     <>
