@@ -111,7 +111,7 @@ function formatEmiratesId(value: string) {
 }
 
 function isValidEmiratesId(value: string) {
-  return /^\d{3}-\d{4}-\d{7}-\d$/.test(value);
+  return /^784-\d{4}-\d{7}-\d$/.test(value);
 }
 
 function getPhoneError(dialCode: string, phone: string) {
@@ -853,8 +853,11 @@ export default function ClientRegisterV2() {
   const validateStep3 = () => {
     const errs: Partial<Record<keyof Step3, string>> = {};
     if (!s3.license_number.trim()) errs.license_number = REQUIRED_MESSAGE;
-    if (s2.client_type === "Resident" && s3.emirates_id.trim() && !isValidEmiratesId(s3.emirates_id.trim())) {
-      errs.emirates_id = "Enter a valid Emirates ID.";
+    if (s2.client_type === "Resident") {
+      if (!s3.emirates_id.trim()) errs.emirates_id = REQUIRED_MESSAGE;
+      else if (!isValidEmiratesId(s3.emirates_id.trim())) errs.emirates_id = "Enter a valid Emirates ID.";
+      if (!s3.emirates_id_expiry) errs.emirates_id_expiry = REQUIRED_MESSAGE;
+      if (!s3.license_expiry) errs.license_expiry = REQUIRED_MESSAGE;
     }
     return errs;
   };
@@ -1015,8 +1018,10 @@ export default function ClientRegisterV2() {
     step1ValidationErrors.date_of_birth && "Date of Birth",
     step1ValidationErrors.nationality && "Nationality",
     step2ValidationError && "Client Type",
-    step3ValidationErrors.license_number && "License Number",
     step3ValidationErrors.emirates_id && "Emirates ID",
+    step3ValidationErrors.emirates_id_expiry && "Emirates ID Expiry",
+    step3ValidationErrors.license_number && "License Number",
+    step3ValidationErrors.license_expiry && "License Expiry",
   ].filter((item): item is string => Boolean(item));
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -1287,10 +1292,10 @@ export default function ClientRegisterV2() {
                 {isResident ? (
                   <>
                     <div className="grid gap-2">
-                      <Label htmlFor="eid" className={labelClassName}>Emirates ID Number</Label>
+                      <Label htmlFor="eid" className={labelClassName}>Emirates ID Number <span className="text-red-500">*</span></Label>
                       <Input
                         id="eid"
-                        placeholder="784-XXXX-XXXXXXX-X"
+                        placeholder="784-YYYY-XXXXXXX-X"
                         inputMode="numeric"
                         value={s3.emirates_id}
                         onChange={(e) => {
@@ -1302,14 +1307,18 @@ export default function ClientRegisterV2() {
                       {s3Errors.emirates_id && <p className="text-xs text-red-500">{s3Errors.emirates_id}</p>}
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="eid_exp" className={labelClassName}>Emirates ID Expiry</Label>
+                      <Label htmlFor="eid_exp" className={labelClassName}>Emirates ID Expiry <span className="text-red-500">*</span></Label>
                       <Input
                         id="eid_exp"
                         type="date"
                         value={s3.emirates_id_expiry}
-                        onChange={(e) => setS3((p) => ({ ...p, emirates_id_expiry: e.target.value }))}
-                        className={fieldClassName}
+                        onChange={(e) => {
+                          setS3((p) => ({ ...p, emirates_id_expiry: e.target.value }));
+                          if (s3Errors.emirates_id_expiry) setS3Errors((p) => ({ ...p, emirates_id_expiry: "" }));
+                        }}
+                        className={cn(fieldClassName, s3Errors.emirates_id_expiry && "border-red-400")}
                       />
+                      {s3Errors.emirates_id_expiry && <p className="text-xs text-red-500">{s3Errors.emirates_id_expiry}</p>}
                       <DateValidationBadge status={getDateValidationStatus(s3.emirates_id_expiry)} dateValue={s3.emirates_id_expiry} />
                     </div>
                   </>
@@ -1352,14 +1361,20 @@ export default function ClientRegisterV2() {
                   {s3Errors.license_number && <p className="text-xs text-red-500">{s3Errors.license_number}</p>}
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="lic_exp" className={labelClassName}>License Expiry</Label>
+                  <Label htmlFor="lic_exp" className={labelClassName}>
+                    License Expiry {isResident && <span className="text-red-500">*</span>}
+                  </Label>
                   <Input
                     id="lic_exp"
                     type="date"
                     value={s3.license_expiry}
-                    onChange={(e) => setS3((p) => ({ ...p, license_expiry: e.target.value }))}
-                    className={fieldClassName}
+                    onChange={(e) => {
+                      setS3((p) => ({ ...p, license_expiry: e.target.value }));
+                      if (s3Errors.license_expiry) setS3Errors((p) => ({ ...p, license_expiry: "" }));
+                    }}
+                    className={cn(fieldClassName, s3Errors.license_expiry && "border-red-400")}
                   />
+                  {s3Errors.license_expiry && <p className="text-xs text-red-500">{s3Errors.license_expiry}</p>}
                   <DateValidationBadge status={getDateValidationStatus(s3.license_expiry)} dateValue={s3.license_expiry} />
                 </div>
               </div>

@@ -1,0 +1,57 @@
+- generic [ref=e3]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - text: FleetDesk
+        - paragraph [ref=e8]: Secure rental registration
+      - link "Need help?" [ref=e9] [cursor=pointer]:
+        - /url: mailto:support@fleetdesk.app
+    - generic [ref=e10]:
+      - generic [ref=e13]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: "1"
+          - generic [ref=e17]: Personal Info
+        - generic [ref=e20]:
+          - generic [ref=e21]: "2"
+          - generic [ref=e22]: Identity
+        - generic [ref=e25]:
+          - generic [ref=e26]: "3"
+          - generic [ref=e27]: Documents
+        - generic [ref=e30]:
+          - generic [ref=e31]: "4"
+          - generic [ref=e32]: Review
+      - generic [ref=e33]:
+        - heading "Personal Information" [level=1] [ref=e34]
+        - paragraph [ref=e35]: Tell us a bit about yourself.
+        - generic [ref=e36]:
+          - button "Already registered? Find your profile →" [ref=e38] [cursor=pointer]
+          - generic [ref=e39]:
+            - generic [ref=e40]: Full Name *
+            - textbox "Full Name *" [ref=e41]:
+              - /placeholder: As on official ID
+          - generic [ref=e42]:
+            - generic [ref=e43]:
+              - generic [ref=e44]: Phone *
+              - generic [ref=e46]:
+                - button "+971" [ref=e47] [cursor=pointer]:
+                  - generic [ref=e48]: "+971"
+                  - img [ref=e49]
+                - textbox "50 123 4567" [ref=e51]
+            - generic [ref=e52]:
+              - generic [ref=e53]: Date of Birth *
+              - textbox "Date of Birth *" [ref=e54]
+          - generic [ref=e55]:
+            - generic [ref=e56]: Email (optional)
+            - textbox "Email (optional)" [ref=e57]:
+              - /placeholder: you@email.com
+          - generic [ref=e58]:
+            - generic [ref=e59]: Nationality *
+            - button "Nationality *" [ref=e61] [cursor=pointer]:
+              - generic [ref=e62]: Select nationality
+              - img [ref=e63]
+        - button "Continue" [ref=e66] [cursor=pointer]:
+          - text: Continue
+          - img
