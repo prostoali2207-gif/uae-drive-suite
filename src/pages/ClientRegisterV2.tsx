@@ -173,7 +173,7 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
     <div className="grid gap-1.5">
       <Label className="text-sm font-medium text-gray-700">{label}</Label>
       {value ? (
-        <div className="relative flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-3">
+        <div className="relative flex min-h-[116px] items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-3 pr-16">
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
@@ -192,8 +192,8 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
               PDF
             </div>
           )}
-          <div className="min-w-0 flex-1" style={{ minWidth: 0, overflow: 'hidden' }}>
-            <p className="text-sm font-medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>{value.name}</p>
+          <div className="min-w-0 flex-1">
+            <p className="break-words text-sm font-medium text-gray-900">{value.name}</p>
             <p className="text-xs text-gray-500">{formatBytes(value.size)}</p>
             <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
               <Check className="h-3 w-3" /> Uploaded
@@ -205,10 +205,10 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
           onClick={() => !uploading && inputRef.current?.click()}
-          className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 transition-colors hover:border-blue-400 hover:bg-blue-50"
+          className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-7 transition-colors hover:border-blue-400 hover:bg-blue-50 sm:min-h-[165px]"
         >
           <CloudUpload className={cn("h-7 w-7", uploading ? "animate-pulse text-blue-400" : "text-gray-400")} />
-          <p className="text-center text-sm text-gray-500">
+          <p className="max-w-[14rem] text-center text-sm leading-5 text-gray-600">
             {uploading ? "Uploading…" : (
               <>
                 <span className="font-medium text-blue-600">Drop file here</span>
@@ -250,17 +250,17 @@ function ReviewRow({
 }) {
   const isEmpty = !value || value === "—";
   const valueClassName = cn(
-    "text-right text-sm font-medium",
+    "min-w-0 break-words text-sm font-medium sm:text-right",
     dateStatus === "expired" && "text-red-600",
     dateStatus === "expiring_soon" && "text-yellow-600",
     dateStatus !== "expired" && dateStatus !== "expiring_soon" && "text-gray-900",
   );
 
   return (
-    <div className="flex items-start justify-between gap-4 py-2">
-      <span className="text-sm text-gray-500">{label}</span>
+    <div className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <span className="text-sm text-gray-600">{label}</span>
       {isEmpty ? (
-        <span className="text-sm text-gray-400">Not provided</span>
+        <span className="text-sm text-gray-500">Not provided</span>
       ) : (
         <span className={valueClassName}>{value}</span>
       )}
@@ -280,7 +280,7 @@ function ReviewSection({
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">{title}</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">{title}</p>
         <button
           type="button"
           onClick={onEdit}
@@ -392,7 +392,7 @@ function PhoneInput({ dialCode, isoCountry, phoneNumber, onChange, hasError }: P
           placeholder="50 123 4567"
           value={phoneNumber}
           onChange={(e) => onChange("phoneNumber", e.target.value)}
-          className="flex-1 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+          className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
         />
       </div>
 
@@ -684,7 +684,10 @@ export default function ClientRegisterV2() {
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const goToStep = (n: number) => setStep(n);
+  const goToStep = (n: number) => {
+    setStep(n);
+    window.scrollTo({ top: 0 });
+  };
 
   const handleStep1Continue = () => {
     const errs: Partial<Record<keyof Step1, string>> = {};
@@ -694,7 +697,7 @@ export default function ClientRegisterV2() {
     if (!s1.nationality) errs.nationality = "Required";
     if (Object.keys(errs).length) { setS1Errors(errs); return; }
     setS1Errors({});
-    setStep(2);
+    goToStep(2);
   };
 
   const prefillFromClient = (client: ExistingClientRow) => {
@@ -759,7 +762,7 @@ export default function ClientRegisterV2() {
     setExistingClientId(client.id);
     setReturningStatus("found");
     setReturningBanner(`Welcome back, ${client.full_name}! Your details have been pre-filled.`);
-    setTimeout(() => setStep(4), 1000);
+    setTimeout(() => goToStep(4), 1000);
   };
 
   const handleSubmit = async () => {
@@ -812,10 +815,10 @@ export default function ClientRegisterV2() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB]">
+    <div className="min-h-screen overflow-x-hidden bg-[#F9FAFB]">
       {/* Top nav */}
       <div className="border-b border-gray-100 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-xl items-center justify-between">
+        <div className="mx-auto flex max-w-xl items-center justify-between gap-4">
           <span className="text-lg font-bold text-gray-900 tracking-tight">FleetDesk</span>
           <a href="mailto:support@fleetdesk.app" className="text-sm text-gray-500 hover:text-blue-600">
             Need help?
@@ -837,7 +840,7 @@ export default function ClientRegisterV2() {
 
         {/* ── STEP 1: Personal Information ── */}
         {step === 1 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
             <h1 className="mb-1 text-xl font-bold text-gray-900">Personal Information</h1>
             <p className="mb-6 text-sm text-gray-500">Tell us a bit about yourself.</p>
 
@@ -846,7 +849,7 @@ export default function ClientRegisterV2() {
                 <button
                   type="button"
                   onClick={() => setReturningOpen((o) => !o)}
-                  className="text-left text-sm text-blue-500 underline"
+                  className="max-w-full text-left text-sm text-blue-600 underline"
                 >
                   Already registered? Find your profile →
                 </button>
@@ -908,8 +911,8 @@ export default function ClientRegisterV2() {
                 {s1Errors.full_name && <p className="text-xs text-red-500">{s1Errors.full_name}</p>}
               </div>
 
-              <div className="flex items-start gap-3">
-                <div className="flex w-[58%] shrink-0 flex-col gap-1.5">
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+                <div className="grid min-w-0 gap-1.5">
                   <Label htmlFor="phone">Phone <span className="text-red-500">*</span></Label>
                   <PhoneInput
                     dialCode={dialCode}
@@ -926,7 +929,7 @@ export default function ClientRegisterV2() {
                   />
                   {s1Errors.phone && <p className="text-xs text-red-500">{s1Errors.phone}</p>}
                 </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <div className="grid min-w-0 gap-1.5">
                   <Label htmlFor="dob">Date of Birth <span className="text-red-500">*</span></Label>
                   <Input
                     id="dob"
@@ -988,7 +991,7 @@ export default function ClientRegisterV2() {
 
         {/* ── STEP 2: Identity ── */}
         {step === 2 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
             <h1 className="mb-1 text-xl font-bold text-gray-900">Are you a UAE resident?</h1>
             <p className="mb-6 text-sm text-gray-500">Select your residency status.</p>
 
@@ -1041,7 +1044,7 @@ export default function ClientRegisterV2() {
                 <ArrowLeft className="h-4 w-4" /> Back
               </Button>
               <Button
-                onClick={() => s2.client_type && setStep(3)}
+                onClick={() => s2.client_type && goToStep(3)}
                 disabled={!s2.client_type}
                 className="gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
               >
@@ -1053,15 +1056,19 @@ export default function ClientRegisterV2() {
 
         {/* ── STEP 3: Documents ── */}
         {step === 3 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
             <h1 className="mb-1 text-xl font-bold text-gray-900">Documents</h1>
-            <p className="mb-6 text-sm text-gray-500">
+            <p className="mb-3 text-sm text-gray-500">
               {isResident ? "Provide your Emirates ID and driving license details." : "Provide your passport and driving license details."}
             </p>
+            <div className="mb-6 flex gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>You can continue without uploads, but documents may be required before handover.</p>
+            </div>
 
             <div className="grid gap-5">
               {/* ID fields */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {isResident ? (
                   <>
                     <div className="grid gap-1.5">
@@ -1128,7 +1135,7 @@ export default function ClientRegisterV2() {
               </div>
 
               {/* Upload cards — row 1: ID documents */}
-              <div className="mb-4 grid grid-cols-2 gap-3">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {isResident ? (
                   <>
                     <UploadCard label="Emirates ID Front" value={docs.eid_front} onChange={(v) => setDoc("eid_front", v)} />
@@ -1137,13 +1144,13 @@ export default function ClientRegisterV2() {
                 ) : (
                   <>
                     <UploadCard label="Passport Photo" value={docs.passport_photo} onChange={(v) => setDoc("passport_photo", v)} />
-                    <div />
+                    <div className="hidden lg:block" />
                   </>
                 )}
               </div>
 
               {/* Upload cards — row 2: License */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-4 lg:grid-cols-2">
                 <UploadCard label="License Front" value={docs.license_front} onChange={(v) => setDoc("license_front", v)} />
                 <UploadCard label="License Back" value={docs.license_back} onChange={(v) => setDoc("license_back", v)} />
               </div>
@@ -1156,7 +1163,7 @@ export default function ClientRegisterV2() {
               <Button
                 onClick={() => {
                   if (!s3.license_number.trim()) return;
-                  setStep(4);
+                  goToStep(4);
                 }}
                 disabled={
                   !s3.license_number.trim() ||
@@ -1175,7 +1182,7 @@ export default function ClientRegisterV2() {
         {/* ── STEP 4: Review & Submit ── */}
         {step === 4 && (
           <div className="grid gap-4">
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
               <h1 className="mb-1 text-xl font-bold text-gray-900">Review & Submit</h1>
               <p className="mb-6 text-sm text-gray-500">Please review your details before submitting.</p>
 
@@ -1245,7 +1252,7 @@ export default function ClientRegisterV2() {
                 <Button
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="gap-2 bg-blue-600 px-6 hover:bg-blue-700"
+                  className="gap-2 bg-blue-600 px-6 text-white hover:bg-blue-700"
                 >
                   {submitting ? (
                     <>

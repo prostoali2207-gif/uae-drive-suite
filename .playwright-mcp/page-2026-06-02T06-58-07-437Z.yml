@@ -1,0 +1,81 @@
+- generic [ref=e3]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: FleetDesk
+      - link "Need help?" [ref=e8] [cursor=pointer]:
+        - /url: mailto:support@fleetdesk.app
+    - generic [ref=e9]:
+      - generic [ref=e11]:
+        - img [ref=e57]
+        - img [ref=e87]
+        - img [ref=e151]
+        - generic [ref=e26]: "4"
+      - generic [ref=e154]:
+        - heading "Review & Submit" [level=1] [ref=e155]
+        - paragraph [ref=e156]: Please review your details before submitting.
+        - generic [ref=e157]:
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - paragraph [ref=e160]: Personal Information
+              - button "Edit" [ref=e161] [cursor=pointer]
+            - generic [ref=e162]:
+              - generic [ref=e163]:
+                - generic [ref=e164]: Full Name
+                - generic [ref=e165]: Test Client
+              - generic [ref=e166]:
+                - generic [ref=e167]: Phone
+                - generic [ref=e168]: +971 501234567
+              - generic [ref=e169]:
+                - generic [ref=e170]: Date of Birth
+                - generic [ref=e171]: 01 Jan 1990
+              - generic [ref=e172]:
+                - generic [ref=e173]: Email
+                - generic [ref=e174]: test@example.com
+              - generic [ref=e175]:
+                - generic [ref=e176]: Nationality
+                - generic [ref=e177]: India
+          - generic [ref=e178]:
+            - generic [ref=e179]:
+              - paragraph [ref=e180]: Identity
+              - button "Edit" [ref=e181] [cursor=pointer]
+            - generic [ref=e182]:
+              - generic [ref=e183]:
+                - generic [ref=e184]: Type
+                - generic [ref=e185]: Resident
+              - generic [ref=e186]:
+                - generic [ref=e187]: Emirates ID
+                - generic [ref=e188]: 784-1990-1234567-1
+              - generic [ref=e189]:
+                - generic [ref=e190]: EID Expiry
+                - generic [ref=e191]: 01 Jan 2030
+              - generic [ref=e192]:
+                - generic [ref=e193]: License Number
+                - generic [ref=e194]: DUB123456
+              - generic [ref=e195]:
+                - generic [ref=e196]: License Expiry
+                - generic [ref=e197]: 01 Jan 2030
+          - generic [ref=e198]:
+            - generic [ref=e199]:
+              - paragraph [ref=e200]: Documents
+              - button "Edit" [ref=e201] [cursor=pointer]
+            - generic [ref=e202]:
+              - generic [ref=e203]:
+                - generic [ref=e204]: Emirates ID Front
+                - generic [ref=e205]: Missing
+              - generic [ref=e206]:
+                - generic [ref=e207]: Emirates ID Back
+                - generic [ref=e208]: Missing
+              - generic [ref=e209]:
+                - generic [ref=e210]: License Front
+                - generic [ref=e211]: Missing
+              - generic [ref=e212]:
+                - generic [ref=e213]: License Back
+                - generic [ref=e214]: Missing
+        - generic [ref=e215]:
+          - button "Back" [ref=e216] [cursor=pointer]:
+            - img
+            - text: Back
+          - button "Submit Registration" [ref=e217] [cursor=pointer]
