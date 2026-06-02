@@ -6,7 +6,6 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -44,8 +43,6 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
-import { NationalityCombobox } from "@/components/NationalityCombobox";
-import { ClientTypeFields, ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 import { SignContractModal } from "@/components/SignContractModal";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
@@ -167,19 +164,6 @@ function isAtLeastFullMonth(start: string, end: string): boolean {
   return isWholeCalendarMonth;
 }
 
-const emptyNewClient = {
-  full_name: "",
-  phone: "",
-  client_type: "Resident" as ClientType,
-  emirates_id: "",
-  emirates_id_expiry: "",
-  passport_number: "",
-  passport_expiry: "",
-  nationality: "",
-  license_number: "",
-  license_expiry: "",
-};
-
 const emptyForm = {
   client_id: "",
   car_id: "",
@@ -207,8 +191,6 @@ const Contracts = () => {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [endTimeManuallyEdited, setEndTimeManuallyEdited] = useState(false);
-  const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
-  const [newClient, setNewClient] = useState(emptyNewClient);
   const [clientSelectOpen, setClientSelectOpen] = useState(false);
   const [carSelectOpen, setCarSelectOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
@@ -217,7 +199,7 @@ const Contracts = () => {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showSignModal, setShowSignModal] = useState(false);
   const [newContractId, setNewContractId] = useState("");
-  const [newClientName, setNewClientName] = useState("");
+  const [signingClientName, setSigningClientName] = useState("");
   const [reopenTargetId, setReopenTargetId] = useState<string | null>(null);
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [docExpiredWarnings, setDocExpiredWarnings] = useState<string[]>([]);
@@ -276,7 +258,7 @@ const Contracts = () => {
   }, []);
 
   useEffect(() => {
-    if (clientMode !== "existing" || !form.client_id) {
+    if (!form.client_id) {
       setDocExpiredWarnings([]);
       return;
     }
@@ -301,7 +283,7 @@ const Contracts = () => {
       setDocExpiredWarnings(warnings);
     };
     checkExpiry();
-  }, [form.client_id, clientMode]);
+  }, [form.client_id]);
 
   const availableCars = useMemo(
     () => cars.filter((c) => c.status?.trim().toLowerCase() === "available"),
@@ -413,7 +395,12 @@ const Contracts = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Submitting contract form...", { form, clientMode, newClient });
+    console.log("Submitting contract form...", { form });
+
+    if (!form.client_id) {
+      toast.error("Please select a client");
+      return;
+    }
 
     if (!form.car_id) {
       toast.error("Please select a car");
@@ -425,7 +412,7 @@ const Contracts = () => {
       return;
     }
 
-    let clientId = form.client_id;
+    const clientId = form.client_id;
 
     const checkVehicleOverlap = async () => {
       try {
@@ -449,57 +436,10 @@ const Contracts = () => {
       return false;
     };
 
-    if (clientMode === "new") {
-      if (!newClient.full_name.trim()) {
-        toast.error("Enter the new client's full name");
-        return;
-      }
-      setSaving(true);
-      if (await checkVehicleOverlap()) {
-        setSaving(false);
-        return;
-      }
-      try {
-        const { data: created, error: clientErr } = await supabase
-          .from("clients")
-          .insert({
-            full_name: newClient.full_name.trim(),
-            phone: newClient.phone.trim(),
-            client_type: newClient.client_type,
-            emirates_id: newClient.client_type === "Resident" ? newClient.emirates_id.trim() : "",
-            emirates_id_expiry: newClient.client_type === "Resident" ? (newClient.emirates_id_expiry || null) : null,
-            passport_number: newClient.client_type === "Tourist" ? newClient.passport_number.trim() : "",
-            passport_expiry: newClient.client_type === "Tourist" ? (newClient.passport_expiry || null) : null,
-            nationality: newClient.nationality.trim(),
-            license_number: newClient.license_number.trim(),
-            license_expiry: newClient.license_expiry || null,
-          })
-          .select("id")
-          .single();
-
-        if (clientErr || !created) {
-          setSaving(false);
-          toast.error("Failed to create client: " + toSupabaseMessage(clientErr));
-          console.error("Client creation error:", clientErr);
-          return;
-        }
-        clientId = created.id;
-      } catch (err) {
-        setSaving(false);
-        toast.error("An unexpected error occurred while creating client");
-        console.error(err);
-        return;
-      }
-    } else {
-      if (!clientId) {
-        toast.error("Please select an existing client or create a new one");
-        return;
-      }
-      setSaving(true);
-      if (await checkVehicleOverlap()) {
-        setSaving(false);
-        return;
-      }
+    setSaving(true);
+    if (await checkVehicleOverlap()) {
+      setSaving(false);
+      return;
     }
 
     try {
@@ -544,22 +484,17 @@ const Contracts = () => {
           console.error("Vehicle status reconciliation failed:", syncErr);
         }
 
-        const resolvedClientName =
-          clientMode === "new"
-            ? newClient.full_name.trim()
-            : clients.find((cl) => cl.id === clientId)?.full_name ?? "";
-        toast.success(clientMode === "new" ? "Client and contract created" : "Contract created");
+        const resolvedClientName = clients.find((cl) => cl.id === clientId)?.full_name ?? "";
+        toast.success("Contract created");
         setForm(emptyForm);
         setEndTimeManuallyEdited(false);
         setClientSearch("");
         setCarSearch("");
-        setNewClient(emptyNewClient);
-        setClientMode("existing");
         setOpen(false);
         if (insertedContract) {
           const createdId = (insertedContract as { id: string }).id;
           setNewContractId(createdId);
-          setNewClientName(resolvedClientName);
+          setSigningClientName(resolvedClientName);
           setShowSignModal(true);
         }
         fetchData();
@@ -623,113 +558,55 @@ const Contracts = () => {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4 py-2">
                 <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label className="text-sm">Client</Label>
-                    <div className="inline-flex rounded-lg border border-border bg-card p-1">
-                      {(["existing", "new"] as const).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setClientMode(m)}
-                          className={cn(
-                            "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-                            clientMode === m
-                              ? "bg-foreground text-background"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {m === "existing" ? "Existing Client" : "New Client"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {clientMode === "existing" ? (
-                    <Popover open={clientSelectOpen} onOpenChange={setClientSelectOpen}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-                          <span className={cn(!form.client_id && "text-muted-foreground")}>
-                            {form.client_id
-                              ? clients.find((c) => c.id === form.client_id)?.full_name
-                              : "Select a client"}
-                          </span>
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                        <Command shouldFilter={false}>
-                          <CommandInput
-                            placeholder="Search client..."
-                            value={clientSearch}
-                            onValueChange={setClientSearch}
-                          />
-                          <CommandList>
-                            <CommandEmpty>No client found.</CommandEmpty>
-                            <CommandGroup>
-                              {filteredClients.map((c) => (
-                                <CommandItem
-                                  key={c.id}
-                                  value={c.id}
-                                  onSelect={() => {
-                                    setForm((prev) => ({ ...prev, client_id: c.id }));
-                                    setClientSelectOpen(false);
-                                    setClientSearch("");
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      form.client_id === c.id ? "opacity-100" : "opacity-0",
-                                    )}
-                                  />
-                                  {c.full_name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="nc-name" className="text-xs">Full Name</Label>
-                        <Input id="nc-name" required value={newClient.full_name} onChange={(e) => setNewClient({ ...newClient, full_name: e.target.value })} />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="nc-phone" className="text-xs">Phone</Label>
-                        <Input id="nc-phone" required value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="nc-nat" className="text-xs">Nationality</Label>
-                        <NationalityCombobox
-                          id="nc-nat"
-                          value={newClient.nationality}
-                          onChange={(v) => setNewClient({ ...newClient, nationality: v })}
+                  <Label className="text-sm">Client</Label>
+                  <Popover open={clientSelectOpen} onOpenChange={setClientSelectOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                        <span className={cn(!form.client_id && "text-muted-foreground")}>
+                          {form.client_id
+                            ? clients.find((c) => c.id === form.client_id)?.full_name
+                            : "Select a client"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Search client..."
+                          value={clientSearch}
+                          onValueChange={setClientSearch}
                         />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="nc-lic" className="text-xs">License Number</Label>
-                        <Input id="nc-lic" required value={newClient.license_number} onChange={(e) => setNewClient({ ...newClient, license_number: e.target.value })} />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="nc-licexp" className="text-xs">License Expiry</Label>
-                        <Input id="nc-licexp" type="date" value={newClient.license_expiry} onChange={(e) => setNewClient({ ...newClient, license_expiry: e.target.value })} />
-                      </div>
-                      <ClientTypeFields
-                        idPrefix="nc"
-                        compact
-                        value={{
-                          client_type: newClient.client_type,
-                          emirates_id: newClient.emirates_id,
-                          emirates_id_expiry: newClient.emirates_id_expiry,
-                          passport_number: newClient.passport_number,
-                          passport_expiry: newClient.passport_expiry,
-                        }}
-                        onChange={(v) => setNewClient({ ...newClient, ...v })}
-                      />
-                    </div>
-                  )}
+                        <CommandList>
+                          <CommandEmpty>No client found.</CommandEmpty>
+                          <CommandGroup>
+                            {filteredClients.map((c) => (
+                              <CommandItem
+                                key={c.id}
+                                value={c.id}
+                                onSelect={() => {
+                                  setForm((prev) => ({ ...prev, client_id: c.id }));
+                                  setClientSelectOpen(false);
+                                  setClientSearch("");
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    form.client_id === c.id ? "opacity-100" : "opacity-0",
+                                  )}
+                                />
+                                {c.full_name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <p className="text-xs text-muted-foreground">
+                    Client not found? Add the client first from Clients.
+                  </p>
                 </div>
                 {docExpiredWarnings.length > 0 && (
                   <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1">
@@ -1067,14 +944,12 @@ const Contracts = () => {
       {newContractId && (
         <SignContractModal
           contractId={newContractId}
-          clientName={newClientName}
+          clientName={signingClientName}
           open={showSignModal}
           onComplete={() => {
             setShowSignModal(false);
             setOpen(false);
             setForm(emptyForm);
-            setNewClient(emptyNewClient);
-            setClientMode("existing");
             setEndTimeManuallyEdited(false);
             setClientSearch("");
             setCarSearch("");
