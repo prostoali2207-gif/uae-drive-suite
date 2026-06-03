@@ -145,6 +145,11 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.setFontSize(7.5);
     doc.setTextColor(...muted);
     doc.text(`Document ID: ${contractNumber}   |   Date of Issue: ${today}`, margin, footerY + 17);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...blue);
+    doc.text("PDF Layout v2", pageW / 2, footerY + 17, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...muted);
     doc.text(`Page ${pageNo} of 3`, pageW - margin, footerY + 17, { align: "right" });
   };
 
