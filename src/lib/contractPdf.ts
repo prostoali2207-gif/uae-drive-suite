@@ -237,7 +237,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   y += 22;
 
   // ── SECTION HELPER ──────────────────────────────────────────────────────────
-  const colW = (pageW - margin * 2) / 2;
+  const colW = (pageW - margin * 2 - 18) / 2;
 
   const section = (title: string, rows: [string, string, "fuel"?][]) => {
     const rowCount = Math.ceil(rows.length / 2);
@@ -272,13 +272,51 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     y += 24;
   };
 
+  const valueOrDash = (value?: string | number | null) => {
+    if (value === null || value === undefined || value === "") return "-";
+    return String(value);
+  };
+
+  const detailGrid = (rows: [string, string, "fuel"?][], columns = 2) => {
+    const width = columns === 2 ? colW : pageW - margin * 2;
+    const gap = columns === 2 ? 18 : 0;
+    const rowCount = Math.ceil(rows.length / columns);
+    for (let r = 0; r < rowCount; r++) {
+      for (let col = 0; col < columns; col++) {
+        const idx = r * columns + col;
+        if (idx >= rows.length) continue;
+        const x = margin + col * (width + gap);
+        const [label, value, kind] = rows[idx];
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...slate);
+        doc.setFontSize(7.5);
+        doc.text(label.toUpperCase(), x, y);
+        if (kind === "fuel") {
+          drawFuelIndicator(x, y + 8, value);
+        } else {
+          doc.setFont(String(value).startsWith("AED ") ? "courier" : "helvetica", "bold");
+          doc.setTextColor(...navy);
+          doc.setFontSize(9.5);
+          doc.text(valueOrDash(value), x, y + 12, { maxWidth: width - 6 });
+        }
+      }
+      y += 31;
+    }
+  };
+
+  const boxedSection = (title: string, rows: [string, string, "fuel"?][], columns = 2) => {
+    sectionHeading(title);
+    detailGrid(rows, columns);
+    y += 12;
+  };
+
   // ── SECTIONS 1–3 ────────────────────────────────────────────────────────────
   const idLabel = c?.client_type === "Tourist" ? "Passport Number" : "Emirates ID";
   const idValue = c?.client_type === "Tourist"
     ? (c?.passport_number || "—")
     : (c?.emirates_id || "—");
 
-  section("Client Details", [
+  boxedSection("Client Details", [
     ["Full Name", c?.full_name || "—"],
     ["Phone", c?.phone || "—"],
     ["Nationality", c?.nationality || "—"],
@@ -286,24 +324,32 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     [idLabel, idValue],
   ]);
 
-  section("Vehicle Details", [
+  boxedSection("Vehicle Details", [
     ["Plate Number", car?.plate || "—"],
     ["Make & Model", car ? `${car.make} ${car.model}` : "—"],
     ["Year", car ? String(car.year) : "—"],
     ["Initial Mileage", `${contract.initial_mileage.toLocaleString()} km`],
   ]);
 
-  section("Contract Terms", [
+  boxedSection("Rental Period", [
     ["Start Date", fmtDate(contract.start_date)],
     ["End Date", fmtDate(contract.end_date)],
+  ]);
+
+  boxedSection("Financial Summary", [
     [`${contract.rate_type} Rate`, `AED ${Number(contract.rate_amount).toLocaleString()}`],
     ["Total Amount", `AED ${Number(contract.total_amount).toLocaleString()}`],
     ["Deposit", `AED ${Number(contract.deposit_amount).toLocaleString()}`],
+  ]);
+
+  boxedSection("Vehicle Condition at Pick-up", [
+    ["Mileage", `${contract.initial_mileage.toLocaleString()} km`],
     ["Fuel Level", contract.fuel_level, "fuel"],
+    ["Condition Notes", contract.special_conditions || "No visible damage recorded at pick-up"],
   ]);
 
   // ── SECTION 4: TERMS OF USE ─────────────────────────────────────────────────
-  if (y + 60 > pageH - margin - 160) { addPageWithFooter(); }
+  addPageWithFooter();
   sectionHeading("Terms of Use");
 
   const termsText = termsEn.trim() ||
@@ -320,36 +366,55 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     .filter(Boolean);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(...navy);
   for (const bullet of rawBullets) {
-    if (y > pageH - margin - 160) { addPageWithFooter(); }
+    if (y > pageH - margin - 42) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8);
+      doc.setTextColor(...slate);
+      doc.text("Additional terms continue in the company profile.", margin, pageH - margin - 22);
+      break;
+    }
     const numbered = bullet.match(/^(\(?\d+\)?[.)]?)\s*(.*)$/);
-    const clauseNumber = numbered?.[1] || "\u2022";
+    const clauseNumber = numbered?.[1] || "-";
     const clauseText = numbered?.[2] || bullet;
     const split = doc.splitTextToSize(clauseText, pageW - margin * 2 - 26);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(...slate);
     doc.text(clauseNumber, margin, y);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...navy);
     doc.text(split, margin + 22, y);
-    y += split.length * 13 + 4;
+    y += split.length * 11 + 5;
   }
   y += 20;
 
   // ── SIGNATURES ──────────────────────────────────────────────────────────────
+  addPageWithFooter();
+
+  sectionHeading("Return Condition");
+  detailGrid([
+    ["Return Mileage", "To be recorded"],
+    ["Return Fuel Level", "To be recorded"],
+    ["New Damage", "To be inspected"],
+    ["Deposit Review", "After return inspection"],
+  ]);
+  y += 12;
+
+  boxedSection("Vehicle Inspection Photos", [
+    ["Pick-up Photos", "Not attached yet"],
+    ["Return Photos", "Not attached yet"],
+    ["Inspection Report ID", "-"],
+    ["QR / Link", "Coming soon"],
+  ]);
+
   console.log("contract signatures:", !!contract.client_signature, !!contract.manager_signature);
   const sigBoxH = 60;
   const sigBoxW = (pageW - margin * 2 - 24) / 2;
-  let summaryY = y + 8;
-  let sigY = summaryY + 28;
-  if (sigY + sigBoxH + 70 > pageH - 36) {
-    addPageWithFooter();
-    summaryY = margin;
-    sigY = summaryY + 28;
-  }
+  const summaryY = y + 8;
+  const sigY = summaryY + 28;
 
   doc.setFont("courier", "bold");
   doc.setFontSize(10);
