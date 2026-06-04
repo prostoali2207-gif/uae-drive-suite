@@ -174,15 +174,13 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     y += 17;
   };
 
-  const iconBadge = (x: number, rowY: number, text: string) => {
+  const iconBadge = (x: number, rowY: number, _text: string) => {
     doc.setFillColor(...blueSoft);
     doc.setDrawColor(205, 224, 245);
     doc.setLineWidth(0.5);
     doc.roundedRect(x, rowY, 22, 22, 3, 3, "FD");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.setTextColor(...blue);
-    doc.text(text, x + 11, rowY + 14, { align: "center" });
+    doc.setFillColor(...blue);
+    doc.circle(x + 11, rowY + 11, 3, "F");
   };
 
   const fieldCard = (x: number, rowY: number, w: number, label: string, value: string, icon: string) => {
@@ -198,6 +196,20 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.setFontSize(8.7);
     doc.setTextColor(...ink);
     doc.text(valueOrDash(value), x + 38, rowY + 28, { maxWidth: w - 46 });
+  };
+
+  const summaryTile = (x: number, rowY: number, w: number, label: string, value: string, accent = false) => {
+    doc.setFillColor(accent ? 244 : 255, accent ? 248 : 255, accent ? 252 : 255);
+    setStroke(accent ? blue : line, accent ? 0.85 : 0.6);
+    doc.roundedRect(x, rowY, w, 62, 3, 3, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.4);
+    doc.setTextColor(accent ? blue[0] : muted[0], accent ? blue[1] : muted[1], accent ? blue[2] : muted[2]);
+    doc.text(label, x + 10, rowY + 20, { maxWidth: w - 20 });
+    doc.setFont(value.startsWith("AED") || /\d/.test(value) ? "courier" : "helvetica", "bold");
+    doc.setFontSize(accent ? 11.5 : 9.4);
+    doc.setTextColor(...ink);
+    doc.text(value, x + 10, rowY + 43, { maxWidth: w - 20 });
   };
 
   const listCard = (x: number, rowY: number, w: number, rows: [string, string, string][]) => {
@@ -305,6 +317,13 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       .split(/\n{2,}/)
       .flatMap((chunk) => chunk.split(/(?=\(\d+\))/))
       .map((b) => b.replace(/\n/g, " ").trim())
+      .map((b) => {
+        const depositRule = /deposit|security/i.test(b);
+        const fixedDeposit = /AED\s*2,?000|2,?000\s*AED|fixed/i.test(b);
+        return depositRule && fixedDeposit
+          ? "The Company may retain a security deposit when applicable, as stated in the Financial Summary."
+          : b;
+      })
       .filter(Boolean);
     let clipped = false;
 
@@ -363,36 +382,35 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   y = clientY + clientH + 34;
   sectionTitle(3, "Rental Period");
   const periodY = y;
-  fieldCard(margin, periodY, 160, "Start Date", fmtDate(contract.start_date), "ST");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.setTextColor(...blue);
-  doc.text("->", margin + 180, periodY + 26);
-  fieldCard(margin + 210, periodY, 160, "End Date", fmtDate(contract.end_date), "EN");
-  fieldCard(margin + 390, periodY, contentW - 390, "Rate Type", contract.rate_type, "RT");
+  const periodGap = 12;
+  const periodW = (contentW - periodGap * 2) / 3;
+  fieldCard(margin, periodY, periodW, "Start Date", fmtDate(contract.start_date), "ST");
+  fieldCard(margin + periodW + periodGap, periodY, periodW, "End Date", fmtDate(contract.end_date), "EN");
+  fieldCard(margin + (periodW + periodGap) * 2, periodY, periodW, "Rate Type", contract.rate_type, "RT");
   y = periodY + 68;
 
   sectionTitle(4, "Financial Summary");
-  const tileW = contentW / 5;
+  const tileGap = 10;
+  const tileW = (contentW - tileGap * 3) / 4;
   const financeY = y;
   doc.setFillColor(...panel);
   setStroke(line, 0.7);
   doc.roundedRect(margin, financeY, contentW, 78, 4, 4, "FD");
-  statTile(margin, financeY, tileW, `${contract.rate_type} Rate`, money(contract.rate_amount), "RA");
-  statTile(margin + tileW, financeY, tileW, "Total Rental Amount", money(contract.total_amount), "TR");
-  statTile(margin + tileW * 2, financeY, tileW, "Deposit Held", money(contract.deposit_amount), "DP");
-  statTile(margin + tileW * 3, financeY, tileW, "Mileage", km(contract.initial_mileage), "KM");
-  statTile(margin + tileW * 4, financeY, tileW, "Traffic Charges", "Per contract", "TC");
-  y = financeY + 105;
+  summaryTile(margin + 9, financeY + 9, tileW, `${contract.rate_type} Rate`, money(contract.rate_amount));
+  summaryTile(margin + 9 + tileW + tileGap, financeY + 9, tileW, "Total Rental Amount", money(contract.total_amount), true);
+  summaryTile(margin + 9 + (tileW + tileGap) * 2, financeY + 9, tileW, "Deposit Held", money(contract.deposit_amount), true);
+  summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Traffic Charges", "Per contract");
+  y = financeY + 103;
 
   sectionTitle(5, "Vehicle Condition at Pick-up");
   const condY = y;
-  const condW = contentW / 4;
+  const condGap = 10;
+  const condW = (contentW - condGap * 3) / 4;
   fieldCard(margin, condY, condW, "Fuel Level", valueOrDash(contract.fuel_level), "FL");
   fuelGauge(margin + 74, condY + 26, contract.fuel_level);
-  fieldCard(margin + condW, condY, condW, "Mileage", km(contract.initial_mileage), "KM");
-  fieldCard(margin + condW * 2, condY, condW, "Exterior Condition", contract.special_conditions || "Good", "EX");
-  fieldCard(margin + condW * 3, condY, condW, "Interior Condition", "Good", "IN");
+  fieldCard(margin + condW + condGap, condY, condW, "Initial Mileage", km(contract.initial_mileage), "KM");
+  fieldCard(margin + (condW + condGap) * 2, condY, condW, "Exterior", contract.special_conditions || "Good", "EX");
+  fieldCard(margin + (condW + condGap) * 3, condY, condW, "Interior", "Good", "IN");
   y = condY + 64;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
@@ -409,44 +427,19 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   startPage(3);
   sectionTitle(7, "Return Condition", "(to be filled at return)");
   const returnY = y;
-  const returnW = contentW - 160;
+  const returnW = contentW;
   doc.setFillColor(255, 255, 255);
   setStroke(line, 0.7);
-  doc.roundedRect(margin, returnY, returnW, 155, 4, 4, "FD");
-  [
-    ["Fuel Level", "FL"],
-    ["Mileage", "KM"],
-    ["Exterior Condition", "EX"],
-    ["Interior Condition", "IN"],
-    ["Notes / Damage", "NO"],
-  ].forEach(([label, icon], index) => {
-    const rowY = returnY + 18 + index * 27;
-    iconBadge(margin + 12, rowY - 9, icon);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...ink);
-    doc.text(label, margin + 45, rowY + 4);
-    setStroke(line, 0.6);
-    doc.line(margin + 185, rowY + 4, margin + returnW - 18, rowY + 4);
-  });
-
-  const photoX = margin + returnW + 14;
-  doc.setFillColor(...panel);
-  setStroke(line, 0.7);
-  doc.roundedRect(photoX, returnY, 146, 155, 4, 4, "FD");
+  doc.roundedRect(margin, returnY, returnW, 84, 4, 4, "FD");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(...blue);
-  doc.text("Inspection Photos", photoX + 73, returnY + 34, { align: "center" });
-  iconBadge(photoX + 62, returnY + 56, "PH");
+  doc.setFontSize(10);
+  doc.setTextColor(...ink);
+  doc.text("To be completed at vehicle return", margin + 18, returnY + 32);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.setTextColor(...ink);
-  doc.text("Pick-up Photos: Not attached yet", photoX + 73, returnY + 92, { align: "center", maxWidth: 120 });
-  doc.text("Return Photos: Not attached yet", photoX + 73, returnY + 111, { align: "center", maxWidth: 120 });
-  doc.text("Inspection Report ID: -", photoX + 73, returnY + 130, { align: "center", maxWidth: 120 });
-  doc.text("QR / Link: Coming soon", photoX + 73, returnY + 147, { align: "center", maxWidth: 120 });
-  y = returnY + 190;
+  doc.setTextColor(...muted);
+  doc.text("Return fuel, mileage, exterior condition, interior condition, notes, and damage photos will be recorded when the vehicle is checked in.", margin + 18, returnY + 52, { maxWidth: returnW - 36 });
+  y = returnY + 120;
 
   sectionTitle(8, "Agreement & Signatures");
   doc.setFont("helvetica", "normal");
@@ -474,10 +467,13 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...ink);
-    doc.text(valueOrDash(signer), x + sigW / 2, sigY + 92, { align: "center", maxWidth: sigW - 36 });
+    doc.text(valueOrDash(signer), x + 36, sigY + 92, { maxWidth: sigW - 72 });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.text(`Date: ${today}`, x + sigW / 2, sigY + 108, { align: "center" });
+    doc.setTextColor(...muted);
+    doc.text("Name", x + sigW - 36, sigY + 92, { align: "right" });
+    doc.setTextColor(...ink);
+    doc.text(`Date: ${today}`, x + 36, sigY + 108);
   };
   drawSignatureBox(margin, "CUSTOMER", c?.full_name || "", contract.client_signature);
   drawSignatureBox(margin + sigW + 12, "COMPANY REPRESENTATIVE", companyName, contract.manager_signature);
