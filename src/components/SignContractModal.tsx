@@ -200,7 +200,7 @@ export function SignContractModal({
           supabase
             .from("contracts")
             .select(
-              "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number), cars(plate, make, model, year)",
+              "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)",
             )
             .eq("id", contractId)
             .single(),

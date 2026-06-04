@@ -59,7 +59,7 @@ import {
 
 type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
-type RateType = "Daily" | "Monthly" | "Yearly";
+type RateType = "Daily" | "Weekly" | "Monthly" | "Yearly";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
 
 interface ContractRow {
@@ -81,7 +81,7 @@ interface ContractRow {
   paid_amount?: number;
   client_signature?: string | null;
   manager_signature?: string | null;
-  clients: { full_name: string; phone: string; nationality: string; client_type: string; emirates_id: string | null; passport_number: string | null } | null;
+  clients: { full_name: string; phone: string; nationality: string; client_type: string; emirates_id: string | null; passport_number: string | null; license_number: string | null } | null;
   cars: { plate: string; make: string; model: string; year: number } | null;
 }
 
@@ -262,7 +262,7 @@ const Contracts = () => {
     const [contractsRes, clientsRes, carsRes] = await Promise.all([
       supabase
         .from("contracts")
-        .select("*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number), cars(plate, make, model, year)")
+        .select("*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)")
         .eq("owner_id", userId)
         .order("created_at", { ascending: false }),
       supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
@@ -380,12 +380,10 @@ const Contracts = () => {
   const total = useMemo(() => {
     if (!form.rate_amount || !days) return 0;
     if (form.rate_type === "Daily") return form.rate_amount * days;
-    if (form.rate_type === "Monthly") {
-      if (isAtLeastFullMonth(form.start_date, form.end_date)) return form.rate_amount;
-      return form.rate_amount * (days / 30);
-    }
+    if (form.rate_type === "Weekly") return form.rate_amount * (days / 7);
+    if (form.rate_type === "Monthly") return form.rate_amount * (days / 30);
     return form.rate_amount * (days / 365);
-  }, [form.rate_type, form.rate_amount, form.start_date, form.end_date, days]);
+  }, [form.rate_type, form.rate_amount, days]);
 
   const filteredClients = useMemo(() => {
     const q = clientSearch.trim().toLowerCase();
@@ -901,6 +899,7 @@ const Contracts = () => {
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Daily">Daily</SelectItem>
+                        <SelectItem value="Weekly">Weekly</SelectItem>
                         <SelectItem value="Monthly">Monthly</SelectItem>
                         <SelectItem value="Yearly">Yearly</SelectItem>
                       </SelectContent>

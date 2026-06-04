@@ -1,0 +1,162 @@
+- generic [ref=e3]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e7]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - img [ref=e15]
+          - generic [ref=e19]:
+            - generic [ref=e20]: FleetDesk
+            - generic [ref=e21]: UAE Rentals
+        - list [ref=e24]:
+          - listitem [ref=e25]:
+            - link "Dashboard" [ref=e26] [cursor=pointer]:
+              - /url: /
+              - img [ref=e27]
+              - generic [ref=e32]: Dashboard
+          - listitem [ref=e33]:
+            - link "Fleet" [ref=e34] [cursor=pointer]:
+              - /url: /fleet
+              - img [ref=e35]
+              - generic [ref=e39]: Fleet
+          - listitem [ref=e40]:
+            - link "Contracts" [ref=e41] [cursor=pointer]:
+              - /url: /contracts
+              - img [ref=e42]
+              - generic [ref=e45]: Contracts
+          - listitem [ref=e46]:
+            - link "Clients 68" [ref=e47] [cursor=pointer]:
+              - /url: /clients
+              - img [ref=e48]
+              - generic [ref=e53]: Clients
+              - generic [ref=e54]: "68"
+          - listitem [ref=e55]:
+            - link "Fines & Salik" [ref=e56] [cursor=pointer]:
+              - /url: /fines
+              - img [ref=e57]
+              - generic [ref=e59]: Fines & Salik
+          - listitem [ref=e60]:
+            - link "Payments" [ref=e61] [cursor=pointer]:
+              - /url: /payments
+              - img [ref=e62]
+              - generic [ref=e64]: Payments
+          - listitem [ref=e65]:
+            - link "Reports" [ref=e66] [cursor=pointer]:
+              - /url: /reports
+              - img [ref=e67]
+              - generic [ref=e69]: Reports
+          - listitem [ref=e70]:
+            - link "Settings" [ref=e71] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e72]
+              - generic [ref=e75]: Settings
+      - generic [ref=e77]:
+        - generic [ref=e78]: muzafirvat@gmail.com
+        - button "Sign out" [ref=e79] [cursor=pointer]:
+          - img [ref=e80]
+          - generic [ref=e83]: Sign out
+    - generic [ref=e84]:
+      - banner [ref=e85]:
+        - button "Toggle Sidebar" [ref=e86] [cursor=pointer]:
+          - img
+          - generic [ref=e87]: Toggle Sidebar
+        - generic [ref=e88]:
+          - heading "Contracts" [level=1] [ref=e89]
+          - paragraph [ref=e90]: Manage rental agreements
+        - button "1" [ref=e92] [cursor=pointer]:
+          - img
+          - generic [ref=e93]: "1"
+      - main [ref=e94]:
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - generic [ref=e97]:
+              - button "All3" [ref=e98] [cursor=pointer]
+              - button "Active2" [ref=e99] [cursor=pointer]
+              - button "Expiring Soon0" [ref=e100] [cursor=pointer]
+              - button "Overdue0" [ref=e101] [cursor=pointer]
+            - button "New Contract" [ref=e102] [cursor=pointer]:
+              - img
+              - text: New Contract
+          - generic [ref=e103]:
+            - textbox "Search by client name or car plate" [ref=e105]
+            - table [ref=e107]:
+              - rowgroup [ref=e108]:
+                - row "Client Car Start End Days Total Status Balance Action" [ref=e109]:
+                  - columnheader "Client" [ref=e110]:
+                    - button "Client" [ref=e111] [cursor=pointer]
+                  - columnheader "Car" [ref=e112]:
+                    - button "Car" [ref=e113] [cursor=pointer]
+                  - columnheader "Start" [ref=e114]:
+                    - button "Start" [ref=e115] [cursor=pointer]:
+                      - text: Start
+                      - img [ref=e116]
+                  - columnheader "End" [ref=e118]
+                  - columnheader "Days" [ref=e119]
+                  - columnheader "Total" [ref=e120]
+                  - columnheader "Status" [ref=e121]
+                  - columnheader "Balance" [ref=e122]:
+                    - button "Balance" [ref=e123] [cursor=pointer]
+                  - columnheader "Action" [ref=e124]
+              - rowgroup [ref=e125]:
+                - row "Rustam Qurbonboev B 60745 Hyundai Elantra 04 Jun 2026 · 11:20 04 Jul 2026 · 11:20 30 AED 2 000 Active AED 2 000 Download" [ref=e126]:
+                  - cell "Rustam Qurbonboev" [ref=e127]:
+                    - button "Rustam Qurbonboev" [ref=e128] [cursor=pointer]
+                  - cell "B 60745 Hyundai Elantra" [ref=e129]:
+                    - generic [ref=e130]: B 60745
+                    - generic [ref=e131]: Hyundai Elantra
+                  - cell "04 Jun 2026 · 11:20" [ref=e132]
+                  - cell "04 Jul 2026 · 11:20" [ref=e133]
+                  - cell "30" [ref=e134]
+                  - cell "AED 2 000" [ref=e135]
+                  - cell "Active" [ref=e136]:
+                    - generic [ref=e137]: Active
+                  - cell "AED 2 000" [ref=e138]
+                  - cell "Download" [ref=e139]:
+                    - button "Download" [ref=e141] [cursor=pointer]:
+                      - img
+                      - text: Download
+                - row "Yousef B A A Behbehani B 78494 Chevrolet Camaro 03 Jun 2026 · 09:00 03 Jul 2026 · 09:00 30 AED 3 800 Active AED 3 800 Download" [ref=e142]:
+                  - cell "Yousef B A A Behbehani" [ref=e143]:
+                    - button "Yousef B A A Behbehani" [ref=e144] [cursor=pointer]
+                  - cell "B 78494 Chevrolet Camaro" [ref=e145]:
+                    - generic [ref=e146]: B 78494
+                    - generic [ref=e147]: Chevrolet Camaro
+                  - cell "03 Jun 2026 · 09:00" [ref=e148]
+                  - cell "03 Jul 2026 · 09:00" [ref=e149]
+                  - cell "30" [ref=e150]
+                  - cell "AED 3 800" [ref=e151]
+                  - cell "Active" [ref=e152]:
+                    - generic [ref=e153]: Active
+                  - cell "AED 3 800" [ref=e154]
+                  - cell "Download" [ref=e155]:
+                    - button "Download" [active] [ref=e157] [cursor=pointer]:
+                      - img
+                      - text: Download
+                - row "Doston Salokhiddinov AJM B 23370 Nissan Kicks 14 Apr 2026 14 May 2026 30 AED 1 600 Closed AED 100 Download" [ref=e158]:
+                  - cell "Doston Salokhiddinov" [ref=e159]:
+                    - button "Doston Salokhiddinov" [ref=e160] [cursor=pointer]
+                  - cell "AJM B 23370 Nissan Kicks" [ref=e161]:
+                    - generic [ref=e162]: AJM B 23370
+                    - generic [ref=e163]: Nissan Kicks
+                  - cell "14 Apr 2026" [ref=e164]
+                  - cell "14 May 2026" [ref=e165]
+                  - cell "30" [ref=e166]
+                  - cell "AED 1 600" [ref=e167]
+                  - cell "Closed" [ref=e168]:
+                    - generic [ref=e169]: Closed
+                  - cell "AED 100" [ref=e170]
+                  - cell "Download" [ref=e171]:
+                    - button "Download" [ref=e173] [cursor=pointer]:
+                      - img
+                      - text: Download
+            - generic [ref=e174]:
+              - generic [ref=e175]: Showing 1–3 of 3
+              - generic [ref=e176]:
+                - combobox [ref=e177] [cursor=pointer]:
+                  - generic: 25 rows
+                  - img [ref=e178]
+                - button "Previous" [disabled]
+                - button "1" [ref=e182] [cursor=pointer]
+                - button "Next" [disabled]

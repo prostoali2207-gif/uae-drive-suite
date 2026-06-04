@@ -21,12 +21,26 @@ interface ContractPdfData {
     client_type: string;
     emirates_id: string | null;
     passport_number: string | null;
+    license_number?: string | null;
+    driver_license_number?: string | null;
+    driving_license_number?: string | null;
+    licenseNo?: string | null;
+    drivingLicenseNo?: string | null;
+    drivers_license?: string | null;
+    license?: string | null;
+    driving_license?: string | null;
+    client_license_number?: string | null;
+    driverLicenseNumber?: string | null;
   } | null;
   cars: {
     plate: string;
     make: string;
     model: string;
     year: number;
+    color?: string | null;
+    vehicle_color?: string | null;
+    car_color?: string | null;
+    colour?: string | null;
   } | null;
 }
 
@@ -109,10 +123,69 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     if (value === null || value === undefined || value === "") return "-";
     return String(value);
   };
+  const firstValue = (...values: Array<string | number | null | undefined>) => {
+    const value = values.find((v) => v !== null && v !== undefined && String(v).trim() !== "");
+    return value === null || value === undefined ? "" : String(value);
+  };
   const money = (value: number) => `AED ${Number(value || 0).toLocaleString()}`;
   const km = (value: number) => `${Number(value || 0).toLocaleString()} km`;
   const idLabel = c?.client_type === "Tourist" ? "Passport Number" : "Emirates ID";
   const idValue = c?.client_type === "Tourist" ? valueOrDash(c?.passport_number) : valueOrDash(c?.emirates_id);
+  const licenseNumber = firstValue(
+    c?.license_number,
+    c?.driver_license_number,
+    c?.driving_license_number,
+    c?.licenseNo,
+    c?.drivingLicenseNo,
+    c?.drivers_license,
+    c?.license,
+    c?.driving_license,
+    c?.client_license_number,
+    c?.driverLicenseNumber,
+    (c as any)?.license_number,
+    (c as any)?.driver_license_number,
+    (c as any)?.driving_license_number,
+    (c as any)?.licenseNo,
+    (c as any)?.drivingLicenseNo,
+    (c as any)?.drivers_license,
+    (c as any)?.license,
+    (c as any)?.driving_license,
+    (c as any)?.client_license_number,
+    (c as any)?.driverLicenseNumber,
+    (contract as any)?.license_number,
+    (contract as any)?.driver_license_number,
+    (contract as any)?.driving_license_number,
+    (contract as any)?.licenseNo,
+    (contract as any)?.drivingLicenseNo,
+    (contract as any)?.drivers_license,
+    (contract as any)?.license,
+    (contract as any)?.driving_license,
+    (contract as any)?.client_license_number,
+    (contract as any)?.driverLicenseNumber,
+  );
+  const vehicleColor = firstValue(
+    car?.color,
+    car?.vehicle_color,
+    car?.car_color,
+    car?.colour,
+    (car as any)?.color,
+    (car as any)?.vehicle_color,
+    (car as any)?.car_color,
+    (car as any)?.colour,
+    (contract as any)?.color,
+    (contract as any)?.vehicle_color,
+    (contract as any)?.car_color,
+    (contract as any)?.colour,
+  );
+  const exteriorCondition = firstValue(
+    (contract as any)?.exterior_condition,
+    (contract as any)?.exteriorCondition,
+    contract.special_conditions,
+  );
+  const interiorCondition = firstValue(
+    (contract as any)?.interior_condition,
+    (contract as any)?.interiorCondition,
+  );
 
   let logoImage: { dataUrl: string; w: number; h: number } | null = null;
   if (logoUrl) {
@@ -144,12 +217,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...muted);
-    doc.text(`Document ID: ${contractNumber}   |   Date of Issue: ${today}`, margin, footerY + 17);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...blue);
-    doc.text("PDF Layout v2", pageW / 2, footerY + 17, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...muted);
     doc.text(`Page ${pageNo} of 3`, pageW - margin, footerY + 17, { align: "right" });
   };
 
@@ -159,22 +226,22 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     y = pageNo === 1 ? margin : margin + 20;
   };
 
-  const sectionTitle = (num: number, title: string, suffix = "") => {
+  const sectionTitle = (num: number, title: string, suffix = "", x = margin) => {
     const label = `${num}.  ${title.toUpperCase()}`;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(...blue);
-    doc.text(label, margin, y);
+    doc.text(label, x, y);
     if (suffix) {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8);
       doc.setTextColor(...muted);
-      doc.text(suffix.toUpperCase(), margin + doc.getTextWidth(label) + 8, y);
+      doc.text(suffix.toUpperCase(), x + doc.getTextWidth(label) + 8, y);
     }
     y += 17;
   };
 
-  const iconBadge = (x: number, rowY: number, _text: string) => {
+  const iconBadge = (x: number, rowY: number) => {
     doc.setFillColor(...blueSoft);
     doc.setDrawColor(205, 224, 245);
     doc.setLineWidth(0.5);
@@ -183,11 +250,11 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.circle(x + 11, rowY + 11, 3, "F");
   };
 
-  const fieldCard = (x: number, rowY: number, w: number, label: string, value: string, icon: string) => {
+  const fieldCard = (x: number, rowY: number, w: number, label: string, value: string) => {
     doc.setFillColor(255, 255, 255);
     setStroke(line, 0.6);
     doc.roundedRect(x, rowY, w, 42, 4, 4, "FD");
-    iconBadge(x + 8, rowY + 10, icon);
+    iconBadge(x + 8, rowY + 10);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
     doc.setTextColor(...muted);
@@ -212,14 +279,14 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.text(value, x + 10, rowY + 43, { maxWidth: w - 20 });
   };
 
-  const listCard = (x: number, rowY: number, w: number, rows: [string, string, string][]) => {
+  const listCard = (x: number, rowY: number, w: number, rows: [string, string][]) => {
     const h = rows.length * 43 + 8;
     doc.setFillColor(255, 255, 255);
     setStroke(line, 0.7);
     doc.roundedRect(x, rowY, w, h, 4, 4, "FD");
-    rows.forEach(([label, value, icon], index) => {
+    rows.forEach(([label, value], index) => {
       const itemY = rowY + 8 + index * 43;
-      iconBadge(x + 9, itemY + 7, icon);
+      iconBadge(x + 9, itemY + 7);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(6.5);
       doc.setTextColor(...muted);
@@ -234,21 +301,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       }
     });
     return h;
-  };
-
-  const statTile = (x: number, rowY: number, w: number, label: string, value: string, icon: string) => {
-    doc.setFillColor(255, 255, 255);
-    setStroke(line, 0.6);
-    doc.roundedRect(x, rowY, w, 64, 3, 3, "FD");
-    iconBadge(x + w / 2 - 11, rowY + 8, icon);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.4);
-    doc.setTextColor(...muted);
-    doc.text(label, x + w / 2, rowY + 39, { align: "center", maxWidth: w - 8 });
-    doc.setFont(value.startsWith("AED") || /\d/.test(value) ? "courier" : "helvetica", "bold");
-    doc.setFontSize(8.2);
-    doc.setTextColor(...ink);
-    doc.text(value, x + w / 2, rowY + 55, { align: "center", maxWidth: w - 8 });
   };
 
   const fuelGauge = (x: number, rowY: number, level: string) => {
@@ -318,9 +370,9 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       .flatMap((chunk) => chunk.split(/(?=\(\d+\))/))
       .map((b) => b.replace(/\n/g, " ").trim())
       .map((b) => {
-        const depositRule = /deposit|security/i.test(b);
-        const fixedDeposit = /AED\s*2,?000|2,?000\s*AED|fixed/i.test(b);
-        return depositRule && fixedDeposit
+        const mentionsDeposit = /deposit|security/i.test(b);
+        const mentionsFixedDeposit = /AED\s*2,?000|2,?000\s*AED|fixed\s+deposit/i.test(b);
+        return mentionsDeposit && mentionsFixedDeposit
           ? "The Company may retain a security deposit when applicable, as stated in the Financial Summary."
           : b;
       })
@@ -362,31 +414,33 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   sectionTitle(1, "Client Details");
   const clientY = y;
   const clientH = listCard(margin, clientY, colW, [
-    ["Full Name", valueOrDash(c?.full_name), "CL"],
-    ["Phone", valueOrDash(c?.phone), "PH"],
-    ["Nationality", valueOrDash(c?.nationality), "NA"],
-    ["License Number", valueOrDash((c as any)?.license_number), "DL"],
-    [idLabel, idValue, "ID"],
+    ["Full Name", valueOrDash(c?.full_name)],
+    ["Phone", valueOrDash(c?.phone)],
+    ["Nationality", valueOrDash(c?.nationality)],
+    ["License Number", valueOrDash(licenseNumber)],
+    [idLabel, idValue],
   ]);
 
   y = topY;
   const vehicleX = margin + colW + twoColGap;
-  sectionTitle(2, "Vehicle Details");
-  listCard(vehicleX, y, colW, [
-    ["Plate Number", valueOrDash(car?.plate), "PL"],
-    ["Make & Model", car ? `${car.make} ${car.model}` : "-", "VM"],
-    ["Year", car ? String(car.year) : "-", "YR"],
-    ["Initial Mileage", km(contract.initial_mileage), "KM"],
-  ]);
+  sectionTitle(2, "Vehicle Details", "", vehicleX);
+  const vehicleRows: [string, string][] = [
+    ["Plate Number", valueOrDash(car?.plate)],
+    ["Make & Model", car ? `${car.make} ${car.model}` : "-"],
+    ["Year", car ? String(car.year) : "-"],
+    ["Initial Mileage", km(contract.initial_mileage)],
+  ];
+  if (vehicleColor) vehicleRows.push(["Color", vehicleColor]);
+  listCard(vehicleX, y, colW, vehicleRows);
 
   y = clientY + clientH + 34;
   sectionTitle(3, "Rental Period");
   const periodY = y;
   const periodGap = 12;
   const periodW = (contentW - periodGap * 2) / 3;
-  fieldCard(margin, periodY, periodW, "Start Date", fmtDate(contract.start_date), "ST");
-  fieldCard(margin + periodW + periodGap, periodY, periodW, "End Date", fmtDate(contract.end_date), "EN");
-  fieldCard(margin + (periodW + periodGap) * 2, periodY, periodW, "Rate Type", contract.rate_type, "RT");
+  fieldCard(margin, periodY, periodW, "Start Date", fmtDate(contract.start_date));
+  fieldCard(margin + periodW + periodGap, periodY, periodW, "End Date", fmtDate(contract.end_date));
+  fieldCard(margin + (periodW + periodGap) * 2, periodY, periodW, "Rate Type", contract.rate_type);
   y = periodY + 68;
 
   sectionTitle(4, "Financial Summary");
@@ -405,17 +459,16 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   sectionTitle(5, "Vehicle Condition at Pick-up");
   const condY = y;
   const condGap = 10;
-  const condW = (contentW - condGap * 3) / 4;
-  fieldCard(margin, condY, condW, "Fuel Level", valueOrDash(contract.fuel_level), "FL");
-  fuelGauge(margin + 74, condY + 26, contract.fuel_level);
-  fieldCard(margin + condW + condGap, condY, condW, "Initial Mileage", km(contract.initial_mileage), "KM");
-  fieldCard(margin + (condW + condGap) * 2, condY, condW, "Exterior", contract.special_conditions || "Good", "EX");
-  fieldCard(margin + (condW + condGap) * 3, condY, condW, "Interior", "Good", "IN");
+  const conditionRows: [string, string][] = [
+    ["Fuel Level", valueOrDash(contract.fuel_level)],
+  ];
+  if (exteriorCondition) conditionRows.push(["Exterior Condition", exteriorCondition]);
+  if (interiorCondition) conditionRows.push(["Interior Condition", interiorCondition]);
+  const condW = (contentW - condGap * (conditionRows.length - 1)) / conditionRows.length;
+  conditionRows.forEach(([label, value], index) => {
+    fieldCard(margin + (condW + condGap) * index, condY, condW, label, value);
+  });
   y = condY + 64;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(...muted);
-  doc.text("Customer Initials: ____________________", margin, y + 22);
   footer(1);
 
   startPage(2);
@@ -425,7 +478,12 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   footer(2);
 
   startPage(3);
-  sectionTitle(7, "Return Condition", "(to be filled at return)");
+  sectionTitle(7, "Return Check-in");
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...muted);
+  doc.text("To be completed when the vehicle is returned", margin, y - 4);
+  y += 10;
   const returnY = y;
   const returnW = contentW;
   doc.setFillColor(255, 255, 255);
@@ -434,11 +492,11 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...ink);
-  doc.text("To be completed at vehicle return", margin + 18, returnY + 32);
+  doc.text("To be completed when the vehicle is returned.", margin + 18, returnY + 30);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...muted);
-  doc.text("Return fuel, mileage, exterior condition, interior condition, notes, and damage photos will be recorded when the vehicle is checked in.", margin + 18, returnY + 52, { maxWidth: returnW - 36 });
+  doc.text("Return mileage, fuel level, damage notes, and photos will be recorded at check-in.", margin + 18, returnY + 51, { maxWidth: returnW - 36 });
   y = returnY + 120;
 
   sectionTitle(8, "Agreement & Signatures");
@@ -470,8 +528,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.text(valueOrDash(signer), x + 36, sigY + 92, { maxWidth: sigW - 72 });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(...muted);
-    doc.text("Name", x + sigW - 36, sigY + 92, { align: "right" });
     doc.setTextColor(...ink);
     doc.text(`Date: ${today}`, x + 36, sigY + 108);
   };
