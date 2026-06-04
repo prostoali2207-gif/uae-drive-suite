@@ -162,6 +162,28 @@ function diffDays(start: string, end: string): number {
   return Math.max(0, Math.round((e - s) / 86_400_000));
 }
 
+function getContractDateTime(date: string, time: string): Date | null {
+  if (!date || !time || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const parsed = new Date(`${date}T${time}:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getBillingDays(startDate: string, startTime: string, endDate: string, endTime: string): number {
+  const start = getContractDateTime(startDate, startTime);
+  const end = getContractDateTime(endDate, endTime);
+  if (!start || !end || end <= start) return 0;
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86_400_000));
+}
+
+function createContractId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
+
 function isAtLeastFullMonth(start: string, end: string): boolean {
   if (!start || !end) return false;
   const s = new Date(start);
@@ -229,13 +251,22 @@ const Contracts = () => {
       console.error("Vehicle status sync failed:", error);
     }
 
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+    if (authError || !userId) {
+      toast.error("Could not load contracts: please sign in again.");
+      setLoading(false);
+      return;
+    }
+
     const [contractsRes, clientsRes, carsRes] = await Promise.all([
       supabase
         .from("contracts")
         .select("*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number), cars(plate, make, model, year)")
+        .eq("owner_id", userId)
         .order("created_at", { ascending: false }),
-      supabase.from("clients").select("id, full_name").order("full_name"),
-      supabase.from("cars").select("id, plate, make, model, status").order("plate"),
+      supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
+      supabase.from("cars").select("id, plate, make, model, status").eq("owner_id", userId).order("plate"),
     ]);
     if (contractsRes.error) toast.error(`Failed to load contracts: ${toSupabaseMessage(contractsRes.error)}`);
     else {
@@ -246,6 +277,7 @@ const Contracts = () => {
         const { data: paymentsData, error: paymentsErr } = await supabase
           .from("payments")
           .select("contract_id, amount")
+          .eq("owner_id", userId)
           .in("contract_id", contractIds);
         if (!paymentsErr) {
           paidByContract = (paymentsData || []).reduce<Record<string, number>>((acc, payment) => {
@@ -341,7 +373,10 @@ const Contracts = () => {
     [cars],
   );
 
-  const days = useMemo(() => diffDays(form.start_date, form.end_date), [form.start_date, form.end_date]);
+  const days = useMemo(
+    () => getBillingDays(form.start_date, form.start_time, form.end_date, form.end_time),
+    [form.start_date, form.start_time, form.end_date, form.end_time],
+  );
   const total = useMemo(() => {
     if (!form.rate_amount || !days) return 0;
     if (form.rate_type === "Daily") return form.rate_amount * days;
@@ -454,6 +489,7 @@ const Contracts = () => {
   }, [contracts]);
 
   const handleContractDialogOpenChange = (nextOpen: boolean) => {
+    if (saving && !nextOpen) return;
     setOpen(nextOpen);
     if (nextOpen) {
       const defaultTime = getRoundedCurrentTimeInput();
@@ -487,8 +523,21 @@ const Contracts = () => {
     e.preventDefault();
     console.log("Submitting contract form...", { form });
 
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+    if (authError || !userId) {
+      toast.error("Could not create contract: please sign in again.");
+      return;
+    }
+
     if (!form.client_id) {
       toast.error("Please select a client");
+      return;
+    }
+
+    const selectedClient = clients.find((client) => client.id === form.client_id);
+    if (!selectedClient) {
+      toast.error("Selected client is no longer available. Please choose a valid client.");
       return;
     }
 
@@ -497,13 +546,44 @@ const Contracts = () => {
       return;
     }
 
+    const selectedCar = availableCars.find((car) => car.id === form.car_id);
+    if (!selectedCar) {
+      toast.error("Selected car is no longer available. Please choose another car.");
+      return;
+    }
+
     if (!form.start_date || !form.end_date) {
       toast.error("Please select start and end dates");
       return;
     }
 
+    if (!getContractDateTime(form.start_date, form.start_time) || !getContractDateTime(form.end_date, form.end_time)) {
+      toast.error("Please enter valid start and end times");
+      return;
+    }
+
+    if (days <= 0) {
+      toast.error("End date and time must be after start date and time.");
+      return;
+    }
+
+    if (!Number.isFinite(Number(form.rate_amount)) || Number(form.rate_amount) <= 0) {
+      toast.error("Please enter a valid rate amount");
+      return;
+    }
+
     if (String(form.initial_mileage).trim() === "") {
       toast.error("Please enter initial mileage");
+      return;
+    }
+
+    if (!Number.isFinite(Number(form.initial_mileage)) || Number(form.initial_mileage) < 0) {
+      toast.error("Please enter a valid initial mileage");
+      return;
+    }
+
+    if (!Number.isFinite(Number(form.deposit_amount)) || Number(form.deposit_amount) < 0) {
+      toast.error("Please enter a valid deposit amount");
       return;
     }
 
@@ -541,7 +621,9 @@ const Contracts = () => {
 
       console.log("start_time value:", form.start_time);
 
-      const { data: insertedContract, error } = await supabase.from("contracts").insert({
+      const createdId = createContractId();
+      const { error } = await supabase.from("contracts").insert({
+        id: createdId,
         client_id: clientId,
         car_id: form.car_id,
         start_date: form.start_date,
@@ -556,7 +638,8 @@ const Contracts = () => {
         fuel_level: form.fuel_level,
         status: "Active",
         payment_status: "Unpaid",
-      }).select("id").single();
+        owner_id: userId,
+      });
 
       setSaving(false);
       if (error) {
@@ -564,34 +647,22 @@ const Contracts = () => {
         toast.error("Failed to create contract: " + toSupabaseMessage(error));
         console.error("Contract creation error:", error);
       } else {
-        const { error: carStatusError } = await supabase
-          .from("cars")
-          .update({ status: "Rented" })
-          .eq("id", form.car_id);
-        if (carStatusError) {
-          console.error("Failed to mark vehicle as rented:", carStatusError);
-          toast.error("Contract saved, but vehicle status update failed");
-        }
-
         try {
           await syncVehicleStatusesWithContracts();
         } catch (syncErr) {
           console.error("Vehicle status reconciliation failed:", syncErr);
         }
 
-        const resolvedClientName = clients.find((cl) => cl.id === clientId)?.full_name ?? "";
+        const resolvedClientName = selectedClient.full_name;
         toast.success("Contract created");
+        setNewContractId(createdId);
+        setSigningClientName(resolvedClientName);
+        setShowSignModal(true);
         setForm(emptyForm);
         setEndTimeManuallyEdited(false);
         setClientSearch("");
         setCarSearch("");
         setOpen(false);
-        if (insertedContract) {
-          const createdId = (insertedContract as { id: string }).id;
-          setNewContractId(createdId);
-          setSigningClientName(resolvedClientName);
-          setShowSignModal(true);
-        }
         fetchData();
       }
     } catch (err) {
@@ -826,7 +897,7 @@ const Contracts = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
                     <Label>Rate Type</Label>
-                    <Select value={form.rate_type} onValueChange={(v) => setForm({ ...form, rate_type: v as RateType })}>
+                    <Select value={form.rate_type} onValueChange={(v) => setForm((prev) => ({ ...prev, rate_type: v as RateType }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Daily">Daily</SelectItem>
@@ -846,7 +917,7 @@ const Contracts = () => {
                       onFocus={(e) => {
                         if (Number(form.rate_amount) === 0) e.currentTarget.select();
                       }}
-                      onChange={(e) => setForm({ ...form, rate_amount: Number(e.target.value) })}
+                      onChange={(e) => setForm((prev) => ({ ...prev, rate_amount: Number(e.target.value) }))}
                     />
                   </div>
                 </div>
@@ -859,12 +930,12 @@ const Contracts = () => {
                       min={0}
                       value={form.initial_mileage}
                       required
-                      onChange={(e) => setForm({ ...form, initial_mileage: e.target.value })}
+                      onChange={(e) => setForm((prev) => ({ ...prev, initial_mileage: e.target.value }))}
                     />
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Fuel Level</Label>
-                    <Select value={form.fuel_level} onValueChange={(v) => setForm({ ...form, fuel_level: v as FuelLevel })}>
+                    <Select value={form.fuel_level} onValueChange={(v) => setForm((prev) => ({ ...prev, fuel_level: v as FuelLevel }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {fuelLevels.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
@@ -882,7 +953,7 @@ const Contracts = () => {
                     onFocus={(e) => {
                       if (Number(form.deposit_amount) === 0) e.currentTarget.select();
                     }}
-                    onChange={(e) => setForm({ ...form, deposit_amount: Number(e.target.value) })}
+                    onChange={(e) => setForm((prev) => ({ ...prev, deposit_amount: Number(e.target.value) }))}
                   />
                 </div>
                 <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
@@ -898,7 +969,7 @@ const Contracts = () => {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>Cancel</Button>
                   <Button type="submit" disabled={saving || docExpiredWarnings.length > 0}>{saving ? "Creating..." : "Create Contract"}</Button>
                 </DialogFooter>
               </form>

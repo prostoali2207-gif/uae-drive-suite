@@ -167,6 +167,7 @@ export function SignContractModal({
   const [agreed, setAgreed] = useState(false);
   const [termsText, setTermsText] = useState("");
   const [summary, setSummary] = useState<ContractSummary | null>(null);
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [clientSigHasContent, setClientSigHasContent] = useState(false);
   const [managerSigHasContent, setManagerSigHasContent] = useState(false);
@@ -190,21 +191,29 @@ export function SignContractModal({
     setManagerSigDataUrl("");
     setSummary(null);
     setTermsText("");
+    setLoadError("");
     setLoadingData(true);
 
     const load = async () => {
-      const [contractRes, { data: authData }] = await Promise.all([
-        supabase
-          .from("contracts")
-          .select(
-            "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number), cars(plate, make, model, year)",
-          )
-          .eq("id", contractId)
-          .single(),
-        supabase.auth.getUser(),
-      ]);
+      try {
+        const [contractRes, { data: authData }] = await Promise.all([
+          supabase
+            .from("contracts")
+            .select(
+              "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number), cars(plate, make, model, year)",
+            )
+            .eq("id", contractId)
+            .single(),
+          supabase.auth.getUser(),
+        ]);
 
-      if (contractRes.data) {
+        if (contractRes.error || !contractRes.data) {
+          const message = contractRes.error?.message || "Contract was not found.";
+          setLoadError(message);
+          toast.error("Could not open signature step: " + message);
+          return;
+        }
+
         const d = contractRes.data as unknown as ContractForPdf & {
           clients: { full_name: string } | null;
           cars: { plate: string; make: string; model: string } | null;
@@ -217,19 +226,27 @@ export function SignContractModal({
           totalAmount: Number(d.total_amount),
           pdfData: d as ContractForPdf,
         });
-      }
 
-      if (authData.user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("terms_en")
-          .eq("id", authData.user.id)
-          .single();
-        const p = profile as { terms_en?: string | null } | null;
-        setTermsText(p?.terms_en?.trim() ?? "");
+        if (authData.user) {
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("terms_en")
+            .eq("id", authData.user.id)
+            .single();
+          if (profileError) {
+            console.error("Failed to load contract terms:", profileError);
+            toast.error("Could not load company terms. Using contract summary only.");
+          }
+          const p = profile as { terms_en?: string | null } | null;
+          setTermsText(p?.terms_en?.trim() ?? "");
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unexpected signature step error.";
+        setLoadError(message);
+        toast.error("Could not open signature step: " + message);
+      } finally {
+        setLoadingData(false);
       }
-
-      setLoadingData(false);
     };
 
     load();
@@ -257,6 +274,10 @@ export function SignContractModal({
     if (!managerSigRef.current) {
       console.error("Manager canvas ref is null");
       toast.error("Manager signature canvas not found.");
+      return;
+    }
+    if (!summary?.pdfData) {
+      toast.error("Contract details are not loaded. Please reopen the signature step.");
       return;
     }
     const clientSignature = clientSigDataUrl;
@@ -303,7 +324,7 @@ export function SignContractModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onComplete(); }}>
-      <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-lg">
+      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         {/* Header with step indicator */}
         <DialogHeader className="border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
@@ -341,6 +362,10 @@ export function SignContractModal({
             <div className="flex flex-col gap-4">
               {loadingData ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">Loading...</div>
+              ) : loadError ? (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  Could not load this contract for signing. {loadError}
+                </div>
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-4 text-sm">
@@ -471,7 +496,7 @@ export function SignContractModal({
         <div className="border-t border-border px-6 py-4">
           {step === 1 && (
             <div className="flex justify-end">
-              <Button disabled={!agreed || loadingData} onClick={() => setStep(2)}>
+              <Button disabled={!agreed || loadingData || !!loadError} onClick={() => setStep(2)}>
                 Proceed to Sign →
               </Button>
             </div>
