@@ -121,6 +121,78 @@ function getPhoneError(dialCode: string, phone: string) {
   return "";
 }
 
+type BackendError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+  name?: string;
+  statusCode?: string;
+  status?: number;
+  error?: string;
+};
+
+function isBackendError(error: unknown): error is BackendError {
+  return Boolean(error && typeof error === "object");
+}
+
+function backendErrorText(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (isBackendError(error)) {
+    return error.message || error.error || error.details || JSON.stringify(error);
+  }
+  if (typeof error === "string") return error;
+  return "Submission failed. Please try again.";
+}
+
+function inferFailedField(error: unknown) {
+  if (!isBackendError(error)) return null;
+  const text = [error.message, error.details, error.hint].filter(Boolean).join(" ");
+  const patterns = [
+    /column "([^"]+)"/i,
+    /key \(([^)]+)\)/i,
+    /violates not-null constraint/i,
+    /invalid input syntax for type [^:]+: "([^"]*)"/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+function logBackendError(label: string, error: unknown) {
+  if (isBackendError(error)) {
+    console.error(label, {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      failedField: inferFailedField(error),
+      name: error.name,
+      statusCode: error.statusCode,
+      status: error.status,
+      error: error.error,
+      raw: error,
+    });
+    return;
+  }
+  console.error(label, error);
+}
+
+function logValidationErrors(
+  step1Errors: Partial<Record<keyof Step1, string>>,
+  step2Error: string,
+  step3Errors: Partial<Record<keyof Step3, string>>,
+) {
+  const failedFields = [
+    ...Object.entries(step1Errors).map(([field, message]) => ({ step: 1, field, message })),
+    ...(step2Error ? [{ step: 2, field: "client_type", message: step2Error }] : []),
+    ...Object.entries(step3Errors).map(([field, message]) => ({ step: 3, field, message })),
+  ];
+  console.warn("[ClientRegisterV2] validation failed", { failedFields });
+}
+
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -188,25 +260,51 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
 
   const handleFile = async (file: File) => {
     setSizeError(false);
+    console.info("[ClientRegisterV2] document upload selected", {
+      field: label,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+    });
     if (file.size > 5 * 1024 * 1024) {
       setSizeError(true);
+      console.warn("[ClientRegisterV2] document upload validation failed", {
+        field: label,
+        failedField: "file.size",
+        fileName: file.name,
+        fileSize: file.size,
+        maxSize: 5 * 1024 * 1024,
+      });
       return;
     }
     setUploading(true);
     try {
       const ext = file.name.split(".").pop() ?? "bin";
       const path = `${Date.now()}.${ext}`;
+      console.info("[ClientRegisterV2] document upload started", {
+        field: label,
+        bucket: "client-documents",
+        path,
+      });
       const { error } = await supabase.storage
         .from("client-documents")
         .upload(path, file, { upsert: false });
       if (error) {
-        console.error("Upload error:", error);
+        logBackendError("[ClientRegisterV2] storage error", error);
         return;
       }
       const { data: urlData } = supabase.storage
         .from("client-documents")
         .getPublicUrl(path);
+      console.info("[ClientRegisterV2] document upload succeeded", {
+        field: label,
+        bucket: "client-documents",
+        path,
+        publicUrl: urlData.publicUrl,
+      });
       onChange({ url: urlData.publicUrl, name: file.name, size: file.size });
+    } catch (error) {
+      logBackendError("[ClientRegisterV2] document upload exception", error);
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -927,14 +1025,32 @@ export default function ClientRegisterV2() {
   };
 
   const handleSubmit = async () => {
+    console.info("[ClientRegisterV2] submit started", {
+      ownerId,
+      existingClientId,
+      step,
+      clientType: s2.client_type,
+      documentFields: Object.fromEntries(
+        Object.entries(docs).map(([field, doc]) => [
+          field,
+          doc ? { name: doc.name, size: doc.size, hasUrl: Boolean(doc.url) } : null,
+        ]),
+      ),
+    });
     setSubmitError("");
     const step1Errors = validateStep1();
     const step2Error = validateStep2();
     const step3Errors = validateStep3();
+    console.info("[ClientRegisterV2] validation completed", {
+      step1Errors,
+      step2Error,
+      step3Errors,
+    });
     setS1Errors(step1Errors);
     setS2Error(step2Error);
     setS3Errors(step3Errors);
     if (Object.keys(step1Errors).length || step2Error || Object.keys(step3Errors).length) {
+      logValidationErrors(step1Errors, step2Error, step3Errors);
       setSubmitError("Please complete the required fields before submitting.");
       if (Object.keys(step1Errors).length) goToStep(1);
       else if (step2Error) goToStep(2);
@@ -965,11 +1081,33 @@ export default function ClientRegisterV2() {
         passport_photo_url: docs.passport_photo?.url ?? null,
       };
 
+      console.info("[ClientRegisterV2] Supabase insert started", {
+        table: "client_registration_requests",
+        ownerId: payload.owner_id,
+        clientType: payload.client_type,
+        failedField: null,
+        payloadFields: Object.keys(payload),
+        documentUrlFields: {
+          eid_front_url: Boolean(payload.eid_front_url),
+          eid_back_url: Boolean(payload.eid_back_url),
+          license_front_url: Boolean(payload.license_front_url),
+          license_back_url: Boolean(payload.license_back_url),
+          passport_photo_url: Boolean(payload.passport_photo_url),
+        },
+      });
       const { error } = await supabase.from("client_registration_requests" as never).insert(payload as never);
-      if (error) throw error;
+      if (error) {
+        logBackendError("[ClientRegisterV2] database error", error);
+        throw error;
+      }
+      console.info("[ClientRegisterV2] Supabase insert succeeded", {
+        table: "client_registration_requests",
+        ownerId: payload.owner_id,
+      });
       setSubmitted(true);
     } catch (err: unknown) {
-      setSubmitError(err instanceof Error ? err.message : "Submission failed. Please try again.");
+      logBackendError("[ClientRegisterV2] submit exception", err);
+      setSubmitError(backendErrorText(err));
     } finally {
       setSubmitting(false);
     }
