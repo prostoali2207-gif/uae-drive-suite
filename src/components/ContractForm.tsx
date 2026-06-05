@@ -67,10 +67,27 @@ function diffDays(start: string, end: string): number {
   return Math.max(0, Math.round((e - s) / 86_400_000));
 }
 
-function computeTotal(rateType: RateType, rate: number, days: number): number {
+function getCalendarMonths(startDate: string, endDate: string): number {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 0;
+
+  const months = (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
+  const lastDayOfTargetMonth = new Date(start.getFullYear(), start.getMonth() + months + 1, 0).getDate();
+  const anniversary = new Date(
+    start.getFullYear(),
+    start.getMonth() + months,
+    Math.min(start.getDate(), lastDayOfTargetMonth),
+  );
+
+  return Math.max(0, months - (end < anniversary ? 1 : 0));
+}
+
+function computeTotal(rateType: RateType, rate: number, days: number, startDate: string, endDate: string): number {
   if (!rate || !days) return 0;
   if (rateType === "Daily") return rate * days;
-  if (rateType === "Monthly") return rate * (days / 30);
+  if (rateType === "Monthly") return rate * getCalendarMonths(startDate, endDate);
   return rate * (days / 365);
 }
 
@@ -105,7 +122,10 @@ export const ContractForm = ({ clients, cars, onSubmit, onCancel, onCreateClient
   });
 
   const days = useMemo(() => diffDays(startDate, endDate), [startDate, endDate]);
-  const total = useMemo(() => computeTotal(rateType, Number(rate || 0), days), [rateType, rate, days]);
+  const total = useMemo(
+    () => computeTotal(rateType, Number(rate || 0), days, startDate, endDate),
+    [rateType, rate, days, startDate, endDate],
+  );
 
   const availableCars = cars.filter((c) => c.available);
 

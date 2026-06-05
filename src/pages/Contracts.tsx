@@ -175,6 +175,23 @@ function getBillingDays(startDate: string, startTime: string, endDate: string, e
   return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86_400_000));
 }
 
+function getCalendarMonths(startDate: string, endDate: string): number {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 0;
+
+  const months = (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
+  const lastDayOfTargetMonth = new Date(start.getFullYear(), start.getMonth() + months + 1, 0).getDate();
+  const anniversary = new Date(
+    start.getFullYear(),
+    start.getMonth() + months,
+    Math.min(start.getDate(), lastDayOfTargetMonth),
+  );
+
+  return Math.max(0, months - (end < anniversary ? 1 : 0));
+}
+
 function createContractId(): string {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -381,9 +398,9 @@ const Contracts = () => {
     if (!form.rate_amount || !days) return 0;
     if (form.rate_type === "Daily") return form.rate_amount * days;
     if (form.rate_type === "Weekly") return form.rate_amount * (days / 7);
-    if (form.rate_type === "Monthly") return form.rate_amount * (days / 30);
+    if (form.rate_type === "Monthly") return form.rate_amount * getCalendarMonths(form.start_date, form.end_date);
     return form.rate_amount * (days / 365);
-  }, [form.rate_type, form.rate_amount, days]);
+  }, [form.rate_type, form.rate_amount, form.start_date, form.end_date, days]);
 
   const filteredClients = useMemo(() => {
     const q = clientSearch.trim().toLowerCase();
