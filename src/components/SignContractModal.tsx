@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { CheckCircle2, MessageCircle } from "lucide-react";
+import { CheckCircle2, FileText, MessageCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,16 +12,14 @@ import { generateContractPdf } from "@/lib/contractPdf";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// ── Signature canvas ──────────────────────────────────────────────────────────
-
 interface SigRef {
   isEmpty: () => boolean;
   getDataUrl: () => string;
   clear: () => void;
 }
 
-const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(
-  function SignatureCanvas({ onStroke }, ref) {
+const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void; className?: string }>(
+  function SignatureCanvas({ onStroke, className }, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const isDrawing = useRef(false);
     const lastPos = useRef<{ x: number; y: number } | null>(null);
@@ -62,7 +60,7 @@ const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(
       const ctx = canvasRef.current?.getContext("2d");
       if (ctx) {
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 1.5, 0, Math.PI * 2);
+        ctx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
         ctx.fillStyle = "#1a1a1a";
         ctx.fill();
       }
@@ -75,7 +73,7 @@ const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(
       if (!ctx) return;
       const pos = getXY(e);
       ctx.strokeStyle = "#1a1a1a";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.beginPath();
@@ -118,9 +116,9 @@ const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(
     return (
       <canvas
         ref={canvasRef}
-        width={400}
-        height={160}
-        className="w-full cursor-crosshair touch-none rounded-md border border-border"
+        width={720}
+        height={220}
+        className={cn("h-44 w-full cursor-crosshair touch-none rounded-md border border-border sm:h-40", className)}
         style={{ background: "#ffffff" }}
         onMouseDown={startDraw}
         onMouseMove={drawLine}
@@ -134,20 +132,12 @@ const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(
   },
 );
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 type ContractForPdf = Parameters<typeof generateContractPdf>[0];
 
 interface ContractSummary {
   clientName: string;
-  carLabel: string;
-  startDate: string;
-  endDate: string;
-  totalAmount: number;
   pdfData: ContractForPdf;
 }
-
-// ── Main modal ────────────────────────────────────────────────────────────────
 
 interface SignContractModalProps {
   contractId: string;
@@ -162,19 +152,16 @@ export function SignContractModal({
   open,
   onComplete,
 }: SignContractModalProps) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<"review" | "success">("review");
   const [loadingData, setLoadingData] = useState(true);
-  const [agreed, setAgreed] = useState(false);
-  const [termsText, setTermsText] = useState("");
   const [summary, setSummary] = useState<ContractSummary | null>(null);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [clientSigHasContent, setClientSigHasContent] = useState(false);
   const [managerSigHasContent, setManagerSigHasContent] = useState(false);
-  // Captured when leaving step 2, because the step-2 canvas unmounts before step 3 renders
   const [clientSigDataUrl, setClientSigDataUrl] = useState("");
-  // Captured in handleSave so it's available for the Download PDF button on step 4
   const [managerSigDataUrl, setManagerSigDataUrl] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
 
   const clientSigRef = useRef<SigRef>(null);
@@ -182,125 +169,105 @@ export function SignContractModal({
 
   useEffect(() => {
     if (!open) return;
-    setStep(1);
-    setAgreed(false);
+
+    let objectUrl = "";
+    let cancelled = false;
+
+    setStep("review");
     setSaving(false);
     setClientSigHasContent(false);
     setManagerSigHasContent(false);
     setClientSigDataUrl("");
     setManagerSigDataUrl("");
     setSummary(null);
-    setTermsText("");
+    setPreviewUrl("");
+    setPdfUrl("");
     setLoadError("");
     setLoadingData(true);
 
     const load = async () => {
       try {
-        const [contractRes, { data: authData }] = await Promise.all([
-          supabase
-            .from("contracts")
-            .select(
-              "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)",
-            )
-            .eq("id", contractId)
-            .single(),
-          supabase.auth.getUser(),
-        ]);
+        const { data, error } = await supabase
+          .from("contracts")
+          .select(
+            "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)",
+          )
+          .eq("id", contractId)
+          .single();
 
-        if (contractRes.error || !contractRes.data) {
-          const message = contractRes.error?.message || "Contract was not found.";
-          setLoadError(message);
-          toast.error("Could not open signature step: " + message);
+        if (error || !data) {
+          const message = error?.message || "Contract was not found.";
+          if (!cancelled) {
+            setLoadError(message);
+            toast.error("Could not open signature step: " + message);
+          }
           return;
         }
 
-        const d = contractRes.data as unknown as ContractForPdf & {
-          clients: { full_name: string } | null;
-          cars: { plate: string; make: string; model: string } | null;
-        };
-        setSummary({
-          clientName: d.clients?.full_name ?? clientName,
-          carLabel: d.cars ? `${d.cars.plate} — ${d.cars.make} ${d.cars.model}` : "—",
-          startDate: d.start_date,
-          endDate: d.end_date,
-          totalAmount: Number(d.total_amount),
-          pdfData: d as ContractForPdf,
-        });
+        const pdfData = data as unknown as ContractForPdf;
+        const client = pdfData.clients?.full_name ?? clientName;
+        const previewBlob = await generateContractPdf(pdfData, { returnBlob: true }) as Blob;
+        objectUrl = URL.createObjectURL(previewBlob);
 
-        if (authData.user) {
-          const { data: profile, error: profileError } = await supabase
-            .from("profiles")
-            .select("terms_en")
-            .eq("id", authData.user.id)
-            .single();
-          if (profileError) {
-            console.error("Failed to load contract terms:", profileError);
-            toast.error("Could not load company terms. Using contract summary only.");
-          }
-          const p = profile as { terms_en?: string | null } | null;
-          setTermsText(p?.terms_en?.trim() ?? "");
+        if (!cancelled) {
+          setSummary({ clientName: client, pdfData });
+          setPreviewUrl(objectUrl);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unexpected signature step error.";
-        setLoadError(message);
-        toast.error("Could not open signature step: " + message);
+        if (!cancelled) {
+          setLoadError(message);
+          toast.error("Could not open signature step: " + message);
+        }
       } finally {
-        setLoadingData(false);
+        if (!cancelled) setLoadingData(false);
       }
     };
 
     load();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [open, contractId, clientName]);
 
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-
-  // onClick handler for "Complete & Save":
-  // clientSigDataUrl is captured when leaving step 2 (before that canvas unmounts).
-  // managerSigRef is still mounted on step 3, so we read it directly.
   const handleSave = async () => {
-    console.log("handleSave called, contractId:", contractId);
-    console.log("clientSigDataUrl length:", clientSigDataUrl?.length);
-    console.log("managerSigRef.current:", managerSigRef.current);
-    if (!clientSigDataUrl) {
-      console.error("Client signature missing — was it captured on Next?");
-      toast.error("Client signature missing. Please go back and sign again.");
+    if (!clientSigRef.current || clientSigRef.current.isEmpty()) {
+      toast.error("Customer signature is required.");
       return;
     }
-    if (!managerSigRef.current) {
-      console.error("Manager canvas ref is null");
-      toast.error("Manager signature canvas not found.");
+    if (!managerSigRef.current || managerSigRef.current.isEmpty()) {
+      toast.error("Company representative signature is required.");
       return;
     }
     if (!summary?.pdfData) {
       toast.error("Contract details are not loaded. Please reopen the signature step.");
       return;
     }
-    const clientSignature = clientSigDataUrl;
+
+    const clientSignature = clientSigRef.current.getDataUrl();
     const managerSignature = managerSigRef.current.getDataUrl();
-    console.log("Saving signatures, contractId:", contractId);
-    console.log("Client sig length:", clientSignature.length);
-    console.log("Manager sig length:", managerSignature.length);
+
     setSaving(true);
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("contracts")
       .update({ client_signature: clientSignature, manager_signature: managerSignature })
       .eq("id", contractId);
-    console.log("Save result:", data, error);
-    setSaving(false);
+
     if (error) {
+      setSaving(false);
       toast.error("Failed to save signatures: " + error.message);
       return;
     }
+
+    setClientSigDataUrl(clientSignature);
     setManagerSigDataUrl(managerSignature);
+
     try {
       const blob = await generateContractPdf(
         {
-          ...summary!.pdfData,
+          ...summary.pdfData,
           client_signature: clientSignature,
           manager_signature: managerSignature,
         },
@@ -317,165 +284,120 @@ export function SignContractModal({
       if (publicData?.publicUrl) setPdfUrl(publicData.publicUrl);
     } catch (err) {
       console.error("PDF upload failed:", err);
+    } finally {
+      setSaving(false);
     }
+
     toast.success("Contract signed successfully");
-    setStep(4);
+    setStep("success");
   };
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onComplete(); }}>
-      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-        {/* Header with step indicator */}
-        <DialogHeader className="border-b border-border px-6 py-4">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-base">Sign Contract</DialogTitle>
-            {step < 4 && (
-              <div className="flex items-center gap-1">
-                {([1, 2, 3] as const).map((s) => (
-                  <div key={s} className="flex items-center gap-1">
-                    <div
-                      className={cn(
-                        "flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold",
-                        step === s
-                          ? "bg-primary text-primary-foreground"
-                          : step > s
-                          ? "bg-primary/50 text-primary-foreground"
-                          : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {step > s ? "✓" : s}
-                    </div>
-                    {s < 3 && (
-                      <div className={cn("h-px w-5", step > s ? "bg-primary/50" : "bg-muted")} />
-                    )}
-                  </div>
-                ))}
+      <DialogContent className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[96vh] sm:w-[min(1180px,calc(100vw-2rem))] sm:rounded-lg">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <FileText className="h-4 w-4" />
+              Review &amp; Sign Contract
+            </DialogTitle>
+            {step === "review" && (
+              <div className="hidden text-xs font-medium text-muted-foreground sm:block">
+                Review every page before saving signatures
               </div>
             )}
           </div>
         </DialogHeader>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {/* ── Step 1: Summary + Terms ── */}
-          {step === 1 && (
-            <div className="flex flex-col gap-4">
+        <div className="flex-1 overflow-y-auto bg-muted/30 px-3 py-3 sm:px-6 sm:py-5">
+          {step === "review" && (
+            <div className="mx-auto flex max-w-6xl flex-col gap-4">
               {loadingData ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Loading...</div>
+                <div className="rounded-md border border-border bg-background py-12 text-center text-sm text-muted-foreground">
+                  Loading contract preview...
+                </div>
               ) : loadError ? (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
                   Could not load this contract for signing. {loadError}
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Client</div>
-                      <div className="font-semibold">{summary?.clientName ?? clientName}</div>
+                  <div className="rounded-md border border-border bg-background p-2 shadow-sm sm:p-3">
+                    {previewUrl ? (
+                      <iframe
+                        title="Contract PDF preview"
+                        src={`${previewUrl}#toolbar=0&navpanes=0&view=FitH`}
+                        className="h-[72dvh] min-h-[560px] w-full rounded-sm border-0 bg-white"
+                      />
+                    ) : (
+                      <div className="py-12 text-center text-sm text-muted-foreground">
+                        Preparing contract preview...
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-4 shadow-sm sm:p-5">
+                    <div className="mb-4">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-primary">
+                        Agreement &amp; Signatures
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        By signing below, both parties confirm they reviewed the complete contract preview above.
+                      </p>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Vehicle</div>
-                      <div className="font-semibold">{summary?.carLabel ?? "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Start Date</div>
-                      <div className="font-medium">{summary ? fmtDate(summary.startDate) : "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">End Date</div>
-                      <div className="font-medium">{summary ? fmtDate(summary.endDate) : "—"}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Total Amount</div>
-                      <div className="text-lg font-bold text-foreground">
-                        AED {summary?.totalAmount.toLocaleString() ?? "—"}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Customer Signature</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{summary?.clientName ?? clientName}</p>
+                        </div>
+                        <SignatureCanvas
+                          ref={clientSigRef}
+                          onStroke={() => setClientSigHasContent(true)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-h-10 w-fit"
+                          onClick={() => {
+                            clientSigRef.current?.clear();
+                            setClientSigHasContent(false);
+                          }}
+                        >
+                          Clear Customer Signature
+                        </Button>
+                      </div>
+                      <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Company Representative Signature</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">Authorized representative</p>
+                        </div>
+                        <SignatureCanvas
+                          ref={managerSigRef}
+                          onStroke={() => setManagerSigHasContent(true)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-h-10 w-fit"
+                          onClick={() => {
+                            managerSigRef.current?.clear();
+                            setManagerSigHasContent(false);
+                          }}
+                        >
+                          Clear Company Signature
+                        </Button>
                       </div>
                     </div>
                   </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Terms &amp; Conditions
-                    </div>
-                    <div className="max-h-[200px] overflow-y-auto rounded-md border border-border bg-muted/20 p-3 text-xs leading-relaxed text-foreground/80 [scrollbar-width:thin]">
-                      {termsText || "Please review the contract details above."}
-                    </div>
-                  </div>
-
-                  <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 hover:bg-muted/30">
-                    <input
-                      type="checkbox"
-                      checked={agreed}
-                      onChange={(e) => setAgreed(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 cursor-pointer accent-primary"
-                    />
-                    <span className="text-sm text-foreground">
-                      I have read and agree to the Terms &amp; Conditions
-                    </span>
-                  </label>
                 </>
               )}
             </div>
           )}
 
-          {/* ── Step 2: Client Signature ── */}
-          {step === 2 && (
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Client Signature</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Please sign below using your finger or mouse
-                </p>
-              </div>
-              <SignatureCanvas
-                ref={clientSigRef}
-                onStroke={() => setClientSigHasContent(true)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                onClick={() => {
-                  clientSigRef.current?.clear();
-                  setClientSigHasContent(false);
-                }}
-              >
-                Clear
-              </Button>
-            </div>
-          )}
-
-          {/* ── Step 3: Manager Signature ── */}
-          {step === 3 && (
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Your Signature (Manager)</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Please sign below using your finger or mouse
-                </p>
-              </div>
-              <SignatureCanvas
-                ref={managerSigRef}
-                onStroke={() => setManagerSigHasContent(true)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                onClick={() => {
-                  managerSigRef.current?.clear();
-                  setManagerSigHasContent(false);
-                }}
-              >
-                Clear
-              </Button>
-            </div>
-          )}
-
-          {/* ── Step 4: Success ── */}
-          {step === 4 && (
+          {step === "success" && (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
               <div className="rounded-full bg-tint-green p-4">
                 <CheckCircle2 className="h-10 w-10 text-tint-green-foreground" />
@@ -492,53 +414,20 @@ export function SignContractModal({
           )}
         </div>
 
-        {/* Footer actions */}
-        <div className="border-t border-border px-6 py-4">
-          {step === 1 && (
+        <div className="shrink-0 border-t border-border bg-background px-4 py-3 sm:px-6 sm:py-4">
+          {step === "review" && (
             <div className="flex justify-end">
-              <Button disabled={!agreed || loadingData || !!loadError} onClick={() => setStep(2)}>
-                Proceed to Sign →
-              </Button>
-            </div>
-          )}
-          {step === 2 && (
-            <div className="flex items-center justify-between">
-              <Button variant="ghost" size="sm" onClick={() => setStep(1)}>
-                ← Back
-              </Button>
               <Button
-                disabled={!clientSigHasContent}
-                onClick={() => {
-                  const dataUrl = clientSigRef.current?.getDataUrl() ?? "";
-                  console.log("Captured client sig before unmount, length:", dataUrl.length);
-                  setClientSigDataUrl(dataUrl);
-                  setManagerSigHasContent(false);
-                  setStep(3);
-                }}
+                className="min-h-10"
+                disabled={!clientSigHasContent || !managerSigHasContent || loadingData || !!loadError || saving}
+                onClick={handleSave}
               >
-                Next →
-              </Button>
-            </div>
-          )}
-          {step === 3 && (
-            <div className="flex items-center justify-between">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setStep(2);
-                  setClientSigHasContent(false);
-                }}
-              >
-                ← Back
-              </Button>
-              <Button disabled={!managerSigHasContent || saving} onClick={handleSave}>
                 {saving ? "Saving..." : "Complete & Save"}
               </Button>
             </div>
           )}
-          {step === 4 && (
-            <div className="flex justify-end gap-2">
+          {step === "success" && (
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={async () => {
