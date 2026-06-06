@@ -209,7 +209,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     logoImage = await loadImage(fetchUrl);
   }
   try {
-    inspectionQr = await QRCode.toDataURL(`/inspection/${contract.id}`, { width: 120 });
+    inspectionQr = await QRCode.toDataURL(`https://uae-drive-suite.vercel.app/inspection/${contract.id}`, { width: 120 });
   } catch {
     inspectionQr = null;
   }
