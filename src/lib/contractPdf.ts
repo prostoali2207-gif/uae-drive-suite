@@ -1,10 +1,13 @@
 import jsPDF from "jspdf";
+import QRCode from "qrcode";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ContractPdfData {
   id: string;
   start_date: string;
   end_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
   rate_type: string;
   rate_amount: number;
   total_amount: number;
@@ -47,6 +50,14 @@ interface ContractPdfData {
 function fmtDate(iso: string): string {
   if (!iso) return "-";
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtDateTime(date: string, time?: string | null): string {
+  const formattedDate = fmtDate(date);
+  if (!time) return formattedDate;
+  const [hours, minutes] = time.split(":");
+  if (!hours || !minutes) return formattedDate;
+  return `${formattedDate} ${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
 }
 
 async function loadImage(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
@@ -188,6 +199,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   );
 
   let logoImage: { dataUrl: string; w: number; h: number } | null = null;
+  let inspectionQr: string | null = null;
   if (logoUrl) {
     let fetchUrl = logoUrl;
     if (!logoUrl.startsWith("http")) {
@@ -195,6 +207,11 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       if (signed?.signedUrl) fetchUrl = signed.signedUrl;
     }
     logoImage = await loadImage(fetchUrl);
+  }
+  try {
+    inspectionQr = await QRCode.toDataURL(`/inspection/${contract.id}`, { width: 120 });
+  } catch {
+    inspectionQr = null;
   }
 
   const setStroke = (color: [number, number, number] = line, width = 0.7) => {
@@ -428,9 +445,8 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     ["Plate Number", valueOrDash(car?.plate)],
     ["Make & Model", car ? `${car.make} ${car.model}` : "-"],
     ["Year", car ? String(car.year) : "-"],
-    ["Initial Mileage", km(contract.initial_mileage)],
+    ["Color", valueOrDash(vehicleColor)],
   ];
-  if (vehicleColor) vehicleRows.push(["Color", vehicleColor]);
   listCard(vehicleX, y, colW, vehicleRows);
 
   y = clientY + clientH + 34;
@@ -438,8 +454,8 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const periodY = y;
   const periodGap = 12;
   const periodW = (contentW - periodGap * 2) / 3;
-  fieldCard(margin, periodY, periodW, "Start Date", fmtDate(contract.start_date));
-  fieldCard(margin + periodW + periodGap, periodY, periodW, "End Date", fmtDate(contract.end_date));
+  fieldCard(margin, periodY, periodW, "Start Date", fmtDateTime(contract.start_date, contract.start_time));
+  fieldCard(margin + periodW + periodGap, periodY, periodW, "End Date", fmtDateTime(contract.end_date, contract.end_time));
   fieldCard(margin + (periodW + periodGap) * 2, periodY, periodW, "Rate Type", contract.rate_type);
   y = periodY + 68;
 
@@ -460,6 +476,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const condY = y;
   const condGap = 10;
   const conditionRows: [string, string][] = [
+    ["Initial Mileage", km(contract.initial_mileage)],
     ["Fuel Level", valueOrDash(contract.fuel_level)],
   ];
   if (exteriorCondition) conditionRows.push(["Exterior Condition", exteriorCondition]);
@@ -468,7 +485,22 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   conditionRows.forEach(([label, value], index) => {
     fieldCard(margin + (condW + condGap) * index, condY, condW, label, value);
   });
-  y = condY + 64;
+  const qrY = condY + 54;
+  doc.setFillColor(255, 255, 255);
+  setStroke(line, 0.6);
+  doc.roundedRect(margin, qrY, contentW, 64, 4, 4, "FD");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.8);
+  doc.setTextColor(...ink);
+  doc.text("Inspection Photos", margin + 16, qrY + 24);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...muted);
+  doc.text("Scan to view vehicle inspection photos.", margin + 16, qrY + 42);
+  if (inspectionQr) {
+    doc.addImage(inspectionQr, "PNG", pageW - margin - 54, qrY + 5, 54, 54);
+  }
+  y = qrY + 82;
   footer(1);
 
   startPage(2);
