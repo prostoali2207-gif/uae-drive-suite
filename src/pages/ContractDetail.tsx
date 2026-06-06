@@ -20,10 +20,12 @@ import {
   Trash2,
   Lock,
   Tag,
+  Camera,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
+import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -1842,6 +1844,10 @@ const ContractDetail = () => {
               <FileText className="h-3.5 w-3.5" />
               Documents
             </TabsTrigger>
+            <TabsTrigger value="inspection" className="h-8 gap-1.5 px-3 text-xs">
+              <Camera className="h-3.5 w-3.5" />
+              Inspection
+            </TabsTrigger>
             <TabsTrigger value="timeline" className="h-8 gap-1.5 px-3 text-xs">
               <Clock className="h-3.5 w-3.5" />
               Timeline & Notes
@@ -2258,6 +2264,11 @@ const ContractDetail = () => {
                 }
               />
             </Panel>
+          </TabsContent>
+
+          {/* INSPECTION */}
+          <TabsContent value="inspection" className="mt-4">
+            <InspectionPhotosTab contractId={contract.id} uploadedBy={user?.id ?? null} />
           </TabsContent>
 
           {/* TIMELINE & NOTES */}
