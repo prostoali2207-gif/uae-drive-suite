@@ -55,6 +55,7 @@ interface Car {
   make: string;
   model: string;
   year: number;
+  color: string | null;
   status: Status;
   insurance_expiry: string | null;
   mulkiya_expiry: string | null;
@@ -81,6 +82,7 @@ const emptyForm = {
   make: "",
   model: "",
   year: new Date().getFullYear(),
+  color: "",
   status: "Available" as Status,
   insurance_expiry: "",
   mulkiya_expiry: "",
@@ -209,6 +211,7 @@ const Fleet = () => {
       make: car.make,
       model: car.model,
       year: car.year,
+      color: car.color ?? "",
       status: car.status,
       insurance_expiry: car.insurance_expiry ?? "",
       mulkiya_expiry: car.mulkiya_expiry ?? "",
@@ -315,6 +318,7 @@ const Fleet = () => {
       make: form.make.trim(),
       model: form.model.trim(),
       year: Number(form.year),
+      color: form.color.trim() || null,
       status: form.status,
       insurance_expiry: form.insurance_expiry || null,
       mulkiya_expiry: form.mulkiya_expiry || null,
@@ -550,6 +554,15 @@ const Fleet = () => {
                       max={2100}
                       value={form.year}
                       onChange={(e) => setForm({ ...form, year: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="color">Color</Label>
+                    <Input
+                      id="color"
+                      value={form.color}
+                      onChange={(e) => setForm({ ...form, color: e.target.value })}
+                      placeholder="White"
                     />
                   </div>
                 </div>

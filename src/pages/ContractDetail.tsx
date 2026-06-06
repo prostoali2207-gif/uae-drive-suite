@@ -171,6 +171,11 @@ interface ContractFeeRow {
   amount: number;
 }
 
+type AmountEditTarget =
+  | { type: "rental"; label: string; amount: number }
+  | { type: "payment"; label: string; amount: number; payment: PaymentRow }
+  | { type: "fee"; label: string; amount: number; fee: ContractFeeRow };
+
 type LedgerEntry = {
   id: string;
   date: string;
@@ -455,10 +460,16 @@ const EntryRow = ({ children, className }: { children: React.ReactNode; classNam
 type FinancialsAccordionProps = {
   contract: ContractRecord;
   days: number;
+  payments: PaymentRow[];
   fines: FineRow[];
   salik: SalikRow[];
   contractFees: ContractFeeRow[];
   totals: { charges: number; credits: number; outstanding: number };
+  onEditRentalAmount: () => void;
+  onEditPaymentAmount: (payment: PaymentRow) => void;
+  onEditFeeAmount: (fee: ContractFeeRow) => void;
+  onDeletePayment: (payment: PaymentRow) => void;
+  onDeleteFee: (fee: ContractFeeRow) => void;
   onUpdateFineNote: (id: string, note: string) => void;
   onUpdateSalikNote: (id: string, note: string) => void;
 };
@@ -466,14 +477,21 @@ type FinancialsAccordionProps = {
 const FinancialsAccordion = ({
   contract,
   days,
+  payments,
   fines,
   salik,
   contractFees,
   totals,
+  onEditRentalAmount,
+  onEditPaymentAmount,
+  onEditFeeAmount,
+  onDeletePayment,
+  onDeleteFee,
   onUpdateFineNote,
   onUpdateSalikNote,
 }: FinancialsAccordionProps) => {
   const rentalTotal = Number(contract.total_amount);
+  const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
   const otherFees = contractFees;
@@ -602,7 +620,65 @@ const FinancialsAccordion = ({
           <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
             {fmtAed(rentalTotal)}
           </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Edit rental amount"
+            className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+            onClick={onEditRentalAmount}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
         </EntryRow>
+      </AccordionRow>
+
+      <AccordionRow
+        label="Payments"
+        count={payments.length}
+        total={paymentsTotal}
+        accent="cyan"
+        totalClass="font-mono text-tint-green-foreground"
+      >
+        {payments.map((payment) => (
+          <EntryRow key={payment.id}>
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-xs text-foreground/90">
+                {payment.method}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {formatDate(payment.payment_date)}
+              </span>
+            </div>
+            <StatusPill status={payment.status} />
+            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-green-foreground">
+              {fmtAed(Number(payment.amount))}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Edit payment amount"
+              className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={() => onEditPaymentAmount(payment)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Delete payment"
+              className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
+              onClick={() => onDeletePayment(payment)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </EntryRow>
+        ))}
       </AccordionRow>
 
       {/* Traffic Fines — summary row */}
@@ -945,6 +1021,26 @@ const FinancialsAccordion = ({
             <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
               {fmtAed(o.amount)}
             </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Edit fee amount"
+              className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={() => onEditFeeAmount(o)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Delete fee"
+              className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
+              onClick={() => onDeleteFee(o)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </EntryRow>
         ))}
       </AccordionRow>
@@ -997,6 +1093,13 @@ const ContractDetail = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [replacementCount, setReplacementCount] = useState(0);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<PaymentRow | null>(null);
+  const [feeToDelete, setFeeToDelete] = useState<ContractFeeRow | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState(false);
+  const [deletingFee, setDeletingFee] = useState(false);
+  const [amountEditTarget, setAmountEditTarget] = useState<AmountEditTarget | null>(null);
+  const [amountEditValue, setAmountEditValue] = useState("");
+  const [savingAmountEdit, setSavingAmountEdit] = useState(false);
 
   const navigate = useNavigate();
 
@@ -1352,6 +1455,166 @@ const ContractDetail = () => {
     } finally {
       setDeleteConfirmOpen(false);
     }
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!contract || !paymentToDelete) return;
+
+    setDeletingPayment(true);
+    const { error } = await supabase
+      .from("payments")
+      .delete()
+      .eq("id", paymentToDelete.id);
+
+    if (error) {
+      setDeletingPayment(false);
+      toast.error("Failed to delete payment");
+      return;
+    }
+
+    setPayments((prev) => prev.filter((payment) => payment.id !== paymentToDelete.id));
+
+    const { data, error: refetchError } = await supabase
+      .from("payments")
+      .select("id, payment_date, amount, method, status")
+      .eq("contract_id", contract.id)
+      .order("payment_date", { ascending: false });
+
+    setDeletingPayment(false);
+    if (refetchError) {
+      toast.error("Payment deleted, but payments could not refresh");
+    } else {
+      setPayments(data || []);
+      toast.success("Payment deleted");
+    }
+    setPaymentToDelete(null);
+  };
+
+  const handleConfirmDeleteFee = async () => {
+    if (!feeToDelete) return;
+
+    setDeletingFee(true);
+    const { error } = await (supabase as any)
+      .from("contract_fees")
+      .delete()
+      .eq("id", feeToDelete.id);
+
+    if (error) {
+      setDeletingFee(false);
+      toast.error("Failed to delete fee");
+      return;
+    }
+
+    setContractFees((prev) => prev.filter((fee) => fee.id !== feeToDelete.id));
+    await fetchContractFees();
+    setDeletingFee(false);
+    toast.success("Fee deleted");
+    setFeeToDelete(null);
+  };
+
+  const openAmountEditDialog = (target: AmountEditTarget) => {
+    setAmountEditTarget(target);
+    setAmountEditValue(String(target.amount));
+  };
+
+  const closeAmountEditDialog = () => {
+    if (savingAmountEdit) return;
+    setAmountEditTarget(null);
+    setAmountEditValue("");
+  };
+
+  const handleSaveAmountEdit = async () => {
+    if (!contract || !amountEditTarget) return;
+
+    const amount = Number(amountEditValue);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error("Enter a valid AED amount");
+      return;
+    }
+
+    const nextAmount = Math.round(amount * 100) / 100;
+    setSavingAmountEdit(true);
+
+    if (amountEditTarget.type === "rental") {
+      const { error } = await supabase
+        .from("contracts")
+        .update({ total_amount: nextAmount } as never)
+        .eq("id", contract.id);
+
+      if (error) {
+        setSavingAmountEdit(false);
+        toast.error("Failed to update rental amount");
+        return;
+      }
+
+      setContract((prev) => (prev ? { ...prev, total_amount: nextAmount } : prev));
+      await fetchData();
+      setSavingAmountEdit(false);
+      setAmountEditTarget(null);
+      setAmountEditValue("");
+      toast.success("Rental amount updated");
+      return;
+    }
+
+    if (amountEditTarget.type === "payment") {
+      const { error } = await supabase
+        .from("payments")
+        .update({ amount: nextAmount } as never)
+        .eq("id", amountEditTarget.payment.id);
+
+      if (error) {
+        setSavingAmountEdit(false);
+        toast.error("Failed to update payment amount");
+        return;
+      }
+
+      setPayments((prev) =>
+        prev.map((payment) =>
+          payment.id === amountEditTarget.payment.id
+            ? { ...payment, amount: nextAmount }
+            : payment,
+        ),
+      );
+
+      const { data, error: refetchError } = await supabase
+        .from("payments")
+        .select("id, payment_date, amount, method, status")
+        .eq("contract_id", contract.id)
+        .order("payment_date", { ascending: false });
+
+      if (refetchError) {
+        toast.error("Payment updated, but payments could not refresh");
+      } else {
+        setPayments(data || []);
+        toast.success("Payment amount updated");
+      }
+      setSavingAmountEdit(false);
+      setAmountEditTarget(null);
+      setAmountEditValue("");
+      return;
+    }
+
+    const { error } = await (supabase as any)
+      .from("contract_fees")
+      .update({ amount: nextAmount })
+      .eq("id", amountEditTarget.fee.id);
+
+    if (error) {
+      setSavingAmountEdit(false);
+      toast.error("Failed to update fee amount");
+      return;
+    }
+
+    setContractFees((prev) =>
+      prev.map((fee) =>
+        fee.id === amountEditTarget.fee.id ? { ...fee, amount: nextAmount } : fee,
+      ),
+    );
+    await fetchContractFees();
+    setSavingAmountEdit(false);
+    setAmountEditTarget(null);
+    setAmountEditValue("");
+    toast.success("Fee amount updated");
   };
 
   const handleOpenEditModal = async () => {
@@ -1795,10 +2058,36 @@ const ContractDetail = () => {
             <FinancialsAccordion
               contract={contract}
               days={days}
+              payments={payments}
               fines={fines}
               salik={salik}
               contractFees={contractFees}
               totals={totals}
+              onEditRentalAmount={() =>
+                openAmountEditDialog({
+                  type: "rental",
+                  label: "Rental charge",
+                  amount: Number(contract.total_amount),
+                })
+              }
+              onEditPaymentAmount={(payment) =>
+                openAmountEditDialog({
+                  type: "payment",
+                  label: `Payment (${payment.method})`,
+                  amount: Number(payment.amount),
+                  payment,
+                })
+              }
+              onEditFeeAmount={(fee) =>
+                openAmountEditDialog({
+                  type: "fee",
+                  label: `${fee.label} fee`,
+                  amount: Number(fee.amount),
+                  fee,
+                })
+              }
+              onDeletePayment={setPaymentToDelete}
+              onDeleteFee={setFeeToDelete}
               onUpdateFineNote={(fineId, note) =>
                 setFines((prev) =>
                   prev.map((f) => (f.id === fineId ? { ...f, notes: note } : f)),
@@ -2101,6 +2390,113 @@ const ContractDetail = () => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete Contract
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={amountEditTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closeAmountEditDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Edit Amount</DialogTitle>
+            <DialogDescription className="text-xs">
+              {amountEditTarget?.label ?? "Financial entry"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="edit-financial-amount" className="text-xs">
+              Amount (AED)
+            </Label>
+            <Input
+              id="edit-financial-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={amountEditValue}
+              onChange={(event) => setAmountEditValue(event.target.value)}
+              className="font-mono tabular-nums"
+              placeholder="0.00"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeAmountEditDialog}
+              disabled={savingAmountEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveAmountEdit}
+              disabled={savingAmountEdit}
+            >
+              {savingAmountEdit ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={paymentToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingPayment) setPaymentToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Payment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete payment of {paymentToDelete ? fmtAed(Number(paymentToDelete.amount)) : "AED 0"}? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingPayment}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deletingPayment}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmDeletePayment();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingPayment ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={feeToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingFee) setFeeToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Fee</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete {feeToDelete?.label ?? "selected"} fee of {feeToDelete ? fmtAed(Number(feeToDelete.amount)) : "AED 0"}? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingFee}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deletingFee}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmDeleteFee();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingFee ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
