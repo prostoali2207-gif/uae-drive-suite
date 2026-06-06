@@ -27,8 +27,7 @@ interface InspectionPhotosTabProps {
 }
 
 const MAIN_SLOTS = ["Front", "Rear", "Left side", "Right side", "Dashboard / odometer"];
-const DAMAGE_SLOTS = ["Damage 1", "Damage 2", "Damage 3"];
-const SLOTS = [...MAIN_SLOTS, ...DAMAGE_SLOTS];
+const SLOTS = MAIN_SLOTS;
 
 function slotKey(slot: string): string {
   return slot.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -163,13 +162,11 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
     const photo = photoByTypeSlot.get(key);
     const previewUrl = previewUrls[key];
     const slotState = slotStates[key] ?? { uploading: false, error: "" };
-    const isDamage = slot.startsWith("Damage");
 
     return (
       <div key={slot} className="grid gap-2 border-b border-border py-3 last:border-b-0 sm:grid-cols-[150px,1fr,150px] sm:items-center">
         <div>
           <div className="text-sm font-medium text-foreground">{slot}</div>
-          {isDamage && <div className="text-[11px] text-muted-foreground">Optional</div>}
         </div>
 
         <div className="min-w-0">
