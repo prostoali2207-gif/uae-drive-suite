@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { CheckCircle2, FileText, MessageCircle } from "lucide-react";
+import QRCode from "qrcode";
 import {
   Dialog,
   DialogContent,
@@ -168,6 +169,14 @@ const colors = {
 function fmtDate(iso: string): string {
   if (!iso) return "-";
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtDateTime(date: string, time?: string | null): string {
+  const formattedDate = fmtDate(date);
+  if (!time) return formattedDate;
+  const [hours, minutes] = time.split(":");
+  if (!hours || !minutes) return formattedDate;
+  return `${formattedDate} ${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
 }
 
 function valueOrDash(value?: string | number | null): string {
@@ -348,6 +357,7 @@ function ContractHtmlPreview({
   const c = contract.clients;
   const car = contract.cars;
   const company = summary.profile;
+  const [inspectionQr, setInspectionQr] = useState("");
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
   const today = fmtDate(new Date().toISOString());
   const idLabel = c?.client_type === "Tourist" ? "Passport Number" : "Emirates ID";
@@ -411,15 +421,31 @@ function ContractHtmlPreview({
   );
 
   const termsBullets = useMemo(() => getTermsBullets(company.termsEn), [company.termsEn]);
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(`/inspection/${contract.id}`, { width: 120 })
+      .then((dataUrl) => {
+        if (!cancelled) setInspectionQr(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setInspectionQr("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contract.id]);
+
   const vehicleRows: [string, string][] = [
     ["Plate Number", valueOrDash(car?.plate)],
     ["Make & Model", car ? `${car.make} ${car.model}` : "-"],
     ["Year", car ? String(car.year) : "-"],
-    ["Initial Mileage", km(contract.initial_mileage)],
+    ["Color", valueOrDash(vehicleColor)],
   ];
-  if (vehicleColor) vehicleRows.push(["Color", vehicleColor]);
 
-  const conditionRows: [string, string][] = [["Fuel Level", valueOrDash(contract.fuel_level)]];
+  const conditionRows: [string, string][] = [
+    ["Initial Mileage", km(contract.initial_mileage)],
+    ["Fuel Level", valueOrDash(contract.fuel_level)],
+  ];
   if (exteriorCondition) conditionRows.push(["Exterior Condition", exteriorCondition]);
   if (interiorCondition) conditionRows.push(["Interior Condition", interiorCondition]);
 
@@ -476,8 +502,8 @@ function ContractHtmlPreview({
         <div className="mt-8">
           <SectionTitle num={3} title="RENTAL PERIOD" />
           <div className="grid gap-3 sm:grid-cols-3">
-            <FieldCard label="Start Date" value={fmtDate(contract.start_date)} />
-            <FieldCard label="End Date" value={fmtDate(contract.end_date)} />
+            <FieldCard label="Start Date" value={fmtDateTime(contract.start_date, contract.start_time)} />
+            <FieldCard label="End Date" value={fmtDateTime(contract.end_date, contract.end_time)} />
             <FieldCard label="Rate Type" value={contract.rate_type} />
           </div>
         </div>
@@ -500,6 +526,17 @@ function ContractHtmlPreview({
             {conditionRows.map(([label, value]) => (
               <FieldCard key={label} label={label} value={value} />
             ))}
+          </div>
+          <div className="mt-3 flex min-h-[64px] items-center justify-between gap-3 rounded border border-[#d6e0eb] bg-white p-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold text-[#0f172a]">Inspection Photos</div>
+              <div className="mt-1 text-[9px] text-[#566478]">Scan to view vehicle inspection photos.</div>
+            </div>
+            {inspectionQr ? (
+              <img src={inspectionQr} alt="Inspection photos QR" className="h-[54px] w-[54px] shrink-0" />
+            ) : (
+              <div className="h-[54px] w-[54px] shrink-0 rounded border border-[#d6e0eb]" />
+            )}
           </div>
         </div>
       </ContractPage>
@@ -609,7 +646,7 @@ export function SignContractModal({
           supabase
             .from("contracts")
             .select(
-              "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)",
+              "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year, color)",
             )
             .eq("id", contractId)
             .single(),
