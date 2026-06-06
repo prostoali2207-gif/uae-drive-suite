@@ -25,6 +25,7 @@ interface ExtendedDatabase extends Database {
           ended_at: string | null;
           owner_id: string;
           created_at: string;
+          daily_rate: number | null;
         };
         Insert: {
           id?: string;
@@ -34,6 +35,7 @@ interface ExtendedDatabase extends Database {
           ended_at?: string | null;
           owner_id: string;
           created_at?: string;
+          daily_rate?: number | null;
         };
         Update: {
           id?: string;
@@ -43,6 +45,7 @@ interface ExtendedDatabase extends Database {
           ended_at?: string | null;
           owner_id?: string;
           created_at?: string;
+          daily_rate?: number | null;
         };
         Relationships: [];
       };
@@ -72,6 +75,7 @@ interface CombinedVehicleHistory {
   ended_at: string | null;
   owner_id: string;
   created_at: string;
+  daily_rate: number | null;
   car: Car | null;
 }
 
@@ -109,6 +113,28 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     
     return `${days}d ${hours}h`;
   };
+
+  const calculateDays = (startedAt: string, endedAt: string | null) => {
+    const start = new Date(startedAt).getTime();
+    const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+    const diffMs = Math.max(0, end - start);
+    const days = diffMs / (1000 * 60 * 60 * 24);
+
+    return Math.round(days * 100) / 100;
+  };
+
+  const formatDays = (days: number) => {
+    if (Number.isInteger(days)) return String(days);
+    return days.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  };
+
+  const formatAed = (amount: number) =>
+    `AED ${Math.round(amount).toLocaleString()}`;
+
+  const grandTotal = history.reduce((sum, item) => {
+    if (!item.daily_rate) return sum;
+    return sum + calculateDays(item.started_at, item.ended_at) * item.daily_rate;
+  }, 0);
 
   useEffect(() => {
     if (open && contractId) {
@@ -204,6 +230,8 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
             <div className="relative">
               {history.map((item, index) => {
                 const isActive = !item.ended_at;
+                const days = calculateDays(item.started_at, item.ended_at);
+                const rowTotal = item.daily_rate ? days * item.daily_rate : null;
                 return (
                   <div key={item.id} className="relative pl-6 pb-8 last:pb-2">
                     {/* Connector Line */}
@@ -285,10 +313,41 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                           {calculateDuration(item.started_at, item.ended_at)}
                         </span>
                       </div>
+
+                      {/* Informational Cost Breakdown */}
+                      <div className="mt-2 grid grid-cols-3 gap-1.5 font-ibm-plex-mono">
+                        <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wider text-white/30">Days</div>
+                          <div className="text-xs text-white/80">{formatDays(days)}</div>
+                        </div>
+                        <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wider text-white/30">Daily Rate</div>
+                          <div className="text-xs text-white/80">
+                            {item.daily_rate ? formatAed(item.daily_rate) : "--"}
+                          </div>
+                        </div>
+                        <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wider text-white/30">Total</div>
+                          <div className="text-xs font-semibold text-white/90">
+                            {rowTotal === null ? "--" : formatAed(rowTotal)}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
               })}
+              <div className="mt-2 border-t border-white/7 pt-4">
+                <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 font-ibm-plex-mono">
+                  <span className="text-[10px] uppercase tracking-wider text-white/40">Grand Total</span>
+                  <span className="text-sm font-semibold text-white">{formatAed(grandTotal)}</span>
+                </div>
+                {history.some((item) => !item.daily_rate) && (
+                  <p className="mt-2 text-[11px] text-white/35">
+                    Rows without daily rate are excluded from the total.
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

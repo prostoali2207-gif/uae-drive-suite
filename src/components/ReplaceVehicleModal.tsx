@@ -21,7 +21,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import {
+  findVehicleContractOverlap,
+  formatContractOverlapMessage,
+  parseContractDateTime,
+} from "@/lib/contractOverlap";
 
 // Define the interface to support the missing contract_vehicles table
 interface ExtendedDatabase extends Database {
@@ -36,6 +40,7 @@ interface ExtendedDatabase extends Database {
           ended_at: string | null;
           owner_id: string;
           created_at: string;
+          daily_rate: number | null;
         };
         Insert: {
           id?: string;
@@ -45,6 +50,7 @@ interface ExtendedDatabase extends Database {
           ended_at?: string | null;
           owner_id: string;
           created_at?: string;
+          daily_rate: number;
         };
         Update: {
           id?: string;
@@ -54,6 +60,7 @@ interface ExtendedDatabase extends Database {
           ended_at?: string | null;
           owner_id?: string;
           created_at?: string;
+          daily_rate?: number | null;
         };
         Relationships: [];
       };
@@ -80,8 +87,16 @@ interface Car {
 
 interface ContractPeriod {
   id: string;
+  start_date: string;
+  start_time: string | null;
   end_date: string;
   end_time: string | null;
+  rate_type: string;
+  rate_amount: number | string;
+}
+
+interface ActiveVehiclePeriod {
+  started_at: string;
 }
 
 function splitDatetimeLocal(value: string) {
@@ -89,6 +104,20 @@ function splitDatetimeLocal(value: string) {
     date: value.slice(0, 10),
     time: value.slice(11, 16),
   };
+}
+
+function calculateContractDailyRate(rateType: string, rateAmount: number | string) {
+  const amount = Number(rateAmount);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+
+  switch (rateType) {
+    case "Monthly":
+      return Math.round(amount / 30);
+    case "Yearly":
+      return Math.round(amount / 365);
+    default:
+      return Math.round(amount);
+  }
 }
 
 export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
@@ -107,9 +136,15 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [loadingCurrentCar, setLoadingCurrentCar] = useState(false);
   const [selectedNewCarId, setSelectedNewCarId] = useState<string>("");
   
-  const [handoverTime, setHandoverTime] = useState<string>("");
-  const [pickupTime, setPickupTime] = useState<string>("");
+  const [replacementTime, setReplacementTime] = useState<string>("");
+  const [monthlyPrice, setMonthlyPrice] = useState<string>("");
   const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const monthlyPriceNumber = Number(monthlyPrice);
+  const previewDailyRate =
+    Number.isFinite(monthlyPriceNumber) && monthlyPriceNumber > 0
+      ? Math.round(monthlyPriceNumber / 30)
+      : 0;
 
   // Helper to format a Date object into local datetime-local string (YYYY-MM-DDTHH:MM)
   const formatDatetimeLocal = (date: Date) => {
@@ -127,10 +162,10 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     if (isOpen) {
       const now = new Date();
       const formatted = formatDatetimeLocal(now);
-      setHandoverTime(formatted);
-      setPickupTime(formatted);
+      setReplacementTime(formatted);
       setSelectedNewCarId("");
       setCurrentCar(null);
+      setMonthlyPrice("");
       
       const fetchModalData = async () => {
         setLoadingCars(true);
@@ -172,15 +207,17 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     }
   }, [isOpen, currentCarId, toast]);
 
-  // Sync handover time with pickup time
-  const handleHandoverTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setHandoverTime(value);
-    setPickupTime(value); // Auto-sync Section 2 with Section 1
-  };
-
   const handleConfirm = async () => {
     if (!selectedNewCarId) return;
+    if (!Number.isFinite(monthlyPriceNumber) || monthlyPriceNumber <= 0) {
+      toast({
+        title: "Monthly price required",
+        description: "Enter a positive monthly price for the replacement vehicle.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const dailyRate = Math.round(Number(monthlyPrice) / 30);
 
     setConfirmLoading(true);
     try {
@@ -191,20 +228,65 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       // Cast supabase client to ExtendedDatabase to handle contract_vehicles
       const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
 
-      const pickup = splitDatetimeLocal(pickupTime);
-      const { data: contractPeriod, error: contractPeriodError } = await extendedDb
-        .from("contracts")
-        .select("id, end_date, end_time")
-        .eq("id", contractId)
-        .single();
+      const replacement = splitDatetimeLocal(replacementTime);
+      const [{ data: contractPeriod, error: contractPeriodError }, { data: activeVehicle, error: activeVehicleError }] =
+        await Promise.all([
+          extendedDb
+            .from("contracts")
+            .select("id, start_date, start_time, end_date, end_time, rate_type, rate_amount")
+            .eq("id", contractId)
+            .single(),
+          extendedDb
+            .from("contract_vehicles")
+            .select("started_at")
+            .eq("contract_id", contractId)
+            .eq("car_id", currentCarId)
+            .is("ended_at", null)
+            .maybeSingle(),
+        ]);
       if (contractPeriodError) throw contractPeriodError;
+      if (activeVehicleError) throw activeVehicleError;
+
+      const period = contractPeriod as ContractPeriod;
+      const currentVehicleStartedAt =
+        (activeVehicle as ActiveVehiclePeriod | null)?.started_at ??
+        parseContractDateTime(period.start_date, period.start_time).toISOString();
+      const replacementDate = new Date(replacementTime);
+      const contractStart = parseContractDateTime(period.start_date, period.start_time);
+      const contractEnd = parseContractDateTime(period.end_date, period.end_time);
+      const currentVehicleStart = new Date(currentVehicleStartedAt);
+      const currentVehicleDailyRate = calculateContractDailyRate(period.rate_type, period.rate_amount);
+
+      if (
+        Number.isNaN(replacementDate.getTime()) ||
+        replacementDate < contractStart ||
+        replacementDate > contractEnd
+      ) {
+        toast({
+          title: "Invalid replacement time",
+          description: "Replacement date and time must be inside the contract period.",
+          variant: "destructive",
+        });
+        setConfirmLoading(false);
+        return;
+      }
+
+      if (Number.isNaN(currentVehicleStart.getTime()) || replacementDate <= currentVehicleStart) {
+        toast({
+          title: "Invalid replacement time",
+          description: "Replacement date and time must be after the current vehicle start time.",
+          variant: "destructive",
+        });
+        setConfirmLoading(false);
+        return;
+      }
 
       const conflict = await findVehicleContractOverlap(extendedDb, {
         carId: selectedNewCarId,
-        startDate: pickup.date,
-        startTime: pickup.time,
-        endDate: (contractPeriod as ContractPeriod).end_date,
-        endTime: (contractPeriod as ContractPeriod).end_time,
+        startDate: replacement.date,
+        startTime: replacement.time,
+        endDate: period.end_date,
+        endTime: period.end_time,
         excludeContractId: contractId,
         operation: "vehicle-replacement",
       });
@@ -218,17 +300,31 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         return;
       }
 
-      // a. Insert a row into contract_vehicles table for old car end
-      const { error: errOldVehicle } = await extendedDb
+      // a. Close the active contract_vehicles row for the old car
+      const { data: closedVehicles, error: errOldVehicle } = await extendedDb
         .from("contract_vehicles")
-        .insert({
-          contract_id: contractId,
-          car_id: currentCarId,
-          started_at: new Date(contractStartDate).toISOString(),
-          ended_at: new Date(handoverTime).toISOString(),
-          owner_id: userId,
-        });
+        .update({
+          ended_at: new Date(replacementTime).toISOString(),
+        })
+        .eq("contract_id", contractId)
+        .eq("car_id", currentCarId)
+        .is("ended_at", null)
+        .select("id");
       if (errOldVehicle) throw errOldVehicle;
+
+      if (!closedVehicles || closedVehicles.length === 0) {
+        const { error: errOldVehicleInsert } = await extendedDb
+          .from("contract_vehicles")
+          .insert({
+            contract_id: contractId,
+            car_id: currentCarId,
+            started_at: currentVehicleStartedAt,
+            ended_at: new Date(replacementTime).toISOString(),
+            owner_id: userId,
+            daily_rate: currentVehicleDailyRate,
+          });
+        if (errOldVehicleInsert) throw errOldVehicleInsert;
+      }
 
       // b. Update contracts table: set car_id = selectedNewCarId where id = contractId
       const { error: errContract } = await extendedDb
@@ -257,9 +353,10 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         .insert({
           contract_id: contractId,
           car_id: selectedNewCarId,
-          started_at: new Date(pickupTime).toISOString(),
+          started_at: new Date(replacementTime).toISOString(),
           ended_at: null,
           owner_id: userId,
+          daily_rate: dailyRate,
         });
       if (errNewVehicle) throw errNewVehicle;
 
@@ -271,7 +368,12 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message: unknown }).message)
+            : JSON.stringify(err);
       console.error("Replacement transaction failed:", err);
       toast({
         title: "Replacement Failed",
@@ -291,7 +393,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             Replace Vehicle Mid-Contract
           </DialogTitle>
           <DialogDescription className="text-sm text-white/60">
-            Record the handover of the current vehicle and assign the new vehicle to Contract:{" "}
+            Record the replacement time and assign the new vehicle to Contract:{" "}
             <span className="font-ibm-plex-mono text-white bg-white/5 px-1.5 py-0.5 rounded text-xs">
               {contractId.slice(0, 8).toUpperCase()}
             </span>
@@ -321,14 +423,14 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="handover-time" className="text-xs text-white/50 uppercase tracking-wider">
-                Hand-over date & time
+              <Label htmlFor="replacement-time" className="text-xs text-white/50 uppercase tracking-wider">
+                Replacement date & time
               </Label>
               <Input
-                id="handover-time"
+                id="replacement-time"
                 type="datetime-local"
-                value={handoverTime}
-                onChange={handleHandoverTimeChange}
+                value={replacementTime}
+                onChange={(e) => setReplacementTime(e.target.value)}
                 className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-0"
               />
             </div>
@@ -369,16 +471,23 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="pickup-time" className="text-xs text-white/50 uppercase tracking-wider">
-                Pickup date & time
+              <Label htmlFor="replacement-monthly-price" className="text-xs text-white/50 uppercase tracking-wider">
+                Monthly price
               </Label>
               <Input
-                id="pickup-time"
-                type="datetime-local"
-                value={pickupTime}
-                onChange={(e) => setPickupTime(e.target.value)}
-                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+                id="replacement-monthly-price"
+                type="number"
+                min="1"
+                step="1"
+                inputMode="decimal"
+                value={monthlyPrice}
+                onChange={(e) => setMonthlyPrice(e.target.value)}
+                placeholder="AED per month"
+                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
               />
+              <div className="text-[11px] text-white/45 font-ibm-plex-mono">
+                Daily rate: {previewDailyRate > 0 ? `AED ${previewDailyRate}` : "AED --"}
+              </div>
             </div>
           </div>
         </div>
@@ -388,7 +497,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             Cancel
           </Button>
           <Button
-            disabled={!selectedNewCarId || confirmLoading}
+            disabled={!selectedNewCarId || previewDailyRate <= 0 || confirmLoading}
             onClick={handleConfirm}
             className="bg-[#4f6ef7] hover:bg-[#4f6ef7]/90 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
