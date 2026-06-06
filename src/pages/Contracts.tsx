@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw } from "lucide-react";
+import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2 } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -233,6 +233,228 @@ const emptyForm = {
   special_conditions: "",
 };
 
+const PICKUP_PHOTO_SLOTS = ["Front", "Rear", "Left side", "Right side", "Dashboard / odometer"];
+
+function pickupSlotKey(slot: string): string {
+  return slot.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+interface PickupInspectionModalProps {
+  contractId: string;
+  uploadedBy: string | null;
+  open: boolean;
+  onContinue: () => void;
+}
+
+function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: PickupInspectionModalProps) {
+  const [photos, setPhotos] = useState<Record<string, { id: string; photo_url: string; uploaded_at: string | null }>>({});
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [uploadingSlot, setUploadingSlot] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  useEffect(() => {
+    if (!open || !contractId) return;
+
+    let cancelled = false;
+    const loadPhotos = async () => {
+      const { data, error } = await (supabase as any)
+        .from("contract_inspections")
+        .select("id, slot, photo_url, uploaded_at")
+        .eq("contract_id", contractId)
+        .eq("type", "pickup");
+
+      if (cancelled) return;
+      if (error) {
+        setErrors((prev) => ({ ...prev, load: "Could not load pickup photos." }));
+        return;
+      }
+
+      const nextPhotos: Record<string, { id: string; photo_url: string; uploaded_at: string | null }> = {};
+      (data ?? []).forEach((photo: { id: string; slot: string; photo_url: string; uploaded_at: string | null }) => {
+        nextPhotos[photo.slot] = {
+          id: photo.id,
+          photo_url: photo.photo_url,
+          uploaded_at: photo.uploaded_at,
+        };
+      });
+      setPhotos(nextPhotos);
+      setErrors((prev) => ({ ...prev, load: "" }));
+    };
+
+    loadPhotos();
+    return () => {
+      cancelled = true;
+    };
+  }, [contractId, open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    const loadPreviews = async () => {
+      const nextPreviews: Record<string, string> = {};
+      await Promise.all(
+        Object.entries(photos).map(async ([slot, photo]) => {
+          if (!photo.photo_url) return;
+          const { data } = await supabase.storage
+            .from("inspection-photos")
+            .createSignedUrl(photo.photo_url, 60 * 10);
+          if (data?.signedUrl) nextPreviews[slot] = data.signedUrl;
+        }),
+      );
+      if (!cancelled) setPreviews(nextPreviews);
+    };
+
+    loadPreviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [photos, open]);
+
+  const handleUpload = async (slot: string, file: File | undefined) => {
+    if (!file) return;
+
+    setUploadingSlot(slot);
+    setErrors((prev) => ({ ...prev, [slot]: "" }));
+
+    const path = `${contractId}/pickup/${pickupSlotKey(slot)}.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from("inspection-photos")
+      .upload(path, file, {
+        contentType: file.type || "image/jpeg",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      setUploadingSlot("");
+      setErrors((prev) => ({ ...prev, [slot]: uploadError.message }));
+      return;
+    }
+
+    const payload = {
+      contract_id: contractId,
+      type: "pickup",
+      slot,
+      photo_url: path,
+      uploaded_at: new Date().toISOString(),
+      uploaded_by: uploadedBy,
+    };
+
+    const existing = photos[slot];
+    const { data, error: saveError } = existing
+      ? await (supabase as any)
+          .from("contract_inspections")
+          .update(payload)
+          .eq("id", existing.id)
+          .select("id, slot, photo_url, uploaded_at")
+          .single()
+      : await (supabase as any)
+          .from("contract_inspections")
+          .insert(payload)
+          .select("id, slot, photo_url, uploaded_at")
+          .single();
+
+    setUploadingSlot("");
+    if (saveError) {
+      setErrors((prev) => ({ ...prev, [slot]: saveError.message }));
+      return;
+    }
+
+    if (data) {
+      setPhotos((prev) => ({
+        ...prev,
+        [slot]: {
+          id: data.id,
+          photo_url: data.photo_url,
+          uploaded_at: data.uploaded_at,
+        },
+      }));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onContinue(); }}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[620px]">
+        <DialogHeader>
+          <DialogTitle>Pickup Photos</DialogTitle>
+          <DialogDescription>
+            Capture general vehicle condition before signing. You can continue without uploading photos.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-1 py-2">
+          {errors.load && (
+            <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {errors.load}
+            </div>
+          )}
+          {PICKUP_PHOTO_SLOTS.map((slot) => {
+            const photo = photos[slot];
+            const preview = previews[slot];
+            const isUploading = uploadingSlot === slot;
+            return (
+              <div key={slot} className="grid gap-2 border-b border-border py-3 last:border-b-0 sm:grid-cols-[150px,1fr,150px] sm:items-center">
+                <div className="text-sm font-medium text-foreground">{slot}</div>
+                <div>
+                  {preview ? (
+                    <img src={preview} alt={`${slot} pickup`} className="h-20 w-28 rounded-md border border-border object-cover" />
+                  ) : (
+                    <div className="flex h-20 w-28 items-center justify-center rounded-md border border-dashed border-border bg-muted/30 text-muted-foreground">
+                      <ImageIcon className="h-5 w-5" />
+                    </div>
+                  )}
+                  {photo?.uploaded_at && (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      Uploaded {new Date(photo.uploaded_at).toLocaleString("en-GB")}
+                    </div>
+                  )}
+                  {errors[slot] && <div className="mt-1 text-[11px] text-destructive">{errors[slot]}</div>}
+                </div>
+                <div className="flex justify-start sm:justify-end">
+                  <input
+                    ref={(node) => {
+                      inputRefs.current[slot] = node;
+                    }}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(event) => {
+                      handleUpload(slot, event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-h-11 gap-1.5 text-xs sm:min-h-9"
+                    disabled={isUploading}
+                    onClick={() => inputRefs.current[slot]?.click()}
+                  >
+                    {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                    {isUploading ? "Uploading..." : photo ? "Replace Photo" : "Take Photo"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button type="button" variant="outline" onClick={onContinue}>
+            Skip for now
+          </Button>
+          <Button type="button" onClick={onContinue}>
+            Continue to Review & Sign
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const Contracts = () => {
   const navigate = useNavigate();
   const [contracts, setContracts] = useState<ContractRow[]>([]);
@@ -251,9 +473,11 @@ const Contracts = () => {
   const [carSearch, setCarSearch] = useState("");
   const [sortBy, setSortBy] = useState<"client" | "car" | "start" | "balance">("start");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [showPickupInspectionModal, setShowPickupInspectionModal] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
   const [newContractId, setNewContractId] = useState("");
   const [signingClientName, setSigningClientName] = useState("");
+  const [signingUserId, setSigningUserId] = useState<string | null>(null);
   const [reopenTargetId, setReopenTargetId] = useState<string | null>(null);
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [docExpiredWarnings, setDocExpiredWarnings] = useState<string[]>([]);
@@ -672,7 +896,8 @@ const Contracts = () => {
         toast.success("Contract created");
         setNewContractId(createdId);
         setSigningClientName(resolvedClientName);
-        setShowSignModal(true);
+        setSigningUserId(userId);
+        setShowPickupInspectionModal(true);
         setForm(emptyForm);
         setEndTimeManuallyEdited(false);
         setClientSearch("");
@@ -1145,20 +1370,31 @@ const Contracts = () => {
       </AlertDialog>
 
       {newContractId && (
-        <SignContractModal
-          contractId={newContractId}
-          clientName={signingClientName}
-          open={showSignModal}
-          onComplete={() => {
-            setShowSignModal(false);
-            setOpen(false);
-            setForm(emptyForm);
-            setEndTimeManuallyEdited(false);
-            setClientSearch("");
-            setCarSearch("");
-            fetchData();
-          }}
-        />
+        <>
+          <PickupInspectionModal
+            contractId={newContractId}
+            uploadedBy={signingUserId}
+            open={showPickupInspectionModal}
+            onContinue={() => {
+              setShowPickupInspectionModal(false);
+              setShowSignModal(true);
+            }}
+          />
+          <SignContractModal
+            contractId={newContractId}
+            clientName={signingClientName}
+            open={showSignModal}
+            onComplete={() => {
+              setShowSignModal(false);
+              setOpen(false);
+              setForm(emptyForm);
+              setEndTimeManuallyEdited(false);
+              setClientSearch("");
+              setCarSearch("");
+              fetchData();
+            }}
+          />
+        </>
       )}
     </DashboardLayout>
   );
