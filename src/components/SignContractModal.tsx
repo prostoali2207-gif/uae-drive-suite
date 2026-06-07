@@ -423,7 +423,7 @@ function ContractHtmlPreview({
   const termsBullets = useMemo(() => getTermsBullets(company.termsEn), [company.termsEn]);
   useEffect(() => {
     let cancelled = false;
-    QRCode.toDataURL(`/inspection/${contract.id}`, { width: 120 })
+    QRCode.toDataURL(`https://uae-drive-suite.vercel.app/inspection/${contract.id}`, { width: 120 })
       .then((dataUrl) => {
         if (!cancelled) setInspectionQr(dataUrl);
       })
