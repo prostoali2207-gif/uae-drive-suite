@@ -158,6 +158,7 @@ interface ExtensionCandidateRow {
 }
 
 type FeeCategory =
+  | "rental"
   | "delivery"
   | "pickup"
   | "fuel"
@@ -246,26 +247,6 @@ function parseDateTime(date: string, time: string | null | undefined): Date {
 
 function formatDateTime(date: string, time: string | null | undefined): string {
   return `${formatDate(date)} · ${formatTimeDisplay(time)}`;
-}
-
-function describeDuration(hours: number): string {
-  const safeHours = Math.max(0, Math.ceil(hours));
-  const days = Math.floor(safeHours / 24);
-  const remainingHours = safeHours % 24;
-  if (days && remainingHours) return `${days} days ${remainingHours} hours`;
-  if (days) return `${days} days`;
-  return `${remainingHours} hours`;
-}
-
-function calculateRentalTotal(rateType: string, rateAmount: number, totalHours: number): number {
-  const hours = Math.max(0, totalHours);
-  const hourlyRate =
-    rateType === "Monthly"
-      ? rateAmount / (30 * 24)
-      : rateType === "Yearly"
-        ? rateAmount / (365 * 24)
-        : rateAmount / 24;
-  return Math.round(hourlyRate * hours * 100) / 100;
 }
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
@@ -1081,6 +1062,7 @@ const ContractDetail = () => {
   const [isClosing, setIsClosing] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [extendEndDateTime, setExtendEndDateTime] = useState("");
+  const [extendAmount, setExtendAmount] = useState("");
   const [extendError, setExtendError] = useState("");
   const [isExtending, setIsExtending] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -1266,26 +1248,9 @@ const ContractDetail = () => {
     return { charges, credits, outstanding };
   }, [ledger, contract]);
 
-  const extensionPreview = useMemo(() => {
-    if (!contract || !extendEndDateTime) {
-      return { extraHours: 0, durationText: "0 hours", addedAmount: 0, newTotal: Number(contract?.total_amount ?? 0) };
-    }
-
-    const currentEnd = parseDateTime(contract.end_date, contract.end_time);
-    const newEnd = new Date(extendEndDateTime);
-    const extraHours = (newEnd.getTime() - currentEnd.getTime()) / 3_600_000;
-    const addedAmount =
-      extraHours > 0
-        ? calculateRentalTotal(contract.rate_type, Number(contract.rate_amount), extraHours)
-        : 0;
-
-    return {
-      extraHours,
-      durationText: describeDuration(extraHours),
-      addedAmount,
-      newTotal: Math.round((Number(contract.total_amount) + addedAmount) * 100) / 100,
-    };
-  }, [contract, extendEndDateTime]);
+  const extendButtonLabel = extendEndDateTime
+    ? `Extend to ${formatDate(extendEndDateTime.slice(0, 10))}`
+    : "Extend Contract";
 
   const saveNotes = async () => {
     if (!contract) return;
@@ -1307,6 +1272,7 @@ const ContractDetail = () => {
   const openExtendModal = () => {
     if (!contract) return;
     setExtendEndDateTime(toDateTimeInput(contract.end_date, contract.end_time));
+    setExtendAmount("");
     setExtendError("");
     setShowExtendModal(true);
   };
@@ -1319,6 +1285,12 @@ const ContractDetail = () => {
     const newEnd = new Date(extendEndDateTime);
     if (!extendEndDateTime || Number.isNaN(newEnd.getTime()) || newEnd <= currentEnd) {
       setExtendError("New end date and time must be later than the current end.");
+      return;
+    }
+
+    const extensionAmount = Number(extendAmount);
+    if (!Number.isFinite(extensionAmount) || extensionAmount <= 0) {
+      setExtendError("Enter a valid extension amount.");
       return;
     }
 
@@ -1350,30 +1322,54 @@ const ContractDetail = () => {
       return;
     }
 
-    const oldEndLabel = formatDateTime(contract.end_date, contract.end_time);
-    const newEndLabel = formatDateTime(newEndDate, newEndTime);
-    const timelineEntry = `Contract extended from ${oldEndLabel} to ${newEndLabel}. Added ${extensionPreview.durationText} (${fmtAed(extensionPreview.addedAmount)}).`;
-    const nextNotes = contract.notes ? `${contract.notes}\n\n${timelineEntry}` : timelineEntry;
+    const roundedExtensionAmount = Math.round(extensionAmount * 100) / 100;
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const ownerId = authData.user?.id;
+    if (authError || !ownerId) {
+      setIsExtending(false);
+      setExtendError("Could not confirm current user. Try again.");
+      return;
+    }
 
-    const { error } = await supabase
+    const oldEndLabel = formatDate(contract.end_date);
+    const newEndLabel = formatDate(newEndDate);
+    const feeLabel = `Extension: ${oldEndLabel} → ${newEndLabel}`;
+
+    const { error: contractError } = await supabase
       .from("contracts")
       .update({
         end_date: newEndDate,
         end_time: newEndTime,
-        total_amount: extensionPreview.newTotal,
-        notes: nextNotes,
       } as never)
       .eq("id", contract.id);
 
-    setIsExtending(false);
-    if (error) {
+    if (contractError) {
+      setIsExtending(false);
       toast.error("Failed to extend contract");
+      return;
+    }
+
+    const { error: feeError } = await (supabase as any)
+      .from("contract_fees")
+      .insert({
+        contract_id: contract.id,
+        category: "rental",
+        label: feeLabel,
+        amount: roundedExtensionAmount,
+        owner_id: ownerId,
+      });
+
+    setIsExtending(false);
+    if (feeError) {
+      toast.error("Contract dates updated, but extension fee was not added");
       return;
     }
 
     toast.success("Contract extended");
     setShowExtendModal(false);
-    fetchData();
+    setExtendAmount("");
+    await Promise.all([fetchData(), fetchContractFees()]);
+    setFeeRefreshKey((key) => key + 1);
   };
 
   const handleCloseContract = async () => {
@@ -2616,7 +2612,7 @@ const ContractDetail = () => {
           <div className="grid gap-4 py-2">
             <div className="grid gap-1.5">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Current End Date &amp; Time
+                Current end date
               </Label>
               <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
                 {formatDateTime(contract.end_date, contract.end_time)}
@@ -2625,7 +2621,7 @@ const ContractDetail = () => {
 
             <div className="grid gap-1.5">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                New End Date &amp; Time
+                New end date
               </Label>
               <input
                 type="datetime-local"
@@ -2638,25 +2634,24 @@ const ContractDetail = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Extra Time</div>
-                <div className="mt-1 font-mono text-sm font-semibold tabular-nums">
-                  {extensionPreview.durationText}
-                </div>
-              </div>
-              <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Added Rent</div>
-                <div className="mt-1 font-mono text-sm font-semibold tabular-nums">
-                  {fmtAed(extensionPreview.addedAmount)}
-                </div>
-              </div>
-              <div className="col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">New Rental Total</div>
-                <div className="mt-1 font-mono text-sm font-semibold tabular-nums">
-                  {fmtAed(extensionPreview.newTotal)}
-                </div>
-              </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="extension-amount" className="text-xs uppercase tracking-wide text-muted-foreground">
+                Extension amount (AED)
+              </Label>
+              <Input
+                id="extension-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={extendAmount}
+                onChange={(e) => {
+                  setExtendAmount(e.target.value);
+                  setExtendError("");
+                }}
+                className="font-mono tabular-nums"
+                placeholder="0.00"
+              />
             </div>
 
             {extendError && (
@@ -2671,10 +2666,10 @@ const ContractDetail = () => {
               Cancel
             </Button>
             <Button
-              disabled={isExtending || !extendEndDateTime || extensionPreview.extraHours <= 0}
+              disabled={isExtending || !extendEndDateTime || !extendAmount}
               onClick={handleExtendContract}
             >
-              {isExtending ? "Checking..." : "Confirm Extension"}
+              {isExtending ? "Saving..." : extendButtonLabel}
             </Button>
           </DialogFooter>
         </DialogContent>
