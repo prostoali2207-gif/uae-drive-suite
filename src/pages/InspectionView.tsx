@@ -43,7 +43,9 @@ const InspectionView = () => {
         return;
       }
 
-      const rows = ((data ?? []) as InspectionRow[]).filter((row) => row.photo_url);
+      const rows = ((data ?? []) as InspectionRow[]).filter(
+        (row) => row.photo_url && PHOTO_SLOTS.includes(row.slot),
+      );
       const nextPhotos: Record<string, string> = {};
 
       await Promise.all(
