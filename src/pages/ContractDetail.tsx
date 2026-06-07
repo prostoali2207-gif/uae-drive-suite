@@ -2004,7 +2004,7 @@ const ContractDetail = () => {
                   Total charged
                 </div>
                 <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-foreground">
-                  {fmtAed(totals.charges - Number(contract.deposit_amount))}
+                  {fmtAed(Number(contract.total_amount) + contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0) + fines.reduce((sum, fine) => sum + Number(fine.amount), 0) + salik.reduce((sum, charge) => sum + Number(charge.amount), 0))}
                 </div>
               </div>
 
