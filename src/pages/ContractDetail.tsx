@@ -172,6 +172,7 @@ interface ContractFeeRow {
   category: FeeCategory;
   label: string;
   amount: number;
+  created_at?: string | null;
 }
 
 type AmountEditTarget =
@@ -328,6 +329,7 @@ const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> =
   Active: { dot: "bg-tint-blue-foreground", bg: "bg-tint-blue", text: "text-tint-blue-foreground" },
   Held: { dot: "bg-tint-violet-foreground", bg: "bg-tint-violet", text: "text-tint-violet-foreground" },
   Completed: { dot: "bg-tint-green-foreground", bg: "bg-tint-green", text: "text-tint-green-foreground" },
+  Closed: { dot: "bg-muted-foreground", bg: "bg-muted", text: "text-muted-foreground" },
 };
 
 type AccentKey = "blue" | "red" | "cyan" | "purple";
@@ -473,11 +475,21 @@ const FinancialsAccordion = ({
   onUpdateFineNote,
   onUpdateSalikNote,
 }: FinancialsAccordionProps) => {
-  const rentalTotal = Number(contract.total_amount);
+  const rentalFees = contractFees
+    .filter((fee) => fee.category === "rental")
+    .sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return aTime - bTime;
+    });
+  const latestRentalFeeId = rentalFees.at(-1)?.id;
+  const firstExtensionStart = rentalFees[0]?.label.match(/Extension:\s*(.*?)\s*→/)?.[1];
+  const originalRentalLabel = `${formatDate(contract.start_date)} → ${firstExtensionStart ?? formatDate(contract.end_date)}`;
+  const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
   const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
-  const otherFees = contractFees;
+  const otherFees = contractFees.filter((fee) => fee.category !== "rental");
   const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
 
   const [editingFineId, setEditingFineId] = useState<string | null>(null);
@@ -589,19 +601,14 @@ const FinancialsAccordion = ({
       )}
 
     <div className="space-y-2">
-      <AccordionRow label="Rental" count={1} total={rentalTotal} accent="blue">
+      <AccordionRow label="Rental" count={1 + rentalFees.length} total={rentalTotal} accent="blue">
         <EntryRow>
-          <div className="flex flex-1 min-w-0 flex-col gap-0.5">
-            <span className="text-[11px] text-muted-foreground">
-              {formatDate(contract.start_date)} – {formatDate(contract.end_date)} · {days} days
-            </span>
-            <span className="text-xs text-foreground/80">
-              {contract.rate_type} @ {fmtAed(contract.rate_amount)}
-            </span>
-          </div>
-          <StatusPill status={contract.status} />
-          <span className="w-24 text-right text-sm font-bold tabular-nums text-foreground">
-            {fmtAed(rentalTotal)}
+          <span className="flex-1 truncate font-sans text-xs text-foreground/90">
+            {originalRentalLabel}
+          </span>
+          <StatusPill status={rentalFees.length > 0 ? "Closed" : "Active"} />
+          <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
+            {fmtAed(Number(contract.total_amount))}
           </span>
           <Button
             type="button"
@@ -614,6 +621,17 @@ const FinancialsAccordion = ({
             <Pencil className="h-4 w-4" />
           </Button>
         </EntryRow>
+        {rentalFees.map((fee) => (
+          <EntryRow key={fee.id}>
+            <span className="flex-1 truncate font-sans text-xs text-foreground/90">
+              {fee.label}
+            </span>
+            <StatusPill status={fee.id === latestRentalFeeId ? "Active" : "Closed"} />
+            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
+              {fmtAed(Number(fee.amount))}
+            </span>
+          </EntryRow>
+        ))}
       </AccordionRow>
 
       <AccordionRow
@@ -1094,7 +1112,7 @@ const ContractDetail = () => {
     }
     const { data, error } = await (supabase as any)
       .from("contract_fees")
-      .select("id, category, label, amount")
+      .select("id, category, label, amount, created_at")
       .eq("contract_id", contract.id)
       .order("created_at", { ascending: false });
 
@@ -1322,8 +1340,9 @@ const ContractDetail = () => {
       return;
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) {
       setIsExtending(false);
       setExtendError("Could not confirm current user. Try again.");
       return;
@@ -1346,20 +1365,20 @@ const ContractDetail = () => {
       return;
     }
 
-    const { error: feeError } = await supabase
-      .from("contract_fees" as never)
+    const { error: feeError } = await (supabase as any)
+      .from("contract_fees")
       .insert({
         contract_id: contract.id,
         category: "rental",
         label: `Extension: ${formattedOldDate} → ${formattedNewDate}`,
-        amount: extensionAmount,
-        owner_id: user.id,
-      } as never);
+        amount: Number(extensionAmount),
+        owner_id: userId,
+      });
 
     setIsExtending(false);
     if (feeError) {
       console.error("Failed to insert extension contract fee", feeError);
-      const message = feeError.message ? `Extension fee was not added: ${feeError.message}` : "Extension fee was not added.";
+      const message = `Extension saved but fee record failed: ${feeError.message}`;
       setExtendError(message);
       toast.error(message);
       return;
