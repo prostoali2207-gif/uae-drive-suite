@@ -58,10 +58,10 @@ const InspectionView = () => {
             return;
           }
 
-          const { data: signed } = await supabase.storage
+          const { data: publicUrlData } = supabase.storage
             .from("inspection-photos")
-            .createSignedUrl(photoUrl, 60 * 10);
-          if (signed?.signedUrl) nextPhotos[row.slot] = signed.signedUrl;
+            .getPublicUrl(photoUrl);
+          if (publicUrlData?.publicUrl) nextPhotos[row.slot] = publicUrlData.publicUrl;
         }),
       );
 
