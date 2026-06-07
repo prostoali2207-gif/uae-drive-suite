@@ -1322,18 +1322,15 @@ const ContractDetail = () => {
       return;
     }
 
-    const roundedExtensionAmount = Math.round(extensionAmount * 100) / 100;
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    const ownerId = authData.user?.id;
-    if (authError || !ownerId) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
       setIsExtending(false);
       setExtendError("Could not confirm current user. Try again.");
       return;
     }
 
-    const oldEndLabel = formatDate(contract.end_date);
-    const newEndLabel = formatDate(newEndDate);
-    const feeLabel = `Extension: ${oldEndLabel} → ${newEndLabel}`;
+    const formattedOldDate = formatDate(contract.end_date);
+    const formattedNewDate = formatDate(newEndDate);
 
     const { error: contractError } = await supabase
       .from("contracts")
@@ -1349,19 +1346,22 @@ const ContractDetail = () => {
       return;
     }
 
-    const { error: feeError } = await (supabase as any)
-      .from("contract_fees")
+    const { error: feeError } = await supabase
+      .from("contract_fees" as never)
       .insert({
         contract_id: contract.id,
         category: "rental",
-        label: feeLabel,
-        amount: roundedExtensionAmount,
-        owner_id: ownerId,
-      });
+        label: `Extension: ${formattedOldDate} → ${formattedNewDate}`,
+        amount: extensionAmount,
+        owner_id: user.id,
+      } as never);
 
     setIsExtending(false);
     if (feeError) {
-      toast.error("Contract dates updated, but extension fee was not added");
+      console.error("Failed to insert extension contract fee", feeError);
+      const message = feeError.message ? `Extension fee was not added: ${feeError.message}` : "Extension fee was not added.";
+      setExtendError(message);
+      toast.error(message);
       return;
     }
 
