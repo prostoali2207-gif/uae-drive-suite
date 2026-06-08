@@ -63,7 +63,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
 type ContractFilter = "All" | "Active" | "Expiring Soon" | "Overdue" | "Closed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
 type RateType = "Daily" | "Weekly" | "Monthly" | "Yearly";
@@ -124,7 +123,7 @@ const paymentClasses: Record<string, string> = {
   Unpaid: "bg-tint-rose text-tint-rose-foreground",
 };
 
-const filters: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue", "Closed"];
+const desktopFilters: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue"];
 const mobileFilterOrder: ContractFilter[] = ["Active", "Overdue", "Expiring Soon", "Closed", "All"];
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
 
@@ -970,7 +969,7 @@ const Contracts = () => {
           />
           <Select value={filter} onValueChange={(value) => setFilter(value as ContractFilter)}>
             <SelectTrigger className="h-10 w-full">
-              <SelectValue />
+              <span>{filter}</span>
             </SelectTrigger>
             <SelectContent>
               {mobileFilterOrder.map((item) => (
@@ -984,7 +983,7 @@ const Contracts = () => {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="hidden flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1 md:flex">
-            {filters.map((f) => (
+            {desktopFilters.map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
