@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, MoreHorizontal } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,12 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
@@ -58,6 +64,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type ContractStatus = "Active" | "Expiring Soon" | "Overdue" | "Completed";
+type ContractFilter = "All" | "Active" | "Expiring Soon" | "Overdue" | "Closed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
 type RateType = "Daily" | "Weekly" | "Monthly" | "Yearly";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
@@ -105,6 +112,10 @@ const statusClasses: Record<string, string> = {
   "Expiring Soon": "bg-tint-amber text-tint-amber-foreground",
   Overdue: "bg-tint-rose text-tint-rose-foreground",
   Completed: "bg-muted text-muted-foreground",
+  closed: "bg-muted text-muted-foreground",
+  Closed: "bg-muted text-muted-foreground",
+  returned: "bg-muted text-muted-foreground",
+  Returned: "bg-muted text-muted-foreground",
 };
 
 const paymentClasses: Record<string, string> = {
@@ -113,11 +124,25 @@ const paymentClasses: Record<string, string> = {
   Unpaid: "bg-tint-rose text-tint-rose-foreground",
 };
 
-const filters: ("All" | ContractStatus)[] = ["All", "Active", "Expiring Soon", "Overdue"];
+const filters: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue", "Closed"];
+const mobileFilterOrder: ContractFilter[] = ["Active", "Overdue", "Expiring Soon", "Closed", "All"];
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatMobileDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+}
+
+function matchesContractFilter(contract: ContractRow, selectedFilter: ContractFilter): boolean {
+  if (selectedFilter === "All") return true;
+  if (selectedFilter === "Closed") {
+    const status = contract.status.toLowerCase();
+    return status === "closed" || status === "completed" || status === "returned";
+  }
+  return contract.status === selectedFilter;
 }
 
 function getRoundedCurrentTimeInput(): string {
@@ -461,7 +486,7 @@ const Contracts = () => {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"All" | ContractStatus>("All");
+  const [filter, setFilter] = useState<ContractFilter>("All");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -647,7 +672,7 @@ const Contracts = () => {
   }, [availableCars, form.car_id]);
 
   const filtered = useMemo(() => {
-    const byStatus = filter === "All" ? contracts : contracts.filter((c) => c.status === filter);
+    const byStatus = contracts.filter((contract) => matchesContractFilter(contract, filter));
     const q = search.trim().toLowerCase();
     const bySearch = !q
       ? byStatus
@@ -722,8 +747,13 @@ const Contracts = () => {
   };
 
   const counts = useMemo(() => {
-    const base: Record<string, number> = { All: contracts.length, Active: 0, "Expiring Soon": 0, Overdue: 0 };
-    contracts.forEach((c) => { if (c.status in base) base[c.status]++; });
+    const base: Record<ContractFilter, number> = { All: contracts.length, Active: 0, "Expiring Soon": 0, Overdue: 0, Closed: 0 };
+    contracts.forEach((contract) => {
+      if (contract.status === "Active") base.Active++;
+      if (contract.status === "Expiring Soon") base["Expiring Soon"]++;
+      if (contract.status === "Overdue") base.Overdue++;
+      if (matchesContractFilter(contract, "Closed")) base.Closed++;
+    });
     return base;
   }, [contracts]);
 
@@ -929,10 +959,31 @@ const Contracts = () => {
   };
 
   return (
-    <DashboardLayout title="Contracts" subtitle="Manage rental agreements">
+    <DashboardLayout title="Contracts" subtitle="Manage rental agreements" mobileContractsNav>
       <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3 md:hidden">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by client name or car plate"
+            className="h-10 text-sm"
+          />
+          <Select value={filter} onValueChange={(value) => setFilter(value as ContractFilter)}>
+            <SelectTrigger className="h-10 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {mobileFilterOrder.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {item} ({counts[item] ?? 0})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
+          <div className="hidden flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1 md:flex">
             {filters.map((f) => (
               <button
                 key={f}
@@ -952,7 +1003,7 @@ const Contracts = () => {
 
           <Dialog open={open} onOpenChange={handleContractDialogOpenChange}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="hidden gap-1.5 md:inline-flex">
                 <Plus className="h-4 w-4" />
                 New Contract
               </Button>
@@ -1215,11 +1266,20 @@ const Contracts = () => {
                 </DialogFooter>
               </form>
             </DialogContent>
+            <DialogTrigger asChild>
+              <Button
+                size="icon"
+                className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
+                aria-label="New Contract"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+            </DialogTrigger>
           </Dialog>
         </div>
 
         <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border p-4">
+          <div className="hidden border-b border-border p-4 md:block">
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1227,6 +1287,92 @@ const Contracts = () => {
               className="h-9 max-w-md text-sm"
             />
           </div>
+          <div className="divide-y divide-border md:hidden">
+            {loading ? (
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">Loading contracts...</div>
+            ) : filtered.length === 0 ? (
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">No contracts match this filter.</div>
+            ) : (
+              paginatedContracts.map((c) => {
+                const d = diffDays(c.start_date, c.end_date);
+                const balance = Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0));
+                return (
+                  <div key={c.id} className="px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        className="min-w-0 truncate text-left text-sm font-semibold text-foreground"
+                        onClick={() => navigate(`/contracts/${c.id}`)}
+                      >
+                        {c.clients?.full_name ?? "—"}
+                      </button>
+                      <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", statusClasses[c.status] ?? "bg-muted text-muted-foreground")}>
+                        {c.status}
+                      </span>
+                    </div>
+                    <div className="mt-1 truncate text-xs text-muted-foreground">
+                      <span className="font-mono text-foreground">{c.cars?.plate ?? "—"}</span>
+                      {c.cars && <span> • {c.cars.make} {c.cars.model}</span>}
+                    </div>
+                    <div className={cn("mt-1 font-mono text-xl font-semibold leading-6", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
+                      AED {balance.toLocaleString()}
+                    </div>
+                    <div className="mt-1 flex items-end justify-between gap-3">
+                      <div className="min-w-0 text-xs text-muted-foreground">
+                        <div>
+                          <span>{formatMobileDate(c.start_date)}</span>
+                          <span> → </span>
+                          <span>{formatMobileDate(c.end_date)}</span>
+                        </div>
+                        <div>{d} days</div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-9 w-9 shrink-0"
+                            aria-label="Contract actions"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              try {
+                                await generateContractPdf(c);
+                                toast.success("Contract PDF downloaded");
+                              } catch (err) {
+                                toast.error("Failed to generate PDF");
+                                console.error(err);
+                              }
+                            }}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download PDF
+                          </DropdownMenuItem>
+                          {c.status === "closed" && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setReopenTargetId(c.id);
+                                setReopenConfirmOpen(true);
+                              }}
+                            >
+                              <RotateCcw className="mr-2 h-4 w-4" />
+                              Reopen
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -1344,6 +1490,7 @@ const Contracts = () => {
               )}
             </TableBody>
           </Table>
+          </div>
           <ListPagination
             page={page}
             pageSize={pageSize}
