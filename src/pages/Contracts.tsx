@@ -968,7 +968,7 @@ const Contracts = () => {
             className="h-10 text-sm"
           />
           <Select value={filter} onValueChange={(value) => setFilter(value as ContractFilter)}>
-            <SelectTrigger className="h-10 w-full">
+            <SelectTrigger className="h-6 w-full px-2 text-xs">
               <span>{filter}</span>
             </SelectTrigger>
             <SelectContent>
@@ -1286,7 +1286,7 @@ const Contracts = () => {
               className="h-9 max-w-md text-sm"
             />
           </div>
-          <div className="divide-y divide-border md:hidden">
+          <div className="divide-y divide-border pb-28 md:hidden">
             {loading ? (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">Loading contracts...</div>
             ) : filtered.length === 0 ? (
@@ -1296,7 +1296,7 @@ const Contracts = () => {
                 const d = diffDays(c.start_date, c.end_date);
                 const balance = Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0));
                 return (
-                  <div key={c.id} className="px-3 py-2.5">
+                  <div key={c.id} className="px-3 py-2">
                     <div className="flex items-start justify-between gap-2">
                       <button
                         type="button"
@@ -1309,14 +1309,14 @@ const Contracts = () => {
                         {c.status}
                       </span>
                     </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">
+                    <div className={cn("mt-0.5 font-mono text-lg font-semibold leading-5", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
+                      AED {balance.toLocaleString()}
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
                       <span className="font-mono text-foreground">{c.cars?.plate ?? "—"}</span>
                       {c.cars && <span> • {c.cars.make} {c.cars.model}</span>}
                     </div>
-                    <div className={cn("mt-1 font-mono text-xl font-semibold leading-6", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
-                      AED {balance.toLocaleString()}
-                    </div>
-                    <div className="mt-1 flex items-end justify-between gap-3">
+                    <div className="mt-0.5 flex items-end justify-between gap-3">
                       <div className="min-w-0 text-xs text-muted-foreground">
                         <div>
                           <span>{formatMobileDate(c.start_date)}</span>
@@ -1331,7 +1331,7 @@ const Contracts = () => {
                             type="button"
                             size="icon"
                             variant="ghost"
-                            className="h-9 w-9 shrink-0"
+                            className="h-8 w-8 shrink-0"
                             aria-label="Contract actions"
                           >
                             <MoreHorizontal className="h-4 w-4" />
