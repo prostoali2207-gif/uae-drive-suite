@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, MoreHorizontal } from "lucide-react";
+import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, MoreHorizontal, Search, CalendarDays } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -124,7 +124,7 @@ const paymentClasses: Record<string, string> = {
 };
 
 const desktopFilters: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue"];
-const mobileFilterOrder: ContractFilter[] = ["Active", "Overdue", "Expiring Soon", "Closed", "All"];
+const mobileFilterOrder: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue", "Closed"];
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
 
 function formatDate(iso: string): string {
@@ -142,6 +142,27 @@ function matchesContractFilter(contract: ContractRow, selectedFilter: ContractFi
     return status === "closed" || status === "completed" || status === "returned";
   }
   return contract.status === selectedFilter;
+}
+
+function getClientInitials(name: string | undefined | null): string {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+}
+
+function getMobileStatusLabel(status: string): string {
+  const normalized = status.toLowerCase();
+  if (normalized === "closed" || normalized === "completed" || normalized === "returned") return "Closed";
+  return status;
+}
+
+function getMobileStatusClass(status: string): string {
+  const normalized = status.toLowerCase();
+  if (normalized === "active") return "bg-tint-green text-tint-green-foreground";
+  if (normalized === "expiring soon") return "bg-tint-amber text-tint-amber-foreground";
+  if (normalized.includes("overdue")) return "bg-tint-rose text-tint-rose-foreground";
+  if (normalized === "closed" || normalized === "completed" || normalized === "returned") return "bg-muted text-muted-foreground";
+  return statusClasses[status] ?? "bg-muted text-muted-foreground";
 }
 
 function getRoundedCurrentTimeInput(): string {
@@ -960,25 +981,35 @@ const Contracts = () => {
   return (
     <DashboardLayout title="Contracts" subtitle="Manage rental agreements" mobileContractsNav>
       <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-3 md:hidden">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by client name or car plate"
-            className="h-10 text-sm"
-          />
-          <Select value={filter} onValueChange={(value) => setFilter(value as ContractFilter)}>
-            <SelectTrigger className="h-6 w-full px-2 text-xs">
-              <span>{filter}</span>
-            </SelectTrigger>
-            <SelectContent>
+        <div className="flex flex-col gap-2 md:hidden">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search client or plate"
+              className="h-9 pl-9 text-sm"
+            />
+          </div>
+          <div className="-mx-4 overflow-x-auto px-4">
+            <div className="flex w-max gap-1.5 pb-1">
               {mobileFilterOrder.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item} ({counts[item] ?? 0})
-                </SelectItem>
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setFilter(item)}
+                  className={cn(
+                    "h-7 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors",
+                    filter === item
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-card text-muted-foreground",
+                  )}
+                >
+                  {item} <span className="font-mono opacity-70">{counts[item] ?? 0}</span>
+                </button>
               ))}
-            </SelectContent>
-          </Select>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1295,76 +1326,92 @@ const Contracts = () => {
               paginatedContracts.map((c) => {
                 const d = diffDays(c.start_date, c.end_date);
                 const balance = Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0));
+                const clientName = c.clients?.full_name ?? "-";
                 return (
-                  <div key={c.id} className="px-3 py-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <button
-                        type="button"
-                        className="min-w-0 truncate text-left text-sm font-semibold text-foreground"
-                        onClick={() => navigate(`/contracts/${c.id}`)}
-                      >
-                        {c.clients?.full_name ?? "—"}
-                      </button>
-                      <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", statusClasses[c.status] ?? "bg-muted text-muted-foreground")}>
-                        {c.status}
-                      </span>
-                    </div>
-                    <div className={cn("mt-0.5 font-mono text-lg font-semibold leading-5", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
-                      AED {balance.toLocaleString()}
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      <span className="font-mono text-foreground">{c.cars?.plate ?? "—"}</span>
-                      {c.cars && <span> • {c.cars.make} {c.cars.model}</span>}
-                    </div>
-                    <div className="mt-0.5 flex items-end justify-between gap-3">
-                      <div className="min-w-0 text-xs text-muted-foreground">
-                        <div>
-                          <span>{formatMobileDate(c.start_date)}</span>
-                          <span> → </span>
-                          <span>{formatMobileDate(c.end_date)}</span>
+                  <div key={c.id} className="px-3 py-1.5">
+                    <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(72px,0.8fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-2.5 py-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground">
+                          {getClientInitials(clientName)}
                         </div>
-                        <div>{d} days</div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
+                        <div className="min-w-0">
+                          <button
                             type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 shrink-0"
-                            aria-label="Contract actions"
+                            className="block max-w-full truncate text-left text-sm font-semibold leading-4 text-foreground"
+                            onClick={() => navigate(`/contracts/${c.id}`)}
                           >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
-                          <DropdownMenuItem
-                            onClick={async () => {
-                              try {
-                                await generateContractPdf(c);
-                                toast.success("Contract PDF downloaded");
-                              } catch (err) {
-                                toast.error("Failed to generate PDF");
-                                console.error(err);
-                              }
-                            }}
-                          >
-                            <Download className="mr-2 h-4 w-4" />
-                            Download PDF
-                          </DropdownMenuItem>
-                          {c.status === "closed" && (
+                            {clientName}
+                          </button>
+                          <div className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">
+                            <span className="font-mono text-foreground">{c.cars?.plate ?? "-"}</span>
+                            {c.cars && <span> - {c.cars.make} {c.cars.model}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 text-xs text-muted-foreground">
+                        <div className="truncate font-mono text-[11px] leading-4">
+                          {formatMobileDate(c.start_date)} - {formatMobileDate(c.end_date)}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1 text-[11px] leading-4">
+                          <CalendarDays className="h-3 w-3" />
+                          <span>{d} days</span>
+                        </div>
+                      </div>
+
+                      <div className="flex min-w-[82px] items-center justify-end gap-1.5">
+                        <div className="min-w-0 text-right">
+                          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium", getMobileStatusClass(c.status))}>
+                            {getMobileStatusLabel(c.status)}
+                          </span>
+                          <div className={cn("mt-0.5 font-mono text-sm font-semibold leading-4", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
+                            AED {balance.toLocaleString()}
+                          </div>
+                          <div className="text-[10px] leading-3 text-muted-foreground">
+                            {balance > 0 ? "Outstanding" : "Paid"}
+                          </div>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 shrink-0"
+                              aria-label="Contract actions"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
                             <DropdownMenuItem
-                              onClick={() => {
-                                setReopenTargetId(c.id);
-                                setReopenConfirmOpen(true);
+                              onClick={async () => {
+                                try {
+                                  await generateContractPdf(c);
+                                  toast.success("Contract PDF downloaded");
+                                } catch (err) {
+                                  toast.error("Failed to generate PDF");
+                                  console.error(err);
+                                }
                               }}
                             >
-                              <RotateCcw className="mr-2 h-4 w-4" />
-                              Reopen
+                              <Download className="mr-2 h-4 w-4" />
+                              Download PDF
                             </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {c.status === "closed" && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setReopenTargetId(c.id);
+                                  setReopenConfirmOpen(true);
+                                }}
+                              >
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                Reopen
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                   </div>
                 );

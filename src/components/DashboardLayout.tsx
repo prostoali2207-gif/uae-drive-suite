@@ -47,7 +47,7 @@ export function DashboardLayout({ title, subtitle, children, mobileContractsNav 
             <SidebarTrigger className={cn("text-muted-foreground hover:text-foreground", mobileContractsNav && "hidden md:inline-flex")} />
             <div className="flex flex-col">
               <h1 className="text-sm font-semibold text-foreground">{title}</h1>
-              {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+              {subtitle && <p className={cn("text-xs text-muted-foreground", mobileContractsNav && "hidden md:block")}>{subtitle}</p>}
             </div>
             <div className="ml-auto">
               <NotificationBell />
