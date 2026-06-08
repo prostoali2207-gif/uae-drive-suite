@@ -1,0 +1,231 @@
+- generic [active]:
+  - generic:
+    - generic:
+      - list
+      - region "Notifications alt+T"
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - generic: FleetDesk
+                      - generic: UAE Rentals
+                  - generic:
+                    - generic:
+                      - list:
+                        - listitem:
+                          - link:
+                            - /url: /
+                            - img
+                            - generic: Dashboard
+                        - listitem:
+                          - link:
+                            - /url: /fleet
+                            - img
+                            - generic: Fleet
+                        - listitem:
+                          - link:
+                            - /url: /contracts
+                            - img
+                            - generic: Contracts
+                        - listitem:
+                          - link:
+                            - /url: /clients
+                            - img
+                            - generic: Clients
+                            - generic: "61"
+                        - listitem:
+                          - link:
+                            - /url: /fines
+                            - img
+                            - generic: Fines & Salik
+                        - listitem:
+                          - link:
+                            - /url: /payments
+                            - img
+                            - generic: Payments
+                        - listitem:
+                          - link:
+                            - /url: /reports
+                            - img
+                            - generic: Reports
+                        - listitem:
+                          - link:
+                            - /url: /settings
+                            - img
+                            - generic: Settings
+                - generic:
+                  - generic:
+                    - generic: muzafirvat@gmail.com
+                    - button:
+                      - img
+                      - generic: Sign out
+          - generic:
+            - banner:
+              - button:
+                - img
+                - generic: Toggle Sidebar
+              - generic:
+                - heading [level=1]: CTR-96C26B38
+                - paragraph: Contract details
+              - generic:
+                - button:
+                  - img
+                  - generic: "3"
+            - main:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - link:
+                        - /url: /contracts
+                        - img
+                        - text: Contracts
+                      - generic:
+                        - heading [level=2]: CTR-96C26B38
+                        - generic: Active
+                    - generic:
+                      - generic:
+                        - button [disabled]:
+                          - img
+                          - text: Invoice
+                        - button:
+                          - img
+                          - text: Extend
+                        - button:
+                          - img
+                          - text: Close
+                        - button:
+                          - img
+                          - text: Edit
+                - generic:
+                  - tablist:
+                    - tab:
+                      - img
+                      - text: Overview
+                    - tab [selected]:
+                      - img
+                      - text: Financials
+                      - generic: "2"
+                    - tab:
+                      - img
+                      - text: Documents
+                    - tab:
+                      - img
+                      - text: Inspection
+                    - tab:
+                      - img
+                      - text: Timeline & Notes
+                  - tabpanel:
+                    - generic:
+                      - generic:
+                        - generic: Total charged
+                        - generic: AED 2 200
+                      - generic:
+                        - generic: Paid
+                        - generic: AED 0
+                      - generic:
+                        - generic: Balance due
+                        - generic: AED 2 200
+                    - generic:
+                      - generic:
+                        - img
+                        - generic: 2 ledger entries
+                      - generic:
+                        - button:
+                          - img
+                          - text: Add Fee
+                        - button:
+                          - img
+                          - text: Add Payment
+                    - generic:
+                      - generic:
+                        - button:
+                          - generic:
+                            - generic:
+                              - generic: Rental
+                              - generic: "1"
+                            - generic:
+                              - generic: AED 2 200
+                              - img
+                        - generic:
+                          - generic:
+                            - generic: 06 Jun 2026 → 06 Jul 2026
+                            - generic: Active
+                            - generic: AED 2 200
+                            - button:
+                              - img
+                      - generic:
+                        - button:
+                          - generic:
+                            - generic:
+                              - generic: Payments
+                              - generic: "0"
+                            - generic:
+                              - generic: AED 0
+                              - img
+                        - generic:
+                          - generic: No entries.
+                      - generic:
+                        - generic:
+                          - generic: Traffic Fines
+                          - generic: "0"
+                        - generic:
+                          - generic: AED 0
+                          - button: View All →
+                      - generic:
+                        - generic:
+                          - generic: Salik
+                          - generic: "0"
+                        - generic:
+                          - generic: AED 0
+                          - button: View All →
+                      - generic:
+                        - button:
+                          - generic:
+                            - generic:
+                              - generic: Other Fees
+                              - generic: "0"
+                            - generic:
+                              - generic: AED 0
+                              - img
+                        - generic:
+                          - generic: No entries.
+                    - generic:
+                      - generic:
+                        - generic:
+                          - img
+                        - generic:
+                          - generic:
+                            - generic: Security deposit
+                            - generic: AED 300
+                      - generic:
+                        - generic: Held
+                - generic:
+                  - button:
+                    - img
+                    - text: Delete Contract
+  - dialog "Contract Salik" [ref=e834]:
+    - generic [ref=e835]:
+      - generic [ref=e836]:
+        - img [ref=e837]
+        - heading "Contract Salik" [level=2] [ref=e841]
+      - paragraph [ref=e842]: 0 transactions found
+    - generic [ref=e844]:
+      - img [ref=e845]
+      - paragraph [ref=e852]: No Salik linked to this contract
+    - generic [ref=e853]:
+      - generic [ref=e854]:
+        - generic [ref=e855]: Paid
+        - generic [ref=e856]: AED 0
+      - generic [ref=e857]:
+        - generic [ref=e858]: Outstanding
+        - generic [ref=e859]: AED 0
+    - button "Close" [ref=e860] [cursor=pointer]:
+      - img [ref=e861]
+      - generic [ref=e864]: Close

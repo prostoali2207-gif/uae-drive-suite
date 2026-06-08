@@ -1,0 +1,206 @@
+- generic [ref=e3]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e461]:
+    - generic [ref=e465]:
+      - generic [ref=e466]:
+        - generic [ref=e467]:
+          - img [ref=e469]
+          - generic [ref=e473]:
+            - generic [ref=e474]: FleetDesk
+            - generic [ref=e475]: UAE Rentals
+        - list [ref=e478]:
+          - listitem [ref=e479]:
+            - link "Dashboard" [ref=e480] [cursor=pointer]:
+              - /url: /
+              - img [ref=e481]
+              - generic [ref=e486]: Dashboard
+          - listitem [ref=e487]:
+            - link "Fleet" [ref=e488] [cursor=pointer]:
+              - /url: /fleet
+              - img [ref=e489]
+              - generic [ref=e493]: Fleet
+          - listitem [ref=e494]:
+            - link "Contracts" [ref=e495] [cursor=pointer]:
+              - /url: /contracts
+              - img [ref=e496]
+              - generic [ref=e499]: Contracts
+          - listitem [ref=e500]:
+            - link "Clients 61" [ref=e501] [cursor=pointer]:
+              - /url: /clients
+              - img [ref=e502]
+              - generic [ref=e507]: Clients
+              - generic [ref=e508]: "61"
+          - listitem [ref=e509]:
+            - link "Fines & Salik" [ref=e510] [cursor=pointer]:
+              - /url: /fines
+              - img [ref=e511]
+              - generic [ref=e513]: Fines & Salik
+          - listitem [ref=e514]:
+            - link "Payments" [ref=e515] [cursor=pointer]:
+              - /url: /payments
+              - img [ref=e516]
+              - generic [ref=e518]: Payments
+          - listitem [ref=e519]:
+            - link "Reports" [ref=e520] [cursor=pointer]:
+              - /url: /reports
+              - img [ref=e521]
+              - generic [ref=e523]: Reports
+          - listitem [ref=e524]:
+            - link "Settings" [ref=e525] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e526]
+              - generic [ref=e529]: Settings
+      - generic [ref=e531]:
+        - generic [ref=e532]: muzafirvat@gmail.com
+        - button "Sign out" [ref=e533] [cursor=pointer]:
+          - img [ref=e534]
+          - generic [ref=e537]: Sign out
+    - generic [ref=e538]:
+      - banner [ref=e539]:
+        - button "Toggle Sidebar" [ref=e540] [cursor=pointer]:
+          - img
+          - generic [ref=e541]: Toggle Sidebar
+        - generic [ref=e542]:
+          - heading "CTR-96C26B38" [level=1] [ref=e543]
+          - paragraph [ref=e544]: Contract details
+        - button "3" [ref=e546] [cursor=pointer]:
+          - img
+          - generic [ref=e547]: "3"
+      - main [ref=e548]:
+        - generic [ref=e549]:
+          - generic [ref=e551]:
+            - generic [ref=e552]:
+              - link "Contracts" [ref=e553] [cursor=pointer]:
+                - /url: /contracts
+                - img
+                - text: Contracts
+              - generic [ref=e555]:
+                - heading "CTR-96C26B38" [level=2] [ref=e556]
+                - generic [ref=e557]: Active
+            - generic [ref=e559]:
+              - button "Invoice" [disabled]:
+                - img
+                - text: Invoice
+              - button "Extend" [ref=e560] [cursor=pointer]:
+                - img
+                - text: Extend
+              - button "Close" [ref=e561] [cursor=pointer]:
+                - img
+                - text: Close
+              - button "Edit" [ref=e562] [cursor=pointer]:
+                - img
+                - text: Edit
+          - generic [ref=e563]:
+            - tablist [ref=e564]:
+              - tab "Overview" [selected] [ref=e565] [cursor=pointer]:
+                - img [ref=e566]
+                - text: Overview
+              - tab "Financials 2" [ref=e571] [cursor=pointer]:
+                - img [ref=e572]
+                - text: Financials
+                - generic [ref=e575]: "2"
+              - tab "Documents" [ref=e576] [cursor=pointer]:
+                - img [ref=e577]
+                - text: Documents
+              - tab "Inspection" [ref=e580] [cursor=pointer]:
+                - img [ref=e581]
+                - text: Inspection
+              - tab "Timeline & Notes" [ref=e584] [cursor=pointer]:
+                - img [ref=e585]
+                - text: Timeline & Notes
+            - tabpanel "Overview" [ref=e588]:
+              - generic [ref=e589]:
+                - button "Extend Rental" [ref=e590] [cursor=pointer]:
+                  - img
+                  - text: Extend Rental
+                - button "Edit Details" [disabled]:
+                  - img
+                  - text: Edit Details
+                - button "Replace Vehicle" [ref=e591] [cursor=pointer]
+              - generic [ref=e592]:
+                - generic [ref=e593]:
+                  - generic [ref=e594]:
+                    - heading "Client" [level=3] [ref=e596]
+                    - link "View profile →" [ref=e597] [cursor=pointer]:
+                      - /url: /clients/663c8bc0-8bb0-4363-a3c8-9606207d646c
+                  - generic [ref=e599]:
+                    - generic [ref=e600]:
+                      - generic [ref=e601]: Full Name
+                      - generic [ref=e602]: Turpal-Ali Kerimov
+                    - generic [ref=e603]:
+                      - generic [ref=e604]: Type
+                      - generic [ref=e605]: Tourist
+                    - generic [ref=e606]:
+                      - generic [ref=e607]: Phone
+                      - generic [ref=e608]: "+79280200044"
+                    - generic [ref=e609]:
+                      - generic [ref=e610]: Email
+                      - generic [ref=e611]: —
+                    - generic [ref=e612]:
+                      - generic [ref=e613]: Nationality
+                      - generic [ref=e614]: Russia
+                    - generic [ref=e615]:
+                      - generic [ref=e616]: Passport
+                      - generic [ref=e617]: "768344857"
+                - generic [ref=e618]:
+                  - heading "Vehicle" [level=3] [ref=e621]
+                  - generic [ref=e623]:
+                    - generic [ref=e624]:
+                      - generic [ref=e625]: Plate
+                      - generic [ref=e626]: A 73558
+                    - generic [ref=e627]:
+                      - generic [ref=e628]: Year
+                      - generic [ref=e629]: "2021"
+                    - generic [ref=e630]:
+                      - generic [ref=e631]: Make / Model
+                      - generic [ref=e632]: Kia Forte
+                    - generic [ref=e633]:
+                      - generic [ref=e634]: Fuel Level
+                      - generic [ref=e635]: Quarter
+                    - generic [ref=e636]:
+                      - generic [ref=e637]: Initial Mileage
+                      - generic [ref=e638]: 12 454 km
+                - generic [ref=e639]:
+                  - heading "Rental Period" [level=3] [ref=e642]
+                  - generic [ref=e644]:
+                    - generic [ref=e645]:
+                      - generic [ref=e646]: Start Date
+                      - generic [ref=e647]: 06 Jun 2026
+                    - generic [ref=e648]:
+                      - generic [ref=e649]: End Date
+                      - generic [ref=e650]: 06 Jul 2026
+                    - generic [ref=e651]:
+                      - generic [ref=e652]: Total Days
+                      - generic [ref=e653]: "30"
+                    - generic [ref=e654]:
+                      - generic [ref=e655]: Rate Type
+                      - generic [ref=e656]: Monthly
+                    - generic [ref=e657]:
+                      - generic [ref=e658]: Monthly Rate
+                      - generic [ref=e659]: AED 2 200
+                    - generic [ref=e660]:
+                      - generic [ref=e661]: Deposit
+                      - generic [ref=e662]: AED 300
+              - generic [ref=e663]:
+                - generic [ref=e665]:
+                  - img [ref=e666]
+                  - heading "Financial Snapshot" [level=3] [ref=e669]
+                - generic [ref=e671]:
+                  - generic [ref=e672]:
+                    - generic [ref=e673]: Total Charges
+                    - generic [ref=e674]: AED 2 200
+                  - generic [ref=e675]:
+                    - generic [ref=e676]: Paid
+                    - generic [ref=e677]: AED 0
+                  - generic [ref=e678]:
+                    - generic [ref=e679]: Deposit Held
+                    - generic [ref=e680]: AED 300
+                  - generic [ref=e681]:
+                    - generic [ref=e682]: Outstanding
+                    - generic [ref=e683]: AED 2 200
+            - tabpanel "Timeline & Notes"
+          - button "Delete Contract" [ref=e685] [cursor=pointer]:
+            - img
+            - text: Delete Contract

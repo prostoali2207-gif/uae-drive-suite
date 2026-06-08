@@ -767,6 +767,9 @@ const FinancialsAccordion = ({
 
     </div>
 
+      <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
+      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
+
     </>
   );
 };
@@ -2497,8 +2500,6 @@ const ContractDetail = () => {
         }}
       />
       <VehicleHistorySheet contractId={contract.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
-      <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
-      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
     </DashboardLayout>
   );
 };

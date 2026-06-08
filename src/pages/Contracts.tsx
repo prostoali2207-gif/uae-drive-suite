@@ -1308,7 +1308,7 @@ const Contracts = () => {
           </Dialog>
         </div>
 
-        <div className="rounded-xl border border-border bg-card">
+        <div className="-mx-3 md:mx-0 md:rounded-xl md:border md:border-border md:bg-card">
           <div className="hidden border-b border-border p-4 md:block">
             <Input
               value={search}
@@ -1317,7 +1317,7 @@ const Contracts = () => {
               className="h-9 max-w-md text-sm"
             />
           </div>
-          <div className="divide-y divide-border pb-28 md:hidden">
+          <div className="space-y-1.5 pb-28 md:hidden">
             {loading ? (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">Loading contracts...</div>
             ) : filtered.length === 0 ? (
@@ -1328,7 +1328,7 @@ const Contracts = () => {
                 const balance = Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0));
                 const clientName = c.clients?.full_name ?? "-";
                 return (
-                  <div key={c.id} className="px-3 py-1.5">
+                  <div key={c.id} className="px-1.5">
                     <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(72px,0.8fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-2.5 py-2">
                       <div className="flex min-w-0 items-center gap-2">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground">

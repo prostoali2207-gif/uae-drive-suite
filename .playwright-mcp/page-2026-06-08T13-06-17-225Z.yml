@@ -1,0 +1,195 @@
+- generic [ref=e3]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e461]:
+    - generic [ref=e465]:
+      - generic [ref=e466]:
+        - generic [ref=e467]:
+          - img [ref=e469]
+          - generic [ref=e473]:
+            - generic [ref=e474]: FleetDesk
+            - generic [ref=e475]: UAE Rentals
+        - list [ref=e478]:
+          - listitem [ref=e479]:
+            - link "Dashboard" [ref=e480] [cursor=pointer]:
+              - /url: /
+              - img [ref=e481]
+              - generic [ref=e486]: Dashboard
+          - listitem [ref=e487]:
+            - link "Fleet" [ref=e488] [cursor=pointer]:
+              - /url: /fleet
+              - img [ref=e489]
+              - generic [ref=e493]: Fleet
+          - listitem [ref=e494]:
+            - link "Contracts" [ref=e495] [cursor=pointer]:
+              - /url: /contracts
+              - img [ref=e496]
+              - generic [ref=e499]: Contracts
+          - listitem [ref=e500]:
+            - link "Clients 61" [ref=e501] [cursor=pointer]:
+              - /url: /clients
+              - img [ref=e502]
+              - generic [ref=e507]: Clients
+              - generic [ref=e508]: "61"
+          - listitem [ref=e509]:
+            - link "Fines & Salik" [ref=e510] [cursor=pointer]:
+              - /url: /fines
+              - img [ref=e511]
+              - generic [ref=e513]: Fines & Salik
+          - listitem [ref=e514]:
+            - link "Payments" [ref=e515] [cursor=pointer]:
+              - /url: /payments
+              - img [ref=e516]
+              - generic [ref=e518]: Payments
+          - listitem [ref=e519]:
+            - link "Reports" [ref=e520] [cursor=pointer]:
+              - /url: /reports
+              - img [ref=e521]
+              - generic [ref=e523]: Reports
+          - listitem [ref=e524]:
+            - link "Settings" [ref=e525] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e526]
+              - generic [ref=e529]: Settings
+      - generic [ref=e531]:
+        - generic [ref=e532]: muzafirvat@gmail.com
+        - button "Sign out" [ref=e533] [cursor=pointer]:
+          - img [ref=e534]
+          - generic [ref=e537]: Sign out
+    - generic [ref=e538]:
+      - banner [ref=e539]:
+        - button "Toggle Sidebar" [ref=e540] [cursor=pointer]:
+          - img
+          - generic [ref=e541]: Toggle Sidebar
+        - generic [ref=e542]:
+          - heading "CTR-96C26B38" [level=1] [ref=e543]
+          - paragraph [ref=e544]: Contract details
+        - button "3" [ref=e546] [cursor=pointer]:
+          - img
+          - generic [ref=e547]: "3"
+      - main [ref=e548]:
+        - generic [ref=e549]:
+          - generic [ref=e551]:
+            - generic [ref=e552]:
+              - link "Contracts" [ref=e553] [cursor=pointer]:
+                - /url: /contracts
+                - img
+                - text: Contracts
+              - generic [ref=e555]:
+                - heading "CTR-96C26B38" [level=2] [ref=e556]
+                - generic [ref=e557]: Active
+            - generic [ref=e559]:
+              - button "Invoice" [disabled]:
+                - img
+                - text: Invoice
+              - button "Extend" [ref=e560] [cursor=pointer]:
+                - img
+                - text: Extend
+              - button "Close" [ref=e561] [cursor=pointer]:
+                - img
+                - text: Close
+              - button "Edit" [ref=e562] [cursor=pointer]:
+                - img
+                - text: Edit
+          - generic [ref=e563]:
+            - tablist [ref=e564]:
+              - tab "Overview" [ref=e565] [cursor=pointer]:
+                - img [ref=e566]
+                - text: Overview
+              - tab "Financials 2" [selected] [ref=e571] [cursor=pointer]:
+                - img [ref=e572]
+                - text: Financials
+                - generic [ref=e575]: "2"
+              - tab "Documents" [ref=e576] [cursor=pointer]:
+                - img [ref=e577]
+                - text: Documents
+              - tab "Inspection" [ref=e580] [cursor=pointer]:
+                - img [ref=e581]
+                - text: Inspection
+              - tab "Timeline & Notes" [ref=e584] [cursor=pointer]:
+                - img [ref=e585]
+                - text: Timeline & Notes
+            - tabpanel "Financials 2" [ref=e686]:
+              - generic [ref=e687]:
+                - generic [ref=e688]:
+                  - generic [ref=e689]: Total charged
+                  - generic [ref=e690]: AED 2 200
+                - generic [ref=e691]:
+                  - generic [ref=e692]: Paid
+                  - generic [ref=e693]: AED 0
+                - generic [ref=e694]:
+                  - generic [ref=e695]: Balance due
+                  - generic [ref=e696]: AED 2 200
+              - generic [ref=e697]:
+                - generic [ref=e698]:
+                  - img [ref=e699]
+                  - generic [ref=e702]: 2 ledger entries
+                - generic [ref=e703]:
+                  - button "Add Fee" [ref=e704] [cursor=pointer]:
+                    - img
+                    - text: Add Fee
+                  - button "Add Payment" [ref=e705] [cursor=pointer]:
+                    - img
+                    - text: Add Payment
+              - generic [ref=e706]:
+                - generic [ref=e707]:
+                  - button "Rental 1 AED 2 200" [ref=e708] [cursor=pointer]:
+                    - generic [ref=e710]:
+                      - generic [ref=e711]:
+                        - generic [ref=e712]: Rental
+                        - generic [ref=e713]: "1"
+                      - generic [ref=e714]:
+                        - generic [ref=e715]: AED 2 200
+                        - img [ref=e716]
+                  - generic [ref=e719]:
+                    - generic [ref=e720]: 06 Jun 2026 → 06 Jul 2026
+                    - generic [ref=e721]: Active
+                    - generic [ref=e723]: AED 2 200
+                    - button "Edit rental amount" [ref=e724] [cursor=pointer]:
+                      - img
+                - generic [ref=e725]:
+                  - button "Payments 0 AED 0" [ref=e726] [cursor=pointer]:
+                    - generic [ref=e728]:
+                      - generic [ref=e729]:
+                        - generic [ref=e730]: Payments
+                        - generic [ref=e731]: "0"
+                      - generic [ref=e732]:
+                        - generic [ref=e733]: AED 0
+                        - img [ref=e734]
+                  - generic [ref=e737]: No entries.
+                - generic [ref=e738]:
+                  - generic [ref=e739]:
+                    - generic [ref=e740]: Traffic Fines
+                    - generic [ref=e741]: "0"
+                  - generic [ref=e742]:
+                    - generic [ref=e743]: AED 0
+                    - button "View All →" [ref=e744] [cursor=pointer]
+                - generic [ref=e745]:
+                  - generic [ref=e746]:
+                    - generic [ref=e747]: Salik
+                    - generic [ref=e748]: "0"
+                  - generic [ref=e749]:
+                    - generic [ref=e750]: AED 0
+                    - button "View All →" [ref=e751] [cursor=pointer]
+                - generic [ref=e752]:
+                  - button "Other Fees 0 AED 0" [ref=e753] [cursor=pointer]:
+                    - generic [ref=e755]:
+                      - generic [ref=e756]:
+                        - generic [ref=e757]: Other Fees
+                        - generic [ref=e758]: "0"
+                      - generic [ref=e759]:
+                        - generic [ref=e760]: AED 0
+                        - img [ref=e761]
+                  - generic [ref=e764]: No entries.
+              - generic [ref=e765]:
+                - generic [ref=e766]:
+                  - img [ref=e768]
+                  - generic [ref=e772]:
+                    - generic [ref=e773]: Security deposit
+                    - generic [ref=e774]: AED 300
+                - generic [ref=e776]: Held
+            - tabpanel "Timeline & Notes"
+          - button "Delete Contract" [ref=e685] [cursor=pointer]:
+            - img
+            - text: Delete Contract
