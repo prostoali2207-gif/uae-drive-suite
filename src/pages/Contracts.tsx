@@ -1331,7 +1331,7 @@ const Contracts = () => {
                   <div key={c.id} className="px-1.5">
                     <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(72px,0.8fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-2.5 py-2">
                       <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground">
+                        <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/80 text-[11px] font-semibold text-muted-foreground">
                           {getClientInitials(clientName)}
                         </div>
                         <div className="min-w-0">
@@ -1361,14 +1361,14 @@ const Contracts = () => {
 
                       <div className="flex min-w-[82px] items-center justify-end gap-1.5">
                         <div className="min-w-0 text-right">
-                          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium", getMobileStatusClass(c.status))}>
+                          <span className={cn("inline-flex rounded-full px-2 py-[1px] text-[10px] font-medium", getMobileStatusClass(c.status))}>
                             {getMobileStatusLabel(c.status)}
                           </span>
-                          <div className={cn("mt-0.5 font-mono text-sm font-semibold leading-4", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
+                          <div className={cn("mt-1 whitespace-nowrap font-mono text-sm font-semibold leading-4", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
                             AED {balance.toLocaleString()}
                           </div>
-                          <div className="text-[10px] leading-3 text-muted-foreground">
-                            {balance > 0 ? "Outstanding" : "Paid"}
+                          <div className="mt-0.5 text-[10px] leading-3 text-muted-foreground">
+                            {balance > 0 ? "Due" : "Paid"}
                           </div>
                         </div>
                         <DropdownMenu>
