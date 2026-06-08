@@ -25,6 +25,8 @@ import {
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
+import FinesModal from "@/components/FinesModal";
+import SalikModal from "@/components/SalikModal";
 import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -694,156 +696,13 @@ const FinancialsAccordion = ({
           <span className="text-sm font-bold tabular-nums text-tint-rose-foreground">{fmtAed(finesTotal)}</span>
           <button
             type="button"
-            onClick={() => { setFinePage(0); setShowFinesModal(true); }}
+            onClick={() => setShowFinesModal(true)}
             className="text-[11px] font-medium text-tint-blue-foreground hover:underline"
           >
             View All →
           </button>
         </div>
       </div>
-
-      <Dialog open={showFinesModal} onOpenChange={setShowFinesModal}>
-        <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col gap-0 p-0">
-          <DialogHeader className="border-b border-border px-6 py-4">
-            <DialogTitle className="text-sm font-semibold">Traffic Fines</DialogTitle>
-            <DialogDescription className="text-xs">
-              {fines.length} records · Total {fmtAed(finesTotal)}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-auto">
-            {fines.length === 0 ? (
-              <div className="px-6 py-10 text-center text-xs text-muted-foreground">No fines.</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-9 px-4 text-[11px]">Date</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px]">Fine No.</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px]">Type</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px]">Source</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px] text-right">Amount</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px]">Status</TableHead>
-                    <TableHead className="h-9 w-8 px-2" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {finesPageItems.map((f) => (
-                    <Fragment key={f.id}>
-                      <TableRow className={cn(f.status === "Paid" && "opacity-50")}>
-                        <TableCell className="px-4 py-2 text-[11px] tabular-nums text-muted-foreground whitespace-nowrap">
-                          {formatDate(f.fine_date)}
-                        </TableCell>
-                        <TableCell className="px-4 py-2 font-mono text-xs">
-                          {f.fine_number ?? "—"}
-                        </TableCell>
-                        <TableCell className="px-4 py-2 text-xs">
-                          <div>{f.fine_type}</div>
-                          {f.notes && (
-                            <div className="mt-0.5 max-w-[180px] truncate text-[10px] text-muted-foreground">
-                              {f.notes}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="px-4 py-2 text-xs">{f.source}</TableCell>
-                        <TableCell className="px-4 py-2 text-right font-mono text-xs font-bold text-tint-rose-foreground whitespace-nowrap">
-                          {fmtAed(Number(f.amount))}
-                        </TableCell>
-                        <TableCell className="px-4 py-2">
-                          <StatusPill status={f.status} />
-                        </TableCell>
-                        <TableCell className="px-2 py-2 w-8">
-                          <button
-                            type="button"
-                            onClick={(e) => openFineMenu(e, f.id)}
-                            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                          >
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </button>
-                        </TableCell>
-                      </TableRow>
-                      {editingFineId === f.id && (
-                        <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={7} className="bg-muted/30 px-4 py-2">
-                            <div className="flex items-start gap-2">
-                              <textarea
-                                autoFocus
-                                rows={2}
-                                placeholder="Add note..."
-                                value={fineNoteDraft}
-                                onChange={(e) => setFineNoteDraft(e.target.value)}
-                                className="flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              />
-                              <div className="flex flex-col gap-1">
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2 text-xs"
-                                  disabled={savingFineNote}
-                                  onClick={async () => {
-                                    setSavingFineNote(true);
-                                    const { error } = await supabase
-                                      .from("fines")
-                                      .update({ notes: fineNoteDraft } as never)
-                                      .eq("id", f.id);
-                                    setSavingFineNote(false);
-                                    if (error) {
-                                      toast.error("Failed to save note");
-                                    } else {
-                                      onUpdateFineNote(f.id, fineNoteDraft);
-                                      setEditingFineId(null);
-                                      toast.success("Note saved");
-                                    }
-                                  }}
-                                >
-                                  {savingFineNote ? "…" : "Save"}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => setEditingFineId(null)}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-          {finesTotalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-6 py-3">
-              <span className="text-[11px] text-muted-foreground">
-                Page {finePage + 1} of {finesTotalPages} · {fines.length} total
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs"
-                  disabled={finePage === 0}
-                  onClick={() => setFinePage((p) => p - 1)}
-                >
-                  Previous
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs"
-                  disabled={finePage >= finesTotalPages - 1}
-                  onClick={() => setFinePage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Salik — summary row */}
       <div className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
@@ -857,154 +716,13 @@ const FinancialsAccordion = ({
           <span className="text-sm font-bold tabular-nums text-foreground">{fmtAed(salikTotal)}</span>
           <button
             type="button"
-            onClick={() => { setSalikPage(0); setShowSalikModal(true); }}
+            onClick={() => setShowSalikModal(true)}
             className="text-[11px] font-medium text-tint-blue-foreground hover:underline"
           >
             View All →
           </button>
         </div>
       </div>
-
-      <Dialog open={showSalikModal} onOpenChange={setShowSalikModal}>
-        <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col gap-0 p-0">
-          <DialogHeader className="border-b border-border px-6 py-4">
-            <DialogTitle className="text-sm font-semibold">Salik Charges</DialogTitle>
-            <DialogDescription className="text-xs">
-              {salik.length} records · Total {fmtAed(salikTotal)}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-auto">
-            {salik.length === 0 ? (
-              <div className="px-6 py-10 text-center text-xs text-muted-foreground">No Salik charges.</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-9 px-4 text-[11px]">Date</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px]">Transaction ID</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px]">Toll Gate</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px]">Direction</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px] text-right">Trips</TableHead>
-                    <TableHead className="h-9 px-4 text-[11px] text-right">Amount</TableHead>
-                    <TableHead className="h-9 w-8 px-2" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {salikPageItems.map((s) => (
-                    <Fragment key={s.id}>
-                      <TableRow className={cn(s.status === "Paid" && "opacity-50")}>
-                        <TableCell className="px-4 py-2 text-[11px] tabular-nums text-muted-foreground whitespace-nowrap">
-                          {formatDate(s.charge_date)}
-                        </TableCell>
-                        <TableCell className="px-4 py-2 font-mono text-xs">
-                          <div>{s.transaction_id ?? "—"}</div>
-                          {s.notes && (
-                            <div className="mt-0.5 max-w-[180px] truncate text-[10px] text-muted-foreground">
-                              {s.notes}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="px-4 py-2 text-xs">{s.toll_gate ?? "—"}</TableCell>
-                        <TableCell className="px-4 py-2 text-xs">{s.direction ?? "—"}</TableCell>
-                        <TableCell className="px-4 py-2 text-right font-mono text-xs tabular-nums">
-                          {s.trips}
-                        </TableCell>
-                        <TableCell className="px-4 py-2 text-right font-mono text-xs font-bold tabular-nums whitespace-nowrap">
-                          {fmtAed(Number(s.amount))}
-                        </TableCell>
-                        <TableCell className="px-2 py-2 w-8">
-                          <button
-                            type="button"
-                            onClick={(e) => openSalikMenu(e, s.id)}
-                            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                          >
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </button>
-                        </TableCell>
-                      </TableRow>
-                      {editingSalikId === s.id && (
-                        <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={7} className="bg-muted/30 px-4 py-2">
-                            <div className="flex items-start gap-2">
-                              <textarea
-                                autoFocus
-                                rows={2}
-                                placeholder="Add note..."
-                                value={salikNoteDraft}
-                                onChange={(e) => setSalikNoteDraft(e.target.value)}
-                                className="flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              />
-                              <div className="flex flex-col gap-1">
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2 text-xs"
-                                  disabled={savingSalikNote}
-                                  onClick={async () => {
-                                    setSavingSalikNote(true);
-                                    const { error } = await supabase
-                                      .from("salik")
-                                      .update({ notes: salikNoteDraft } as never)
-                                      .eq("id", s.id);
-                                    setSavingSalikNote(false);
-                                    if (error) {
-                                      toast.error("Failed to save note");
-                                    } else {
-                                      onUpdateSalikNote(s.id, salikNoteDraft);
-                                      setEditingSalikId(null);
-                                      toast.success("Note saved");
-                                    }
-                                  }}
-                                >
-                                  {savingSalikNote ? "…" : "Save"}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => setEditingSalikId(null)}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-          {salikTotalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-6 py-3">
-              <span className="text-[11px] text-muted-foreground">
-                Page {salikPage + 1} of {salikTotalPages} · {salik.length} total
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs"
-                  disabled={salikPage === 0}
-                  onClick={() => setSalikPage((p) => p - 1)}
-                >
-                  Previous
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs"
-                  disabled={salikPage >= salikTotalPages - 1}
-                  onClick={() => setSalikPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       <AccordionRow
         label="Other Fees"
@@ -2779,6 +2497,8 @@ const ContractDetail = () => {
         }}
       />
       <VehicleHistorySheet contractId={contract.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
+      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
     </DashboardLayout>
   );
 };
