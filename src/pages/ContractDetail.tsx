@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -15,7 +15,6 @@ import {
   LayoutGrid,
   Wallet,
   AlertCircle,
-  MoreHorizontal,
   History,
   Trash2,
   Lock,
@@ -67,7 +66,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -770,6 +768,347 @@ const FinancialsAccordion = ({
       <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
       <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
 
+    </>
+  );
+};
+
+type FinancialsPanelProps = {
+  contract: ContractRecord;
+  days: number;
+  payments: PaymentRow[];
+  fines: FineRow[];
+  salik: SalikRow[];
+  contractFees: ContractFeeRow[];
+  totals: { charges: number; credits: number; outstanding: number };
+  onAddFee: () => void;
+  onAddPayment: () => void;
+  onEditRentalAmount: () => void;
+  onEditPaymentAmount: (payment: PaymentRow) => void;
+  onEditFeeAmount: (fee: ContractFeeRow) => void;
+  onDeletePayment: (payment: PaymentRow) => void;
+  onDeleteFee: (fee: ContractFeeRow) => void;
+};
+
+const FinancialBadge = ({ status }: { status: string }) => {
+  const key = status.toLowerCase();
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+        key === "paid" && "bg-tint-green text-tint-green-foreground",
+        key === "active" && "bg-tint-blue text-tint-blue-foreground",
+        key === "held" && "bg-muted text-muted-foreground",
+        key === "closed" && "bg-muted text-muted-foreground",
+        !["paid", "active", "held", "closed"].includes(key) && "bg-muted text-muted-foreground",
+      )}
+    >
+      {status}
+    </span>
+  );
+};
+
+const FinancialSection = ({
+  title,
+  meta,
+  action,
+  children,
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) => (
+  <section className="rounded-md border border-border bg-card">
+    <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <div className="min-w-0">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-foreground">{title}</h3>
+        {meta ? <div className="mt-0.5 text-[11px] text-muted-foreground">{meta}</div> : null}
+      </div>
+      {action}
+    </div>
+    <div className="divide-y divide-border/50">{children}</div>
+  </section>
+);
+
+const FinancialLine = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("flex min-h-14 items-center gap-3 px-4 py-3", className)}>{children}</div>
+);
+
+const FinancialsPanel = ({
+  contract,
+  days,
+  payments,
+  fines,
+  salik,
+  contractFees,
+  totals,
+  onAddFee,
+  onAddPayment,
+  onEditRentalAmount,
+  onEditPaymentAmount,
+  onEditFeeAmount,
+  onDeletePayment,
+  onDeleteFee,
+}: FinancialsPanelProps) => {
+  const rentalFees = contractFees
+    .filter((fee) => fee.category === "rental")
+    .sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return aTime - bTime;
+    });
+  const latestRentalFeeId = rentalFees.at(-1)?.id;
+  const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
+  const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
+  const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
+  const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
+  const otherFees = contractFees.filter((fee) => fee.category !== "rental");
+  const otherTotal = otherFees.reduce((s, o) => s + Number(o.amount), 0);
+  const chargedTotal = rentalTotal + otherTotal + finesTotal + salikTotal;
+  const depositStatus = (contract as any).deposit_status ?? "Held";
+  const depositMethod =
+    (contract as any).deposit_collection_method ||
+    (contract as any).deposit_method ||
+    (contract as any).deposit_payment_method;
+  const [showFinesModal, setShowFinesModal] = useState(false);
+  const [showSalikModal, setShowSalikModal] = useState(false);
+
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Charged</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-foreground">
+              {fmtAed(chargedTotal)}
+            </div>
+          </div>
+          <div className="rounded-md border border-green-900/20 bg-green-950/10 p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Paid</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-[#3B6D11]">
+              {fmtAed(totals.credits)}
+            </div>
+          </div>
+          <div
+            className={cn(
+              "rounded-md border p-3",
+              totals.outstanding > 0 ? "border-red-900/20 bg-red-950/10" : "border-border bg-muted/30",
+            )}
+          >
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Due</div>
+            <div
+              className={cn(
+                "mt-0.5 font-mono text-base font-semibold tabular-nums",
+                totals.outstanding > 0 ? "text-[#A32D2D]" : "text-foreground",
+              )}
+            >
+              {fmtAed(totals.outstanding)}
+            </div>
+          </div>
+        </div>
+
+        <FinancialSection
+          title="Charges"
+          meta={`${1 + rentalFees.length + otherFees.length} items`}
+          action={
+            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={onAddFee}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Fee
+            </Button>
+          }
+        >
+          <FinancialLine>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-xs font-medium text-foreground">Rental</span>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {formatDate(contract.start_date)} - {formatDate(contract.end_date)} - {days} days
+              </span>
+            </div>
+            <FinancialBadge status={rentalFees.length > 0 ? "Closed" : "Active"} />
+            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
+              {fmtAed(Number(contract.total_amount))}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Edit rental amount"
+              className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={onEditRentalAmount}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </FinancialLine>
+
+          {rentalFees.map((fee) => (
+            <FinancialLine key={fee.id}>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-xs font-medium text-foreground">{fee.label}</span>
+                <span className="text-[11px] text-muted-foreground">Rental adjustment</span>
+              </div>
+              <FinancialBadge status={fee.id === latestRentalFeeId ? "Active" : "Closed"} />
+              <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
+                {fmtAed(Number(fee.amount))}
+              </span>
+            </FinancialLine>
+          ))}
+
+          {otherFees.length === 0 ? (
+            <FinancialLine className="text-xs text-muted-foreground">No other fees.</FinancialLine>
+          ) : (
+            otherFees.map((fee) => (
+              <FinancialLine key={fee.id}>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <Tag className="h-4 w-4 text-muted-foreground" />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-xs font-medium text-foreground">{fee.label}</span>
+                  <span className="text-[11px] text-muted-foreground">Other fee</span>
+                </div>
+                <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
+                  {fmtAed(Number(fee.amount))}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit fee amount"
+                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                  onClick={() => onEditFeeAmount(fee)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Delete fee"
+                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                  onClick={() => onDeleteFee(fee)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </FinancialLine>
+            ))
+          )}
+        </FinancialSection>
+
+        <FinancialSection title="Additional Charges" meta={`${fines.length + salik.length} items`}>
+          <FinancialLine>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-xs font-medium text-foreground">Traffic Fines</span>
+              <span className="text-[11px] text-muted-foreground">{fines.length} records</span>
+            </div>
+            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
+              {fmtAed(finesTotal)}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs text-tint-blue-foreground hover:bg-transparent hover:underline"
+              onClick={() => setShowFinesModal(true)}
+            >
+              View All
+            </Button>
+          </FinancialLine>
+          <FinancialLine>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-xs font-medium text-foreground">Salik</span>
+              <span className="text-[11px] text-muted-foreground">{salik.length} records</span>
+            </div>
+            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
+              {fmtAed(salikTotal)}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs text-tint-blue-foreground hover:bg-transparent hover:underline"
+              onClick={() => setShowSalikModal(true)}
+            >
+              View All
+            </Button>
+          </FinancialLine>
+        </FinancialSection>
+
+        <FinancialSection
+          title="Payments"
+          meta={`${payments.length} payments - ${fmtAed(paymentsTotal)}`}
+          action={
+            <Button size="sm" className="h-8 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={onAddPayment}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Payment
+            </Button>
+          }
+        >
+          {payments.length === 0 ? (
+            <FinancialLine className="text-xs text-muted-foreground">No payments recorded.</FinancialLine>
+          ) : (
+            payments.map((payment) => (
+              <FinancialLine key={payment.id}>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <Receipt className="h-4 w-4 text-muted-foreground" />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-xs font-medium text-foreground">{payment.method}</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">{formatDate(payment.payment_date)}</span>
+                </div>
+                <FinancialBadge status={payment.status} />
+                <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-green-foreground">
+                  {fmtAed(Number(payment.amount))}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit payment amount"
+                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                  onClick={() => onEditPaymentAmount(payment)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Delete payment"
+                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                  onClick={() => onDeletePayment(payment)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </FinancialLine>
+            ))
+          )}
+        </FinancialSection>
+
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Lock className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
+                <span className="font-mono text-base font-semibold tabular-nums text-foreground">
+                  {fmtAed(Number(contract.deposit_amount))}
+                </span>
+                {depositMethod ? (
+                  <span className="text-[10px] text-muted-foreground">Collected via {depositMethod}</span>
+                ) : null}
+              </div>
+              {contract.status.toLowerCase() === "closed" ? (
+                <span className="text-[10px] text-muted-foreground">Refundable after 15 days from close date</span>
+              ) : null}
+            </div>
+          </div>
+          <FinancialBadge status={depositStatus} />
+        </div>
+      </div>
+
+      <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
+      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
     </>
   );
 };
@@ -1733,71 +2072,7 @@ const ContractDetail = () => {
 
           {/* FINANCIALS */}
           <TabsContent value="financials" className="mt-4 space-y-3">
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {/* Total charged card */}
-              <div className="rounded-md border border-border bg-muted/30 p-3">
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Total charged
-                </div>
-                <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-foreground">
-                  {fmtAed(Number(contract.total_amount) + contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0) + fines.reduce((sum, fine) => sum + Number(fine.amount), 0) + salik.reduce((sum, charge) => sum + Number(charge.amount), 0))}
-                </div>
-              </div>
-
-              {/* Paid card */}
-              <div className="rounded-md border border-green-900/20 bg-green-950/10 p-3">
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Paid
-                </div>
-                <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-[#3B6D11]">
-                  {fmtAed(totals.credits)}
-                </div>
-              </div>
-
-              {/* Balance due card */}
-              <div
-                className={cn(
-                  "rounded-md border p-3",
-                  totals.outstanding > 0 ? "border-red-900/20 bg-red-950/10" : "border-border bg-muted/30",
-                )}
-              >
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Balance due
-                </div>
-                <div
-                  className={cn(
-                    "mt-0.5 font-mono text-base font-semibold tabular-nums",
-                    totals.outstanding > 0 ? "text-[#A32D2D]" : "text-foreground",
-                  )}
-                >
-                  {fmtAed(totals.outstanding)}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Receipt className="h-3.5 w-3.5" />
-                <span>{ledger.length} ledger entries</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5"
-                  onClick={() => setShowFeeModal(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Fee
-                </Button>
-                <Button size="sm" className="h-8 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setShowPaymentModal(true)}>
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Payment
-                </Button>
-              </div>
-            </div>
-
-            <FinancialsAccordion
+            <FinancialsPanel
               contract={contract}
               days={days}
               payments={payments}
@@ -1805,6 +2080,8 @@ const ContractDetail = () => {
               salik={salik}
               contractFees={contractFees}
               totals={totals}
+              onAddFee={() => setShowFeeModal(true)}
+              onAddPayment={() => setShowPaymentModal(true)}
               onEditRentalAmount={() =>
                 openAmountEditDialog({
                   type: "rental",
@@ -1830,55 +2107,7 @@ const ContractDetail = () => {
               }
               onDeletePayment={setPaymentToDelete}
               onDeleteFee={setFeeToDelete}
-              onUpdateFineNote={(fineId, note) =>
-                setFines((prev) =>
-                  prev.map((f) => (f.id === fineId ? { ...f, notes: note } : f)),
-                )
-              }
-              onUpdateSalikNote={(salikId, note) =>
-                setSalik((prev) =>
-                  prev.map((s) => (s.id === salikId ? { ...s, notes: note } : s)),
-                )
-              }
             />
-            <div className="flex items-center justify-between rounded-md border border-border p-3 mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                  <Lock className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
-                    <span className="text-base font-semibold tabular-nums">{fmtAed(Number(contract.deposit_amount))}</span>
-                    {((contract as any).deposit_collection_method || (contract as any).deposit_method || (contract as any).deposit_payment_method) && (
-                      <span className="text-[10px] text-muted-foreground">
-                        Collected via {(contract as any).deposit_collection_method || (contract as any).deposit_method || (contract as any).deposit_payment_method}
-                      </span>
-                    )}
-                  </div>
-                  {contract.status.toLowerCase() === "closed" && (
-                    <span className="text-[10px] text-muted-foreground">
-                      Refundable after 15 days from close date
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "text-[10px] px-2 py-0.5 rounded-full",
-                    ((contract as any).deposit_status ?? "Held").toLowerCase() === "refunded" &&
-                      "bg-tint-green text-tint-green-foreground",
-                    ((contract as any).deposit_status ?? "Held").toLowerCase() === "deducted" &&
-                      "bg-tint-rose text-tint-rose-foreground",
-                    !["refunded", "deducted"].includes(((contract as any).deposit_status ?? "Held").toLowerCase()) &&
-                      "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {(contract as any).deposit_status ?? "Held"}
-                </span>
-              </div>
-            </div>
             <RecordPaymentModal
               open={showPaymentModal}
               onClose={() => setShowPaymentModal(false)}
