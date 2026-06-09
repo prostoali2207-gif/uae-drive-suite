@@ -278,10 +278,25 @@ const emptyForm = {
   special_conditions: "",
 };
 
-const PICKUP_PHOTO_SLOTS = ["Front", "Rear", "Left side", "Right side", "Dashboard / odometer"];
+const PICKUP_PHOTO_SLOTS = [
+  { key: "front", label: "Front", legacySlots: ["Front"] },
+  { key: "rear", label: "Rear", legacySlots: ["Rear"] },
+  { key: "left_side", label: "Left side", legacySlots: ["Left side"] },
+  { key: "right_side", label: "Right side", legacySlots: ["Right side"] },
+  { key: "dashboard", label: "Dashboard", legacySlots: ["Dashboard / odometer"] },
+  { key: "odometer", label: "Odometer", legacySlots: [] },
+  { key: "interior_front", label: "Interior front", legacySlots: [] },
+  { key: "interior_rear", label: "Interior rear", legacySlots: [] },
+];
+
+type PickupPhotoSlot = (typeof PICKUP_PHOTO_SLOTS)[number];
 
 function pickupSlotKey(slot: string): string {
   return slot.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function getPickupSlotKeys(slot: PickupPhotoSlot): string[] {
+  return [slot.key, ...slot.legacySlots];
 }
 
 interface PickupInspectionModalProps {
@@ -297,6 +312,8 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
   const [uploadingSlot, setUploadingSlot] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const addedPhotoCount = PICKUP_PHOTO_SLOTS.filter((slot) => getPickupSlotKeys(slot).some((key) => photos[key])).length;
+  const progressValue = (addedPhotoCount / PICKUP_PHOTO_SLOTS.length) * 100;
 
   useEffect(() => {
     if (!open || !contractId) return;
@@ -357,7 +374,7 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
     };
   }, [photos, open]);
 
-  const handleUpload = async (slot: string, file: File | undefined) => {
+  const handleUpload = async (slot: string, file: File | undefined, existingSlot = slot) => {
     if (!file) return;
 
     setUploadingSlot(slot);
@@ -386,7 +403,7 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
       uploaded_by: uploadedBy,
     };
 
-    const existing = photos[slot];
+    const existing = photos[existingSlot];
     const { data, error: saveError } = existing
       ? await (supabase as any)
           .from("contract_inspections")
@@ -407,79 +424,115 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
     }
 
     if (data) {
-      setPhotos((prev) => ({
-        ...prev,
-        [slot]: {
+      setPhotos((prev) => {
+        const next = { ...prev };
+        if (existingSlot !== slot) delete next[existingSlot];
+        next[slot] = {
           id: data.id,
           photo_url: data.photo_url,
           uploaded_at: data.uploaded_at,
-        },
-      }));
+        };
+        return next;
+      });
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onContinue(); }}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[620px]">
-        <DialogHeader>
-          <DialogTitle>Pickup Photos</DialogTitle>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto p-0 sm:max-w-[620px]">
+        <DialogHeader className="border-b border-border px-5 pb-3 pt-5 text-center">
+          <DialogTitle className="text-lg">Pickup Photos</DialogTitle>
           <DialogDescription>
-            Capture general vehicle condition before signing. You can continue without uploading photos.
+            Capture vehicle condition before signing
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-1 py-2">
+        <div className="px-5 pt-3">
+          <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
+            <span>Photos added</span>
+            <span className="font-mono font-medium text-primary">{addedPhotoCount} / {PICKUP_PHOTO_SLOTS.length}</span>
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressValue}%` }} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5 px-4 py-4">
           {errors.load && (
-            <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="col-span-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {errors.load}
             </div>
           )}
-          {PICKUP_PHOTO_SLOTS.map((slot) => {
-            const photo = photos[slot];
-            const preview = previews[slot];
-            const isUploading = uploadingSlot === slot;
+          {PICKUP_PHOTO_SLOTS.map((slot, index) => {
+            const slotKeys = getPickupSlotKeys(slot);
+            const photoKey = slotKeys.find((key) => photos[key]) ?? slot.key;
+            const photo = photos[photoKey];
+            const preview = previews[photoKey];
+            const error = errors[slot.key] ?? errors[photoKey];
+            const isUploading = uploadingSlot === slot.key;
+            const hasPhoto = Boolean(photo);
             return (
-              <div key={slot} className="grid gap-2 border-b border-border py-3 last:border-b-0 sm:grid-cols-[150px,1fr,150px] sm:items-center">
-                <div className="text-sm font-medium text-foreground">{slot}</div>
-                <div>
+              <div
+                key={slot.key}
+                className={cn(
+                  "overflow-hidden rounded-lg border bg-card",
+                  hasPhoto ? "border-tint-green/40" : "border-border",
+                )}
+              >
+                <div className="flex items-center gap-2 px-2.5 pb-1.5 pt-2.5">
+                  <div
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
+                      hasPhoto ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {index + 1}
+                  </div>
+                  <div className="truncate text-[13px] font-medium text-foreground">{slot.label}</div>
+                </div>
+                <div className="mx-2.5">
                   {preview ? (
-                    <img src={preview} alt={`${slot} pickup`} className="h-20 w-28 rounded-md border border-border object-cover" />
+                    <img src={preview} alt={`${slot.label} pickup`} className="h-[90px] w-full rounded-md border border-border object-cover" />
                   ) : (
-                    <div className="flex h-20 w-28 items-center justify-center rounded-md border border-dashed border-border bg-muted/30 text-muted-foreground">
-                      <ImageIcon className="h-5 w-5" />
+                    <div className="flex h-[90px] w-full items-center justify-center rounded-md bg-muted/40 text-muted-foreground">
+                      <ImageIcon className="h-7 w-7" />
                     </div>
                   )}
                   {photo?.uploaded_at && (
-                    <div className="mt-1 text-[11px] text-muted-foreground">
+                    <div className="mt-1 truncate text-[10px] text-muted-foreground">
                       Uploaded {new Date(photo.uploaded_at).toLocaleString("en-GB")}
                     </div>
                   )}
-                  {errors[slot] && <div className="mt-1 text-[11px] text-destructive">{errors[slot]}</div>}
+                  {error && <div className="mt-1 text-[11px] text-destructive">{error}</div>}
                 </div>
-                <div className="flex justify-start sm:justify-end">
+                <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-2">
+                  <div className={cn("flex items-center gap-1.5 text-[11px]", hasPhoto ? "text-tint-green-foreground" : "text-muted-foreground")}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", hasPhoto ? "bg-tint-green" : "bg-muted-foreground/60")} />
+                    {hasPhoto ? "Added" : "Missing"}
+                  </div>
                   <input
                     ref={(node) => {
-                      inputRefs.current[slot] = node;
+                      inputRefs.current[slot.key] = node;
                     }}
                     type="file"
                     accept="image/*"
                     capture="environment"
                     className="hidden"
                     onChange={(event) => {
-                      handleUpload(slot, event.target.files?.[0]);
+                      handleUpload(slot.key, event.target.files?.[0], photoKey);
                       event.target.value = "";
                     }}
                   />
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="min-h-11 gap-1.5 text-xs sm:min-h-9"
+                    className="h-8 shrink-0 gap-1 px-1.5 text-xs text-primary hover:text-primary"
                     disabled={isUploading}
-                    onClick={() => inputRefs.current[slot]?.click()}
+                    onClick={() => inputRefs.current[slot.key]?.click()}
                   >
                     {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-                    {isUploading ? "Uploading..." : photo ? "Replace Photo" : "Take Photo"}
+                    {isUploading ? "Uploading..." : hasPhoto ? "Retake" : "Take Photo"}
                   </Button>
                 </div>
               </div>
@@ -487,12 +540,12 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
           })}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button type="button" variant="outline" onClick={onContinue}>
-            Skip for now
-          </Button>
-          <Button type="button" onClick={onContinue}>
+        <DialogFooter className="flex-col gap-2 px-4 pb-5 sm:flex-col sm:space-x-0">
+          <Button type="button" className="min-h-12 w-full" onClick={onContinue}>
             Continue to Review & Sign
+          </Button>
+          <Button type="button" variant="outline" className="min-h-11 w-full" onClick={onContinue}>
+            Skip photos for now
           </Button>
         </DialogFooter>
       </DialogContent>
