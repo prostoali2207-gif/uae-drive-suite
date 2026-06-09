@@ -97,6 +97,20 @@ interface ContractPeriod {
 
 interface ActiveVehiclePeriod {
   started_at: string;
+  daily_rate: number | null;
+}
+
+interface ContractFeePeriod {
+  id: string;
+  label: string;
+  amount: number;
+  created_at: string | null;
+}
+
+interface VehicleRatePeriod {
+  started_at: string;
+  ended_at: string | null;
+  daily_rate: number | null;
 }
 
 function splitDatetimeLocal(value: string) {
@@ -112,13 +126,73 @@ function calculateContractDailyRate(rateType: string, rateAmount: number | strin
 
   switch (rateType) {
     case "Monthly":
-      return Math.round(amount / 30);
+      return amount / 30;
     case "Yearly":
       return Math.round(amount / 365);
     default:
       return Math.round(amount);
   }
 }
+
+const parseRentalExtensionPeriod = (label: string) => {
+  const match = label
+    .trim()
+    .match(/^Rental Extension:\s*(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})$/i);
+
+  if (!match) return null;
+  return { periodStart: match[1], periodEnd: match[2] };
+};
+
+const isInsidePeriod = (date: Date, start: Date, end: Date) =>
+  date >= start && date <= end;
+
+const calculateOverlapDays = (start: Date, end: Date, periodStart: Date, periodEnd: Date) => {
+  const overlapStart = new Date(Math.max(start.getTime(), periodStart.getTime()));
+  const overlapEnd = new Date(Math.min(end.getTime(), periodEnd.getTime()));
+  const diffMs = overlapEnd.getTime() - overlapStart.getTime();
+
+  if (diffMs <= 0) return 0;
+  return diffMs / 86_400_000;
+};
+
+const calculatePeriodDays = (periodStart: Date, periodEnd: Date) =>
+  Math.max(0, (periodEnd.getTime() - periodStart.getTime()) / 86_400_000);
+
+const calculateFixedMonthlyBillableDays = (periodStart: Date, periodEnd: Date) => {
+  const calendarDays = calculatePeriodDays(periodStart, periodEnd);
+  const wholeMonths =
+    periodStart.getDate() === periodEnd.getDate()
+      ? (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 +
+        (periodEnd.getMonth() - periodStart.getMonth())
+      : 0;
+
+  if (wholeMonths > 0) return wholeMonths * 30;
+  if (calendarDays >= 28 && calendarDays <= 31) return 30;
+  return calendarDays;
+};
+
+const calculateRentalPeriodAmount = (
+  vehicles: VehicleRatePeriod[],
+  periodStart: Date,
+  periodEnd: Date,
+) => {
+  const calendarDays = calculatePeriodDays(periodStart, periodEnd);
+  const billableDays = calculateFixedMonthlyBillableDays(periodStart, periodEnd);
+  const billableScale = calendarDays > 0 ? billableDays / calendarDays : 0;
+
+  return Math.round(
+    vehicles.reduce((sum, vehicle) => {
+      const dailyRate = Number(vehicle.daily_rate);
+      if (!Number.isFinite(dailyRate) || dailyRate <= 0) return sum;
+
+      const vehicleStart = new Date(vehicle.started_at);
+      const vehicleEnd = vehicle.ended_at ? new Date(vehicle.ended_at) : periodEnd;
+      if (Number.isNaN(vehicleStart.getTime()) || Number.isNaN(vehicleEnd.getTime())) return sum;
+
+      return sum + calculateOverlapDays(vehicleStart, vehicleEnd, periodStart, periodEnd) * billableScale * dailyRate;
+    }, 0),
+  );
+};
 
 export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   contractId,
@@ -217,7 +291,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       });
       return;
     }
-    const dailyRate = Math.round(Number(monthlyPrice) / 30);
+    const dailyRate = Number(monthlyPrice) / 30;
 
     setConfirmLoading(true);
     try {
@@ -229,7 +303,11 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
 
       const replacement = splitDatetimeLocal(replacementTime);
-      const [{ data: contractPeriod, error: contractPeriodError }, { data: activeVehicle, error: activeVehicleError }] =
+      const [
+        { data: contractPeriod, error: contractPeriodError },
+        { data: activeVehicle, error: activeVehicleError },
+        { data: feePeriods, error: feePeriodsError },
+      ] =
         await Promise.all([
           extendedDb
             .from("contracts")
@@ -238,14 +316,20 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             .single(),
           extendedDb
             .from("contract_vehicles")
-            .select("started_at")
+            .select("started_at, daily_rate")
             .eq("contract_id", contractId)
             .eq("car_id", currentCarId)
             .is("ended_at", null)
             .maybeSingle(),
+          (extendedDb as any)
+            .from("contract_fees")
+            .select("id, label, amount, created_at")
+            .eq("contract_id", contractId)
+            .order("created_at", { ascending: true }),
         ]);
       if (contractPeriodError) throw contractPeriodError;
       if (activeVehicleError) throw activeVehicleError;
+      if (feePeriodsError) throw feePeriodsError;
 
       const period = contractPeriod as ContractPeriod;
       const currentVehicleStartedAt =
@@ -255,7 +339,11 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       const contractStart = parseContractDateTime(period.start_date, period.start_time);
       const contractEnd = parseContractDateTime(period.end_date, period.end_time);
       const currentVehicleStart = new Date(currentVehicleStartedAt);
-      const currentVehicleDailyRate = calculateContractDailyRate(period.rate_type, period.rate_amount);
+      const activeVehicleDailyRate = Number((activeVehicle as ActiveVehiclePeriod | null)?.daily_rate);
+      const currentVehicleDailyRate =
+        Number.isFinite(activeVehicleDailyRate) && activeVehicleDailyRate > 0
+          ? activeVehicleDailyRate
+          : calculateContractDailyRate(period.rate_type, period.rate_amount);
 
       if (
         Number.isNaN(replacementDate.getTime()) ||
@@ -265,6 +353,42 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         toast({
           title: "Invalid replacement time",
           description: "Replacement date and time must be inside the contract period.",
+          variant: "destructive",
+        });
+        setConfirmLoading(false);
+        return;
+      }
+
+      const rentalExtensionFees = ((feePeriods ?? []) as ContractFeePeriod[])
+        .map((fee) => ({
+          ...fee,
+          period: parseRentalExtensionPeriod(fee.label),
+        }))
+        .filter((fee) => fee.period !== null);
+      const activeExtensionFee = rentalExtensionFees.at(-1);
+      const activeExtensionTarget = activeExtensionFee
+        ? {
+            type: "fee" as const,
+            id: activeExtensionFee.id,
+            periodStart: parseContractDateTime(activeExtensionFee.period!.periodStart, period.end_time),
+            periodEnd: parseContractDateTime(activeExtensionFee.period!.periodEnd, period.end_time),
+          }
+        : null;
+      const activeRentalTarget =
+        activeExtensionTarget && isInsidePeriod(replacementDate, activeExtensionTarget.periodStart, activeExtensionTarget.periodEnd)
+          ? activeExtensionTarget
+          : !activeExtensionTarget && isInsidePeriod(replacementDate, contractStart, contractEnd)
+            ? {
+                type: "contract" as const,
+                periodStart: contractStart,
+                periodEnd: contractEnd,
+              }
+            : undefined;
+
+      if (!activeRentalTarget) {
+        toast({
+          title: "Rental period not found",
+          description: "Could not find the active rental charge for this replacement date.",
           variant: "destructive",
         });
         setConfirmLoading(false);
@@ -359,6 +483,32 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
           daily_rate: dailyRate,
         });
       if (errNewVehicle) throw errNewVehicle;
+
+      const { data: updatedVehiclePeriods, error: updatedVehiclePeriodsError } = await extendedDb
+        .from("contract_vehicles")
+        .select("started_at, ended_at, daily_rate")
+        .eq("contract_id", contractId);
+      if (updatedVehiclePeriodsError) throw updatedVehiclePeriodsError;
+
+      const recalculatedAmount = calculateRentalPeriodAmount(
+        (updatedVehiclePeriods ?? []) as VehicleRatePeriod[],
+        activeRentalTarget.periodStart,
+        activeRentalTarget.periodEnd,
+      );
+
+      if (activeRentalTarget.type === "contract") {
+        const { error: errRentalAmount } = await extendedDb
+          .from("contracts")
+          .update({ total_amount: recalculatedAmount })
+          .eq("id", contractId);
+        if (errRentalAmount) throw errRentalAmount;
+      } else {
+        const { error: errRentalFeeAmount } = await (extendedDb as any)
+          .from("contract_fees")
+          .update({ amount: recalculatedAmount })
+          .eq("id", activeRentalTarget.id);
+        if (errRentalFeeAmount) throw errRentalFeeAmount;
+      }
 
       toast({
         title: "Vehicle Replaced",
