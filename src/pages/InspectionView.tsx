@@ -8,7 +8,23 @@ interface InspectionRow {
   photo_url: string | null;
 }
 
-const PHOTO_SLOTS = ["Front", "Rear", "Left side", "Right side", "Dashboard / odometer"];
+const PHOTO_SLOTS = [
+  { key: "front", label: "Front", legacySlots: ["Front"] },
+  { key: "rear", label: "Rear", legacySlots: ["Rear"] },
+  { key: "left_side", label: "Left side", legacySlots: ["Left side"] },
+  { key: "right_side", label: "Right side", legacySlots: ["Right side"] },
+  { key: "dashboard", label: "Dashboard", legacySlots: ["Dashboard / odometer"] },
+  { key: "odometer", label: "Odometer", legacySlots: [] },
+  { key: "interior_front", label: "Interior front", legacySlots: [] },
+  { key: "interior_rear", label: "Interior rear", legacySlots: [] },
+];
+
+const PHOTO_SLOT_KEYS = new Map(
+  PHOTO_SLOTS.flatMap((slot) => [
+    [slot.key, slot.key],
+    ...slot.legacySlots.map((legacySlot) => [legacySlot, slot.key] as const),
+  ]),
+);
 
 const InspectionView = () => {
   const { contractId } = useParams<{ contractId: string }>();
@@ -44,7 +60,7 @@ const InspectionView = () => {
       }
 
       const rows = ((data ?? []) as InspectionRow[]).filter(
-        (row) => row.photo_url && PHOTO_SLOTS.includes(row.slot),
+        (row) => row.photo_url && PHOTO_SLOT_KEYS.has(row.slot),
       );
       const nextPhotos: Record<string, string> = {};
 
@@ -54,14 +70,14 @@ const InspectionView = () => {
           if (!photoUrl) return;
 
           if (/^(https?:|data:|blob:)/.test(photoUrl)) {
-            nextPhotos[row.slot] = photoUrl;
+            nextPhotos[PHOTO_SLOT_KEYS.get(row.slot) ?? row.slot] = photoUrl;
             return;
           }
 
           const { data: publicUrlData } = supabase.storage
             .from("inspection-photos")
             .getPublicUrl(photoUrl);
-          if (publicUrlData?.publicUrl) nextPhotos[row.slot] = publicUrlData.publicUrl;
+          if (publicUrlData?.publicUrl) nextPhotos[PHOTO_SLOT_KEYS.get(row.slot) ?? row.slot] = publicUrlData.publicUrl;
         }),
       );
 
@@ -108,14 +124,14 @@ const InspectionView = () => {
 
             <div className="grid grid-cols-2 gap-3">
               {PHOTO_SLOTS.map((slot) => (
-                <section key={slot} className="overflow-hidden rounded-md border border-border bg-card">
+                <section key={slot.key} className="overflow-hidden rounded-md border border-border bg-card">
                   <div className="border-b border-border px-3 py-2 text-sm font-medium">
-                    {slot}
+                    {slot.label}
                   </div>
-                  {photos[slot] ? (
+                  {photos[slot.key] ? (
                     <img
-                      src={photos[slot]}
-                      alt={`${slot} inspection`}
+                      src={photos[slot.key]}
+                      alt={`${slot.label} inspection`}
                       className="aspect-square w-full object-cover"
                     />
                   ) : (
