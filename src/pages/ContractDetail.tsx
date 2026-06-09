@@ -158,7 +158,6 @@ interface ExtensionCandidateRow {
 }
 
 type FeeCategory =
-  | "rental"
   | "delivery"
   | "pickup"
   | "fuel"
@@ -251,6 +250,30 @@ function formatDateTime(date: string, time: string | null | undefined): string {
 }
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
+
+const RENTAL_EXTENSION_LABEL = "Rental Extension";
+const RENTAL_EXTENSION_CATEGORY: FeeCategory = "other";
+
+const buildRentalExtensionLabel = (periodStart: string, periodEnd: string) =>
+  `${RENTAL_EXTENSION_LABEL}: ${periodStart} - ${periodEnd}`;
+
+const parseRentalExtensionPeriod = (label: string) => {
+  const match = label
+    .trim()
+    .match(/^Rental Extension:\s*(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})$/i);
+
+  if (!match) return null;
+  return { periodStart: match[1], periodEnd: match[2] };
+};
+
+const isRentalExtensionFee = (fee: ContractFeeRow) =>
+  fee.label.trim().toLowerCase().startsWith(RENTAL_EXTENSION_LABEL.toLowerCase());
+
+const formatRentalExtensionPeriod = (fee: ContractFeeRow) => {
+  const period = parseRentalExtensionPeriod(fee.label);
+  if (!period) return "Rental extension";
+  return `${formatDate(period.periodStart)} - ${formatDate(period.periodEnd)} - ${diffDays(period.periodStart, period.periodEnd)} days`;
+};
 
 const FEE_CATEGORIES: { value: FeeCategory; label: string; defaultLabel: string }[] = [
   { value: "delivery", label: "Delivery", defaultLabel: "Delivery" },
@@ -476,20 +499,20 @@ const FinancialsAccordion = ({
   onUpdateSalikNote,
 }: FinancialsAccordionProps) => {
   const rentalFees = contractFees
-    .filter((fee) => fee.category === "rental")
+    .filter(isRentalExtensionFee)
     .sort((a, b) => {
       const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
       const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
       return aTime - bTime;
     });
   const latestRentalFeeId = rentalFees.at(-1)?.id;
-  const firstExtensionStart = rentalFees[0]?.label.match(/Extension:\s*(.*?)\s*→/)?.[1];
-  const originalRentalLabel = `${formatDate(contract.start_date)} → ${firstExtensionStart ?? formatDate(contract.end_date)}`;
+  const firstExtensionStart = rentalFees[0] ? parseRentalExtensionPeriod(rentalFees[0].label)?.periodStart : null;
+  const originalRentalLabel = `${formatDate(contract.start_date)} → ${firstExtensionStart ? formatDate(firstExtensionStart) : formatDate(contract.end_date)}`;
   const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
   const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
-  const otherFees = contractFees.filter((fee) => fee.category !== "rental");
+  const otherFees = contractFees.filter((fee) => !isRentalExtensionFee(fee));
   const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
 
   const [editingFineId, setEditingFineId] = useState<string | null>(null);
@@ -624,7 +647,7 @@ const FinancialsAccordion = ({
         {rentalFees.map((fee) => (
           <EntryRow key={fee.id}>
             <span className="flex-1 truncate font-sans text-xs text-foreground/90">
-              {fee.label}
+              {RENTAL_EXTENSION_LABEL}
             </span>
             <StatusPill status={fee.id === latestRentalFeeId ? "Active" : "Closed"} />
             <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
@@ -851,18 +874,21 @@ const FinancialsPanel = ({
   onDeleteFee,
 }: FinancialsPanelProps) => {
   const rentalFees = contractFees
-    .filter((fee) => fee.category === "rental")
+    .filter(isRentalExtensionFee)
     .sort((a, b) => {
       const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
       const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
       return aTime - bTime;
     });
   const latestRentalFeeId = rentalFees.at(-1)?.id;
+  const firstExtensionStart = rentalFees[0] ? parseRentalExtensionPeriod(rentalFees[0].label)?.periodStart : null;
+  const originalRentalEndDate = firstExtensionStart ?? contract.end_date;
+  const originalRentalDays = diffDays(contract.start_date, originalRentalEndDate);
   const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
   const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
-  const otherFees = contractFees.filter((fee) => fee.category !== "rental");
+  const otherFees = contractFees.filter((fee) => !isRentalExtensionFee(fee));
   const otherTotal = otherFees.reduce((s, o) => s + Number(o.amount), 0);
   const chargedTotal = rentalTotal + otherTotal + finesTotal + salikTotal;
   const depositStatus = (contract as any).deposit_status ?? "Held";
@@ -921,7 +947,7 @@ const FinancialsPanel = ({
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="truncate text-xs font-medium text-foreground">Rental</span>
               <span className="font-mono text-[11px] text-muted-foreground">
-                {formatDate(contract.start_date)} - {formatDate(contract.end_date)} - {days} days
+                {formatDate(contract.start_date)} - {formatDate(originalRentalEndDate)} - {originalRentalDays} days
               </span>
             </div>
             <FinancialBadge status={rentalFees.length > 0 ? "Closed" : "Active"} />
@@ -943,8 +969,8 @@ const FinancialsPanel = ({
           {rentalFees.map((fee) => (
             <FinancialLine key={fee.id}>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-xs font-medium text-foreground">{fee.label}</span>
-                <span className="text-[11px] text-muted-foreground">Rental adjustment</span>
+                <span className="truncate text-xs font-medium text-foreground">{RENTAL_EXTENSION_LABEL}</span>
+                <span className="font-mono text-[11px] text-muted-foreground">{formatRentalExtensionPeriod(fee)}</span>
               </div>
               <FinancialBadge status={fee.id === latestRentalFeeId ? "Active" : "Closed"} />
               <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
@@ -1318,17 +1344,16 @@ const ContractDetail = () => {
   }, [contract, fines, salik, payments, days]);
 
   const totals = useMemo(() => {
-    const charges = ledger.reduce((s, e) => s + e.debit, 0);
+    const feeCharges = contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0);
+    const charges = ledger.reduce((s, e) => s + e.debit, 0) + feeCharges;
     const credits = ledger.reduce((s, e) => s + e.credit, 0);
     const deposit = Number(contract?.deposit_amount ?? 0);
     // Outstanding excludes the refundable deposit
     const outstanding = Math.max(0, charges - deposit - credits);
     return { charges, credits, outstanding };
-  }, [ledger, contract]);
+  }, [ledger, contract, contractFees]);
 
-  const extendButtonLabel = extendEndDateTime
-    ? `Extend to ${formatDate(extendEndDateTime.slice(0, 10))}`
-    : "Extend Contract";
+  const extendButtonLabel = "Extend and add fee";
 
   const saveNotes = async () => {
     if (!contract) return;
@@ -1408,8 +1433,26 @@ const ContractDetail = () => {
       return;
     }
 
-    const formattedOldDate = formatDate(contract.end_date);
-    const formattedNewDate = formatDate(newEndDate);
+    const { data: insertedFee, error: feeError } = await (supabase as any)
+      .from("contract_fees")
+      .insert({
+        contract_id: contract.id,
+        category: RENTAL_EXTENSION_CATEGORY,
+        label: buildRentalExtensionLabel(contract.end_date, newEndDate),
+        amount: Number(extensionAmount),
+        owner_id: userId,
+      })
+      .select("id")
+      .single();
+
+    if (feeError) {
+      setIsExtending(false);
+      console.error("Failed to insert extension contract fee", feeError);
+      const message = "Could not add the extension fee. The contract was not changed.";
+      setExtendError(message);
+      toast.error(message);
+      return;
+    }
 
     const { error: contractError } = await supabase
       .from("contracts")
@@ -1420,29 +1463,20 @@ const ContractDetail = () => {
       .eq("id", contract.id);
 
     if (contractError) {
+      if (insertedFee?.id) {
+        await (supabase as any)
+          .from("contract_fees")
+          .delete()
+          .eq("id", insertedFee.id);
+      }
       setIsExtending(false);
-      toast.error("Failed to extend contract");
-      return;
-    }
-
-    const { error: feeError } = await (supabase as any)
-      .from("contract_fees")
-      .insert({
-        contract_id: contract.id,
-        category: "rental",
-        label: `Extension: ${formattedOldDate} → ${formattedNewDate}`,
-        amount: Number(extensionAmount),
-        owner_id: userId,
-      });
-
-    setIsExtending(false);
-    if (feeError) {
-      console.error("Failed to insert extension contract fee", feeError);
-      const message = `Extension saved but fee record failed: ${feeError.message}`;
+      const message = "Could not extend the contract. The extension fee was not kept.";
       setExtendError(message);
       toast.error(message);
       return;
     }
+
+    setIsExtending(false);
 
     toast.success("Contract extended");
     setShowExtendModal(false);
@@ -1834,6 +1868,15 @@ const ContractDetail = () => {
       .reduce((sum, charge) => sum + Number(charge.amount), 0),
     fees: contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0),
   };
+  const extensionPreviewEndDate = extendEndDateTime ? extendEndDateTime.slice(0, 10) : "";
+  const extensionPreviewDays =
+    extensionPreviewEndDate && extensionPreviewEndDate >= contract.end_date
+      ? diffDays(contract.end_date, extensionPreviewEndDate)
+      : 0;
+  const extensionPeriodPreview =
+    extensionPreviewEndDate && extensionPreviewDays >= 0
+      ? `${formatDate(contract.end_date)} - ${formatDate(extensionPreviewEndDate)} - ${extensionPreviewDays} days`
+      : "Select a new end date";
 
   return (
     <DashboardLayout title={contractNumber} subtitle="Contract details">
@@ -2574,7 +2617,7 @@ const ContractDetail = () => {
           <DialogHeader>
             <DialogTitle>Extend Contract</DialogTitle>
             <DialogDescription className="text-xs">
-              {contract ? `CTR-${contract.id.slice(0, 8).toUpperCase()}` : ""} · Vehicle availability will be checked before saving.
+              {contract ? `CTR-${contract.id.slice(0, 8).toUpperCase()}` : ""}
             </DialogDescription>
           </DialogHeader>
 
@@ -2621,6 +2664,15 @@ const ContractDetail = () => {
                 className="font-mono tabular-nums"
                 placeholder="0.00"
               />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Period
+              </Label>
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
+                {extensionPeriodPreview}
+              </div>
             </div>
 
             {extendError && (
