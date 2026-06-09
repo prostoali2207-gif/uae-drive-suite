@@ -359,10 +359,14 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
       await Promise.all(
         Object.entries(photos).map(async ([slot, photo]) => {
           if (!photo.photo_url) return;
-          const { data } = await supabase.storage
+          if (/^(https?:|data:|blob:)/.test(photo.photo_url)) {
+            nextPreviews[slot] = photo.photo_url;
+            return;
+          }
+          const { data } = supabase.storage
             .from("inspection-photos")
-            .createSignedUrl(photo.photo_url, 60 * 10);
-          if (data?.signedUrl) nextPreviews[slot] = data.signedUrl;
+            .getPublicUrl(photo.photo_url);
+          if (data?.publicUrl) nextPreviews[slot] = data.publicUrl;
         }),
       );
       if (!cancelled) setPreviews(nextPreviews);
