@@ -1938,6 +1938,19 @@ const ContractDetail = () => {
     : "Confirm Extension";
   const amountEditIsExtension =
     amountEditTarget?.type === "fee" && isStructuredRentalExtensionFee(amountEditTarget.fee);
+  const amountEditExtensionPeriod =
+    amountEditTarget?.type === "fee"
+      ? parseRentalExtensionPeriod(amountEditTarget.fee.label)
+      : null;
+  const amountEditExtensionStartDate =
+    amountEditTarget?.type === "fee"
+      ? amountEditTarget.fee.extension_start ?? amountEditExtensionPeriod?.periodStart ?? null
+      : null;
+  const amountEditExtensionEndDisplay =
+    amountEditExtensionEndDate ||
+    (amountEditTarget?.type === "fee"
+      ? amountEditTarget.fee.extension_end ?? amountEditExtensionPeriod?.periodEnd ?? null
+      : null);
 
   return (
     <DashboardLayout title={contractNumber} subtitle="Contract details">
@@ -2483,9 +2496,18 @@ const ContractDetail = () => {
       >
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
-            <DialogTitle>{amountEditIsExtension ? "Edit Extension" : "Edit Amount"}</DialogTitle>
+            <DialogTitle>{amountEditIsExtension ? "Edit Rental Period" : "Edit Amount"}</DialogTitle>
             <DialogDescription className="text-xs">
-              {amountEditTarget?.label ?? "Financial entry"}
+              {amountEditIsExtension ? (
+                <>
+                  <span className="block">Rental Period</span>
+                  <span className="mt-1 block font-mono text-[11px]">
+                    {formatDate(amountEditExtensionStartDate)} → {formatDate(amountEditExtensionEndDisplay)}
+                  </span>
+                </>
+              ) : (
+                amountEditTarget?.label ?? "Financial entry"
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
