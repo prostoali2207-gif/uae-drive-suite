@@ -21,7 +21,7 @@ import {
   Tag,
   Camera,
 } from "lucide-react";
-import { RecordPaymentModal } from "@/components/RecordPaymentModal";
+import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
 import { RentalHistoryBlock } from "@/components/RentalHistoryBlock";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
@@ -146,6 +146,7 @@ interface PaymentRow {
   amount: number;
   method: string;
   status: string;
+  allocations?: unknown;
 }
 
 interface ExtensionCandidateRow {
@@ -279,6 +280,38 @@ const formatRentalExtensionPeriod = (fee: ContractFeeRow) => {
   const period = parseRentalExtensionPeriod(fee.label);
   if (!period) return "Rental extension";
   return `${formatDate(period.periodStart)} - ${formatDate(period.periodEnd)} - ${diffDays(period.periodStart, period.periodEnd)} days`;
+};
+
+type SavedPaymentAllocations = {
+  rental?: number;
+  fines?: number;
+  salik?: number;
+  fees?: number;
+  lines?: Record<string, number>;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readSavedPaymentAllocations = (value: unknown): SavedPaymentAllocations | null => {
+  if (!isRecord(value)) return null;
+
+  const linesValue = value.lines;
+  const lines = isRecord(linesValue)
+    ? Object.fromEntries(
+        Object.entries(linesValue)
+          .map(([key, amount]) => [key, Number(amount)])
+          .filter(([, amount]) => Number.isFinite(amount) && amount > 0),
+      )
+    : undefined;
+
+  return {
+    rental: Number(value.rental) || undefined,
+    fines: Number(value.fines) || undefined,
+    salik: Number(value.salik) || undefined,
+    fees: Number(value.fees) || undefined,
+    lines,
+  };
 };
 
 const FEE_CATEGORIES: { value: FeeCategory; label: string; defaultLabel: string }[] = [
@@ -1239,7 +1272,7 @@ const ContractDetail = () => {
       const [paymentsRes, finesRes, salikRes] = await Promise.all([
         supabase
           .from("payments")
-          .select("id, payment_date, amount, method, status")
+          .select("id, payment_date, amount, method, status, allocations")
           .eq("contract_id", c.id)
           .order("payment_date", { ascending: false }),
         supabase
@@ -1920,16 +1953,114 @@ const ContractDetail = () => {
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
   const isOverdue = totals.outstanding > 0 && contract.status !== "Cancelled";
   const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());
-  const paymentAllocationDues = {
-    rental: Number(contract.total_amount),
-    fines: fines
+  const rentalFeeLines = contractFees
+    .filter(isRentalExtensionFee)
+    .sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return aTime - bTime;
+    });
+  const manualFeeLines = contractFees.filter((fee) => !isRentalExtensionFee(fee));
+  const grossPaymentAllocationLines: PaymentAllocationLine[] = [
+    {
+      id: `rental-${contract.id}`,
+      category: "rental",
+      label: "Original Contract",
+      due: Number(contract.total_amount),
+    },
+    ...rentalFeeLines.map((fee, index) => {
+      const isCurrent = index === rentalFeeLines.length - 1;
+      const label =
+        isCurrent
+          ? "Current Period"
+          : rentalFeeLines.length > 2
+            ? `Previous Period ${index + 1}`
+            : "Previous Period";
+      return {
+        id: `fee-${fee.id}`,
+        category: "rental" as const,
+        label,
+        due: Number(fee.amount),
+      };
+    }),
+    ...manualFeeLines.map((fee) => ({
+      id: `fee-${fee.id}`,
+      category: "fees" as const,
+      label: fee.label,
+      due: Number(fee.amount),
+    })),
+    ...fines
       .filter((fine) => fine.status.toLowerCase() !== "paid")
-      .reduce((sum, fine) => sum + Number(fine.amount), 0),
-    salik: salik
+      .map((fine) => ({
+        id: `fine-${fine.id}`,
+        category: "fines" as const,
+        label: fine.fine_number ? `${fine.fine_type} ${fine.fine_number}` : fine.fine_type,
+        due: Number(fine.amount),
+      })),
+    ...salik
       .filter((charge) => charge.status.toLowerCase() !== "paid")
-      .reduce((sum, charge) => sum + Number(charge.amount), 0),
-    fees: contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0),
+      .map((charge) => ({
+        id: `salik-${charge.id}`,
+        category: "salik" as const,
+        label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+        due: Number(charge.amount),
+      })),
+  ];
+  const paidByLine = new Map(grossPaymentAllocationLines.map((line) => [line.id, 0]));
+  const addLinePayment = (lineId: string, amountToAdd: number) => {
+    const line = grossPaymentAllocationLines.find((item) => item.id === lineId);
+    if (!line || amountToAdd <= 0) return 0;
+
+    const currentPaid = paidByLine.get(lineId) ?? 0;
+    const nextPaid = Math.min(line.due, currentPaid + amountToAdd);
+    paidByLine.set(lineId, nextPaid);
+    return nextPaid - currentPaid;
   };
+  const distributePayment = (lines: PaymentAllocationLine[], amountToDistribute: number) => {
+    let remaining = amountToDistribute;
+    for (const line of lines) {
+      if (remaining <= 0) break;
+      remaining -= addLinePayment(line.id, remaining);
+    }
+    return amountToDistribute - remaining;
+  };
+
+  [...payments]
+    .filter((payment) => payment.status.toLowerCase() === "paid")
+    .sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime())
+    .forEach((payment) => {
+      const savedAllocations = readSavedPaymentAllocations(payment.allocations);
+      let applied = 0;
+
+      if (savedAllocations?.lines && Object.keys(savedAllocations.lines).length > 0) {
+        Object.entries(savedAllocations.lines).forEach(([lineId, value]) => {
+          const numericValue = Number(value);
+          addLinePayment(lineId, numericValue);
+          applied += numericValue;
+        });
+      } else if (savedAllocations) {
+        (["rental", "fees", "fines", "salik"] as const).forEach((category) => {
+          const value = Number(savedAllocations[category] ?? 0);
+          if (value <= 0) return;
+          distributePayment(
+            grossPaymentAllocationLines.filter((line) => line.category === category),
+            value,
+          );
+          applied += value;
+        });
+      }
+
+      const remainder = Number(payment.amount) - applied;
+      if (remainder > 0.01) {
+        distributePayment(grossPaymentAllocationLines, remainder);
+      }
+    });
+  const paymentAllocationLines = grossPaymentAllocationLines
+    .map((line) => ({
+      ...line,
+      due: Math.max(0, Number(line.due) - (paidByLine.get(line.id) ?? 0)),
+    }))
+    .filter((line) => line.due > 0.01);
   const tomorrowDate = getTomorrowDateInput();
   const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
   const extensionPreviewCharge = Number(extendAmount);
@@ -2232,7 +2363,7 @@ const ContractDetail = () => {
               contractId={contract.id}
               balanceDue={totals.outstanding}
               clientId={contract.client_id}
-              allocationDues={paymentAllocationDues}
+              allocationLines={paymentAllocationLines}
               ledgerEntries={ledger.map(e => ({
                 id: e.id,
                 description: e.description,

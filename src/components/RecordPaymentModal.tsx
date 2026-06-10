@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,15 @@ interface PaymentModalLedgerEntry {
   type: "Rental" | "Salik" | "Payment" | "Fine" | "Deposit";
 }
 
+type AllocationCategory = "rental" | "fines" | "salik" | "fees";
+
+export interface PaymentAllocationLine {
+  id: string;
+  category: AllocationCategory;
+  label: string;
+  due: number;
+}
+
 interface RecordPaymentModalProps {
   open: boolean;
   onClose: () => void;
@@ -38,10 +47,10 @@ interface RecordPaymentModalProps {
     salik: number;
     fees: number;
   };
+  allocationLines?: PaymentAllocationLine[];
 }
 
 type PaymentMethod = "Cash" | "Card" | "Transfer";
-type AllocationKey = "rental" | "fines" | "salik" | "fees";
 
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   open,
@@ -52,15 +61,11 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   ledgerEntries,
   clientId,
   allocationDues,
+  allocationLines,
 }) => {
   const [amount, setAmount] = useState<number | "">("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
-  const [allocations, setAllocations] = useState<Record<AllocationKey, number>>({
-    rental: 0,
-    fines: 0,
-    salik: 0,
-    fees: 0,
-  });
+  const [allocations, setAllocations] = useState<Record<string, number>>({});
 
   const unpaidEntries = useMemo(
     () => ledgerEntries.filter((entry) => {
@@ -68,17 +73,16 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       const isDeposit = entry.description.toLowerCase().includes("deposit");
       return !isPaid && !isDeposit;
     }),
-    [ledgerEntries]
+    [ledgerEntries],
   );
 
-  const totalAllocated = useMemo(
-    () => Object.values(allocations).reduce((sum, val) => sum + (val || 0), 0),
-    [allocations]
-  );
+  const allocationRows: PaymentAllocationLine[] = useMemo(() => {
+    if (allocationLines?.length) {
+      return allocationLines
+        .map((line) => ({ ...line, due: Number(line.due) }))
+        .filter((line) => Number.isFinite(line.due) && line.due > 0);
+    }
 
-  const currentAmount = typeof amount === "number" ? amount : 0;
-  const unallocatedAmount = currentAmount - totalAllocated;
-  const allocationRows: { key: AllocationKey; label: string; due: number }[] = useMemo(() => {
     const dues = allocationDues ?? {
       rental: unpaidEntries
         .filter((entry) => entry.type === "Rental")
@@ -93,14 +97,35 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     };
 
     return [
-      { key: "rental", label: "Monthly rental", due: Number(dues.rental) },
-      { key: "fines", label: "Traffic Fines", due: Number(dues.fines) },
-      { key: "salik", label: "Salik", due: Number(dues.salik) },
-      { key: "fees", label: "Other Fees", due: Number(dues.fees) },
+      { id: "rental", category: "rental", label: "Original Contract", due: Number(dues.rental) },
+      { id: "fees", category: "fees", label: "Other Fees", due: Number(dues.fees) },
+      { id: "fines", category: "fines", label: "Traffic Fines", due: Number(dues.fines) },
+      { id: "salik", category: "salik", label: "Salik", due: Number(dues.salik) },
     ].filter((row) => row.due > 0);
-  }, [allocationDues, unpaidEntries]);
+  }, [allocationDues, allocationLines, unpaidEntries]);
 
-  const handleAllocationChange = (id: AllocationKey, value: string, max: number) => {
+  useEffect(() => {
+    if (!open) {
+      setAmount("");
+      setAllocations({});
+      return;
+    }
+
+    const validIds = new Set(allocationRows.map((row) => row.id));
+    setAllocations((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([id]) => validIds.has(id))),
+    );
+  }, [allocationRows, open]);
+
+  const totalAllocated = useMemo(
+    () => Object.values(allocations).reduce((sum, val) => sum + (val || 0), 0),
+    [allocations],
+  );
+
+  const currentAmount = typeof amount === "number" ? amount : 0;
+  const unallocatedAmount = currentAmount - totalAllocated;
+
+  const handleAllocationChange = (id: string, value: string, max: number) => {
     const numValue = Math.min(max, Math.max(0, Number(value) || 0));
     setAllocations((prev) => ({
       ...prev,
@@ -114,16 +139,11 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
     for (const row of allocationRows) {
       const allocate = Math.min(remaining, row.due);
-      newAllocations[row.key] = allocate;
+      newAllocations[row.id] = allocate;
       remaining -= allocate;
     }
 
-    setAllocations({
-      rental: newAllocations.rental ?? 0,
-      fines: newAllocations.fines ?? 0,
-      salik: newAllocations.salik ?? 0,
-      fees: newAllocations.fees ?? 0,
-    });
+    setAllocations(newAllocations);
   };
 
   const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
@@ -132,7 +152,21 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
   const handleSave = async () => {
     try {
-      // 1. Insert into 'payments'
+      const groupedAllocations: Record<AllocationCategory, number> = {
+        rental: 0,
+        fines: 0,
+        salik: 0,
+        fees: 0,
+      };
+      const lineAllocations: Record<string, number> = {};
+
+      for (const row of allocationRows) {
+        const value = Number(allocations[row.id] ?? 0);
+        if (value <= 0) continue;
+        groupedAllocations[row.category] += value;
+        lineAllocations[row.id] = value;
+      }
+
       const { error: payError } = await supabase.from("payments").insert({
         contract_id: contractId,
         client_id: clientId,
@@ -140,37 +174,32 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         method: method,
         payment_date: new Date().toISOString().split("T")[0],
         status: "Paid",
-        allocations,
-      });
+        allocations: {
+          ...groupedAllocations,
+          lines: lineAllocations,
+        },
+      } as never);
 
       if (payError) throw payError;
 
-      // 2. Update status of fully allocated fines/salik.
-      // Ledger entry IDs are prefixed ("fine-<uuid>", "salik-<uuid>", etc.),
-      // so strip the prefix to get the real DB row id.
-      for (const entry of unpaidEntries) {
-        const allocationKey = entry.type === "Fine" ? "fines" : entry.type === "Salik" ? "salik" : null;
-        const typeDue =
-          allocationKey ? allocationRows.find((row) => row.key === allocationKey)?.due ?? 0 : 0;
-        const typeFullyAllocated = allocationKey ? (allocations[allocationKey] ?? 0) >= typeDue : false;
+      for (const row of allocationRows) {
+        const allocated = Number(allocations[row.id] ?? 0);
+        if (allocated + 0.01 < row.due) continue;
 
-        if (typeFullyAllocated) {
-          const dbId = entry.id.replace(/^(fine|salik|rental|deposit|pay)-/, "");
-
-          if (entry.type === "Fine") {
-            const { error: updError } = await supabase
-              .from("fines")
-              .update({ status: "Paid" } as never)
-              .eq("id", dbId);
-            if (updError) console.error(`Failed to update fine ${dbId}:`, updError);
-          } else if (entry.type === "Salik") {
-            const { error: updError } = await supabase
-              .from("salik")
-              .update({ status: "Paid" } as never)
-              .eq("id", dbId);
-            if (updError) console.error(`Failed to update salik ${dbId}:`, updError);
-          }
-          // Rental / Deposit / Payment — no table row to flip
+        if (row.category === "fines" && row.id.startsWith("fine-")) {
+          const dbId = row.id.replace(/^fine-/, "");
+          const { error: updError } = await supabase
+            .from("fines")
+            .update({ status: "Paid" } as never)
+            .eq("id", dbId);
+          if (updError) console.error(`Failed to update fine ${dbId}:`, updError);
+        } else if (row.category === "salik" && row.id.startsWith("salik-")) {
+          const dbId = row.id.replace(/^salik-/, "");
+          const { error: updError } = await supabase
+            .from("salik")
+            .update({ status: "Paid" } as never)
+            .eq("id", dbId);
+          if (updError) console.error(`Failed to update salik ${dbId}:`, updError);
         }
       }
 
@@ -263,7 +292,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               ) : (
                 <div className="space-y-3">
                   {allocationRows.map((row) => (
-                    <div key={row.key} className="flex items-center gap-3 text-xs">
+                    <div key={row.id} className="flex items-center gap-3 text-xs">
                       <div className="flex-1 min-w-0">
                         <p className="truncate font-medium text-foreground">{row.label}</p>
                         <p className="text-muted-foreground font-mono text-[10px]">Due: {fmtAed(row.due)}</p>
@@ -275,10 +304,10 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                         <input
                           type="number"
                           className="h-8 w-full rounded-md border border-input bg-background px-3 py-2 pl-8 text-right font-mono text-xs tabular-nums ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          value={allocations[row.key] || ""}
+                          value={allocations[row.id] || ""}
                           placeholder="0.00"
                           max={row.due}
-                          onChange={(e) => handleAllocationChange(row.key, e.target.value, row.due)}
+                          onChange={(e) => handleAllocationChange(row.id, e.target.value, row.due)}
                         />
                       </div>
                     </div>
