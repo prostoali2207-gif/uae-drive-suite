@@ -76,6 +76,7 @@ import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/
 
 interface ContractRecord {
   id: string;
+  owner_id: string;
   client_id: string;
   car_id: string;
   start_date: string;
@@ -121,6 +122,7 @@ interface AvailableCarRow {
 interface FineRow {
   id: string;
   fine_date: string;
+  created_at?: string | null;
   fine_number?: string | null;
   fine_type: string;
   amount: number;
@@ -132,6 +134,7 @@ interface FineRow {
 interface SalikRow {
   id: string;
   charge_date: string;
+  created_at?: string | null;
   transaction_id?: string | null;
   toll_gate?: string | null;
   direction?: string | null;
@@ -191,6 +194,11 @@ type ContractFinancialTotals = {
   overdue: number;
 };
 
+type ChargeImportEvidence = {
+  finesLastImportAt: string | null;
+  salikLastImportAt: string | null;
+};
+
 type ContractPaymentAllocationLine = PaymentAllocationLine & {
   dueDate?: string | null;
   overdueImmediately?: boolean;
@@ -248,6 +256,12 @@ function formatDate(iso: string | null): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function getChargeVerificationLabel(recordCount: number, lastImportAt: string | null): string {
+  if (recordCount > 0) return `${recordCount} records`;
+  if (lastImportAt) return `0 records - Last import: ${formatDate(lastImportAt)}`;
+  return "Not imported yet";
 }
 
 function diffDays(start: string, end: string): number {
@@ -1006,6 +1020,7 @@ type FinancialsPanelProps = {
   payments: PaymentRow[];
   fines: FineRow[];
   salik: SalikRow[];
+  chargeImportEvidence: ChargeImportEvidence;
   contractFees: ContractFeeRow[];
   totals: ContractFinancialTotals;
   onAddFee: () => void;
@@ -1074,6 +1089,7 @@ const FinancialsPanel = ({
   payments,
   fines,
   salik,
+  chargeImportEvidence,
   contractFees,
   totals,
   onAddFee,
@@ -1107,6 +1123,17 @@ const FinancialsPanel = ({
     (contract as any).deposit_collection_method ||
     (contract as any).deposit_method ||
     (contract as any).deposit_payment_method;
+  const finesVerificationLabel = getChargeVerificationLabel(fines.length, chargeImportEvidence.finesLastImportAt);
+  const salikVerificationLabel = getChargeVerificationLabel(salik.length, chargeImportEvidence.salikLastImportAt);
+  const hasUnverifiedAdditionalCharges =
+    (fines.length === 0 && !chargeImportEvidence.finesLastImportAt) ||
+    (salik.length === 0 && !chargeImportEvidence.salikLastImportAt);
+  const showDepositVerificationWarning =
+    Number(contract.deposit_amount) > 0 &&
+    contract.status.toLowerCase() === "closed" &&
+    depositStatus !== "Returned" &&
+    depositInfo.pendingReturn > 0 &&
+    hasUnverifiedAdditionalCharges;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
 
@@ -1226,10 +1253,16 @@ const FinancialsPanel = ({
         </FinancialSection>
 
         <FinancialSection title="Additional Charges" meta={`${fines.length + salik.length} items`}>
+          {showDepositVerificationWarning ? (
+            <div className="flex items-start gap-2 rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs text-tint-amber-foreground">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Fines/Salik import not verified. Review before returning deposit.</span>
+            </div>
+          ) : null}
           <FinancialLine>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="truncate text-xs font-medium text-foreground">Traffic Fines</span>
-              <span className="text-[11px] text-muted-foreground">{fines.length} records</span>
+              <span className="text-[11px] text-muted-foreground">{finesVerificationLabel}</span>
             </div>
             <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
               {fmtAed(finesTotal)}
@@ -1247,7 +1280,7 @@ const FinancialsPanel = ({
           <FinancialLine>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="truncate text-xs font-medium text-foreground">Salik</span>
-              <span className="text-[11px] text-muted-foreground">{salik.length} records</span>
+              <span className="text-[11px] text-muted-foreground">{salikVerificationLabel}</span>
             </div>
             <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
               {fmtAed(salikTotal)}
@@ -1426,6 +1459,10 @@ const ContractDetail = () => {
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [fines, setFines] = useState<FineRow[]>([]);
   const [salik, setSalik] = useState<SalikRow[]>([]);
+  const [chargeImportEvidence, setChargeImportEvidence] = useState<ChargeImportEvidence>({
+    finesLastImportAt: null,
+    salikLastImportAt: null,
+  });
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [contractFees, setContractFees] = useState<ContractFeeRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1524,7 +1561,7 @@ const ContractDetail = () => {
     setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
 
     if (c) {
-      const [paymentsRes, finesRes, salikRes] = await Promise.all([
+      const [paymentsRes, finesRes, salikRes, latestFinesImportRes, latestSalikImportRes] = await Promise.all([
         supabase
           .from("payments")
           .select("id, payment_date, amount, method, status, allocations")
@@ -1532,18 +1569,44 @@ const ContractDetail = () => {
           .order("payment_date", { ascending: false }),
         supabase
           .from("fines")
-          .select("id, fine_date, fine_number, fine_type, amount, status, source, notes")
+          .select("id, fine_date, created_at, fine_number, fine_type, amount, status, source, notes")
           .eq("contract_id", c.id)
           .order("fine_date", { ascending: false }),
         supabase
           .from("salik")
-          .select("id, charge_date, transaction_id, toll_gate, direction, trips, amount, status, notes")
+          .select("id, charge_date, created_at, transaction_id, toll_gate, direction, trips, amount, status, notes")
           .eq("contract_id", c.id)
           .order("charge_date", { ascending: false }),
+        supabase
+          .from("fines")
+          .select("created_at")
+          .eq("owner_id", c.owner_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("salik")
+          .select("created_at")
+          .eq("owner_id", c.owner_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
       if (!paymentsRes.error) setPayments(paymentsRes.data || []);
       if (!finesRes.error) setFines(finesRes.data || []);
       if (!salikRes.error) setSalik(salikRes.data || []);
+      setChargeImportEvidence({
+        finesLastImportAt:
+          !latestFinesImportRes.error && latestFinesImportRes.data
+            ? (latestFinesImportRes.data as { created_at: string }).created_at
+            : null,
+        salikLastImportAt:
+          !latestSalikImportRes.error && latestSalikImportRes.data
+            ? (latestSalikImportRes.data as { created_at: string }).created_at
+            : null,
+      });
+    } else {
+      setChargeImportEvidence({ finesLastImportAt: null, salikLastImportAt: null });
     }
     setLoading(false);
   }, [id]);
@@ -2841,6 +2904,7 @@ const ContractDetail = () => {
               payments={payments}
               fines={fines}
               salik={salik}
+              chargeImportEvidence={chargeImportEvidence}
               contractFees={contractFees}
               totals={financialTotals}
               onAddFee={() => setShowFeeModal(true)}
