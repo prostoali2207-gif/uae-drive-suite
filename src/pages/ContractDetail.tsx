@@ -202,6 +202,18 @@ type DepositCloseAction =
   | "retain_partial"
   | "retain_full";
 
+type DepositReconciliationInfo = {
+  status: string;
+  depositHeld: number;
+  appliedToBalance: number;
+  retained: number;
+  pendingReturn: number;
+  returnDue: string | null;
+  reason: string | null;
+  returnedAmount: number;
+  returnedDate: string | null;
+};
+
 type LedgerEntry = {
   id: string;
   date: string;
@@ -291,6 +303,7 @@ const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
 const RENTAL_EXTENSION_LABEL = "Rental Extension";
 const RENTAL_EXTENSION_CATEGORY: FeeCategory = "other";
 const DEPOSIT_RECONCILIATION_PREFIX = "[Deposit reconciliation]";
+const DEPOSIT_RETURN_PREFIX = "[Deposit return]";
 
 const buildRentalExtensionLabel = (periodStart: string, periodEnd: string) =>
   `${RENTAL_EXTENSION_LABEL}: ${periodStart} - ${periodEnd}`;
@@ -302,6 +315,106 @@ const parseRentalExtensionPeriod = (label: string) => {
 
   if (!match) return null;
   return { periodStart: match[1], periodEnd: match[2] };
+};
+
+const parseAedAmount = (value: string | null | undefined): number => {
+  if (!value) return 0;
+  const numeric = value.replace(/[^\d.-]/g, "");
+  const parsed = Number(numeric);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parseDepositNoteLine = (line: string): Record<string, string> | null => {
+  if (!line.includes(DEPOSIT_RECONCILIATION_PREFIX) && !line.includes(DEPOSIT_RETURN_PREFIX)) {
+    return null;
+  }
+
+  return Object.fromEntries(
+    line
+      .split("|")
+      .map((part) => part.trim())
+      .map((part) => {
+        const clean = part
+          .replace(DEPOSIT_RECONCILIATION_PREFIX, "")
+          .replace(DEPOSIT_RETURN_PREFIX, "")
+          .trim();
+        const separator = clean.indexOf(":");
+        if (separator === -1) return null;
+        return [clean.slice(0, separator).trim(), clean.slice(separator + 1).trim()];
+      })
+      .filter((entry): entry is [string, string] => Boolean(entry)),
+  );
+};
+
+const getDepositReconciliationInfo = (
+  contract: Pick<ContractRecord, "deposit_amount" | "notes">,
+): DepositReconciliationInfo => {
+  const notes = contract.notes ?? "";
+  const lines = notes.split("\n").map((line) => line.trim()).filter(Boolean);
+  const latestReconciliation = [...lines]
+    .reverse()
+    .find((line) => line.includes(DEPOSIT_RECONCILIATION_PREFIX));
+  const latestReturn = [...lines]
+    .reverse()
+    .find((line) => line.includes(DEPOSIT_RETURN_PREFIX));
+  const reconciliation = latestReconciliation ? parseDepositNoteLine(latestReconciliation) : null;
+  const returned = latestReturn ? parseDepositNoteLine(latestReturn) : null;
+
+  const returnedAmount = parseAedAmount(returned?.["Returned amount"]);
+  const returnedDate = returned?.["Returned date"] ?? null;
+
+  if (returnedAmount > 0 || returnedDate) {
+    return {
+      status: "Returned",
+      depositHeld: Number(contract.deposit_amount) || 0,
+      appliedToBalance: parseAedAmount(reconciliation?.["Applied to balance"]),
+      retained: parseAedAmount(reconciliation?.Retained),
+      pendingReturn: 0,
+      returnDue: reconciliation?.["Return due"] ?? null,
+      reason: reconciliation?.Reason ?? null,
+      returnedAmount,
+      returnedDate,
+    };
+  }
+
+  if (!reconciliation) {
+    return {
+      status: "Held",
+      depositHeld: Number(contract.deposit_amount) || 0,
+      appliedToBalance: 0,
+      retained: 0,
+      pendingReturn: Number(contract.deposit_amount) || 0,
+      returnDue: null,
+      reason: null,
+      returnedAmount: 0,
+      returnedDate: null,
+    };
+  }
+
+  const pendingReturn = parseAedAmount(reconciliation["Pending return"]);
+  const retained = parseAedAmount(reconciliation.Retained);
+  const appliedToBalance = parseAedAmount(reconciliation["Applied to balance"]);
+  let status = reconciliation.Status ?? "Held";
+
+  if (retained > 0 && pendingReturn <= 0) {
+    status = "Retained";
+  } else if (appliedToBalance > 0 && pendingReturn <= 0 && retained <= 0) {
+    status = "Applied / Used";
+  } else if (pendingReturn > 0) {
+    status = "Pending return";
+  }
+
+  return {
+    status,
+    depositHeld: parseAedAmount(reconciliation["Deposit held"]) || Number(contract.deposit_amount) || 0,
+    appliedToBalance,
+    retained,
+    pendingReturn,
+    returnDue: reconciliation["Return due"] ?? null,
+    reason: reconciliation.Reason ?? null,
+    returnedAmount: 0,
+    returnedDate: null,
+  };
 };
 
 const isRentalExtensionFee = (fee: ContractFeeRow) =>
@@ -902,6 +1015,8 @@ type FinancialsPanelProps = {
   onEditFeeAmount: (fee: ContractFeeRow) => void;
   onDeletePayment: (payment: PaymentRow) => void;
   onDeleteFee: (fee: ContractFeeRow) => void;
+  onMarkDepositReturned: (amount: number) => void;
+  markingDepositReturned: boolean;
 };
 
 const FinancialBadge = ({ status }: { status: string }) => {
@@ -911,10 +1026,14 @@ const FinancialBadge = ({ status }: { status: string }) => {
       className={cn(
         "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
         key === "paid" && "bg-tint-green text-tint-green-foreground",
+        key === "returned" && "bg-tint-green text-tint-green-foreground",
         key === "active" && "bg-tint-blue text-tint-blue-foreground",
+        key === "pending return" && "bg-tint-amber text-tint-amber-foreground",
+        key === "retained" && "bg-tint-rose text-tint-rose-foreground",
         key === "held" && "bg-muted text-muted-foreground",
         key === "closed" && "bg-muted text-muted-foreground",
-        !["paid", "active", "held", "closed"].includes(key) && "bg-muted text-muted-foreground",
+        key === "applied / used" && "bg-muted text-muted-foreground",
+        !["paid", "returned", "active", "pending return", "retained", "held", "closed", "applied / used"].includes(key) && "bg-muted text-muted-foreground",
       )}
     >
       {status}
@@ -964,6 +1083,8 @@ const FinancialsPanel = ({
   onEditFeeAmount,
   onDeletePayment,
   onDeleteFee,
+  onMarkDepositReturned,
+  markingDepositReturned,
 }: FinancialsPanelProps) => {
   const rentalExtensions = contractFees
     .filter((fee) => fee.label?.startsWith("Rental Extension:"))
@@ -979,7 +1100,9 @@ const FinancialsPanel = ({
   const otherFees = contractFees.filter((fee) => !fee.label?.startsWith("Rental Extension:"));
   const otherTotal = otherFees.reduce((s, o) => s + Number(o.amount), 0);
   const chargedTotal = rentalTotal + otherTotal + finesTotal + salikTotal;
-  const depositStatus = (contract as any).deposit_status ?? "Held";
+  const depositInfo = getDepositReconciliationInfo(contract);
+  const rawDepositStatus = (contract as any).deposit_status;
+  const depositStatus = rawDepositStatus === "Returned" ? "Returned" : depositInfo.status;
   const depositMethod =
     (contract as any).deposit_collection_method ||
     (contract as any).deposit_method ||
@@ -1192,27 +1315,102 @@ const FinancialsPanel = ({
           )}
         </FinancialSection>
 
-        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
-              <Lock className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
-                <span className="font-mono text-base font-semibold tabular-nums text-foreground">
-                  {fmtAed(Number(contract.deposit_amount))}
-                </span>
-                {depositMethod ? (
-                  <span className="text-[10px] text-muted-foreground">Collected via {depositMethod}</span>
+        <div className="rounded-md border border-border bg-card p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
+                  <span className="font-mono text-base font-semibold tabular-nums text-foreground">
+                    {fmtAed(Number(contract.deposit_amount))}
+                  </span>
+                  {depositMethod ? (
+                    <span className="text-[10px] text-muted-foreground">Collected via {depositMethod}</span>
+                  ) : null}
+                </div>
+                {contract.status.toLowerCase() === "closed" ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    Deposit reconciliation is tracked separately from payments.
+                  </span>
                 ) : null}
               </div>
-              {contract.status.toLowerCase() === "closed" ? (
-                <span className="text-[10px] text-muted-foreground">Refundable after 15 days from close date</span>
-              ) : null}
             </div>
+            <FinancialBadge status={depositStatus} />
           </div>
-          <FinancialBadge status={depositStatus} />
+
+          {Number(contract.deposit_amount) > 0 && contract.status.toLowerCase() === "closed" ? (
+            <div className="mt-3 grid gap-2 border-t border-border pt-3 text-xs">
+              {depositStatus === "Returned" ? (
+                <>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Returned amount</span>
+                    <span className="font-mono font-semibold tabular-nums">
+                      {fmtAed(depositInfo.returnedAmount || depositInfo.pendingReturn || Number(contract.deposit_amount))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Returned date</span>
+                    <span className="font-mono font-semibold tabular-nums">
+                      {depositInfo.returnedDate ?? "Recorded"}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Pending return</span>
+                    <span className="font-mono font-semibold tabular-nums">
+                      {fmtAed(depositInfo.pendingReturn)}
+                    </span>
+                  </div>
+                  {depositInfo.returnDue ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Return due date</span>
+                      <span className="font-mono font-semibold tabular-nums">{depositInfo.returnDue}</span>
+                    </div>
+                  ) : null}
+                  {depositInfo.retained > 0 ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Retained</span>
+                      <span className="font-mono font-semibold tabular-nums">
+                        {fmtAed(depositInfo.retained)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {depositInfo.reason ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Retention reason</span>
+                      <span className="max-w-[60%] text-right font-medium text-foreground">{depositInfo.reason}</span>
+                    </div>
+                  ) : null}
+                  {depositInfo.appliedToBalance > 0 ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Applied to balance</span>
+                      <span className="font-mono font-semibold tabular-nums">
+                        {fmtAed(depositInfo.appliedToBalance)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {depositInfo.pendingReturn > 0 ? (
+                    <div className="flex justify-end pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 text-xs"
+                        disabled={markingDepositReturned}
+                        onClick={() => onMarkDepositReturned(depositInfo.pendingReturn)}
+                      >
+                        {markingDepositReturned ? "Saving..." : "Mark as returned"}
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1277,6 +1475,7 @@ const ContractDetail = () => {
   const [amountEditValue, setAmountEditValue] = useState("");
   const [amountEditExtensionEndDate, setAmountEditExtensionEndDate] = useState("");
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
+  const [markingDepositReturned, setMarkingDepositReturned] = useState(false);
 
   const navigate = useNavigate();
 
@@ -1457,6 +1656,55 @@ const ContractDetail = () => {
     toast.success("Notes saved");
     setContract({ ...contract, notes: notesDraft });
     setEditingNotes(false);
+  };
+
+  const handleMarkDepositReturned = async (amount: number) => {
+    if (!contract) return;
+
+    const returnedDate = getTodayDateInput();
+    const returnNote = [
+      DEPOSIT_RETURN_PREFIX,
+      "Status: Returned",
+      `Returned amount: ${fmtAed(amount)}`,
+      `Returned date: ${formatDate(returnedDate)}`,
+    ].join(" | ");
+    const updatedNotes = [contract.notes?.trim(), returnNote].filter(Boolean).join("\n");
+
+    setMarkingDepositReturned(true);
+    const { error } = await supabase
+      .from("contracts")
+      .update({ notes: updatedNotes } as never)
+      .eq("id", contract.id);
+
+    if (error) {
+      setMarkingDepositReturned(false);
+      toast.error("Failed to mark deposit as returned");
+      return;
+    }
+
+    const { error: statusError } = await (supabase as any)
+      .from("contracts")
+      .update({ deposit_status: "Returned" })
+      .eq("id", contract.id);
+
+    if (statusError) {
+      console.info("Deposit status column is not available; returned state was saved in contract notes.");
+    }
+
+    const { error: returnedDateError } = await (supabase as any)
+      .from("contracts")
+      .update({ deposit_returned_date: returnedDate })
+      .eq("id", contract.id);
+
+    if (returnedDateError) {
+      console.info("Deposit returned date column is not available; returned date was saved in contract notes.");
+    }
+
+    setContract({ ...contract, notes: updatedNotes });
+    setNotesDraft(updatedNotes);
+    setMarkingDepositReturned(false);
+    toast.success("Deposit marked as returned");
+    await fetchData();
   };
 
   const openExtendModal = () => {
@@ -2622,6 +2870,8 @@ const ContractDetail = () => {
               }
               onDeletePayment={setPaymentToDelete}
               onDeleteFee={setFeeToDelete}
+              onMarkDepositReturned={handleMarkDepositReturned}
+              markingDepositReturned={markingDepositReturned}
             />
             <RecordPaymentModal
               open={showPaymentModal}
