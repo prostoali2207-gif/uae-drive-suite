@@ -22,6 +22,7 @@ import {
   Camera,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/RecordPaymentModal";
+import { RentalHistoryBlock } from "@/components/RentalHistoryBlock";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import FinesModal from "@/components/FinesModal";
@@ -893,22 +894,18 @@ const FinancialsPanel = ({
   onDeletePayment,
   onDeleteFee,
 }: FinancialsPanelProps) => {
-  const rentalFees = contractFees
-    .filter(isRentalExtensionFee)
+  const rentalExtensions = contractFees
+    .filter((fee) => fee.label?.startsWith("Rental Extension:"))
     .sort((a, b) => {
       const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
       const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
       return aTime - bTime;
     });
-  const latestRentalFeeId = rentalFees.at(-1)?.id;
-  const firstExtensionStart = rentalFees[0] ? parseRentalExtensionPeriod(rentalFees[0].label)?.periodStart : null;
-  const originalRentalEndDate = firstExtensionStart ?? contract.end_date;
-  const originalRentalDays = diffDays(contract.start_date, originalRentalEndDate);
-  const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
+  const rentalTotal = Number(contract.total_amount) + rentalExtensions.reduce((s, fee) => s + Number(fee.amount), 0);
   const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
-  const otherFees = contractFees.filter((fee) => !isRentalExtensionFee(fee));
+  const otherFees = contractFees.filter((fee) => !fee.label?.startsWith("Rental Extension:"));
   const otherTotal = otherFees.reduce((s, o) => s + Number(o.amount), 0);
   const chargedTotal = rentalTotal + otherTotal + finesTotal + salikTotal;
   const depositStatus = (contract as any).deposit_status ?? "Held";
@@ -955,7 +952,7 @@ const FinancialsPanel = ({
 
         <FinancialSection
           title="Charges"
-          meta={`${1 + rentalFees.length + otherFees.length} items`}
+          meta={`${1 + rentalExtensions.length + otherFees.length} items`}
           action={
             <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={onAddFee}>
               <Plus className="h-3.5 w-3.5" />
@@ -963,51 +960,7 @@ const FinancialsPanel = ({
             </Button>
           }
         >
-          <FinancialLine>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-xs font-medium text-foreground">Rental</span>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {formatDate(contract.start_date)} - {formatDate(originalRentalEndDate)} - {originalRentalDays} days
-              </span>
-            </div>
-            <FinancialBadge status={rentalFees.length > 0 ? "Closed" : "Active"} />
-            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
-              {fmtAed(Number(contract.total_amount))}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Edit rental amount"
-              className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-              onClick={onEditRentalAmount}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-          </FinancialLine>
-
-          {rentalFees.map((fee) => (
-            <FinancialLine key={fee.id}>
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-xs font-medium text-foreground">{RENTAL_EXTENSION_LABEL}</span>
-                <span className="font-mono text-[11px] text-muted-foreground">{formatRentalExtensionPeriod(fee)}</span>
-              </div>
-              <FinancialBadge status={fee.id === latestRentalFeeId ? "Active" : "Closed"} />
-              <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
-                {fmtAed(Number(fee.amount))}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Edit extension"
-                className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                onClick={() => onEditFeeAmount(fee)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </FinancialLine>
-          ))}
+          <RentalHistoryBlock contract={contract} extensions={rentalExtensions} />
 
           {otherFees.length === 0 ? (
             <FinancialLine className="text-xs text-muted-foreground">No other fees.</FinancialLine>
