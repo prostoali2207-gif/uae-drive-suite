@@ -2305,6 +2305,22 @@ const ContractDetail = () => {
       ? "Select date"
       : "No return due";
   const closeFinalOutstanding = Math.max(0, closeOutstandingBalance - closeDepositApplyAmount);
+  const closeRetainedAmountInput = Number(depositRetainedAmount);
+  const isCloseRetainPartialValid =
+    depositCloseAction !== "retain_partial" ||
+    (Number.isFinite(closeRetainedAmountInput) &&
+      closeRetainedAmountInput > 0 &&
+      closeRetainedAmountInput <= closeDepositAmount &&
+      depositRetainReason.trim().length > 0);
+  const isCloseRetainFullValid =
+    depositCloseAction !== "retain_full" || depositRetainReason.trim().length > 0;
+  const isCloseDepositReturnDateValid =
+    closeDepositReturnAmount <= 0 || Boolean(closeDepositReturnDueDate);
+  const isCloseConfirmDisabled =
+    isClosing ||
+    !isCloseRetainPartialValid ||
+    !isCloseRetainFullValid ||
+    !isCloseDepositReturnDateValid;
   const tomorrowDate = getTomorrowDateInput();
   const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
   const extensionPreviewCharge = Number(extendAmount);
@@ -3495,11 +3511,17 @@ const ContractDetail = () => {
             </div>
           </div>
 
+          {closeFinalOutstanding > 0 && (
+            <div className="rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs font-medium text-tint-amber-foreground">
+              Contract will close with {fmtAed(closeFinalOutstanding)} still outstanding.
+            </div>
+          )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCloseModal(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" disabled={isClosing} onClick={handleCloseContract}>
+            <Button variant="destructive" disabled={isCloseConfirmDisabled} onClick={handleCloseContract}>
               {isClosing ? "Closing…" : "Confirm Close"}
             </Button>
           </DialogFooter>
