@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Pencil } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 type RentalHistoryContract = {
   start_date: string;
@@ -27,7 +27,7 @@ type RentalPeriod = {
 type RentalHistoryBlockProps = {
   contract: RentalHistoryContract;
   extensions: RentalExtension[];
-  onEditCurrentPeriod?: () => void;
+  onManagePeriods?: () => void;
 };
 
 const formatDate = (iso: string | null | undefined) => {
@@ -79,7 +79,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 export const RentalHistoryBlock = ({
   contract,
   extensions,
-  onEditCurrentPeriod,
+  onManagePeriods,
 }: RentalHistoryBlockProps) => {
   const [expanded, setExpanded] = useState(getInitialExpanded);
   const sortedExtensions = [...extensions].sort((a, b) => {
@@ -109,29 +109,40 @@ export const RentalHistoryBlock = ({
   const previousPeriods = periods.slice(0, -1).reverse();
   const totalAmount = periods.reduce((sum, period) => sum + Number(period.amount), 0);
   const totalDays = periods.reduce((sum, period) => sum + diffDays(period.start, period.end), 0);
+  const getPeriodLabel = (period: RentalPeriod) =>
+    period.periodNumber === 1 ? "Original Contract" : "Previous Period";
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card/60">
-      <button
-        type="button"
-        className="flex w-full cursor-pointer items-center justify-between gap-3 border-b border-border px-4 py-3 text-left"
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <span className="text-sm font-semibold text-foreground">Rental History</span>
-        <span className="ml-auto font-mono text-sm font-semibold text-foreground">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <span className="text-sm font-semibold text-foreground">Rental History</span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+          />
+        </button>
+        <span className="font-mono text-sm font-semibold text-foreground">
           {formatAed(totalAmount)}
         </span>
-        <ChevronDown
-          className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
-        />
-      </button>
+        {onManagePeriods && (
+          <button
+            type="button"
+            className="h-8 shrink-0 rounded-md border border-border px-3 text-xs font-medium text-foreground hover:bg-muted"
+            onClick={onManagePeriods}
+          >
+            Manage Periods
+          </button>
+        )}
+      </div>
 
       {expanded && (
         <>
-          <div className="relative">
-            {previousPeriods.length > 0 && <div className="absolute bottom-0 left-[30px] top-0 w-px bg-border" />}
-            <div className="relative flex flex-wrap items-center gap-3 border-b border-border px-4 py-4 sm:gap-4">
-              <span className="z-10 h-2.5 w-2.5 shrink-0 rounded-full bg-green-400 shadow shadow-green-400/50" />
+          <div>
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-4 sm:gap-4">
               <div className="min-w-[150px] flex-1">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-green-400">
                   Current Period
@@ -147,44 +158,29 @@ export const RentalHistoryBlock = ({
               <div className="font-mono text-sm font-semibold text-foreground">
                 {formatAed(currentPeriod.amount)}
               </div>
-              {onEditCurrentPeriod && (
-                <button
-                  type="button"
-                  className="flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium text-foreground hover:bg-muted"
-                  onClick={onEditCurrentPeriod}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit
-                </button>
-              )}
             </div>
 
-            {previousPeriods.map((period, index) => {
-              const isLast = index === previousPeriods.length - 1;
-              return (
-                <div
-                  key={period.id}
-                  className="relative flex items-center gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:gap-4"
-                >
-                  <span className="z-10 h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/60" />
-                  {isLast && <span className="absolute bottom-0 left-[30px] h-1/2 w-px bg-card" />}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-foreground">
-                      Period {period.periodNumber}
-                    </div>
-                    <div className="mt-1 font-mono text-[11px] text-muted-foreground">
-                      {formatDate(period.start)} → {formatDate(period.end)}
-                    </div>
-                    <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                      {diffDays(period.start, period.end)} days
-                    </div>
+            {previousPeriods.map((period) => (
+              <div
+                key={period.id}
+                className="flex items-center gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:gap-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-foreground">
+                    {getPeriodLabel(period)}
                   </div>
-                  <div className="font-mono text-sm font-semibold text-foreground">
-                    {formatAed(period.amount)}
+                  <div className="mt-1 font-mono text-[11px] text-muted-foreground">
+                    {formatDate(period.start)} → {formatDate(period.end)}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                    {diffDays(period.start, period.end)} days
                   </div>
                 </div>
-              );
-            })}
+                <div className="font-mono text-sm font-semibold text-foreground">
+                  {formatAed(period.amount)}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="grid grid-cols-2 border-t border-border bg-muted/20">

@@ -968,7 +968,7 @@ const FinancialsPanel = ({
               status: contract.status,
             }}
             extensions={rentalExtensions}
-            onEditCurrentPeriod={() => {
+            onManagePeriods={() => {
               const currentExtension = rentalExtensions.at(-1);
               if (currentExtension) {
                 onEditFeeAmount(currentExtension);
