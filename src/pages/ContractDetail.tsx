@@ -960,7 +960,23 @@ const FinancialsPanel = ({
             </Button>
           }
         >
-          <RentalHistoryBlock contract={contract} extensions={rentalExtensions} />
+          <RentalHistoryBlock
+            contract={{
+              start_date: contract.start_date,
+              end_date: contract.end_date,
+              rate_amount: Number(contract.total_amount),
+              status: contract.status,
+            }}
+            extensions={rentalExtensions}
+            onEditCurrentPeriod={() => {
+              const currentExtension = rentalExtensions.at(-1);
+              if (currentExtension) {
+                onEditFeeAmount(currentExtension);
+                return;
+              }
+              onEditRentalAmount();
+            }}
+          />
 
           {otherFees.length === 0 ? (
             <FinancialLine className="text-xs text-muted-foreground">No other fees.</FinancialLine>
