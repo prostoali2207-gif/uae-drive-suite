@@ -57,6 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
@@ -195,6 +196,12 @@ type ContractPaymentAllocationLine = PaymentAllocationLine & {
   overdueImmediately?: boolean;
 };
 
+type DepositCloseAction =
+  | "return_full"
+  | "apply_to_balance"
+  | "retain_partial"
+  | "retain_full";
+
 type LedgerEntry = {
   id: string;
   date: string;
@@ -273,6 +280,7 @@ const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
 
 const RENTAL_EXTENSION_LABEL = "Rental Extension";
 const RENTAL_EXTENSION_CATEGORY: FeeCategory = "other";
+const DEPOSIT_RECONCILIATION_PREFIX = "[Deposit reconciliation]";
 
 const buildRentalExtensionLabel = (periodStart: string, periodEnd: string) =>
   `${RENTAL_EXTENSION_LABEL}: ${periodStart} - ${periodEnd}`;
@@ -1228,6 +1236,9 @@ const ContractDetail = () => {
   const [closeReceivedBy, setCloseReceivedBy] = useState("");
   const [closeFinalMileage, setCloseFinalMileage] = useState("");
   const [closeVehicleStatus, setCloseVehicleStatus] = useState("Available");
+  const [depositCloseAction, setDepositCloseAction] = useState<DepositCloseAction>("return_full");
+  const [depositRetainedAmount, setDepositRetainedAmount] = useState("");
+  const [depositRetainReason, setDepositRetainReason] = useState("");
   const [isClosing, setIsClosing] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [extendEndDate, setExtendEndDate] = useState("");
@@ -1555,6 +1566,28 @@ const ContractDetail = () => {
     setFeeRefreshKey((key) => key + 1);
   };
 
+  const buildDepositPaymentAllocations = (amount: number) => {
+    let remaining = amount;
+    const grouped: Record<AllocationCategory, number> = {
+      rental: 0,
+      fines: 0,
+      salik: 0,
+      fees: 0,
+    };
+    const lines: Record<string, number> = {};
+
+    for (const line of paymentAllocationLines) {
+      if (remaining <= 0) break;
+      const applied = Math.min(remaining, Number(line.due));
+      if (applied <= 0) continue;
+      grouped[line.category] += applied;
+      lines[line.id] = applied;
+      remaining -= applied;
+    }
+
+    return { ...grouped, lines, source: "security_deposit" };
+  };
+
   const handleCloseContract = async () => {
     if (!contract) return;
 
@@ -1566,6 +1599,44 @@ const ContractDetail = () => {
     const finalMileage = Number(closeFinalMileage);
     if (finalMileage < Number(contract.initial_mileage)) {
       toast.error("Final mileage cannot be lower than initial mileage.");
+      return;
+    }
+
+    const depositAmount = Math.max(0, Number(contract.deposit_amount) || 0);
+    const outstandingBalance = Math.max(0, Number(financialTotals.outstanding) || 0);
+    const retainedAmount =
+      depositCloseAction === "retain_full"
+        ? depositAmount
+        : depositCloseAction === "retain_partial"
+          ? Number(depositRetainedAmount)
+          : 0;
+    const appliedAmount =
+      depositCloseAction === "apply_to_balance"
+        ? Math.min(depositAmount, outstandingBalance)
+        : 0;
+    const returnedAmount = Math.max(0, depositAmount - retainedAmount - appliedAmount);
+    const needsRetainReason =
+      depositAmount > 0 &&
+      (depositCloseAction === "retain_partial" || depositCloseAction === "retain_full");
+
+    if (depositAmount > 0 && depositCloseAction === "apply_to_balance" && appliedAmount <= 0) {
+      toast.error("There is no outstanding balance to apply the deposit to.");
+      return;
+    }
+
+    if (depositAmount > 0 && depositCloseAction === "retain_partial") {
+      if (!Number.isFinite(retainedAmount) || retainedAmount <= 0) {
+        toast.error("Enter the deposit amount to retain.");
+        return;
+      }
+      if (retainedAmount > depositAmount) {
+        toast.error("Retained amount cannot exceed the deposit held.");
+        return;
+      }
+    }
+
+    if (needsRetainReason && depositRetainReason.trim() === "") {
+      toast.error("Enter a reason for retaining the deposit.");
       return;
     }
 
@@ -1585,10 +1656,70 @@ const ContractDetail = () => {
       return;
     }
 
+    let appliedDepositPaymentId: string | null = null;
+    if (appliedAmount > 0) {
+      const { data: depositPaymentData, error: depositPaymentError } = await supabase
+        .from("payments")
+        .insert({
+          contract_id: contract.id,
+          client_id: contract.client_id,
+          amount: appliedAmount,
+          method: "Security Deposit",
+          payment_date: getTodayDateInput(),
+          status: "Paid",
+          allocations: buildDepositPaymentAllocations(appliedAmount),
+        } as never)
+        .select("id")
+        .single();
+
+      if (depositPaymentError) {
+        setIsClosing(false);
+        toast.error("Failed to apply security deposit to balance");
+        return;
+      }
+      appliedDepositPaymentId = (depositPaymentData as { id?: string } | null)?.id ?? null;
+    }
+
+    const actionLabel =
+      depositCloseAction === "return_full"
+        ? "Return full deposit"
+        : depositCloseAction === "apply_to_balance"
+          ? "Apply to outstanding balance"
+          : depositCloseAction === "retain_partial"
+            ? "Retain partial amount"
+            : "Retain full deposit";
+    const depositStatus =
+      depositCloseAction === "retain_full"
+        ? "Retained"
+        : depositCloseAction === "retain_partial"
+          ? "Partially retained"
+          : "Returned";
+    const depositNote =
+      depositAmount > 0
+        ? [
+            DEPOSIT_RECONCILIATION_PREFIX,
+            `Action: ${actionLabel}`,
+            `Status: ${depositStatus}`,
+            `Deposit held: ${fmtAed(depositAmount)}`,
+            `Outstanding at close: ${fmtAed(outstandingBalance)}`,
+            `Applied to balance: ${fmtAed(appliedAmount)}`,
+            `Retained: ${fmtAed(retainedAmount)}`,
+            `Return to client: ${fmtAed(returnedAmount)}`,
+            depositRetainReason.trim() ? `Reason: ${depositRetainReason.trim()}` : null,
+            closeReturnDate ? `Return date: ${closeReturnDate}` : null,
+            closeReceivedBy.trim() ? `Received by: ${closeReceivedBy.trim()}` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        : null;
+    const updatedNotes = depositNote
+      ? [contract.notes?.trim(), depositNote].filter(Boolean).join("\n")
+      : contract.notes ?? null;
+
     const [contractRes, vehicleRes] = await Promise.all([
       supabase
         .from("contracts")
-        .update({ status: "Closed" } as never)
+        .update({ status: "Closed", notes: updatedNotes } as never)
         .eq("id", contract.id),
       supabase
         .from("cars")
@@ -1597,9 +1728,24 @@ const ContractDetail = () => {
     ]);
     setIsClosing(false);
     if (contractRes.error || vehicleRes.error) {
+      if (appliedDepositPaymentId) {
+        await supabase.from("payments").delete().eq("id", appliedDepositPaymentId);
+      }
       toast.error("Failed to close contract");
       return;
     }
+
+    if (depositAmount > 0) {
+      const { error: depositStatusError } = await (supabase as any)
+        .from("contracts")
+        .update({ deposit_status: depositStatus })
+        .eq("id", contract.id);
+
+      if (depositStatusError) {
+        console.info("Deposit status column is not available; reconciliation was saved in contract notes.");
+      }
+    }
+
     toast.success("Contract closed");
     navigate("/contracts");
   };
@@ -2111,6 +2257,22 @@ const ContractDetail = () => {
     overdue: Math.min(totals.outstanding, Math.max(0, overdueBalance)),
   };
   const isOverdue = financialTotals.overdue > 0 && contract.status !== "Cancelled";
+  const closeDepositAmount = Math.max(0, Number(contract.deposit_amount) || 0);
+  const closeOutstandingBalance = Math.max(0, Number(financialTotals.outstanding) || 0);
+  const closeDepositApplyAmount =
+    depositCloseAction === "apply_to_balance"
+      ? Math.min(closeDepositAmount, closeOutstandingBalance)
+      : 0;
+  const closeDepositRetainedAmount =
+    depositCloseAction === "retain_full"
+      ? closeDepositAmount
+      : depositCloseAction === "retain_partial"
+        ? Math.min(closeDepositAmount, Math.max(0, Number(depositRetainedAmount) || 0))
+        : 0;
+  const closeDepositReturnAmount = Math.max(
+    0,
+    closeDepositAmount - closeDepositApplyAmount - closeDepositRetainedAmount,
+  );
   const tomorrowDate = getTomorrowDateInput();
   const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
   const extensionPreviewCharge = Number(extendAmount);
@@ -2182,7 +2344,11 @@ const ContractDetail = () => {
                     const d = contract.end_date;
                     setCloseReturnDate(d.includes("T") ? d.slice(0, 16) : `${d}T00:00`);
                     setCloseReceivedBy("");
+                    setCloseFinalMileage("");
                     setCloseVehicleStatus("Available");
+                    setDepositCloseAction("return_full");
+                    setDepositRetainedAmount("");
+                    setDepositRetainReason("");
                     setShowCloseModal(true);
                   }}
                 >
@@ -2875,6 +3041,7 @@ const ContractDetail = () => {
                 </SelectContent>
               </Select>
             </div>
+
           </div>
 
           <DialogFooter>
@@ -2980,7 +3147,7 @@ const ContractDetail = () => {
       </Dialog>
 
       <Dialog open={showCloseModal} onOpenChange={(v) => !v && setShowCloseModal(false)}>
-        <DialogContent className="sm:max-w-[440px]">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Close Contract</DialogTitle>
             <DialogDescription className="text-xs">
@@ -3040,6 +3207,159 @@ const ContractDetail = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {closeDepositAmount > 0 && (
+              <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Security Deposit
+                    </Label>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Reconcile separately from customer payments.
+                    </p>
+                  </div>
+                  <div className="text-right font-mono text-sm font-semibold tabular-nums">
+                    {fmtAed(closeDepositAmount)}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-md border border-border bg-background px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Deposit held
+                    </div>
+                    <div className="mt-0.5 font-mono font-semibold tabular-nums">
+                      {fmtAed(closeDepositAmount)}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-background px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Outstanding
+                    </div>
+                    <div className="mt-0.5 font-mono font-semibold tabular-nums">
+                      {fmtAed(closeOutstandingBalance)}
+                    </div>
+                  </div>
+                </div>
+
+                <RadioGroup
+                  value={depositCloseAction}
+                  onValueChange={(value) => setDepositCloseAction(value as DepositCloseAction)}
+                  className="gap-2"
+                >
+                  <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm">
+                    <RadioGroupItem value="return_full" />
+                    <span className="flex-1">Return full deposit</span>
+                    <span className="font-mono text-xs font-semibold tabular-nums">
+                      {fmtAed(closeDepositAmount)}
+                    </span>
+                  </label>
+                  <label
+                    className={cn(
+                      "flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm",
+                      closeOutstandingBalance <= 0 && "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    <RadioGroupItem value="apply_to_balance" disabled={closeOutstandingBalance <= 0} />
+                    <span className="flex-1">Apply to outstanding balance</span>
+                    <span className="font-mono text-xs font-semibold tabular-nums">
+                      {fmtAed(Math.min(closeDepositAmount, closeOutstandingBalance))}
+                    </span>
+                  </label>
+                  <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm">
+                    <RadioGroupItem value="retain_partial" />
+                    <span className="flex-1">Retain partial amount</span>
+                  </label>
+                  <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm">
+                    <RadioGroupItem value="retain_full" />
+                    <span className="flex-1">Retain full deposit</span>
+                    <span className="font-mono text-xs font-semibold tabular-nums">
+                      {fmtAed(closeDepositAmount)}
+                    </span>
+                  </label>
+                </RadioGroup>
+
+                {depositCloseAction === "retain_partial" && (
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Retained Amount
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        AED
+                      </span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={closeDepositAmount}
+                        value={depositRetainedAmount}
+                        onChange={(e) => setDepositRetainedAmount(e.target.value)}
+                        className="pl-12"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Retention Reason
+                    </Label>
+                    <Textarea
+                      value={depositRetainReason}
+                      onChange={(e) => setDepositRetainReason(e.target.value)}
+                      placeholder="Damage, fuel, late return, fines pending..."
+                      className="min-h-[72px]"
+                    />
+                  </div>
+                )}
+
+                <div className="grid gap-1 rounded-md bg-background px-3 py-2 text-xs">
+                  {depositCloseAction === "apply_to_balance" && (
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Applied to balance</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {fmtAed(closeDepositApplyAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Remaining deposit to return</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {fmtAed(closeDepositReturnAmount)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  {depositCloseAction === "return_full" && (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Amount to return</span>
+                      <span className="font-mono font-semibold tabular-nums">
+                        {fmtAed(closeDepositReturnAmount)}
+                      </span>
+                    </div>
+                  )}
+                  {(depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Retained</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {fmtAed(closeDepositRetainedAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Remaining deposit to return</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {fmtAed(closeDepositReturnAmount)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
