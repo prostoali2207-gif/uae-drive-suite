@@ -276,6 +276,16 @@ function getTodayDateInput(): string {
   return `${year}-${month}-${day}`;
 }
 
+function addDaysToDateInput(value: string, daysToAdd: number): string {
+  const datePart = value?.slice(0, 10) || getTodayDateInput();
+  const date = new Date(`${datePart}T00:00:00`);
+  date.setDate(date.getDate() + daysToAdd);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
 
 const RENTAL_EXTENSION_LABEL = "Rental Extension";
@@ -1614,7 +1624,9 @@ const ContractDetail = () => {
       depositCloseAction === "apply_to_balance"
         ? Math.min(depositAmount, outstandingBalance)
         : 0;
-    const returnedAmount = Math.max(0, depositAmount - retainedAmount - appliedAmount);
+    const pendingReturnAmount = Math.max(0, depositAmount - retainedAmount - appliedAmount);
+    const finalOutstandingAmount = Math.max(0, outstandingBalance - appliedAmount);
+    const returnDueDate = pendingReturnAmount > 0 ? addDaysToDateInput(closeReturnDate, 15) : null;
     const needsRetainReason =
       depositAmount > 0 &&
       (depositCloseAction === "retain_partial" || depositCloseAction === "retain_full");
@@ -1682,7 +1694,7 @@ const ContractDetail = () => {
 
     const actionLabel =
       depositCloseAction === "return_full"
-        ? "Return full deposit"
+        ? "Schedule full deposit return"
         : depositCloseAction === "apply_to_balance"
           ? "Apply to outstanding balance"
           : depositCloseAction === "retain_partial"
@@ -1691,9 +1703,7 @@ const ContractDetail = () => {
     const depositStatus =
       depositCloseAction === "retain_full"
         ? "Retained"
-        : depositCloseAction === "retain_partial"
-          ? "Partially retained"
-          : "Returned";
+        : "Pending Return";
     const depositNote =
       depositAmount > 0
         ? [
@@ -1704,9 +1714,11 @@ const ContractDetail = () => {
             `Outstanding at close: ${fmtAed(outstandingBalance)}`,
             `Applied to balance: ${fmtAed(appliedAmount)}`,
             `Retained: ${fmtAed(retainedAmount)}`,
-            `Return to client: ${fmtAed(returnedAmount)}`,
+            `Pending return: ${fmtAed(pendingReturnAmount)}`,
+            `Return due: ${returnDueDate ? formatDate(returnDueDate) : "No return due"}`,
+            `Final outstanding: ${fmtAed(finalOutstandingAmount)}`,
             depositRetainReason.trim() ? `Reason: ${depositRetainReason.trim()}` : null,
-            closeReturnDate ? `Return date: ${closeReturnDate}` : null,
+            closeReturnDate ? `Closed/returned at: ${closeReturnDate}` : null,
             closeReceivedBy.trim() ? `Received by: ${closeReceivedBy.trim()}` : null,
           ]
             .filter(Boolean)
@@ -2273,6 +2285,9 @@ const ContractDetail = () => {
     0,
     closeDepositAmount - closeDepositApplyAmount - closeDepositRetainedAmount,
   );
+  const closeDepositReturnDueDate =
+    closeDepositReturnAmount > 0 ? addDaysToDateInput(closeReturnDate, 15) : null;
+  const closeFinalOutstanding = Math.max(0, closeOutstandingBalance - closeDepositApplyAmount);
   const tomorrowDate = getTomorrowDateInput();
   const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
   const extensionPreviewCharge = Number(extendAmount);
@@ -3216,7 +3231,7 @@ const ContractDetail = () => {
                       Security Deposit
                     </Label>
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      Reconcile separately from customer payments.
+                      Refundable amounts are scheduled for return after the hold period.
                     </p>
                   </div>
                   <div className="text-right font-mono text-sm font-semibold tabular-nums">
@@ -3250,7 +3265,7 @@ const ContractDetail = () => {
                 >
                   <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm">
                     <RadioGroupItem value="return_full" />
-                    <span className="flex-1">Return full deposit</span>
+                    <span className="flex-1">Schedule full deposit return</span>
                     <span className="font-mono text-xs font-semibold tabular-nums">
                       {fmtAed(closeDepositAmount)}
                     </span>
@@ -3326,20 +3341,34 @@ const ContractDetail = () => {
                         </span>
                       </div>
                       <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Remaining deposit to return</span>
+                        <span className="text-muted-foreground">Pending return</span>
                         <span className="font-mono font-semibold tabular-nums">
                           {fmtAed(closeDepositReturnAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Return due</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
                         </span>
                       </div>
                     </>
                   )}
                   {depositCloseAction === "return_full" && (
-                    <div className="flex justify-between gap-3">
-                      <span className="text-muted-foreground">Amount to return</span>
-                      <span className="font-mono font-semibold tabular-nums">
-                        {fmtAed(closeDepositReturnAmount)}
-                      </span>
-                    </div>
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Pending return</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {fmtAed(closeDepositReturnAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Return due</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
+                        </span>
+                      </div>
+                    </>
                   )}
                   {(depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
                     <>
@@ -3350,9 +3379,15 @@ const ContractDetail = () => {
                         </span>
                       </div>
                       <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Remaining deposit to return</span>
+                        <span className="text-muted-foreground">Pending return</span>
                         <span className="font-mono font-semibold tabular-nums">
                           {fmtAed(closeDepositReturnAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Return due</span>
+                        <span className="font-mono font-semibold tabular-nums">
+                          {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
                         </span>
                       </div>
                     </>
@@ -3360,6 +3395,58 @@ const ContractDetail = () => {
                 </div>
               </div>
             )}
+
+            <div className="grid gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Close Summary
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Outstanding before deposit</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {fmtAed(closeOutstandingBalance)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Deposit held</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {fmtAed(closeDepositAmount)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Applied to balance</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {fmtAed(closeDepositApplyAmount)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Retained</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {fmtAed(closeDepositRetainedAmount)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Pending return</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {fmtAed(closeDepositReturnAmount)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Return due date</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Final outstanding after closing</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {fmtAed(closeFinalOutstanding)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Vehicle status after return</span>
+                <span className="font-medium text-foreground">{closeVehicleStatus}</span>
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
