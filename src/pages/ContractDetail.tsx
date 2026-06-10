@@ -1249,6 +1249,8 @@ const ContractDetail = () => {
   const [depositCloseAction, setDepositCloseAction] = useState<DepositCloseAction>("return_full");
   const [depositRetainedAmount, setDepositRetainedAmount] = useState("");
   const [depositRetainReason, setDepositRetainReason] = useState("");
+  const [depositReturnDueDate, setDepositReturnDueDate] = useState("");
+  const [depositReturnDueDateEdited, setDepositReturnDueDateEdited] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [extendEndDate, setExtendEndDate] = useState("");
@@ -1626,7 +1628,10 @@ const ContractDetail = () => {
         : 0;
     const pendingReturnAmount = Math.max(0, depositAmount - retainedAmount - appliedAmount);
     const finalOutstandingAmount = Math.max(0, outstandingBalance - appliedAmount);
-    const returnDueDate = pendingReturnAmount > 0 ? addDaysToDateInput(closeReturnDate, 15) : null;
+    const returnDueDate =
+      pendingReturnAmount > 0
+        ? depositReturnDueDate || (!depositReturnDueDateEdited ? addDaysToDateInput(closeReturnDate, 15) : null)
+        : null;
     const needsRetainReason =
       depositAmount > 0 &&
       (depositCloseAction === "retain_partial" || depositCloseAction === "retain_full");
@@ -1649,6 +1654,11 @@ const ContractDetail = () => {
 
     if (needsRetainReason && depositRetainReason.trim() === "") {
       toast.error("Enter a reason for retaining the deposit.");
+      return;
+    }
+
+    if (pendingReturnAmount > 0 && !returnDueDate) {
+      toast.error("Select a deposit return due date.");
       return;
     }
 
@@ -2286,7 +2296,14 @@ const ContractDetail = () => {
     closeDepositAmount - closeDepositApplyAmount - closeDepositRetainedAmount,
   );
   const closeDepositReturnDueDate =
-    closeDepositReturnAmount > 0 ? addDaysToDateInput(closeReturnDate, 15) : null;
+    closeDepositReturnAmount > 0
+      ? depositReturnDueDate || (!depositReturnDueDateEdited ? addDaysToDateInput(closeReturnDate, 15) : null)
+      : null;
+  const closeDepositReturnDueLabel = closeDepositReturnDueDate
+    ? formatDate(closeDepositReturnDueDate)
+    : closeDepositReturnAmount > 0
+      ? "Select date"
+      : "No return due";
   const closeFinalOutstanding = Math.max(0, closeOutstandingBalance - closeDepositApplyAmount);
   const tomorrowDate = getTomorrowDateInput();
   const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
@@ -2357,13 +2374,16 @@ const ContractDetail = () => {
                   className="h-8 gap-1.5"
                   onClick={() => {
                     const d = contract.end_date;
-                    setCloseReturnDate(d.includes("T") ? d.slice(0, 16) : `${d}T00:00`);
+                    const defaultCloseDate = d.includes("T") ? d.slice(0, 16) : `${d}T00:00`;
+                    setCloseReturnDate(defaultCloseDate);
                     setCloseReceivedBy("");
                     setCloseFinalMileage("");
                     setCloseVehicleStatus("Available");
                     setDepositCloseAction("return_full");
                     setDepositRetainedAmount("");
                     setDepositRetainReason("");
+                    setDepositReturnDueDate(addDaysToDateInput(defaultCloseDate, 15));
+                    setDepositReturnDueDateEdited(false);
                     setShowCloseModal(true);
                   }}
                 >
@@ -3178,7 +3198,13 @@ const ContractDetail = () => {
               <input
                 type="datetime-local"
                 value={closeReturnDate}
-                onChange={(e) => setCloseReturnDate(e.target.value)}
+                onChange={(e) => {
+                  const nextCloseDate = e.target.value;
+                  setCloseReturnDate(nextCloseDate);
+                  if (!depositReturnDueDateEdited) {
+                    setDepositReturnDueDate(addDaysToDateInput(nextCloseDate, 15));
+                  }
+                }}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
             </div>
@@ -3331,6 +3357,26 @@ const ContractDetail = () => {
                   </div>
                 )}
 
+                {closeDepositReturnAmount > 0 && (
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Return Due Date
+                    </Label>
+                    <input
+                      type="date"
+                      value={depositReturnDueDate}
+                      onChange={(e) => {
+                        setDepositReturnDueDate(e.target.value);
+                        setDepositReturnDueDateEdited(true);
+                      }}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm tabular-nums ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Default is 15 days after close. Same-day return is allowed.
+                    </p>
+                  </div>
+                )}
+
                 <div className="grid gap-1 rounded-md bg-background px-3 py-2 text-xs">
                   {depositCloseAction === "apply_to_balance" && (
                     <>
@@ -3349,7 +3395,7 @@ const ContractDetail = () => {
                       <div className="flex justify-between gap-3">
                         <span className="text-muted-foreground">Return due</span>
                         <span className="font-mono font-semibold tabular-nums">
-                          {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
+                          {closeDepositReturnDueLabel}
                         </span>
                       </div>
                     </>
@@ -3365,7 +3411,7 @@ const ContractDetail = () => {
                       <div className="flex justify-between gap-3">
                         <span className="text-muted-foreground">Return due</span>
                         <span className="font-mono font-semibold tabular-nums">
-                          {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
+                          {closeDepositReturnDueLabel}
                         </span>
                       </div>
                     </>
@@ -3387,7 +3433,7 @@ const ContractDetail = () => {
                       <div className="flex justify-between gap-3">
                         <span className="text-muted-foreground">Return due</span>
                         <span className="font-mono font-semibold tabular-nums">
-                          {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
+                          {closeDepositReturnDueLabel}
                         </span>
                       </div>
                     </>
@@ -3433,7 +3479,7 @@ const ContractDetail = () => {
               <div className="flex justify-between gap-3">
                 <span className="text-muted-foreground">Return due date</span>
                 <span className="font-mono font-semibold tabular-nums">
-                  {closeDepositReturnDueDate ? formatDate(closeDepositReturnDueDate) : "No return due"}
+                  {closeDepositReturnDueLabel}
                 </span>
               </div>
               <div className="flex justify-between gap-3">
