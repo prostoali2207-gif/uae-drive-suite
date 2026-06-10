@@ -171,6 +171,8 @@ interface ContractFeeRow {
   category: FeeCategory;
   label: string;
   amount: number;
+  extension_start?: string | null;
+  extension_end?: string | null;
   created_at?: string | null;
 }
 
@@ -236,17 +238,13 @@ function formatTimeDisplay(time: string | null | undefined): string {
   return match ? `${match[1]}:${match[2]}` : "12:00";
 }
 
-function toDateTimeInput(date: string, time: string | null | undefined): string {
-  if (!date) return "";
-  return `${date.slice(0, 10)}T${formatTimeDisplay(time)}`;
-}
-
-function parseDateTime(date: string, time: string | null | undefined): Date {
-  return new Date(toDateTimeInput(date, time));
-}
-
-function formatDateTime(date: string, time: string | null | undefined): string {
-  return `${formatDate(date)} · ${formatTimeDisplay(time)}`;
+function getTomorrowDateInput(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const day = String(tomorrow.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
@@ -267,9 +265,16 @@ const parseRentalExtensionPeriod = (label: string) => {
 };
 
 const isRentalExtensionFee = (fee: ContractFeeRow) =>
+  Boolean(fee.extension_start) ||
   fee.label.trim().toLowerCase().startsWith(RENTAL_EXTENSION_LABEL.toLowerCase());
 
+const isStructuredRentalExtensionFee = (fee: ContractFeeRow) => Boolean(fee.extension_start);
+
 const formatRentalExtensionPeriod = (fee: ContractFeeRow) => {
+  if (fee.extension_start && fee.extension_end) {
+    return `${formatDate(fee.extension_start)} - ${formatDate(fee.extension_end)} - ${diffDays(fee.extension_start, fee.extension_end)} days`;
+  }
+
   const period = parseRentalExtensionPeriod(fee.label);
   if (!period) return "Rental extension";
   return `${formatDate(period.periodStart)} - ${formatDate(period.periodEnd)} - ${diffDays(period.periodStart, period.periodEnd)} days`;
@@ -646,13 +651,28 @@ const FinancialsAccordion = ({
         </EntryRow>
         {rentalFees.map((fee) => (
           <EntryRow key={fee.id}>
-            <span className="flex-1 truncate font-sans text-xs text-foreground/90">
-              {RENTAL_EXTENSION_LABEL}
-            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate font-sans text-xs text-foreground/90">
+                {RENTAL_EXTENSION_LABEL}
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {formatRentalExtensionPeriod(fee)}
+              </span>
+            </div>
             <StatusPill status={fee.id === latestRentalFeeId ? "Active" : "Closed"} />
             <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
               {fmtAed(Number(fee.amount))}
             </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Edit extension"
+              className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={() => onEditFeeAmount(fee)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
           </EntryRow>
         ))}
       </AccordionRow>
@@ -976,6 +996,16 @@ const FinancialsPanel = ({
               <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
                 {fmtAed(Number(fee.amount))}
               </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Edit extension"
+                className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                onClick={() => onEditFeeAmount(fee)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
             </FinancialLine>
           ))}
 
@@ -1165,7 +1195,7 @@ const ContractDetail = () => {
   const [closeVehicleStatus, setCloseVehicleStatus] = useState("Available");
   const [isClosing, setIsClosing] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
-  const [extendEndDateTime, setExtendEndDateTime] = useState("");
+  const [extendEndDate, setExtendEndDate] = useState("");
   const [extendAmount, setExtendAmount] = useState("");
   const [extendError, setExtendError] = useState("");
   const [isExtending, setIsExtending] = useState(false);
@@ -1187,6 +1217,7 @@ const ContractDetail = () => {
   const [deletingFee, setDeletingFee] = useState(false);
   const [amountEditTarget, setAmountEditTarget] = useState<AmountEditTarget | null>(null);
   const [amountEditValue, setAmountEditValue] = useState("");
+  const [amountEditExtensionEndDate, setAmountEditExtensionEndDate] = useState("");
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
 
   const navigate = useNavigate();
@@ -1198,7 +1229,7 @@ const ContractDetail = () => {
     }
     const { data, error } = await (supabase as any)
       .from("contract_fees")
-      .select("id, category, label, amount, created_at")
+      .select("id, category, label, amount, extension_start, extension_end, created_at")
       .eq("contract_id", contract.id)
       .order("created_at", { ascending: false });
 
@@ -1353,8 +1384,6 @@ const ContractDetail = () => {
     return { charges, credits, outstanding };
   }, [ledger, contract, contractFees]);
 
-  const extendButtonLabel = "Extend and add fee";
-
   const saveNotes = async () => {
     if (!contract) return;
     setSavingNotes(true);
@@ -1374,7 +1403,7 @@ const ContractDetail = () => {
 
   const openExtendModal = () => {
     if (!contract) return;
-    setExtendEndDateTime(toDateTimeInput(contract.end_date, contract.end_time));
+    setExtendEndDate("");
     setExtendAmount("");
     setExtendError("");
     setShowExtendModal(true);
@@ -1384,10 +1413,13 @@ const ContractDetail = () => {
     if (!contract) return;
     setExtendError("");
 
-    const currentEnd = parseDateTime(contract.end_date, contract.end_time);
-    const newEnd = new Date(extendEndDateTime);
-    if (!extendEndDateTime || Number.isNaN(newEnd.getTime()) || newEnd <= currentEnd) {
-      setExtendError("New end date and time must be later than the current end.");
+    if (!extendEndDate) {
+      setExtendError("Select a new end date.");
+      return;
+    }
+
+    if (extendEndDate <= contract.end_date) {
+      setExtendError("New end date must be later than the current end date.");
       return;
     }
 
@@ -1398,8 +1430,9 @@ const ContractDetail = () => {
     }
 
     setIsExtending(true);
-    const newEndDate = extendEndDateTime.slice(0, 10);
-    const newEndTime = formatTimeForDb(extendEndDateTime.slice(11, 16));
+    const extensionStart = contract.end_date;
+    const extensionEnd = extendEndDate;
+    const newEndTime = formatTimeForDb(contract.end_time);
 
     let overlap = null;
     try {
@@ -1407,7 +1440,7 @@ const ContractDetail = () => {
         carId: contract.car_id,
         startDate: contract.start_date,
         startTime: contract.start_time,
-        endDate: newEndDate,
+        endDate: extensionEnd,
         endTime: newEndTime,
         excludeContractId: contract.id,
         operation: "contract-extension",
@@ -1438,8 +1471,10 @@ const ContractDetail = () => {
       .insert({
         contract_id: contract.id,
         category: RENTAL_EXTENSION_CATEGORY,
-        label: buildRentalExtensionLabel(contract.end_date, newEndDate),
+        label: buildRentalExtensionLabel(extensionStart, extensionEnd),
         amount: Number(extensionAmount),
+        extension_start: extensionStart,
+        extension_end: extensionEnd,
         owner_id: userId,
       })
       .select("id")
@@ -1457,8 +1492,7 @@ const ContractDetail = () => {
     const { error: contractError } = await supabase
       .from("contracts")
       .update({
-        end_date: newEndDate,
-        end_time: newEndTime,
+        end_date: extensionEnd,
       } as never)
       .eq("id", contract.id);
 
@@ -1480,6 +1514,7 @@ const ContractDetail = () => {
 
     toast.success("Contract extended");
     setShowExtendModal(false);
+    setExtendEndDate("");
     setExtendAmount("");
     await Promise.all([fetchData(), fetchContractFees()]);
     setFeeRefreshKey((key) => key + 1);
@@ -1626,12 +1661,18 @@ const ContractDetail = () => {
   const openAmountEditDialog = (target: AmountEditTarget) => {
     setAmountEditTarget(target);
     setAmountEditValue(String(target.amount));
+    setAmountEditExtensionEndDate(
+      target.type === "fee" && isStructuredRentalExtensionFee(target.fee)
+        ? target.fee.extension_end ?? ""
+        : "",
+    );
   };
 
   const closeAmountEditDialog = () => {
     if (savingAmountEdit) return;
     setAmountEditTarget(null);
     setAmountEditValue("");
+    setAmountEditExtensionEndDate("");
   };
 
   const handleSaveAmountEdit = async () => {
@@ -1705,6 +1746,57 @@ const ContractDetail = () => {
       return;
     }
 
+    if (isStructuredRentalExtensionFee(amountEditTarget.fee)) {
+      const extensionStart = amountEditTarget.fee.extension_start;
+      if (!extensionStart || !amountEditExtensionEndDate) {
+        setSavingAmountEdit(false);
+        toast.error("Select an extension end date");
+        return;
+      }
+
+      if (amountEditExtensionEndDate <= extensionStart) {
+        setSavingAmountEdit(false);
+        toast.error("End date must be later than the extension start");
+        return;
+      }
+
+      const nextLabel = buildRentalExtensionLabel(extensionStart, amountEditExtensionEndDate);
+      const { error } = await (supabase as any)
+        .from("contract_fees")
+        .update({
+          extension_end: amountEditExtensionEndDate,
+          amount: nextAmount,
+          label: nextLabel,
+        })
+        .eq("id", amountEditTarget.fee.id);
+
+      if (error) {
+        setSavingAmountEdit(false);
+        toast.error("Failed to update extension");
+        return;
+      }
+
+      setContractFees((prev) =>
+        prev.map((fee) =>
+          fee.id === amountEditTarget.fee.id
+            ? {
+                ...fee,
+                amount: nextAmount,
+                extension_end: amountEditExtensionEndDate,
+                label: nextLabel,
+              }
+            : fee,
+        ),
+      );
+      await fetchContractFees();
+      setSavingAmountEdit(false);
+      setAmountEditTarget(null);
+      setAmountEditValue("");
+      setAmountEditExtensionEndDate("");
+      toast.success("Extension updated");
+      return;
+    }
+
     const { error } = await (supabase as any)
       .from("contract_fees")
       .update({ amount: nextAmount })
@@ -1725,6 +1817,7 @@ const ContractDetail = () => {
     setSavingAmountEdit(false);
     setAmountEditTarget(null);
     setAmountEditValue("");
+    setAmountEditExtensionEndDate("");
     toast.success("Fee amount updated");
   };
 
@@ -1868,15 +1961,14 @@ const ContractDetail = () => {
       .reduce((sum, charge) => sum + Number(charge.amount), 0),
     fees: contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0),
   };
-  const extensionPreviewEndDate = extendEndDateTime ? extendEndDateTime.slice(0, 10) : "";
-  const extensionPreviewDays =
-    extensionPreviewEndDate && extensionPreviewEndDate >= contract.end_date
-      ? diffDays(contract.end_date, extensionPreviewEndDate)
-      : 0;
-  const extensionPeriodPreview =
-    extensionPreviewEndDate && extensionPreviewDays >= 0
-      ? `${formatDate(contract.end_date)} - ${formatDate(extensionPreviewEndDate)} - ${extensionPreviewDays} days`
-      : "Select a new end date";
+  const tomorrowDate = getTomorrowDateInput();
+  const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
+  const extensionPreviewCharge = Number(extendAmount);
+  const extensionConfirmLabel = extendEndDate
+    ? `Confirm Extension → ${formatDate(extendEndDate)}`
+    : "Confirm Extension";
+  const amountEditIsExtension =
+    amountEditTarget?.type === "fee" && isStructuredRentalExtensionFee(amountEditTarget.fee);
 
   return (
     <DashboardLayout title={contractNumber} subtitle="Contract details">
@@ -2422,26 +2514,41 @@ const ContractDetail = () => {
       >
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
-            <DialogTitle>Edit Amount</DialogTitle>
+            <DialogTitle>{amountEditIsExtension ? "Edit Extension" : "Edit Amount"}</DialogTitle>
             <DialogDescription className="text-xs">
               {amountEditTarget?.label ?? "Financial entry"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="edit-financial-amount" className="text-xs">
-              Amount (AED)
-            </Label>
-            <Input
-              id="edit-financial-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={amountEditValue}
-              onChange={(event) => setAmountEditValue(event.target.value)}
-              className="font-mono tabular-nums"
-              placeholder="0.00"
-            />
+          <div className="space-y-3 py-2">
+            {amountEditIsExtension && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-extension-end-date" className="text-xs">
+                  End date
+                </Label>
+                <Input
+                  id="edit-extension-end-date"
+                  type="date"
+                  value={amountEditExtensionEndDate}
+                  onChange={(event) => setAmountEditExtensionEndDate(event.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="edit-financial-amount" className="text-xs">
+                {amountEditIsExtension ? "Amount" : "Amount (AED)"}
+              </Label>
+              <Input
+                id="edit-financial-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={amountEditValue}
+                onChange={(event) => setAmountEditValue(event.target.value)}
+                className="font-mono tabular-nums"
+                placeholder="0.00"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -2624,22 +2731,14 @@ const ContractDetail = () => {
           <div className="grid gap-4 py-2">
             <div className="grid gap-1.5">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Current end date
-              </Label>
-              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                {formatDateTime(contract.end_date, contract.end_time)}
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                 New end date
               </Label>
               <input
-                type="datetime-local"
-                value={extendEndDateTime}
+                type="date"
+                min={tomorrowDate}
+                value={extendEndDate}
                 onChange={(e) => {
-                  setExtendEndDateTime(e.target.value);
+                  setExtendEndDate(e.target.value);
                   setExtendError("");
                 }}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -2648,7 +2747,7 @@ const ContractDetail = () => {
 
             <div className="grid gap-1.5">
               <Label htmlFor="extension-amount" className="text-xs uppercase tracking-wide text-muted-foreground">
-                Extension amount (AED)
+                Amount (AED)
               </Label>
               <Input
                 id="extension-amount"
@@ -2666,12 +2765,24 @@ const ContractDetail = () => {
               />
             </div>
 
-            <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Period
-              </Label>
-              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
-                {extensionPeriodPreview}
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+              <div className="grid gap-1 font-mono text-muted-foreground">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Period</span>
+                  <span className="text-right text-foreground">
+                    {formatDate(contract.end_date)} → {extendEndDate ? formatDate(extendEndDate) : "Select date"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Days</span>
+                  <span className="text-right text-foreground">{extensionPreviewDays}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Charge</span>
+                  <span className="text-right text-foreground">
+                    {Number.isFinite(extensionPreviewCharge) ? fmtAed(extensionPreviewCharge) : "AED 0"}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -2687,10 +2798,10 @@ const ContractDetail = () => {
               Cancel
             </Button>
             <Button
-              disabled={isExtending || !extendEndDateTime || !extendAmount}
+              disabled={isExtending || !extendEndDate || !extendAmount}
               onClick={handleExtendContract}
             >
-              {isExtending ? "Saving..." : extendButtonLabel}
+              {isExtending ? "Saving..." : extensionConfirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>
