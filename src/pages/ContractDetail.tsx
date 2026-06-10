@@ -183,6 +183,18 @@ type AmountEditTarget =
   | { type: "payment"; label: string; amount: number; payment: PaymentRow }
   | { type: "fee"; label: string; amount: number; fee: ContractFeeRow };
 
+type ContractFinancialTotals = {
+  charges: number;
+  credits: number;
+  outstanding: number;
+  overdue: number;
+};
+
+type ContractPaymentAllocationLine = PaymentAllocationLine & {
+  dueDate?: string | null;
+  overdueImmediately?: boolean;
+};
+
 type LedgerEntry = {
   id: string;
   date: string;
@@ -246,6 +258,14 @@ function getTomorrowDateInput(): string {
   const year = tomorrow.getFullYear();
   const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
   const day = String(tomorrow.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayDateInput(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -511,7 +531,7 @@ type FinancialsAccordionProps = {
   fines: FineRow[];
   salik: SalikRow[];
   contractFees: ContractFeeRow[];
-  totals: { charges: number; credits: number; outstanding: number };
+  totals: ContractFinancialTotals;
   onEditRentalAmount: () => void;
   onEditPaymentAmount: (payment: PaymentRow) => void;
   onEditFeeAmount: (fee: ContractFeeRow) => void;
@@ -856,7 +876,7 @@ type FinancialsPanelProps = {
   fines: FineRow[];
   salik: SalikRow[];
   contractFees: ContractFeeRow[];
-  totals: { charges: number; credits: number; outstanding: number };
+  totals: ContractFinancialTotals;
   onAddFee: () => void;
   onAddPayment: () => void;
   onEditRentalAmount: () => void;
@@ -952,7 +972,7 @@ const FinancialsPanel = ({
   return (
     <>
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="rounded-md border border-border bg-muted/30 p-3">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Charged</div>
             <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-foreground">
@@ -965,20 +985,33 @@ const FinancialsPanel = ({
               {fmtAed(totals.credits)}
             </div>
           </div>
-          <div
-            className={cn(
-              "rounded-md border p-3",
-              totals.outstanding > 0 ? "border-red-900/20 bg-red-950/10" : "border-border bg-muted/30",
-            )}
-          >
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Due</div>
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Outstanding</div>
             <div
               className={cn(
                 "mt-0.5 font-mono text-base font-semibold tabular-nums",
-                totals.outstanding > 0 ? "text-[#A32D2D]" : "text-foreground",
+                totals.outstanding > 0 && totals.outstanding === totals.overdue
+                  ? "text-[#A32D2D]"
+                  : "text-foreground",
               )}
             >
               {fmtAed(totals.outstanding)}
+            </div>
+          </div>
+          <div
+            className={cn(
+              "rounded-md border p-3",
+              totals.overdue > 0 ? "border-red-900/20 bg-red-950/10" : "border-border bg-muted/30",
+            )}
+          >
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Overdue</div>
+            <div
+              className={cn(
+                "mt-0.5 font-mono text-base font-semibold tabular-nums",
+                totals.overdue > 0 ? "text-[#A32D2D]" : "text-muted-foreground",
+              )}
+            >
+              {fmtAed(totals.overdue)}
             </div>
           </div>
         </div>
@@ -1383,7 +1416,7 @@ const ContractDetail = () => {
     const deposit = Number(contract?.deposit_amount ?? 0);
     // Outstanding excludes the refundable deposit
     const outstanding = Math.max(0, charges - deposit - credits);
-    return { charges, credits, outstanding };
+    return { charges, credits, outstanding, overdue: 0 };
   }, [ledger, contract, contractFees]);
 
   const saveNotes = async () => {
@@ -1951,7 +1984,6 @@ const ContractDetail = () => {
   }
 
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
-  const isOverdue = totals.outstanding > 0 && contract.status !== "Cancelled";
   const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());
   const rentalFeeLines = contractFees
     .filter(isRentalExtensionFee)
@@ -1961,15 +1993,17 @@ const ContractDetail = () => {
       return aTime - bTime;
     });
   const manualFeeLines = contractFees.filter((fee) => !isRentalExtensionFee(fee));
-  const grossPaymentAllocationLines: PaymentAllocationLine[] = [
+  const grossPaymentAllocationLines: ContractPaymentAllocationLine[] = [
     {
       id: `rental-${contract.id}`,
       category: "rental",
       label: "Original Contract",
       due: Number(contract.total_amount),
+      dueDate: contract.end_date,
     },
     ...rentalFeeLines.map((fee, index) => {
       const isCurrent = index === rentalFeeLines.length - 1;
+      const parsedPeriod = parseRentalExtensionPeriod(fee.label);
       const label =
         isCurrent
           ? "Current Period"
@@ -1981,6 +2015,7 @@ const ContractDetail = () => {
         category: "rental" as const,
         label,
         due: Number(fee.amount),
+        dueDate: fee.extension_end ?? parsedPeriod?.periodEnd ?? null,
       };
     }),
     ...manualFeeLines.map((fee) => ({
@@ -1988,6 +2023,7 @@ const ContractDetail = () => {
       category: "fees" as const,
       label: fee.label,
       due: Number(fee.amount),
+      overdueImmediately: true,
     })),
     ...fines
       .filter((fine) => fine.status.toLowerCase() !== "paid")
@@ -1996,6 +2032,7 @@ const ContractDetail = () => {
         category: "fines" as const,
         label: fine.fine_number ? `${fine.fine_type} ${fine.fine_number}` : fine.fine_type,
         due: Number(fine.amount),
+        overdueImmediately: true,
       })),
     ...salik
       .filter((charge) => charge.status.toLowerCase() !== "paid")
@@ -2004,6 +2041,7 @@ const ContractDetail = () => {
         category: "salik" as const,
         label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
         due: Number(charge.amount),
+        overdueImmediately: true,
       })),
   ];
   const paidByLine = new Map(grossPaymentAllocationLines.map((line) => [line.id, 0]));
@@ -2061,6 +2099,18 @@ const ContractDetail = () => {
       due: Math.max(0, Number(line.due) - (paidByLine.get(line.id) ?? 0)),
     }))
     .filter((line) => line.due > 0.01);
+  const todayDate = getTodayDateInput();
+  // contract_fees, fines, and Salik do not carry due dates, so non-rental unpaid charges are treated as overdue once attached.
+  const overdueBalance = paymentAllocationLines.reduce((sum, line) => {
+    const isPastRentalPeriod = line.category === "rental" && Boolean(line.dueDate) && line.dueDate < todayDate;
+    const isImmediateCharge = line.category !== "rental" && line.overdueImmediately;
+    return isPastRentalPeriod || isImmediateCharge ? sum + Number(line.due) : sum;
+  }, 0);
+  const financialTotals: ContractFinancialTotals = {
+    ...totals,
+    overdue: Math.min(totals.outstanding, Math.max(0, overdueBalance)),
+  };
+  const isOverdue = financialTotals.overdue > 0 && contract.status !== "Cancelled";
   const tomorrowDate = getTomorrowDateInput();
   const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
   const extensionPreviewCharge = Number(extendAmount);
@@ -2277,7 +2327,7 @@ const ContractDetail = () => {
                     Total Charges
                   </div>
                   <div className="mt-0.5 text-base font-semibold tabular-nums text-foreground">
-                    {fmtAed(totals.charges - Number(contract.deposit_amount))}
+                    {fmtAed(financialTotals.charges - Number(contract.deposit_amount))}
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
@@ -2285,7 +2335,7 @@ const ContractDetail = () => {
                     Paid
                   </div>
                   <div className="mt-0.5 text-base font-semibold tabular-nums text-tint-green-foreground">
-                    {fmtAed(totals.credits)}
+                    {fmtAed(financialTotals.credits)}
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
@@ -2311,7 +2361,7 @@ const ContractDetail = () => {
                       isOverdue ? "text-tint-rose-foreground" : "text-foreground",
                     )}
                   >
-                    {fmtAed(totals.outstanding)}
+                    {fmtAed(financialTotals.outstanding)}
                   </div>
                 </div>
               </div>
@@ -2327,7 +2377,7 @@ const ContractDetail = () => {
               fines={fines}
               salik={salik}
               contractFees={contractFees}
-              totals={totals}
+              totals={financialTotals}
               onAddFee={() => setShowFeeModal(true)}
               onAddPayment={() => setShowPaymentModal(true)}
               onEditRentalAmount={() =>
@@ -2361,7 +2411,7 @@ const ContractDetail = () => {
               onClose={() => setShowPaymentModal(false)}
               onSuccess={fetchData}
               contractId={contract.id}
-              balanceDue={totals.outstanding}
+              balanceDue={financialTotals.outstanding}
               clientId={contract.client_id}
               allocationLines={paymentAllocationLines}
               ledgerEntries={ledger.map(e => ({
@@ -2578,7 +2628,7 @@ const ContractDetail = () => {
                     <div className="text-xs text-muted-foreground">Now</div>
                     <div className="flex items-center gap-1.5 text-sm font-medium text-tint-rose-foreground">
                       <AlertCircle className="h-3.5 w-3.5" />
-                      Outstanding balance: {fmtAed(totals.outstanding)}
+                      Outstanding balance: {fmtAed(financialTotals.outstanding)}
                     </div>
                   </li>
                 )}
