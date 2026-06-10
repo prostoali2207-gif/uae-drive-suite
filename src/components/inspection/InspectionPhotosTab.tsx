@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { cn } from "@/lib/utils";
 
 type InspectionType = "pickup" | "return";
@@ -121,11 +122,12 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
     setSlotState(type, slot, { uploading: true, error: "" });
     const key = stateKey(type, slot);
     const path = `${contractId}/${type}/${slotKey(slot)}.jpg`;
+    const uploadFile = await prepareImageForStorageUpload(file);
 
     const { error: uploadError } = await supabase.storage
       .from("inspection-photos")
-      .upload(path, file, {
-        contentType: file.type || "image/jpeg",
+      .upload(path, uploadFile, {
+        contentType: uploadFile.type || "image/jpeg",
         upsert: true,
       });
 

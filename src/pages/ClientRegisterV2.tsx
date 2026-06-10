@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { COUNTRIES, PRIORITY_COUNTRIES } from "@/data/countries";
+import { prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -279,7 +280,8 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
     }
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() ?? "bin";
+      const uploadFile = await prepareImageForStorageUpload(file);
+      const ext = uploadFile.name.split(".").pop() ?? "bin";
       const path = `${Date.now()}.${ext}`;
       console.info("[ClientRegisterV2] document upload started", {
         field: label,
@@ -288,7 +290,7 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
       });
       const { error } = await supabase.storage
         .from("client-documents")
-        .upload(path, file, { upsert: false });
+        .upload(path, uploadFile, { upsert: false });
       if (error) {
         logBackendError("[ClientRegisterV2] storage error", error);
         return;

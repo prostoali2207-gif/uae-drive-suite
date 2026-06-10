@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import { prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { toast } from "sonner";
 import { SignContractModal } from "@/components/SignContractModal";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
@@ -385,10 +386,11 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
     setErrors((prev) => ({ ...prev, [slot]: "" }));
 
     const path = `${contractId}/pickup/${pickupSlotKey(slot)}.jpg`;
+    const uploadFile = await prepareImageForStorageUpload(file);
     const { error: uploadError } = await supabase.storage
       .from("inspection-photos")
-      .upload(path, file, {
-        contentType: file.type || "image/jpeg",
+      .upload(path, uploadFile, {
+        contentType: uploadFile.type || "image/jpeg",
         upsert: true,
       });
 

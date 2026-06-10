@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { toast } from "sonner";
 
 interface Profile {
@@ -98,11 +99,12 @@ const Settings = () => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
     setUploading(true);
-    const ext = file.name.split(".").pop() || "png";
+    const uploadFile = await prepareImageForStorageUpload(file);
+    const ext = uploadFile.name.split(".").pop() || "jpg";
     const path = `${user.id}/logo-${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage
       .from("company-logos")
-      .upload(path, file, { upsert: true, contentType: file.type });
+      .upload(path, uploadFile, { upsert: true, contentType: uploadFile.type });
     if (upErr) {
       setUploading(false);
       toast.error("Upload failed: " + upErr.message);

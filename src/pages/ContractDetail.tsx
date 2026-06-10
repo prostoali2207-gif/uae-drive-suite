@@ -1134,6 +1134,7 @@ const FinancialsPanel = ({
     depositStatus !== "Returned" &&
     depositInfo.pendingReturn > 0 &&
     hasUnverifiedAdditionalCharges;
+  const canAddPayment = contract.status.toLowerCase() !== "closed" || totals.outstanding > 0;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
 
@@ -1300,12 +1301,12 @@ const FinancialsPanel = ({
         <FinancialSection
           title="Payments"
           meta={`${payments.length} payments - ${fmtAed(paymentsTotal)}`}
-          action={
+          action={canAddPayment ? (
             <Button size="sm" className="h-8 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={onAddPayment}>
               <Plus className="h-3.5 w-3.5" />
               Add Payment
             </Button>
-          }
+          ) : undefined}
         >
           {payments.length === 0 ? (
             <FinancialLine className="text-xs text-muted-foreground">No payments recorded.</FinancialLine>
@@ -2463,6 +2464,7 @@ const ContractDetail = () => {
   }
 
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
+  const isContractClosed = contract.status.toLowerCase() === "closed";
   const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());
   const rentalFeeLines = contractFees
     .filter(isRentalExtensionFee)
@@ -2695,28 +2697,30 @@ const ContractDetail = () => {
                     Extend
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5"
-                  onClick={() => {
-                    const d = contract.end_date;
-                    const defaultCloseDate = d.includes("T") ? d.slice(0, 16) : `${d}T00:00`;
-                    setCloseReturnDate(defaultCloseDate);
-                    setCloseReceivedBy("");
-                    setCloseFinalMileage("");
-                    setCloseVehicleStatus("Available");
-                    setDepositCloseAction("return_full");
-                    setDepositRetainedAmount("");
-                    setDepositRetainReason("");
-                    setDepositReturnDueDate(addDaysToDateInput(defaultCloseDate, 15));
-                    setDepositReturnDueDateEdited(false);
-                    setShowCloseModal(true);
-                  }}
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Close
-                </Button>
+                {!isContractClosed && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => {
+                      const d = contract.end_date;
+                      const defaultCloseDate = d.includes("T") ? d.slice(0, 16) : `${d}T00:00`;
+                      setCloseReturnDate(defaultCloseDate);
+                      setCloseReceivedBy("");
+                      setCloseFinalMileage("");
+                      setCloseVehicleStatus("Available");
+                      setDepositCloseAction("return_full");
+                      setDepositRetainedAmount("");
+                      setDepositRetainReason("");
+                      setDepositReturnDueDate(addDaysToDateInput(defaultCloseDate, 15));
+                      setDepositReturnDueDateEdited(false);
+                      setShowCloseModal(true);
+                    }}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Close
+                  </Button>
+                )}
                 <Button size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
                   <Pencil className="h-3.5 w-3.5" />
                   Edit

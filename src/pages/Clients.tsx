@@ -34,6 +34,7 @@ import { ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { previewLegacyClientImport, type LegacyClientImportPreview } from "@/lib/clientImport";
+import { prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 import {
   AlertDialog,
@@ -1016,10 +1017,11 @@ const Clients = () => {
                               onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
-                                  const path = `client-documents/${Date.now()}_${file.name}`;
+                                  const uploadFile = await prepareImageForStorageUpload(file);
+                                  const path = `client-documents/${Date.now()}_${uploadFile.name}`;
                                   const { data: uploadData, error: uploadError } = await supabase.storage
                                     .from("client-documents")
-                                    .upload(path, file, { upsert: true });
+                                    .upload(path, uploadFile, { upsert: true });
                                   
                                   if (!uploadError) {
                                     const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
@@ -1048,10 +1050,11 @@ const Clients = () => {
                                 onChange={async (e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
-                                    const path = `client-documents/${Date.now()}_${file.name}`;
+                                    const uploadFile = await prepareImageForStorageUpload(file);
+                                    const path = `client-documents/${Date.now()}_${uploadFile.name}`;
                                     const { data: uploadData, error: uploadError } = await supabase.storage
                                       .from("client-documents")
-                                      .upload(path, file, { upsert: true });
+                                      .upload(path, uploadFile, { upsert: true });
                                     
                                     if (!uploadError) {
                                       const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
@@ -1076,10 +1079,11 @@ const Clients = () => {
                                 onChange={async (e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
-                                    const path = `client-documents/${Date.now()}_${file.name}`;
+                                    const uploadFile = await prepareImageForStorageUpload(file);
+                                    const path = `client-documents/${Date.now()}_${uploadFile.name}`;
                                     const { data: uploadData, error: uploadError } = await supabase.storage
                                       .from("client-documents")
-                                      .upload(path, file, { upsert: true });
+                                      .upload(path, uploadFile, { upsert: true });
                                     
                                     if (!uploadError) {
                                       const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
@@ -1107,10 +1111,11 @@ const Clients = () => {
                             onChange={async (e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                const path = `client-documents/${Date.now()}_${file.name}`;
+                                const uploadFile = await prepareImageForStorageUpload(file);
+                                const path = `client-documents/${Date.now()}_${uploadFile.name}`;
                                 const { data: uploadData, error: uploadError } = await supabase.storage
                                   .from("client-documents")
-                                  .upload(path, file, { upsert: true });
+                                  .upload(path, uploadFile, { upsert: true });
                                   
                                 if (!uploadError) {
                                   const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
@@ -1136,10 +1141,11 @@ const Clients = () => {
                             onChange={async (e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                const path = `client-documents/${Date.now()}_${file.name}`;
+                                const uploadFile = await prepareImageForStorageUpload(file);
+                                const path = `client-documents/${Date.now()}_${uploadFile.name}`;
                                 const { data: uploadData, error: uploadError } = await supabase.storage
                                   .from("client-documents")
-                                  .upload(path, file, { upsert: true });
+                                  .upload(path, uploadFile, { upsert: true });
                                   
                                 if (!uploadError) {
                                   const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
