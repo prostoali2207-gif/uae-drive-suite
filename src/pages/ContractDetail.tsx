@@ -455,6 +455,13 @@ type SavedPaymentAllocations = {
   lines?: Record<string, number>;
 };
 
+type PaymentAllocationDisplayLine = {
+  id: string;
+  category: "rental" | "fines" | "salik" | "fees";
+  label: string;
+  amount: number;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -477,6 +484,93 @@ const readSavedPaymentAllocations = (value: unknown): SavedPaymentAllocations | 
     fees: Number(value.fees) || undefined,
     lines,
   };
+};
+
+const PAYMENT_ALLOCATION_CATEGORY_LABELS: Record<PaymentAllocationDisplayLine["category"], string> = {
+  rental: "Rental",
+  fees: "Other Fees",
+  fines: "Traffic Fines",
+  salik: "Salik",
+};
+
+const buildPaymentAllocationDisplay = (
+  payment: PaymentRow,
+  lineLookup: Map<string, Pick<PaymentAllocationDisplayLine, "category" | "label">>,
+): PaymentAllocationDisplayLine[] | null => {
+  const savedAllocations = readSavedPaymentAllocations(payment.allocations);
+  if (!savedAllocations) return null;
+
+  const lines: PaymentAllocationDisplayLine[] = [];
+  let hasUnresolvedLine = false;
+
+  if (savedAllocations.lines && Object.keys(savedAllocations.lines).length > 0) {
+    Object.entries(savedAllocations.lines).forEach(([lineId, value]) => {
+      const amount = Number(value);
+      if (!Number.isFinite(amount) || amount <= 0) return;
+
+      const knownLine = lineLookup.get(lineId);
+      if (!knownLine) {
+        hasUnresolvedLine = true;
+        return;
+      }
+
+      lines.push({
+        id: lineId,
+        category: knownLine.category,
+        label: knownLine.label,
+        amount,
+      });
+    });
+    if (hasUnresolvedLine) return null;
+  } else {
+    (["rental", "fees", "fines", "salik"] as const).forEach((category) => {
+      const amount = Number(savedAllocations[category] ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      lines.push({
+        id: category,
+        category,
+        label: PAYMENT_ALLOCATION_CATEGORY_LABELS[category],
+        amount,
+      });
+    });
+  }
+
+  if (lines.length === 0) return null;
+
+  const allocationTotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  if (Math.abs(allocationTotal - Number(payment.amount)) > 0.01) return null;
+
+  return lines;
+};
+
+const PaymentAllocationDetails = ({
+  payment,
+  lineLookup,
+}: {
+  payment: PaymentRow;
+  lineLookup: Map<string, Pick<PaymentAllocationDisplayLine, "category" | "label">>;
+}) => {
+  const allocationLines = buildPaymentAllocationDisplay(payment, lineLookup);
+
+  return (
+    <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-[11px]">
+      <div className="mb-1 font-medium text-muted-foreground">Applied to:</div>
+      {allocationLines ? (
+        <div className="grid gap-1">
+          {allocationLines.map((line) => (
+            <div key={line.id} className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-foreground/85">{line.label}</span>
+              <span className="shrink-0 font-mono font-semibold tabular-nums text-foreground">
+                {fmtAed(line.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-muted-foreground">Allocation details not available</div>
+      )}
+    </div>
+  );
 };
 
 const FEE_CATEGORIES: { value: FeeCategory; label: string; defaultLabel: string }[] = [
@@ -1115,6 +1209,43 @@ const FinancialsPanel = ({
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
   const otherFees = contractFees.filter((fee) => !fee.label?.startsWith("Rental Extension:"));
   const otherTotal = otherFees.reduce((s, o) => s + Number(o.amount), 0);
+  const paymentAllocationLineLookup = useMemo(() => {
+    const lookup = new Map<string, Pick<PaymentAllocationDisplayLine, "category" | "label">>();
+    lookup.set(`rental-${contract.id}`, { category: "rental", label: "Original Contract" });
+
+    rentalExtensions.forEach((fee, index) => {
+      const isCurrent = index === rentalExtensions.length - 1;
+      const label =
+        isCurrent
+          ? "Current Period"
+          : rentalExtensions.length > 2
+            ? `Previous Period ${index + 1}`
+            : "Previous Period";
+      lookup.set(`fee-${fee.id}`, { category: "rental", label });
+    });
+
+    contractFees
+      .filter((fee) => !fee.label?.startsWith("Rental Extension:"))
+      .forEach((fee) => {
+        lookup.set(`fee-${fee.id}`, { category: "fees", label: fee.label });
+      });
+
+    fines.forEach((fine) => {
+      lookup.set(`fine-${fine.id}`, {
+        category: "fines",
+        label: fine.fine_number ? `${fine.fine_type} ${fine.fine_number}` : fine.fine_type,
+      });
+    });
+
+    salik.forEach((charge) => {
+      lookup.set(`salik-${charge.id}`, {
+        category: "salik",
+        label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+      });
+    });
+
+    return lookup;
+  }, [contract.id, contractFees, fines, rentalExtensions, salik]);
   const chargedTotal = rentalTotal + otherTotal + finesTotal + salikTotal;
   const depositInfo = getDepositReconciliationInfo(contract);
   const rawDepositStatus = (contract as any).deposit_status;
@@ -1312,39 +1443,44 @@ const FinancialsPanel = ({
             <FinancialLine className="text-xs text-muted-foreground">No payments recorded.</FinancialLine>
           ) : (
             payments.map((payment) => (
-              <FinancialLine key={payment.id}>
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                  <Receipt className="h-4 w-4 text-muted-foreground" />
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-xs font-medium text-foreground">{payment.method}</span>
-                  <span className="font-mono text-[11px] text-muted-foreground">{formatDate(payment.payment_date)}</span>
+              <div key={payment.id} className="px-4 py-3">
+                <div className="flex min-h-10 items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                    <Receipt className="h-4 w-4 text-muted-foreground" />
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-xs font-medium text-foreground">{payment.method}</span>
+                    <span className="font-mono text-[11px] text-muted-foreground">{formatDate(payment.payment_date)}</span>
+                  </div>
+                  <FinancialBadge status={payment.status} />
+                  <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-green-foreground">
+                    {fmtAed(Number(payment.amount))}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Edit payment amount"
+                    className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                    onClick={() => onEditPaymentAmount(payment)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Delete payment"
+                    className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                    onClick={() => onDeletePayment(payment)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                <FinancialBadge status={payment.status} />
-                <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-green-foreground">
-                  {fmtAed(Number(payment.amount))}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Edit payment amount"
-                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                  onClick={() => onEditPaymentAmount(payment)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Delete payment"
-                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                  onClick={() => onDeletePayment(payment)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </FinancialLine>
+                <div className="pl-11">
+                  <PaymentAllocationDetails payment={payment} lineLookup={paymentAllocationLineLookup} />
+                </div>
+              </div>
             ))
           )}
         </FinancialSection>
