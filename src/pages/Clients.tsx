@@ -34,7 +34,7 @@ import { ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { previewLegacyClientImport, type LegacyClientImportPreview } from "@/lib/clientImport";
-import { prepareImageForStorageUpload } from "@/lib/imageCompression";
+import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 import {
   AlertDialog,
@@ -103,6 +103,13 @@ interface ClientRegistrationRequest {
   created_client_id: string | null;
   created_at: string;
 }
+
+type ClientDocumentUrlField =
+  | "passport_photo_url"
+  | "eid_front_url"
+  | "eid_back_url"
+  | "license_front_url"
+  | "license_back_url";
 
 function toSupabaseMessage(error: { code?: string; message?: string } | null): string {
   if (error?.code === "PGRST205") {
@@ -203,6 +210,24 @@ const Clients = () => {
   const [reviewingRequest, setReviewingRequest] = useState<ClientRegistrationRequest | null>(null);
   const [reviewActionLoading, setReviewActionLoading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+
+  const uploadClientDocument = async (file: File | undefined, field: ClientDocumentUrlField) => {
+    if (!file) return;
+
+    const uploadFile = await prepareImageForStorageUpload(file);
+    const path = `client-documents/${Date.now()}_${uploadFile.name}`;
+    logImageCompressionUpload("Clients", file, uploadFile, path);
+    const { error: uploadError } = await supabase.storage
+      .from("client-documents")
+      .upload(path, uploadFile, { upsert: true });
+
+    if (!uploadError) {
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("client-documents").getPublicUrl(path);
+      setForm((prev) => ({ ...prev, [field]: publicUrl }));
+    }
+  };
 
   const fetchData = async () => {
     const [clientsRes, contractsRes, requestsRes] = await Promise.all([
@@ -1015,19 +1040,7 @@ const Clients = () => {
                               type="file"
                               accept="image/*"
                               onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const uploadFile = await prepareImageForStorageUpload(file);
-                                  const path = `client-documents/${Date.now()}_${uploadFile.name}`;
-                                  const { data: uploadData, error: uploadError } = await supabase.storage
-                                    .from("client-documents")
-                                    .upload(path, uploadFile, { upsert: true });
-                                  
-                                  if (!uploadError) {
-                                    const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                    setForm(prev => ({ ...prev, passport_photo_url: publicUrl }));
-                                  }
-                                }
+                                await uploadClientDocument(e.target.files?.[0], "passport_photo_url");
                               }}
                               className="hidden"
                             />
@@ -1048,19 +1061,7 @@ const Clients = () => {
                                 type="file"
                                 accept="image/*"
                                 onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    const uploadFile = await prepareImageForStorageUpload(file);
-                                    const path = `client-documents/${Date.now()}_${uploadFile.name}`;
-                                    const { data: uploadData, error: uploadError } = await supabase.storage
-                                      .from("client-documents")
-                                      .upload(path, uploadFile, { upsert: true });
-                                    
-                                    if (!uploadError) {
-                                      const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                      setForm(prev => ({ ...prev, eid_front_url: publicUrl }));
-                                    }
-                                  }
+                                  await uploadClientDocument(e.target.files?.[0], "eid_front_url");
                                 }}
                                 className="hidden"
                               />
@@ -1077,19 +1078,7 @@ const Clients = () => {
                                 type="file"
                                 accept="image/*"
                                 onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    const uploadFile = await prepareImageForStorageUpload(file);
-                                    const path = `client-documents/${Date.now()}_${uploadFile.name}`;
-                                    const { data: uploadData, error: uploadError } = await supabase.storage
-                                      .from("client-documents")
-                                      .upload(path, uploadFile, { upsert: true });
-                                    
-                                    if (!uploadError) {
-                                      const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                      setForm(prev => ({ ...prev, eid_back_url: publicUrl }));
-                                    }
-                                  }
+                                  await uploadClientDocument(e.target.files?.[0], "eid_back_url");
                                 }}
                                 className="hidden"
                               />
@@ -1109,19 +1098,7 @@ const Clients = () => {
                             type="file"
                             accept="image/*"
                             onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const uploadFile = await prepareImageForStorageUpload(file);
-                                const path = `client-documents/${Date.now()}_${uploadFile.name}`;
-                                const { data: uploadData, error: uploadError } = await supabase.storage
-                                  .from("client-documents")
-                                  .upload(path, uploadFile, { upsert: true });
-                                  
-                                if (!uploadError) {
-                                  const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                  setForm(prev => ({ ...prev, license_front_url: publicUrl }));
-                                }
-                              }
+                              await uploadClientDocument(e.target.files?.[0], "license_front_url");
                             }}
                             className="hidden"
                           />
@@ -1139,19 +1116,7 @@ const Clients = () => {
                             type="file"
                             accept="image/*"
                             onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const uploadFile = await prepareImageForStorageUpload(file);
-                                const path = `client-documents/${Date.now()}_${uploadFile.name}`;
-                                const { data: uploadData, error: uploadError } = await supabase.storage
-                                  .from("client-documents")
-                                  .upload(path, uploadFile, { upsert: true });
-                                  
-                                if (!uploadError) {
-                                  const { data: { publicUrl } } = supabase.storage.from("client-documents").getPublicUrl(path);
-                                  setForm(prev => ({ ...prev, license_back_url: publicUrl }));
-                                }
-                              }
+                              await uploadClientDocument(e.target.files?.[0], "license_back_url");
                             }}
                             className="hidden"
                           />

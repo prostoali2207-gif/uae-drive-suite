@@ -34,6 +34,16 @@ export async function prepareImageForStorageUpload(file: File): Promise<File> {
   }
 }
 
+export function logImageCompressionUpload(component: string, originalFile: File, uploadFile: File | Blob, path: string) {
+  console.log(
+    `[image-compression] ${component} original=${formatFileSize(originalFile.size)} compressed=${formatFileSize(uploadFile.size)} path=${path}`,
+  );
+}
+
+function formatFileSize(size: number): string {
+  return `${(size / (1024 * 1024)).toFixed(2)}MB`;
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();

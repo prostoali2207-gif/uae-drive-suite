@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
-import { prepareImageForStorageUpload } from "@/lib/imageCompression";
+import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -73,6 +73,7 @@ function FileUploadField({ label, fieldKey, ownerId, value, onUploaded }: FileFi
       const uploadFile = await prepareImageForStorageUpload(file);
       const ext = uploadFile.name.split(".").pop();
       const path = `${Date.now()}.${ext}`;
+      logImageCompressionUpload("ClientRegister", file, uploadFile, path);
       const { data, error: uploadError } = await supabase.storage
         .from("client-documents")
         .upload(path, uploadFile, { upsert: false });

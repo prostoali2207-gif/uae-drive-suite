@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { COUNTRIES, PRIORITY_COUNTRIES } from "@/data/countries";
-import { prepareImageForStorageUpload } from "@/lib/imageCompression";
+import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -283,6 +283,7 @@ function UploadCard({ label, value, onChange }: UploadCardProps) {
       const uploadFile = await prepareImageForStorageUpload(file);
       const ext = uploadFile.name.split(".").pop() ?? "bin";
       const path = `${Date.now()}.${ext}`;
+      logImageCompressionUpload("ClientRegisterV2", file, uploadFile, path);
       console.info("[ClientRegisterV2] document upload started", {
         field: label,
         bucket: "client-documents",
