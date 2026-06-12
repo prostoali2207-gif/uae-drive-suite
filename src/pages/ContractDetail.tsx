@@ -1746,11 +1746,10 @@ const FinancialsPanel = ({
             </div>
           </div>
 
-          <div className="hidden grid-cols-[110px_1fr_140px_220px_40px] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium text-muted-foreground md:grid">
+          <div className="hidden grid-cols-[110px_1fr_140px_40px] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium text-muted-foreground md:grid">
             <span>Date</span>
             <span>Type / Description</span>
             <span className="text-right">Amount</span>
-            <span>Applied To / Reference</span>
             <span />
           </div>
 
@@ -1758,7 +1757,7 @@ const FinancialsPanel = ({
             <FinancialLine className="text-xs text-muted-foreground">No transactions match the current view.</FinancialLine>
           ) : (
             visibleTransactions.map((transaction) => (
-              <div key={transaction.id} className="grid gap-2 px-4 py-3 md:grid-cols-[110px_1fr_140px_220px_40px] md:items-start md:gap-3">
+              <div key={transaction.id} className="grid gap-2 px-4 py-3 md:grid-cols-[110px_1fr_140px_40px] md:items-start md:gap-3">
                 <div className="font-mono text-[11px] text-muted-foreground">{formatDate(transaction.date)}</div>
                 <div className="flex min-w-0 gap-3">
                   <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", getTransactionIconClass(transaction))}>
@@ -1783,6 +1782,7 @@ const FinancialsPanel = ({
                         {fmtAed(transaction.amount)}
                       </span>
                     </div>
+                    {transaction.allocationPayment ? transaction.reference : null}
                   </div>
                 </div>
                 <div
@@ -1793,9 +1793,6 @@ const FinancialsPanel = ({
                 >
                   {transaction.amountTone === "credit" ? "+" : ""}
                   {fmtAed(transaction.amount)}
-                </div>
-                <div className="min-w-0 text-[11px] text-muted-foreground">
-                  {transaction.reference}
                 </div>
                 <div className="flex justify-end gap-1">
                   {transaction.allocationPayment ? (
