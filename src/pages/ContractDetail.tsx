@@ -26,9 +26,10 @@ import {
   Route,
   CarFront,
   ShieldCheck,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
-import { RentalHistoryBlock } from "@/components/RentalHistoryBlock";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import FinesModal from "@/components/FinesModal";
@@ -560,7 +561,7 @@ const PaymentAllocationDetails = ({
   const allocationLines = buildPaymentAllocationDisplay(payment, lineLookup);
 
   return (
-    <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-[11px]">
+    <div className="ml-10 mt-1 rounded-lg bg-zinc-900 p-2 text-xs">
       <div className="mb-1 font-medium text-muted-foreground">Applied to:</div>
       {allocationLines ? (
         <div className="grid gap-1">
@@ -1245,20 +1246,20 @@ const FinancialsPanel = ({
   markingDepositReturned,
 }: FinancialsPanelProps) => {
   const rentalExtensions = contractFees
-    .filter((fee) => fee.label?.startsWith("Rental Extension:"))
+    .filter((fee) => {
+      const feeCategory = String((fee as ContractFeeRow & { category?: string }).category ?? "").toLowerCase();
+      return feeCategory === "rent" || feeCategory === "extension" || fee.label?.startsWith("Rental Extension:");
+    })
     .sort((a, b) => {
-      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      const aPeriod = parseRentalExtensionPeriod(a.label);
+      const bPeriod = parseRentalExtensionPeriod(b.label);
+      const aTime = new Date(a.extension_start ?? aPeriod?.periodStart ?? a.created_at ?? "").getTime() || 0;
+      const bTime = new Date(b.extension_start ?? bPeriod?.periodStart ?? b.created_at ?? "").getTime() || 0;
       return aTime - bTime;
     });
-  const otherFees = contractFees.filter((fee) => !fee.label?.startsWith("Rental Extension:"));
+  const otherFees = contractFees.filter((fee) => !rentalExtensions.some((extension) => extension.id === fee.id));
   const firstExtensionStart =
     rentalExtensions[0]?.extension_start ?? parseRentalExtensionPeriod(rentalExtensions[0]?.label ?? "")?.periodStart ?? null;
-  const periodDueById = Object.fromEntries(
-    unpaidAllocationLines
-      .filter((line) => line.category === "rental")
-      .map((line) => [line.id === `rental-${contract.id}` ? "base-rental" : line.id.replace(/^fee-/, ""), Number(line.due)]),
-  );
   const paymentAllocationLineLookup = useMemo(() => {
     const lookup = new Map<string, Pick<PaymentAllocationDisplayLine, "category" | "label">>();
     lookup.set(`rental-${contract.id}`, { category: "rental", label: "Original Contract" });
@@ -1275,7 +1276,7 @@ const FinancialsPanel = ({
     });
 
     contractFees
-      .filter((fee) => !fee.label?.startsWith("Rental Extension:"))
+      .filter((fee) => !rentalExtensions.some((extension) => extension.id === fee.id))
       .forEach((fee) => {
         lookup.set(`fee-${fee.id}`, { category: "fees", label: fee.label });
       });
@@ -1410,7 +1411,7 @@ const FinancialsPanel = ({
         group: "charges",
         type: "Rent",
         description: "Rent - Original Contract",
-        details: `${formatDate(contract.start_date)} - ${formatDate(firstExtensionStart ?? contract.end_date)} (${days} days)`,
+        details: `${formatDate(contract.start_date)} - ${formatDate(firstExtensionStart ?? contract.end_date)}`,
         amount: Number(contract.total_amount),
         amountTone: "debit",
         reference: contractNumberLabel(contract.id),
@@ -1438,8 +1439,8 @@ const FinancialsPanel = ({
         date: fee.created_at ?? contract.start_date,
         group: "charges" as const,
         type: "Charge",
-        description: fee.label,
-        details: FEE_CATEGORIES.find((category) => category.value === fee.category)?.label ?? "Other fee",
+        description: FEE_CATEGORIES.find((category) => category.value === fee.category)?.label ?? "Other fee",
+        details: fee.label,
         amount: Number(fee.amount),
         amountTone: "debit" as const,
         reference: contractNumberLabel(contract.id),
@@ -1452,7 +1453,7 @@ const FinancialsPanel = ({
         group: "charges" as const,
         type: "Fine",
         description: fine.fine_type,
-        details: fine.fine_number ? `Fine #${fine.fine_number}` : fine.source,
+        details: fine.source,
         amount: Number(fine.amount),
         amountTone: "debit" as const,
         reference: contractNumberLabel(contract.id),
@@ -1478,7 +1479,7 @@ const FinancialsPanel = ({
         group: "payments" as const,
         type: "Payment",
         description: `Payment - ${payment.method}`,
-        details: "Customer payment received",
+        details: `${payment.method} payment received`,
         amount: Number(payment.amount),
         amountTone: "credit" as const,
         reference: <PaymentAllocationDetails payment={payment} lineLookup={paymentAllocationLineLookup} />,
@@ -1494,7 +1495,6 @@ const FinancialsPanel = ({
     contract.id,
     contract.start_date,
     contract.total_amount,
-    days,
     fines,
     firstExtensionStart,
     otherFees,
@@ -1512,6 +1512,41 @@ const FinancialsPanel = ({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
   });
+  const rentalPeriods = [
+    {
+      id: "base-rental",
+      name: "Original Contract",
+      startDate: contract.start_date,
+      endDate: contract.end_date,
+      amount: Number(contract.rate_amount),
+      onEdit: onEditRentalAmount,
+    },
+    ...rentalExtensions.map((fee, index) => {
+      const parsedPeriod = parseRentalExtensionPeriod(fee.label);
+      return {
+        id: fee.id,
+        name: `Extension #${index + 1}`,
+        startDate: fee.extension_start ?? parsedPeriod?.periodStart ?? fee.created_at ?? contract.start_date,
+        endDate: fee.extension_end ?? parsedPeriod?.periodEnd ?? contract.end_date,
+        amount: Number(fee.amount),
+        onEdit: () => onEditFeeAmount(fee),
+      };
+    }),
+  ].sort((a, b) => {
+    const aTime = new Date(a.startDate).getTime() || 0;
+    const bTime = new Date(b.startDate).getTime() || 0;
+    return bTime - aTime;
+  });
+  const currentRentalPeriod = rentalPeriods[0];
+  const pastRentalPeriods = rentalPeriods.slice(1);
+
+  const getTransactionIconClass = (transaction: FinancialTransaction) => {
+    if (transaction.type === "Payment") return "bg-green-950 text-green-300";
+    if (transaction.type === "Fine") return "bg-red-950 text-red-300";
+    if (transaction.type === "Salik") return "bg-emerald-950 text-emerald-300";
+    if (transaction.type === "Rent") return "bg-blue-950 text-blue-300";
+    return "bg-purple-950 text-purple-300";
+  };
 
   return (
     <>
@@ -1596,34 +1631,68 @@ const FinancialsPanel = ({
           )}
         </FinancialSection>
 
-        <FinancialSection title="Rental History" meta={`${1 + rentalExtensions.length} periods`} action={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => {
-              const currentExtension = rentalExtensions.at(-1);
-              if (currentExtension) {
-                onEditFeeAmount(currentExtension);
-                return;
-              }
-              onEditRentalAmount();
-            }}
-          >
-            Manage Periods
-          </Button>
-        }>
-          <RentalHistoryBlock
-            contract={{
-              start_date: contract.start_date,
-              end_date: contract.end_date,
-              rate_amount: Number(contract.total_amount),
-              status: contract.status,
-            }}
-            extensions={rentalExtensions}
-            periodDueById={periodDueById}
-          />
+        <FinancialSection title="Rental History" meta={`${rentalPeriods.length} periods`}>
+          {currentRentalPeriod ? (
+            <div className="px-4 py-3">
+              <div className="rounded-md border border-green-900 bg-green-950/20 px-3 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-foreground">{currentRentalPeriod.name}</span>
+                      <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[10px] font-medium text-blue-300">
+                        Current
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatDate(currentRentalPeriod.startDate)} - {formatDate(currentRentalPeriod.endDate)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] text-muted-foreground">
+                      {diffDays(currentRentalPeriod.startDate, currentRentalPeriod.endDate)} days
+                    </div>
+                    <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-foreground">
+                      {fmtAed(currentRentalPeriod.amount)}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Edit current rental period"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-green-950/40 hover:text-foreground"
+                    onClick={currentRentalPeriod.onEdit}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {pastRentalPeriods.length > 0 ? (
+            <details className="group px-4 py-3">
+              <summary className="flex h-8 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <ChevronDown className="h-3.5 w-3.5 group-open:hidden" />
+                <ChevronUp className="hidden h-3.5 w-3.5 group-open:block" />
+                <span className="group-open:hidden">Show all periods ({rentalPeriods.length})</span>
+                <span className="hidden group-open:inline">Hide past periods</span>
+              </summary>
+              <div className="mt-2 space-y-2">
+                {pastRentalPeriods.map((period) => (
+                  <div key={period.id} className="flex items-center justify-between gap-3 rounded-md bg-background/30 px-3 py-2 text-zinc-500">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-medium">{period.name}</div>
+                      <div className="mt-0.5 text-xs">
+                        {formatDate(period.startDate)} - {formatDate(period.endDate)} - {diffDays(period.startDate, period.endDate)} days
+                      </div>
+                    </div>
+                    <div className="shrink-0 font-mono text-xs tabular-nums">{fmtAed(period.amount)}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
         </FinancialSection>
 
         <FinancialSection
@@ -1691,17 +1760,22 @@ const FinancialsPanel = ({
               <div key={transaction.id} className="grid gap-2 px-4 py-3 md:grid-cols-[110px_1fr_140px_220px_40px] md:items-start md:gap-3">
                 <div className="font-mono text-[11px] text-muted-foreground">{formatDate(transaction.date)}</div>
                 <div className="flex min-w-0 gap-3">
-                  <FinancialIconBox icon={transaction.icon} tone={transaction.iconTone} />
+                  <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", getTransactionIconClass(transaction))}>
+                    {(() => {
+                      const TransactionIcon = transaction.icon;
+                      return <TransactionIcon className="h-3.5 w-3.5" />;
+                    })()}
+                  </div>
                   <div className="min-w-0">
                     <div className="truncate text-xs font-semibold text-foreground">{transaction.description}</div>
                     {transaction.details ? (
-                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{transaction.details}</div>
+                      <div className="mt-0.5 truncate text-xs text-zinc-500">{transaction.details}</div>
                     ) : null}
                     <div className="mt-1 md:hidden">
                       <span
                         className={cn(
                           "font-mono text-sm font-bold tabular-nums",
-                          transaction.amountTone === "credit" ? "text-tint-green-foreground" : "text-tint-rose-foreground",
+                          transaction.amountTone === "credit" ? "text-green-400" : "text-zinc-200",
                         )}
                       >
                         {transaction.amountTone === "credit" ? "+" : ""}
@@ -1713,7 +1787,7 @@ const FinancialsPanel = ({
                 <div
                   className={cn(
                     "hidden text-right font-mono text-sm font-bold tabular-nums md:block",
-                    transaction.amountTone === "credit" ? "text-tint-green-foreground" : "text-tint-rose-foreground",
+                    transaction.amountTone === "credit" ? "text-green-400" : "text-zinc-200",
                   )}
                 >
                   {transaction.amountTone === "credit" ? "+" : ""}
