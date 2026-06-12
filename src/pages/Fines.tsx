@@ -264,10 +264,28 @@ const Fines = () => {
   const handleAddSalik = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!salikForm.car_id || !salikForm.client_id || !salikForm.charge_date) return;
+
+    const { data: activeContract, error: contractError } = await (supabase as any)
+      .from("contracts")
+      .select("id")
+      .eq("car_id", salikForm.car_id)
+      .lte("start_date", salikForm.charge_date)
+      .gte("end_date", salikForm.charge_date)
+      .in("status", ["Active", "active"])
+      .order("start_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (contractError) {
+      toast.error("Failed to find active contract: " + contractError.message);
+      return;
+    }
+
     const { error } = await supabase.from("salik").insert({
       charge_date: salikForm.charge_date,
       car_id: salikForm.car_id,
       client_id: salikForm.client_id,
+      contract_id: activeContract?.id ?? null,
       trips: Number(salikForm.trips),
       amount: Number(salikForm.amount),
       status: "Unpaid",
