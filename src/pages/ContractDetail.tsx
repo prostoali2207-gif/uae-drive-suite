@@ -17,9 +17,15 @@ import {
   AlertCircle,
   History,
   Trash2,
-  Lock,
   Tag,
   Camera,
+  Search,
+  Filter,
+  ExternalLink,
+  CalendarDays,
+  Route,
+  CarFront,
+  ShieldCheck,
 } from "lucide-react";
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
 import { RentalHistoryBlock } from "@/components/RentalHistoryBlock";
@@ -313,6 +319,7 @@ function addDaysToDateInput(value: string, daysToAdd: number): string {
 }
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
+const contractNumberLabel = (id: string) => `CTR-${id.slice(0, 8).toUpperCase()}`;
 
 const RENTAL_EXTENSION_LABEL = "Rental Extension";
 const RENTAL_EXTENSION_CATEGORY: FeeCategory = "other";
@@ -1116,6 +1123,7 @@ type FinancialsPanelProps = {
   salik: SalikRow[];
   chargeImportEvidence: ChargeImportEvidence;
   contractFees: ContractFeeRow[];
+  unpaidAllocationLines: ContractPaymentAllocationLine[];
   totals: ContractFinancialTotals;
   onAddFee: () => void;
   onAddPayment: () => void;
@@ -1177,6 +1185,45 @@ const FinancialLine = ({ children, className }: { children: React.ReactNode; cla
   <div className={cn("flex min-h-14 items-center gap-3 px-4 py-3", className)}>{children}</div>
 );
 
+const FinancialIconBox = ({
+  icon: Icon,
+  tone = "muted",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: "blue" | "green" | "amber" | "violet" | "rose" | "muted";
+}) => (
+  <span
+    className={cn(
+      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+      tone === "blue" && "bg-tint-blue text-tint-blue-foreground",
+      tone === "green" && "bg-tint-green text-tint-green-foreground",
+      tone === "amber" && "bg-tint-amber text-tint-amber-foreground",
+      tone === "violet" && "bg-tint-violet text-tint-violet-foreground",
+      tone === "rose" && "bg-tint-rose text-tint-rose-foreground",
+      tone === "muted" && "bg-muted text-muted-foreground",
+    )}
+  >
+    <Icon className="h-4 w-4" />
+  </span>
+);
+
+type TransactionFilter = "all" | "charges" | "payments" | "adjustments";
+
+type FinancialTransaction = {
+  id: string;
+  date: string;
+  group: TransactionFilter;
+  type: string;
+  description: string;
+  details?: string;
+  amount: number;
+  amountTone: "debit" | "credit";
+  reference: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
+  iconTone: "blue" | "green" | "amber" | "violet" | "rose" | "muted";
+  allocationPayment?: PaymentRow;
+};
+
 const FinancialsPanel = ({
   contract,
   days,
@@ -1185,6 +1232,7 @@ const FinancialsPanel = ({
   salik,
   chargeImportEvidence,
   contractFees,
+  unpaidAllocationLines,
   totals,
   onAddFee,
   onAddPayment,
@@ -1203,12 +1251,14 @@ const FinancialsPanel = ({
       const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
       return aTime - bTime;
     });
-  const rentalTotal = Number(contract.total_amount) + rentalExtensions.reduce((s, fee) => s + Number(fee.amount), 0);
-  const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
-  const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
-  const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
   const otherFees = contractFees.filter((fee) => !fee.label?.startsWith("Rental Extension:"));
-  const otherTotal = otherFees.reduce((s, o) => s + Number(o.amount), 0);
+  const firstExtensionStart =
+    rentalExtensions[0]?.extension_start ?? parseRentalExtensionPeriod(rentalExtensions[0]?.label ?? "")?.periodStart ?? null;
+  const periodDueById = Object.fromEntries(
+    unpaidAllocationLines
+      .filter((line) => line.category === "rental")
+      .map((line) => [line.id === `rental-${contract.id}` ? "base-rental" : line.id.replace(/^fee-/, ""), Number(line.due)]),
+  );
   const paymentAllocationLineLookup = useMemo(() => {
     const lookup = new Map<string, Pick<PaymentAllocationDisplayLine, "category" | "label">>();
     lookup.set(`rental-${contract.id}`, { category: "rental", label: "Original Contract" });
@@ -1246,7 +1296,6 @@ const FinancialsPanel = ({
 
     return lookup;
   }, [contract.id, contractFees, fines, rentalExtensions, salik]);
-  const chargedTotal = rentalTotal + otherTotal + finesTotal + salikTotal;
   const depositInfo = getDepositReconciliationInfo(contract);
   const rawDepositStatus = (contract as any).deposit_status;
   const depositStatus = rawDepositStatus === "Returned" ? "Returned" : depositInfo.status;
@@ -1268,64 +1317,303 @@ const FinancialsPanel = ({
   const canAddPayment = contract.status.toLowerCase() !== "closed" || totals.outstanding > 0;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
+  const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
+  const [transactionSearch, setTransactionSearch] = useState("");
+
+  const openItemGroups = useMemo(() => {
+    const groups = new Map<
+      "rental" | "salik" | "fines" | "fees",
+      {
+        id: "rental" | "salik" | "fines" | "fees";
+        title: string;
+        detail: string;
+        meta: string;
+        due: number;
+        icon: React.ComponentType<{ className?: string }>;
+        iconTone: "blue" | "green" | "amber" | "violet";
+      }
+    >();
+
+    unpaidAllocationLines.forEach((line) => {
+      const existing = groups.get(line.category);
+      const nextDue = (existing?.due ?? 0) + Number(line.due);
+      const count = (unpaidAllocationLines.filter((item) => item.category === line.category).length);
+
+      if (line.category === "rental") {
+        groups.set("rental", {
+          id: "rental",
+          title: "Rent Outstanding",
+          detail: `${count} unpaid ${count === 1 ? "period" : "periods"}`,
+          meta: firstExtensionStart
+            ? `${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`
+            : `${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`,
+          due: nextDue,
+          icon: CalendarDays,
+          iconTone: "blue",
+        });
+      }
+
+      if (line.category === "salik") {
+        groups.set("salik", {
+          id: "salik",
+          title: "Salik",
+          detail: `${salik.filter((charge) => charge.status.toLowerCase() !== "paid").reduce((sum, charge) => sum + Number(charge.trips), 0)} trips`,
+          meta: salikVerificationLabel,
+          due: nextDue,
+          icon: Route,
+          iconTone: "green",
+        });
+      }
+
+      if (line.category === "fines") {
+        groups.set("fines", {
+          id: "fines",
+          title: "Traffic Fines",
+          detail: `${fines.filter((fine) => fine.status.toLowerCase() !== "paid").length} fines`,
+          meta: finesVerificationLabel,
+          due: nextDue,
+          icon: CarFront,
+          iconTone: "amber",
+        });
+      }
+
+      if (line.category === "fees") {
+        groups.set("fees", {
+          id: "fees",
+          title: line.label || "Other unpaid charges",
+          detail: count === 1 ? "1 unpaid charge" : `${count} unpaid charges`,
+          meta: "Other unpaid charges",
+          due: nextDue,
+          icon: Tag,
+          iconTone: "violet",
+        });
+      }
+    });
+
+    return Array.from(groups.values());
+  }, [
+    contract.end_date,
+    contract.start_date,
+    fines,
+    finesVerificationLabel,
+    firstExtensionStart,
+    salik,
+    salikVerificationLabel,
+    unpaidAllocationLines,
+  ]);
+
+  const transactions = useMemo<FinancialTransaction[]>(() => {
+    const rows: FinancialTransaction[] = [
+      {
+        id: `rent-${contract.id}`,
+        date: contract.start_date,
+        group: "charges",
+        type: "Rent",
+        description: "Rent - Original Contract",
+        details: `${formatDate(contract.start_date)} - ${formatDate(firstExtensionStart ?? contract.end_date)} (${days} days)`,
+        amount: Number(contract.total_amount),
+        amountTone: "debit",
+        reference: contractNumberLabel(contract.id),
+        icon: CalendarDays,
+        iconTone: "blue",
+      },
+      ...rentalExtensions.map((fee, index) => {
+        const parsedPeriod = parseRentalExtensionPeriod(fee.label);
+        return {
+          id: `rent-extension-${fee.id}`,
+          date: fee.extension_start ?? parsedPeriod?.periodStart ?? fee.created_at ?? contract.start_date,
+          group: "charges" as const,
+          type: "Rent",
+          description: `Extension #${index + 1}`,
+          details: `${formatDate(fee.extension_start ?? parsedPeriod?.periodStart)} - ${formatDate(fee.extension_end ?? parsedPeriod?.periodEnd)}`,
+          amount: Number(fee.amount),
+          amountTone: "debit" as const,
+          reference: contractNumberLabel(contract.id),
+          icon: CalendarDays,
+          iconTone: "blue" as const,
+        };
+      }),
+      ...otherFees.map((fee) => ({
+        id: `fee-${fee.id}`,
+        date: fee.created_at ?? contract.start_date,
+        group: "charges" as const,
+        type: "Charge",
+        description: fee.label,
+        details: FEE_CATEGORIES.find((category) => category.value === fee.category)?.label ?? "Other fee",
+        amount: Number(fee.amount),
+        amountTone: "debit" as const,
+        reference: contractNumberLabel(contract.id),
+        icon: Tag,
+        iconTone: "violet" as const,
+      })),
+      ...fines.map((fine) => ({
+        id: `fine-${fine.id}`,
+        date: fine.fine_date,
+        group: "charges" as const,
+        type: "Fine",
+        description: fine.fine_type,
+        details: fine.fine_number ? `Fine #${fine.fine_number}` : fine.source,
+        amount: Number(fine.amount),
+        amountTone: "debit" as const,
+        reference: contractNumberLabel(contract.id),
+        icon: CarFront,
+        iconTone: "amber" as const,
+      })),
+      ...salik.map((charge) => ({
+        id: `salik-${charge.id}`,
+        date: charge.charge_date,
+        group: "charges" as const,
+        type: "Salik",
+        description: "Salik Charge",
+        details: `${charge.trips} ${charge.trips === 1 ? "trip" : "trips"}${charge.toll_gate ? ` - ${charge.toll_gate}` : ""}`,
+        amount: Number(charge.amount),
+        amountTone: "debit" as const,
+        reference: contractNumberLabel(contract.id),
+        icon: Route,
+        iconTone: "green" as const,
+      })),
+      ...payments.map((payment) => ({
+        id: `payment-${payment.id}`,
+        date: payment.payment_date,
+        group: "payments" as const,
+        type: "Payment",
+        description: `Payment - ${payment.method}`,
+        details: "Customer payment received",
+        amount: Number(payment.amount),
+        amountTone: "credit" as const,
+        reference: <PaymentAllocationDetails payment={payment} lineLookup={paymentAllocationLineLookup} />,
+        icon: Receipt,
+        iconTone: "green" as const,
+        allocationPayment: payment,
+      })),
+    ];
+
+    return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [
+    contract.end_date,
+    contract.id,
+    contract.start_date,
+    contract.total_amount,
+    days,
+    fines,
+    firstExtensionStart,
+    otherFees,
+    paymentAllocationLineLookup,
+    payments,
+    rentalExtensions,
+    salik,
+  ]);
+
+  const visibleTransactions = transactions.filter((transaction) => {
+    if (transactionFilter !== "all" && transaction.group !== transactionFilter) return false;
+    const query = transactionSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [transaction.type, transaction.description, transaction.details, transaction.date]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
 
   return (
     <>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-md border border-border bg-muted/30 p-3">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Charged</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-foreground">
-              {fmtAed(chargedTotal)}
+        <section className="rounded-md border border-border bg-card px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Outstanding Balance
+              </div>
+              <div
+                className={cn(
+                  "mt-1 font-mono text-3xl font-semibold tabular-nums",
+                  totals.outstanding > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground",
+                )}
+              >
+                {fmtAed(totals.outstanding)}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Total unpaid customer balance. Security deposit is tracked separately.
+              </div>
             </div>
+            {canAddPayment ? (
+              <Button className="h-10 gap-2 self-start bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:self-center" onClick={onAddPayment}>
+                <Plus className="h-4 w-4" />
+                Add Payment
+              </Button>
+            ) : null}
           </div>
-          <div className="rounded-md border border-green-900/20 bg-green-950/10 p-3">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Paid</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-[#3B6D11]">
-              {fmtAed(totals.credits)}
-            </div>
-          </div>
-          <div className="rounded-md border border-border bg-muted/30 p-3">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Outstanding</div>
-            <div
-              className={cn(
-                "mt-0.5 font-mono text-base font-semibold tabular-nums",
-                totals.outstanding > 0 && totals.outstanding === totals.overdue
-                  ? "text-[#A32D2D]"
-                  : "text-foreground",
-              )}
-            >
-              {fmtAed(totals.outstanding)}
-            </div>
-          </div>
-          <div
-            className={cn(
-              "rounded-md border p-3",
-              totals.overdue > 0 ? "border-red-900/20 bg-red-950/10" : "border-border bg-muted/30",
-            )}
-          >
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Overdue</div>
-            <div
-              className={cn(
-                "mt-0.5 font-mono text-base font-semibold tabular-nums",
-                totals.overdue > 0 ? "text-[#A32D2D]" : "text-muted-foreground",
-              )}
-            >
-              {fmtAed(totals.overdue)}
-            </div>
-          </div>
-        </div>
+        </section>
 
         <FinancialSection
-          title="Charges"
-          meta={`${1 + rentalExtensions.length + otherFees.length} items`}
+          title="Open Items"
+          meta="What the customer owes"
           action={
-            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={onAddFee}>
-              <Plus className="h-3.5 w-3.5" />
-              Add Fee
-            </Button>
+            <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
+              {openItemGroups.length} items
+            </span>
           }
         >
+          {showDepositVerificationWarning ? (
+            <div className="flex items-start gap-2 rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs text-tint-amber-foreground">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Fines/Salik import not verified. Review before returning deposit.</span>
+            </div>
+          ) : null}
+          {openItemGroups.length === 0 ? (
+            <FinancialLine className="text-xs text-muted-foreground">No unpaid customer items.</FinancialLine>
+          ) : (
+            openItemGroups.map((item) => (
+              <FinancialLine key={item.id} className="flex-wrap sm:flex-nowrap">
+                <FinancialIconBox icon={item.icon} tone={item.iconTone} />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-xs font-semibold text-foreground">{item.title}</span>
+                  <span className="text-[11px] text-muted-foreground">{item.detail}</span>
+                </div>
+                <div className="hidden min-w-[170px] text-xs text-muted-foreground md:block">{item.meta}</div>
+                <span className="ml-auto w-28 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
+                  {fmtAed(item.due)}
+                </span>
+                {item.id === "rental" ? (
+                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={onEditRentalAmount}>
+                    Manage
+                  </Button>
+                ) : item.id === "fines" ? (
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setShowFinesModal(true)}>
+                    View
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Button>
+                ) : item.id === "salik" ? (
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setShowSalikModal(true)}>
+                    View
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Button>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onAddPayment}>
+                    Pay
+                  </Button>
+                )}
+              </FinancialLine>
+            ))
+          )}
+        </FinancialSection>
+
+        <FinancialSection title="Rental History" meta={`${1 + rentalExtensions.length} periods`} action={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => {
+              const currentExtension = rentalExtensions.at(-1);
+              if (currentExtension) {
+                onEditFeeAmount(currentExtension);
+                return;
+              }
+              onEditRentalAmount();
+            }}
+          >
+            Manage Periods
+          </Button>
+        }>
           <RentalHistoryBlock
             contract={{
               start_date: contract.start_date,
@@ -1334,151 +1622,131 @@ const FinancialsPanel = ({
               status: contract.status,
             }}
             extensions={rentalExtensions}
-            onManagePeriods={() => {
-              const currentExtension = rentalExtensions.at(-1);
-              if (currentExtension) {
-                onEditFeeAmount(currentExtension);
-                return;
-              }
-              onEditRentalAmount();
-            }}
+            periodDueById={periodDueById}
           />
-
-          {otherFees.length === 0 ? (
-            <FinancialLine className="text-xs text-muted-foreground">No other fees.</FinancialLine>
-          ) : (
-            otherFees.map((fee) => (
-              <FinancialLine key={fee.id}>
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                  <Tag className="h-4 w-4 text-muted-foreground" />
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-xs font-medium text-foreground">{fee.label}</span>
-                  <span className="text-[11px] text-muted-foreground">Other fee</span>
-                </div>
-                <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
-                  {fmtAed(Number(fee.amount))}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Edit fee amount"
-                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                  onClick={() => onEditFeeAmount(fee)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Delete fee"
-                  className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                  onClick={() => onDeleteFee(fee)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </FinancialLine>
-            ))
-          )}
-        </FinancialSection>
-
-        <FinancialSection title="Additional Charges" meta={`${fines.length + salik.length} items`}>
-          {showDepositVerificationWarning ? (
-            <div className="flex items-start gap-2 rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs text-tint-amber-foreground">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Fines/Salik import not verified. Review before returning deposit.</span>
-            </div>
-          ) : null}
-          <FinancialLine>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-xs font-medium text-foreground">Traffic Fines</span>
-              <span className="text-[11px] text-muted-foreground">{finesVerificationLabel}</span>
-            </div>
-            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
-              {fmtAed(finesTotal)}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs text-tint-blue-foreground hover:bg-transparent hover:underline"
-              onClick={() => setShowFinesModal(true)}
-            >
-              View All
-            </Button>
-          </FinancialLine>
-          <FinancialLine>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-xs font-medium text-foreground">Salik</span>
-              <span className="text-[11px] text-muted-foreground">{salikVerificationLabel}</span>
-            </div>
-            <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-foreground">
-              {fmtAed(salikTotal)}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs text-tint-blue-foreground hover:bg-transparent hover:underline"
-              onClick={() => setShowSalikModal(true)}
-            >
-              View All
-            </Button>
-          </FinancialLine>
         </FinancialSection>
 
         <FinancialSection
-          title="Payments"
-          meta={`${payments.length} payments - ${fmtAed(paymentsTotal)}`}
+          title="Transaction History"
+          meta="All charges, payments, and adjustments"
           action={canAddPayment ? (
-            <Button size="sm" className="h-8 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={onAddPayment}>
+            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={onAddFee}>
               <Plus className="h-3.5 w-3.5" />
-              Add Payment
+              Add Fee
             </Button>
           ) : undefined}
         >
-          {payments.length === 0 ? (
-            <FinancialLine className="text-xs text-muted-foreground">No payments recorded.</FinancialLine>
-          ) : (
-            payments.map((payment) => (
-              <div key={payment.id} className="px-4 py-3">
-                <div className="flex min-h-10 items-center gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                    <Receipt className="h-4 w-4 text-muted-foreground" />
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate text-xs font-medium text-foreground">{payment.method}</span>
-                    <span className="font-mono text-[11px] text-muted-foreground">{formatDate(payment.payment_date)}</span>
-                  </div>
-                  <FinancialBadge status={payment.status} />
-                  <span className="w-24 text-right font-mono text-sm font-bold tabular-nums text-tint-green-foreground">
-                    {fmtAed(Number(payment.amount))}
-                  </span>
-                  <Button
+          <div className="border-b border-border px-4 py-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex overflow-x-auto rounded-md border border-border bg-background/40 p-0.5">
+                {([
+                  ["all", "All"],
+                  ["charges", "Charges"],
+                  ["payments", "Payments"],
+                  ["adjustments", "Adjustments"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
                     type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Edit payment amount"
-                    className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                    onClick={() => onEditPaymentAmount(payment)}
+                    className={cn(
+                      "h-8 shrink-0 rounded px-3 text-xs font-medium text-muted-foreground transition-colors",
+                      transactionFilter === value && "bg-muted text-foreground",
+                    )}
+                    onClick={() => setTransactionFilter(value)}
                   >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete payment"
-                    className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                    onClick={() => onDeletePayment(payment)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <div className="relative min-w-0 flex-1 lg:w-56 lg:flex-none">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={transactionSearch}
+                    onChange={(event) => setTransactionSearch(event.target.value)}
+                    placeholder="Search..."
+                    className="h-8 pl-8 text-xs"
+                  />
                 </div>
-                <div className="pl-11">
-                  <PaymentAllocationDetails payment={payment} lineLookup={paymentAllocationLineLookup} />
+                <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setTransactionSearch("")}>
+                  <Filter className="h-3.5 w-3.5" />
+                  Filters
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden grid-cols-[110px_1fr_140px_220px_40px] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium text-muted-foreground md:grid">
+            <span>Date</span>
+            <span>Type / Description</span>
+            <span className="text-right">Amount</span>
+            <span>Applied To / Reference</span>
+            <span />
+          </div>
+
+          {visibleTransactions.length === 0 ? (
+            <FinancialLine className="text-xs text-muted-foreground">No transactions match the current view.</FinancialLine>
+          ) : (
+            visibleTransactions.map((transaction) => (
+              <div key={transaction.id} className="grid gap-2 px-4 py-3 md:grid-cols-[110px_1fr_140px_220px_40px] md:items-start md:gap-3">
+                <div className="font-mono text-[11px] text-muted-foreground">{formatDate(transaction.date)}</div>
+                <div className="flex min-w-0 gap-3">
+                  <FinancialIconBox icon={transaction.icon} tone={transaction.iconTone} />
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold text-foreground">{transaction.description}</div>
+                    {transaction.details ? (
+                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{transaction.details}</div>
+                    ) : null}
+                    <div className="mt-1 md:hidden">
+                      <span
+                        className={cn(
+                          "font-mono text-sm font-bold tabular-nums",
+                          transaction.amountTone === "credit" ? "text-tint-green-foreground" : "text-tint-rose-foreground",
+                        )}
+                      >
+                        {transaction.amountTone === "credit" ? "+" : ""}
+                        {fmtAed(transaction.amount)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "hidden text-right font-mono text-sm font-bold tabular-nums md:block",
+                    transaction.amountTone === "credit" ? "text-tint-green-foreground" : "text-tint-rose-foreground",
+                  )}
+                >
+                  {transaction.amountTone === "credit" ? "+" : ""}
+                  {fmtAed(transaction.amount)}
+                </div>
+                <div className="min-w-0 text-[11px] text-muted-foreground">
+                  {transaction.reference}
+                </div>
+                <div className="flex justify-end gap-1">
+                  {transaction.allocationPayment ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Edit payment amount"
+                        className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                        onClick={() => onEditPaymentAmount(transaction.allocationPayment!)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete payment"
+                        className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                        onClick={() => onDeletePayment(transaction.allocationPayment!)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             ))
@@ -1486,29 +1754,31 @@ const FinancialsPanel = ({
         </FinancialSection>
 
         <div className="rounded-md border border-border bg-card p-4">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
-                <Lock className="h-4 w-4 text-muted-foreground" />
-              </div>
+              <FinancialIconBox icon={ShieldCheck} tone="violet" />
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Security deposit</span>
-                  <span className="font-mono text-base font-semibold tabular-nums text-foreground">
-                    {fmtAed(Number(contract.deposit_amount))}
-                  </span>
-                  {depositMethod ? (
-                    <span className="text-[10px] text-muted-foreground">Collected via {depositMethod}</span>
-                  ) : null}
-                </div>
-                {contract.status.toLowerCase() === "closed" ? (
-                  <span className="text-[10px] text-muted-foreground">
-                    Deposit reconciliation is tracked separately from payments.
-                  </span>
-                ) : null}
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Security Deposit</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">Separate from balance</div>
               </div>
             </div>
-            <FinancialBadge status={depositStatus} />
+            <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[420px] lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Amount</div>
+                <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-foreground">
+                  {fmtAed(Number(contract.deposit_amount))}
+                </div>
+                {depositMethod ? (
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">Collected via {depositMethod}</div>
+                ) : null}
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Status</div>
+                <div className="mt-1">
+                  <FinancialBadge status={depositStatus} />
+                </div>
+              </div>
+            </div>
           </div>
 
           {Number(contract.deposit_amount) > 0 && contract.status.toLowerCase() === "closed" ? (
@@ -1565,15 +1835,21 @@ const FinancialsPanel = ({
                     </div>
                   ) : null}
                   {depositInfo.pendingReturn > 0 ? (
-                    <div className="flex justify-end pt-1">
+                    <div className="flex flex-wrap justify-end gap-2 pt-1">
                       <Button
                         type="button"
                         size="sm"
-                        className="h-8 text-xs"
+                        className="h-8 gap-1.5 text-xs"
                         disabled={markingDepositReturned}
                         onClick={() => onMarkDepositReturned(depositInfo.pendingReturn)}
                       >
-                        {markingDepositReturned ? "Saving..." : "Mark as returned"}
+                        {markingDepositReturned ? "Saving..." : "Return Full"}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled>
+                        Partial Return
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="h-8 border-tint-rose-foreground/40 text-xs text-tint-rose-foreground" disabled>
+                        Forfeit
                       </Button>
                     </div>
                   ) : null}
@@ -1835,11 +2111,10 @@ const ContractDetail = () => {
     const feeCharges = contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0);
     const charges = ledger.reduce((s, e) => s + e.debit, 0) + feeCharges;
     const credits = ledger.reduce((s, e) => s + e.credit, 0);
-    const deposit = Number(contract?.deposit_amount ?? 0);
-    // Outstanding excludes the refundable deposit
-    const outstanding = Math.max(0, charges - deposit - credits);
+    // Security deposit is reconciled separately and must not reduce the customer balance.
+    const outstanding = Math.max(0, charges - credits);
     return { charges, credits, outstanding, overdue: 0 };
-  }, [ledger, contract, contractFees]);
+  }, [ledger, contractFees]);
 
   const saveNotes = async () => {
     if (!contract) return;
@@ -3046,6 +3321,7 @@ const ContractDetail = () => {
               salik={salik}
               chargeImportEvidence={chargeImportEvidence}
               contractFees={contractFees}
+              unpaidAllocationLines={paymentAllocationLines}
               totals={financialTotals}
               onAddFee={() => setShowFeeModal(true)}
               onAddPayment={() => setShowPaymentModal(true)}

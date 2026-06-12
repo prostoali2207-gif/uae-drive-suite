@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { CalendarDays, ChevronRight } from "lucide-react";
 
 type RentalHistoryContract = {
   start_date: string;
@@ -28,6 +27,7 @@ type RentalHistoryBlockProps = {
   contract: RentalHistoryContract;
   extensions: RentalExtension[];
   onManagePeriods?: () => void;
+  periodDueById?: Record<string, number>;
 };
 
 const formatDate = (iso: string | null | undefined) => {
@@ -56,22 +56,17 @@ const readExtensionDateFromLabel = (label: string, index: 1 | 2) => {
   return match?.[index] ?? null;
 };
 
-const getInitialExpanded = () => {
-  if (typeof window === "undefined") return true;
-  return window.innerWidth >= 640;
-};
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const isActive = status.toLowerCase() === "active";
+const StatusBadge = ({ status }: { status: "Paid" | "Unpaid" }) => {
+  const isPaid = status === "Paid";
   return (
     <span
       className={
-        isActive
-          ? "rounded-full bg-green-400/10 px-2 py-0.5 text-[10px] font-medium text-green-400"
-          : "rounded-full bg-[#1a1a1a] px-2 py-0.5 text-[10px] font-medium text-[#777]"
+        isPaid
+          ? "rounded-full bg-tint-green px-2 py-0.5 text-[10px] font-medium text-tint-green-foreground"
+          : "rounded-full bg-tint-rose px-2 py-0.5 text-[10px] font-medium text-tint-rose-foreground"
       }
     >
-      {isActive ? "Active" : "Closed"}
+      {status}
     </span>
   );
 };
@@ -80,8 +75,8 @@ export const RentalHistoryBlock = ({
   contract,
   extensions,
   onManagePeriods,
+  periodDueById = {},
 }: RentalHistoryBlockProps) => {
-  const [expanded, setExpanded] = useState(getInitialExpanded);
   const sortedExtensions = [...extensions].sort((a, b) => {
     const aStart = a.extension_start ?? readExtensionDateFromLabel(a.label, 1) ?? "";
     const bStart = b.extension_start ?? readExtensionDateFromLabel(b.label, 1) ?? "";
@@ -105,30 +100,34 @@ export const RentalHistoryBlock = ({
       periodNumber: index + 2,
     })),
   ];
-  const currentPeriod = periods.at(-1) ?? periods[0];
-  const previousPeriods = periods.slice(0, -1).reverse();
-  const totalAmount = periods.reduce((sum, period) => sum + Number(period.amount), 0);
-  const totalDays = periods.reduce((sum, period) => sum + diffDays(period.start, period.end), 0);
+
   const getPeriodLabel = (period: RentalPeriod) =>
-    period.periodNumber === 1 ? "Original Contract" : "Previous Period";
+    period.periodNumber === 1 ? "Original Contract" : `Extension #${period.periodNumber - 1}`;
+  const getPeriodStatus = (period: RentalPeriod): "Paid" | "Unpaid" =>
+    Number(periodDueById[period.id] ?? 0) > 0.01 ? "Unpaid" : "Paid";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card/60">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
-          onClick={() => setExpanded((value) => !value)}
-        >
-          <span className="text-sm font-semibold text-foreground">Rental History</span>
-          <ChevronDown
-            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
-          />
-        </button>
-        <span className="font-mono text-sm font-semibold text-foreground">
-          {formatAed(totalAmount)}
-        </span>
-        {onManagePeriods && (
+    <div className="divide-y divide-border/50">
+      {periods.map((period) => (
+        <div key={period.id} className="flex min-h-14 items-center gap-3 px-4 py-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-tint-blue text-tint-blue-foreground">
+            <CalendarDays className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-foreground">{getPeriodLabel(period)}</div>
+            <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+              {formatDate(period.start)} - {formatDate(period.end)} ({diffDays(period.start, period.end)} days)
+            </div>
+          </div>
+          <StatusBadge status={getPeriodStatus(period)} />
+          <div className="w-28 text-right font-mono text-sm font-semibold tabular-nums text-foreground">
+            {formatAed(period.amount)}
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </div>
+      ))}
+      {onManagePeriods ? (
+        <div className="hidden px-4 py-3">
           <button
             type="button"
             className="h-8 shrink-0 rounded-md border border-border px-3 text-xs font-medium text-foreground hover:bg-muted"
@@ -136,69 +135,8 @@ export const RentalHistoryBlock = ({
           >
             Manage Periods
           </button>
-        )}
-      </div>
-
-      {expanded && (
-        <>
-          <div>
-            <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-4 sm:gap-4">
-              <div className="min-w-[150px] flex-1">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-green-400">
-                  Current Period
-                </div>
-                <div className="font-mono text-sm font-semibold text-foreground">
-                  {formatDate(currentPeriod.start)} → {formatDate(currentPeriod.end)}
-                </div>
-                <div className="mt-1 font-mono text-[11px] text-muted-foreground">
-                  {diffDays(currentPeriod.start, currentPeriod.end)} days
-                </div>
-              </div>
-              <StatusBadge status={contract.status} />
-              <div className="font-mono text-sm font-semibold text-foreground">
-                {formatAed(currentPeriod.amount)}
-              </div>
-            </div>
-
-            {previousPeriods.map((period) => (
-              <div
-                key={period.id}
-                className="flex items-center gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:gap-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-foreground">
-                    {getPeriodLabel(period)}
-                  </div>
-                  <div className="mt-1 font-mono text-[11px] text-muted-foreground">
-                    {formatDate(period.start)} → {formatDate(period.end)}
-                  </div>
-                  <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                    {diffDays(period.start, period.end)} days
-                  </div>
-                </div>
-                <div className="font-mono text-sm font-semibold text-foreground">
-                  {formatAed(period.amount)}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 border-t border-border bg-muted/20">
-            <div className="border-r border-border px-4 py-3">
-              <div className="text-[11px] text-muted-foreground">Total rental days</div>
-              <div className="mt-1 font-mono text-sm font-semibold text-foreground">
-                {totalDays} days
-              </div>
-            </div>
-            <div className="px-4 py-3">
-              <div className="text-[11px] text-muted-foreground">Total rental amount</div>
-              <div className="mt-1 font-mono text-sm font-semibold text-foreground">
-                {formatAed(totalAmount)}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 };
