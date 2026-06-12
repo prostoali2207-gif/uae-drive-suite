@@ -223,10 +223,28 @@ const Fines = () => {
   const handleAddFine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fineForm.car_id || !fineForm.client_id || !fineForm.fine_date) return;
+
+    const { data: activeContract, error: contractError } = await (supabase as any)
+      .from("contracts")
+      .select("id")
+      .eq("car_id", fineForm.car_id)
+      .lte("start_date", fineForm.fine_date)
+      .gte("end_date", fineForm.fine_date)
+      .in("status", ["Active", "active"])
+      .order("start_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (contractError) {
+      toast.error("Failed to find active contract: " + contractError.message);
+      return;
+    }
+
     const { error } = await supabase.from("fines").insert({
       fine_date: fineForm.fine_date,
       car_id: fineForm.car_id,
       client_id: fineForm.client_id,
+      contract_id: activeContract?.id ?? null,
       fine_type: fineForm.fine_type,
       amount: Number(fineForm.amount),
       source: fineForm.source,
