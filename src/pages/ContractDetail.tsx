@@ -1634,8 +1634,9 @@ const FinancialsPanel = ({
         <FinancialSection title="Rental History" meta={`${rentalPeriods.length} periods`}>
           {currentRentalPeriod ? (
             <div className="px-4 py-3">
-              <div className="rounded-md border border-green-900 bg-green-950/20 px-3 py-3">
-                <div className="flex items-center gap-3">
+              <div className="flex overflow-hidden rounded-lg border border-blue-800 bg-blue-950/30">
+                <div className="h-full w-[3px] shrink-0 bg-blue-500 rounded-l-lg" />
+                <div className="flex flex-1 items-center gap-3 px-3 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-semibold text-foreground">{currentRentalPeriod.name}</span>
