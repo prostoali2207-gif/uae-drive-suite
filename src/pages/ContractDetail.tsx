@@ -82,6 +82,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface ContractRecord {
   id: string;
@@ -2041,6 +2043,7 @@ const ContractDetail = () => {
   const [amountEditExtensionEndDate, setAmountEditExtensionEndDate] = useState("");
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
   const [markingDepositReturned, setMarkingDepositReturned] = useState(false);
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
   const navigate = useNavigate();
 
@@ -2246,6 +2249,377 @@ const ContractDetail = () => {
     toast.success("Notes saved");
     setContract({ ...contract, notes: notesDraft });
     setEditingNotes(false);
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!contract || !user) return;
+
+    setGeneratingInvoice(true);
+    try {
+      const [profileRes, feesRes, finesRes, salikRes, paymentsRes] = await Promise.all([
+        (supabase as any)
+          .from("profiles")
+          .select("company_name, phone_number, trn")
+          .eq("id", user.id)
+          .maybeSingle(),
+        (supabase as any)
+          .from("contract_fees")
+          .select("id, label, amount")
+          .eq("contract_id", contract.id)
+          .order("created_at", { ascending: true }),
+        (supabase as any)
+          .from("fines")
+          .select("id, amount")
+          .eq("contract_id", contract.id)
+          .eq("status", "Charged to Client"),
+        (supabase as any)
+          .from("salik")
+          .select("id, trips, amount")
+          .eq("contract_id", contract.id),
+        (supabase as any)
+          .from("payments")
+          .select("id, amount")
+          .eq("contract_id", contract.id),
+      ]);
+
+      if (profileRes.error || feesRes.error || finesRes.error || salikRes.error || paymentsRes.error) {
+        throw new Error(
+          profileRes.error?.message ||
+            feesRes.error?.message ||
+            finesRes.error?.message ||
+            salikRes.error?.message ||
+            paymentsRes.error?.message ||
+            "Failed to load invoice data",
+        );
+      }
+
+      let vehicle = contract.cars as
+        | ({ make: string; model: string; year: number; plate?: string | null; color?: string | null; plate_number?: string | null })
+        | null;
+      const vehicleRes = await (supabase as any)
+        .from("cars")
+        .select("make, model, year, color, plate, plate_number")
+        .eq("id", contract.car_id)
+        .maybeSingle();
+      if (!vehicleRes.error && vehicleRes.data) {
+        vehicle = vehicleRes.data;
+      } else {
+        const fallbackVehicleRes = await (supabase as any)
+          .from("cars")
+          .select("make, model, year, plate")
+          .eq("id", contract.car_id)
+          .maybeSingle();
+        if (!fallbackVehicleRes.error && fallbackVehicleRes.data) {
+          vehicle = fallbackVehicleRes.data;
+        }
+      }
+
+      const profile = (profileRes.data ?? {}) as {
+        company_name?: string | null;
+        phone_number?: string | null;
+        trn?: string | null;
+      };
+      const client = contract.clients;
+      const invoiceNo = `INV-${contract.id}`;
+      const invoiceDate = new Date().toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+      const money = (value: number) =>
+        Number(value || 0).toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      const aed = (value: number) => `AED ${money(value)}`;
+      const rentalDays = Math.max(1, diffDays(contract.start_date, contract.end_date));
+      const rentalAmount = Number(contract.total_amount) || 0;
+      const rentalVat = rentalAmount * 0.05;
+      const chargedFines = ((finesRes.data ?? []) as Array<{ id: string; amount: number }>).map((fine) => ({
+        ...fine,
+        amount: Number(fine.amount) || 0,
+      }));
+      const salikCharges = ((salikRes.data ?? []) as Array<{ id: string; trips: number; amount: number }>).map((charge) => ({
+        ...charge,
+        trips: Number(charge.trips) || 0,
+        amount: Number(charge.amount) || 0,
+      }));
+      const fees = ((feesRes.data ?? []) as Array<{ id: string; label: string; amount: number }>).map((fee) => ({
+        ...fee,
+        amount: Number(fee.amount) || 0,
+      }));
+      const paidAmount = ((paymentsRes.data ?? []) as Array<{ amount: number }>).reduce(
+        (sum, payment) => sum + (Number(payment.amount) || 0),
+        0,
+      );
+      const finesTotal = chargedFines.reduce((sum, fine) => sum + fine.amount, 0);
+      const salikTrips = salikCharges.reduce((sum, charge) => sum + charge.trips, 0);
+      const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
+      const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
+      const subtotal = rentalAmount + finesTotal + salikTotal + feeTotal;
+      const invoiceAmount = subtotal + rentalVat;
+      const remainingBalance = Math.max(0, invoiceAmount - paidAmount);
+      const invoiceStatus =
+        remainingBalance <= 0.01 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid";
+      const statusColors =
+        invoiceStatus === "Paid"
+          ? { fill: [240, 253, 244], text: [22, 163, 74] }
+          : invoiceStatus === "Partially Paid"
+            ? { fill: [255, 251, 235], text: [217, 119, 6] }
+            : { fill: [254, 242, 242], text: [220, 38, 38] };
+
+      const rows: Array<[string, string, string, string, string, string]> = [
+        [
+          "01",
+          `Car Rental\n${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`,
+          `${rentalDays} days`,
+          money(rentalAmount),
+          money(rentalVat),
+          money(rentalAmount + rentalVat),
+        ],
+      ];
+      if (chargedFines.length > 0) {
+        rows.push([
+          String(rows.length + 1).padStart(2, "0"),
+          `Traffic Fines\n${chargedFines.length} ${chargedFines.length === 1 ? "fine" : "fines"} - incl. AED 20 service fee`,
+          String(chargedFines.length),
+          money(finesTotal),
+          "-",
+          money(finesTotal),
+        ]);
+      }
+      if (salikCharges.length > 0) {
+        rows.push([
+          String(rows.length + 1).padStart(2, "0"),
+          `Salik Charges\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
+          String(salikTrips),
+          money(salikTotal),
+          "-",
+          money(salikTotal),
+        ]);
+      }
+      fees.forEach((fee) => {
+        rows.push([
+          String(rows.length + 1).padStart(2, "0"),
+          fee.label || "Contract Fee",
+          "1",
+          money(fee.amount),
+          "-",
+          money(fee.amount),
+        ]);
+      });
+
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 36;
+      const navy = [18, 24, 48] as const;
+      const grey = [107, 114, 128] as const;
+      const lightGrey = [249, 250, 251] as const;
+      const borderGrey = [229, 231, 235] as const;
+
+      const text = (
+        value: string,
+        x: number,
+        y: number,
+        options: { size?: number; color?: readonly number[]; font?: "helvetica" | "courier"; style?: "normal" | "bold"; align?: "left" | "right" | "center" } = {},
+      ) => {
+        doc.setFont(options.font ?? "helvetica", options.style ?? "normal");
+        doc.setFontSize(options.size ?? 10);
+        doc.setTextColor(...(options.color ?? [17, 24, 39]));
+        doc.text(value, x, y, { align: options.align ?? "left" });
+      };
+
+      text(profile.company_name || "Company Name", margin, 54, { size: 15, style: "bold", color: navy });
+      text(`Dubai / Ajman, UAE | ${profile.phone_number || "-"}`, margin, 70, { size: 9, color: grey });
+      doc.setFillColor(243, 244, 246);
+      doc.roundedRect(margin, 78, 150, 18, 3, 3, "F");
+      text(`TRN: ${profile.trn || "-"}`, margin + 6, 90, { size: 8, font: "courier", color: [55, 65, 81] });
+
+      text("TAX INVOICE", pageW - margin, 54, { size: 21, style: "bold", color: navy, align: "right" });
+      text("Original Document", pageW - margin, 70, { size: 8, color: grey, align: "right" });
+      const metaX = pageW - margin - 150;
+      [
+        ["Invoice No", invoiceNo],
+        ["Date", invoiceDate],
+      ].forEach(([label, value], index) => {
+        const y = 91 + index * 16;
+        text(label, metaX, y, { size: 9, color: grey, align: "right" });
+        text(value, metaX + 16, y, { size: 9, font: "courier" });
+      });
+      text("Status", metaX, 123, { size: 9, color: grey, align: "right" });
+      doc.setFillColor(...statusColors.fill);
+      doc.roundedRect(metaX + 16, 111, 90, 17, 8, 8, "F");
+      text(invoiceStatus, metaX + 61, 123, { size: 8, style: "bold", color: statusColors.text, align: "center" });
+
+      doc.setDrawColor(...navy);
+      doc.setLineWidth(1.4);
+      doc.line(margin, 114, pageW - margin, 114);
+
+      const blockY = 142;
+      const blockW = (pageW - margin * 2 - 16) / 2;
+      const drawInfoBlock = (x: number, title: string, main: string, lines: Array<[string, string]>, plate?: string) => {
+        doc.setFillColor(...lightGrey);
+        doc.setDrawColor(...borderGrey);
+        doc.roundedRect(x, blockY, blockW, 86, 6, 6, "FD");
+        text(title.toUpperCase(), x + 12, blockY + 18, { size: 7, style: "bold", color: [156, 163, 175] });
+        text(main, x + 12, blockY + 36, { size: 11, style: "bold" });
+        lines.forEach(([key, value], index) => {
+          text(key, x + 12, blockY + 53 + index * 13, { size: 8, color: [156, 163, 175] });
+          text(value || "-", x + 66, blockY + 53 + index * 13, { size: 8, color: [75, 85, 99] });
+        });
+        if (plate) {
+          doc.setFillColor(229, 231, 235);
+          doc.roundedRect(x + 12, blockY + 59, 82, 18, 3, 3, "F");
+          text(plate, x + 18, blockY + 71, { size: 9, font: "courier", style: "bold", color: navy });
+        }
+      };
+      drawInfoBlock(margin, "Invoice To", client?.full_name || "-", [
+        ["Phone", client?.phone || "-"],
+        ["Nationality", client?.nationality || "-"],
+      ]);
+      drawInfoBlock(
+        margin + blockW + 16,
+        "Vehicle",
+        [vehicle?.make, vehicle?.model].filter(Boolean).join(" ") || "-",
+        [["Year", `${vehicle?.year ?? "-"}${vehicle?.color ? ` - ${vehicle.color}` : ""}`]],
+        vehicle?.plate_number || vehicle?.plate || "-",
+      );
+
+      doc.setFillColor(...navy);
+      doc.roundedRect(margin, 252, pageW - margin * 2, 48, 6, 6, "F");
+      text("RENTAL PERIOD", margin + 16, 271, { size: 8, color: [156, 163, 175], style: "bold" });
+      text(`${formatDate(contract.start_date)} -> ${formatDate(contract.end_date)}`, margin + 16, 288, {
+        size: 10,
+        font: "courier",
+        color: [255, 255, 255],
+      });
+      text(String(rentalDays), pageW - margin - 20, 277, {
+        size: 20,
+        font: "courier",
+        style: "bold",
+        color: [255, 255, 255],
+        align: "right",
+      });
+      text("days", pageW - margin - 20, 292, { size: 8, color: [156, 163, 175], align: "right" });
+
+      autoTable(doc, {
+        startY: 324,
+        head: [["#", "Description", "Qty", "Amount", "VAT 5%", "Total"]],
+        body: rows,
+        theme: "plain",
+        margin: { left: margin, right: margin },
+        styles: {
+          font: "helvetica",
+          fontSize: 9,
+          cellPadding: { top: 8, right: 10, bottom: 8, left: 10 },
+          lineColor: borderGrey,
+          lineWidth: 0.5,
+          valign: "top",
+        },
+        headStyles: {
+          fillColor: navy,
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 8,
+        },
+        columnStyles: {
+          0: { cellWidth: 30, textColor: [156, 163, 175], font: "courier" },
+          1: { cellWidth: 205 },
+          2: { cellWidth: 70, halign: "right", font: "courier" },
+          3: { cellWidth: 80, halign: "right", font: "courier" },
+          4: { cellWidth: 70, halign: "right", font: "courier" },
+          5: { cellWidth: 85, halign: "right", font: "courier" },
+        },
+        didParseCell: (data) => {
+          if (data.section === "body" && data.row.index % 2 === 1) {
+            data.cell.styles.fillColor = lightGrey;
+          }
+          if (data.section === "body" && data.column.index === 4 && data.cell.raw === "-") {
+            data.cell.styles.textColor = [156, 163, 175];
+          }
+        },
+      });
+
+      const tableEndY = ((doc as any).lastAutoTable?.finalY ?? 430) + 12;
+      doc.setDrawColor(...borderGrey);
+      doc.line(margin, tableEndY, pageW - margin, tableEndY);
+      const totalsX = pageW - margin - 250;
+      const totalsRows: Array<[string, string, "normal" | "total" | "deposit" | "paid" | "remaining"]> = [
+        ["Subtotal", aed(subtotal), "normal"],
+        ["VAT (5%)", aed(rentalVat), "normal"],
+        ["Invoice Amount", aed(invoiceAmount), "total"],
+        ["Security Deposit (tracked separately)", aed(Number(contract.deposit_amount) || 0), "deposit"],
+        ["Paid Amount", `- ${aed(paidAmount)}`, "paid"],
+        ["Remaining Balance", aed(remainingBalance), "remaining"],
+      ];
+      let y = tableEndY + 18;
+      totalsRows.forEach(([label, value, kind]) => {
+        if (kind === "total" || kind === "remaining") {
+          doc.setDrawColor(kind === "remaining" ? 220 : 17, kind === "remaining" ? 38 : 24, kind === "remaining" ? 38 : 39);
+          doc.setLineWidth(1.2);
+          doc.line(totalsX, y - 12, pageW - margin, y - 12);
+        }
+        const color =
+          kind === "paid"
+            ? [22, 163, 74]
+            : kind === "remaining"
+              ? [220, 38, 38]
+              : kind === "deposit"
+                ? [156, 163, 175]
+                : [107, 114, 128];
+        text(label, totalsX, y, {
+          size: kind === "total" ? 11 : kind === "remaining" ? 10 : 9,
+          style: kind === "total" || kind === "remaining" ? "bold" : "normal",
+          color,
+        });
+        text(value, pageW - margin, y, {
+          size: kind === "total" ? 11 : kind === "remaining" ? 10 : 9,
+          style: kind === "total" || kind === "remaining" || kind === "paid" ? "bold" : "normal",
+          font: "courier",
+          color,
+          align: "right",
+        });
+        y += kind === "total" ? 24 : 18;
+      });
+
+      const sigY = Math.max(y + 18, 606);
+      doc.setDrawColor(...borderGrey);
+      doc.line(margin, sigY - 14, pageW - margin, sigY - 14);
+      const sigW = (pageW - margin * 2 - 24) / 3;
+      ["Receiver Signature", "Manager Signature", "Account Signature"].forEach((label, index) => {
+        const x = margin + index * (sigW + 12);
+        doc.setDrawColor(209, 213, 219);
+        doc.setLineDashPattern([3, 3], 0);
+        doc.roundedRect(x, sigY, sigW, 48, 5, 5);
+        doc.setLineDashPattern([], 0);
+        text(label.toUpperCase(), x + sigW / 2, sigY + 66, {
+          size: 7,
+          color: [156, 163, 175],
+          style: "bold",
+          align: "center",
+        });
+      });
+
+      const remarksY = sigY + 92;
+      doc.setDrawColor(...borderGrey);
+      doc.roundedRect(margin, remarksY, pageW - margin * 2, 54, 6, 6);
+      text("REMARKS", margin + 12, remarksY + 18, { size: 7, color: [156, 163, 175], style: "bold" });
+      text("Notes or comments...", margin + 12, remarksY + 36, { size: 9, color: [209, 213, 219], style: "normal" });
+
+      doc.setDrawColor(...navy);
+      doc.setLineWidth(1.4);
+      doc.line(margin, pageH - 42, pageW - margin, pageH - 42);
+      text("Thank you for your business", margin, pageH - 24, { size: 8, color: [156, 163, 175] });
+      text("Powered by FleetDesk", pageW - margin, pageH - 24, { size: 8, style: "bold", color: navy, align: "right" });
+
+      doc.save(`Invoice-${contract.id}.pdf`);
+      toast.success("Invoice downloaded");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to generate invoice");
+    } finally {
+      setGeneratingInvoice(false);
+    }
   };
 
   const handleMarkDepositReturned = async (amount: number) => {
@@ -3213,9 +3587,15 @@ const ContractDetail = () => {
 
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={handleDownloadInvoice}
+                  disabled={generatingInvoice}
+                >
                   <Download className="h-3.5 w-3.5" />
-                  Invoice
+                  {generatingInvoice ? "Generating..." : "Invoice"}
                 </Button>
                 {canExtendContract && (
                   <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={openExtendModal}>
