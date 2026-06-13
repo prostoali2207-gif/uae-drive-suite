@@ -76,16 +76,25 @@ interface CombinedVehicleHistory {
   owner_id: string;
   created_at: string;
   daily_rate: number | null;
+  display_started_at: string;
   display_ended_at: string | null;
   period_daily_rate: number | null;
   car: Car | null;
 }
 
-interface RentalPeriodFee {
+interface RentalPeriod {
   id: string;
   amount: number;
   extension_start: string | null;
   extension_end: string | null;
+}
+
+interface ContractPeriod {
+  id: string;
+  start_date: string;
+  end_date: string;
+  rate_type: string;
+  rate_amount: number | string;
 }
 
 export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
@@ -111,12 +120,20 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
   const toDateKey = (dateStr: string) =>
     dateStr.includes("T") ? new Date(dateStr).toLocaleDateString("en-CA") : dateStr.slice(0, 10);
 
-  const findMatchingPeriod = (startedAt: string, periods: RentalPeriodFee[]) => {
-    const startKey = toDateKey(startedAt);
+  const findMatchingPeriod = (dateStr: string, periods: RentalPeriod[]) => {
+    const dateKey = toDateKey(dateStr);
     return periods.find((period) => {
       if (!period.extension_start || !period.extension_end) return false;
-      return startKey >= period.extension_start.slice(0, 10) && startKey <= period.extension_end.slice(0, 10);
+      return dateKey >= period.extension_start.slice(0, 10) && dateKey <= period.extension_end.slice(0, 10);
     });
+  };
+
+  const calculateContractDailyRate = (rateType: string, rateAmount: number | string) => {
+    const amount = Number(rateAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return 0;
+    if (rateType === "Monthly") return amount / 30;
+    if (rateType === "Yearly") return amount / 365;
+    return amount;
   };
 
   // Helper to format duration to "Xd" or "ongoing"
@@ -146,7 +163,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
 
   const grandTotal = history.reduce((sum, item) => {
     if (!item.period_daily_rate) return sum;
-    return sum + Math.round(calculateDays(item.started_at, item.display_ended_at) * item.period_daily_rate);
+    return sum + Math.round(calculateDays(item.display_started_at, item.display_ended_at) * item.period_daily_rate);
   }, 0);
 
   useEffect(() => {
@@ -155,7 +172,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
         setLoading(true);
         try {
           const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
-          const [vehiclesResult, feePeriodsResult] = await Promise.all([
+          const [vehiclesResult, feePeriodsResult, contractResult] = await Promise.all([
             extendedDb
               .from("contract_vehicles")
               .select("*")
@@ -167,12 +184,19 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               .eq("contract_id", contractId)
               .not("extension_start", "is", null)
               .order("extension_start", { ascending: true }),
+            supabase
+              .from("contracts")
+              .select("id, start_date, end_date, rate_type, rate_amount")
+              .eq("id", contractId)
+              .maybeSingle(),
           ]);
 
           const { data: vehiclesData, error: vehiclesError } = vehiclesResult;
           const { data: feePeriodsData, error: feePeriodsError } = feePeriodsResult;
+          const { data: contractData, error: contractError } = contractResult;
           if (vehiclesError) throw vehiclesError;
           if (feePeriodsError) throw feePeriodsError;
+          if (contractError) throw contractError;
 
           if (vehiclesData && vehiclesData.length > 0) {
             const carIds = Array.from(new Set(vehiclesData.map((v) => v.car_id)));
@@ -184,18 +208,39 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
             if (carsError) throw carsError;
 
             const carMap = new Map(carsData?.map((car) => [car.id, car]));
-            const rentalPeriods = ((feePeriodsData ?? []) as RentalPeriodFee[]).filter(
-              (period) => period.extension_start && period.extension_end,
-            );
-            const combined = vehiclesData.map((v) => ({
-              ...v,
-              display_ended_at: v.ended_at ?? findMatchingPeriod(v.started_at, rentalPeriods)?.extension_end ?? null,
-              period_daily_rate: (() => {
-                const period = findMatchingPeriod(v.started_at, rentalPeriods);
-                return period ? Number(period.amount) / 30 : null;
-              })(),
-              car: carMap.get(v.car_id) || null,
-            }));
+            const contractPeriod = contractData as ContractPeriod | null;
+            const originalDailyRate = contractPeriod
+              ? calculateContractDailyRate(contractPeriod.rate_type, contractPeriod.rate_amount)
+              : 0;
+            const originalPeriod =
+              contractPeriod && originalDailyRate > 0
+                ? [
+                    {
+                      id: contractPeriod.id,
+                      amount: originalDailyRate * 30,
+                      extension_start: contractPeriod.start_date,
+                      extension_end: contractPeriod.end_date,
+                    },
+                  ]
+                : [];
+            const rentalPeriods = [
+              ...originalPeriod,
+              ...((feePeriodsData ?? []) as RentalPeriod[]).filter(
+                (period) => period.extension_start && period.extension_end,
+              ),
+            ];
+            const combined = vehiclesData.map((v) => {
+              const matchedPeriod = v.ended_at
+                ? findMatchingPeriod(v.ended_at, rentalPeriods)
+                : findMatchingPeriod(v.started_at, rentalPeriods);
+              return {
+                ...v,
+                display_started_at: v.ended_at ? matchedPeriod?.extension_start ?? v.started_at : v.started_at,
+                display_ended_at: v.ended_at ?? matchedPeriod?.extension_end ?? null,
+                period_daily_rate: matchedPeriod ? Number(matchedPeriod.amount) / 30 : null,
+                car: carMap.get(v.car_id) || null,
+              };
+            });
             setHistory(combined);
           } else {
             setHistory([]);
@@ -263,7 +308,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               {history.map((item, index) => {
                 const isActive = !item.ended_at;
                 const displayEndedAt = item.display_ended_at;
-                const days = calculateDays(item.started_at, displayEndedAt);
+                const days = calculateDays(item.display_started_at, displayEndedAt);
                 const rowTotal = item.period_daily_rate ? Math.round(days * item.period_daily_rate) : null;
                 return (
                   <div key={item.id} className="relative pl-6 pb-8 last:pb-2">
@@ -327,7 +372,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                       <div className="mt-2.5 bg-white/[0.02] border border-white/5 rounded-md p-2.5 space-y-1.5 font-ibm-plex-mono text-xs text-white/70">
                         <div className="flex justify-between items-center">
                           <span className="text-white/30 uppercase text-[9px] tracking-wider">From</span>
-                          <span className="text-white/80">{formatDateTimeline(item.started_at)}</span>
+                          <span className="text-white/80">{formatDateTimeline(item.display_started_at)}</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-white/30 uppercase text-[9px] tracking-wider">To</span>
@@ -345,7 +390,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] text-white/40 uppercase font-dm-sans tracking-wide">Duration:</span>
                         <span className="inline-flex items-center rounded bg-white/5 px-1.5 py-0.5 text-[11px] font-medium text-white/70 border border-white/5 font-ibm-plex-mono">
-                          {calculateDuration(item.started_at, displayEndedAt)}
+                          {calculateDuration(item.display_started_at, displayEndedAt)}
                         </span>
                       </div>
 
