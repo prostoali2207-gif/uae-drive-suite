@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
+  RotateCcw,
 } from "lucide-react";
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
@@ -2033,6 +2034,8 @@ const ContractDetail = () => {
   const [replaceVehicleOpen, setReplaceVehicleOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [replacementCount, setReplacementCount] = useState(0);
+  const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<PaymentRow | null>(null);
   const [feeToDelete, setFeeToDelete] = useState<ContractFeeRow | null>(null);
@@ -2984,6 +2987,26 @@ const ContractDetail = () => {
     navigate("/contracts");
   };
 
+  const handleReopenContract = async () => {
+    if (!contract) return;
+
+    setIsReopening(true);
+    const { error } = await (supabase as any)
+      .from("contracts")
+      .update({ status: "Active" })
+      .eq("id", contract.id);
+    setIsReopening(false);
+
+    if (error) {
+      toast.error("Failed to reopen contract");
+      return;
+    }
+
+    toast.success("Contract reopened");
+    setReopenConfirmOpen(false);
+    await fetchData();
+  };
+
   const handleDeleteContract = async () => {
     if (!id) return;
 
@@ -3627,6 +3650,17 @@ const ContractDetail = () => {
                     Close
                   </Button>
                 )}
+                {isContractClosed && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => setReopenConfirmOpen(true)}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reopen Contract
+                  </Button>
+                )}
                 <Button size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
@@ -4090,6 +4124,23 @@ const ContractDetail = () => {
           </Button>
         </div>
       </div>
+
+      <AlertDialog open={reopenConfirmOpen} onOpenChange={setReopenConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reopen this contract?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Reopen this contract? The status will be changed back to Active.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isReopening}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReopenContract} disabled={isReopening}>
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
