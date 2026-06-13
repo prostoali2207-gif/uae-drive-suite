@@ -171,6 +171,11 @@ const parseRentalExtensionPeriod = (label: string) => {
 const isInsidePeriod = (date: Date, start: Date, end: Date) =>
   date >= start && date <= end;
 
+const toLocalDateKey = (date: Date) => date.toLocaleDateString("en-CA");
+
+const isInsideLocalDatePeriod = (date: Date, start: Date, end: Date) =>
+  toLocalDateKey(date) >= toLocalDateKey(start) && toLocalDateKey(date) <= toLocalDateKey(end);
+
 const calculateOverlapDays = (start: Date, end: Date, periodStart: Date, periodEnd: Date) => {
   const overlapStart = new Date(Math.max(start.getTime(), periodStart.getTime()));
   const overlapEnd = new Date(Math.min(end.getTime(), periodEnd.getTime()));
@@ -256,7 +261,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       const periodEnd = new Date(period.ended_at ?? contractEndAt ?? "");
       if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) return false;
 
-      return isInsidePeriod(swapDate, periodStart, periodEnd);
+      return isInsideLocalDatePeriod(swapDate, periodStart, periodEnd);
     });
 
     if (!containingPeriod) return null;
@@ -436,8 +441,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
       if (
         Number.isNaN(replacementDate.getTime()) ||
-        replacementDate < contractStart ||
-        replacementDate > contractEnd
+        !isInsideLocalDatePeriod(replacementDate, contractStart, contractEnd)
       ) {
         toast({
           title: "Invalid replacement time",
