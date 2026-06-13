@@ -1632,7 +1632,7 @@ const FinancialsPanel = ({
                 </span>
                 {item.id === "rental" ? (
                   <Button type="button" variant="outline" size="sm" className="h-8" onClick={onEditRentalAmount}>
-                    Manage
+                    Pay
                   </Button>
                 ) : item.id === "fines" ? (
                   <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setShowFinesModal(true)}>
