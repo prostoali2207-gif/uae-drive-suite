@@ -258,9 +258,15 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [selectedNewCarId, setSelectedNewCarId] = useState<string>("");
   
   const [replacementTime, setReplacementTime] = useState<string>("");
+  const [currentMonthlyPrice, setCurrentMonthlyPrice] = useState<string>("");
   const [monthlyPrice, setMonthlyPrice] = useState<string>("");
   const [confirmLoading, setConfirmLoading] = useState(false);
 
+  const currentMonthlyPriceNumber = Number(currentMonthlyPrice);
+  const currentPreviewDailyRate =
+    Number.isFinite(currentMonthlyPriceNumber) && currentMonthlyPriceNumber > 0
+      ? currentMonthlyPriceNumber / 30
+      : 0;
   const monthlyPriceNumber = Number(monthlyPrice);
   const previewDailyRate =
     Number.isFinite(monthlyPriceNumber) && monthlyPriceNumber > 0
@@ -281,7 +287,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
     const oldCarDays = Math.min(calculateInclusiveDateKeyDays(periodStartKey, swapDateKey), 30);
     const newCarDays = Math.min(calculateInclusiveDateKeyDays(swapDateKey, periodEndKey), 30);
-    const oldCarDailyRate = Number(containingPeriod.daily_rate);
+    const oldCarDailyRate = currentPreviewDailyRate;
     const newCarDailyRate = previewDailyRate;
     const oldCarTotal =
       Number.isFinite(oldCarDailyRate) && oldCarDailyRate > 0 ? oldCarDays * oldCarDailyRate : 0;
@@ -297,7 +303,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       newCarTotal,
       total: oldCarTotal + newCarTotal,
     };
-  }, [previewDailyRate, replacementTime, rentalPeriods]);
+  }, [currentPreviewDailyRate, previewDailyRate, replacementTime, rentalPeriods]);
 
   // Helper to format a Date object into local datetime-local string (YYYY-MM-DDTHH:MM)
   const formatDatetimeLocal = (date: Date) => {
@@ -318,6 +324,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setReplacementTime(formatted);
       setSelectedNewCarId("");
       setCurrentCar(null);
+      setCurrentMonthlyPrice("");
       setMonthlyPrice("");
       setRentalPeriods([]);
       
@@ -327,7 +334,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         setLoadingRentalPeriods(true);
         try {
           const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
-          const [availableRes, currentRes, contractRes, feePeriodsRes] = await Promise.all([
+          const [availableRes, currentRes, contractRes, feePeriodsRes, activeVehicleRes] = await Promise.all([
             supabase
               .from("cars")
               .select("id, plate, make, model, year")
@@ -349,6 +356,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               .eq("contract_id", contractId)
               .not("extension_start", "is", null)
               .order("extension_start", { ascending: true }),
+            extendedDb
+              .from("contract_vehicles")
+              .select("daily_rate")
+              .eq("contract_id", contractId)
+              .eq("car_id", currentCarId)
+              .is("ended_at", null)
+              .maybeSingle(),
           ]);
 
           if (availableRes.error) throw availableRes.error;
@@ -359,6 +373,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
           if (contractRes.error) throw contractRes.error;
           if (feePeriodsRes.error) throw feePeriodsRes.error;
+          if (activeVehicleRes.error) throw activeVehicleRes.error;
+          const activeVehicleDailyRate = Number((activeVehicleRes.data as ActiveVehiclePeriod | null)?.daily_rate);
+          setCurrentMonthlyPrice(
+            Number.isFinite(activeVehicleDailyRate) && activeVehicleDailyRate > 0
+              ? String(activeVehicleDailyRate * 30)
+              : "",
+          );
           const contractPeriod = contractRes.data as ContractPeriod | null;
           const contractDailyRate = contractPeriod
             ? calculateContractDailyRate(contractPeriod.rate_type, contractPeriod.rate_amount)
@@ -707,6 +728,26 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 ) : (
                   currentCarId.slice(0, 8).toUpperCase()
                 )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="current-monthly-price" className="text-xs text-white/50 uppercase tracking-wider">
+                Monthly price
+              </Label>
+              <Input
+                id="current-monthly-price"
+                type="number"
+                min="1"
+                step="1"
+                inputMode="decimal"
+                value={currentMonthlyPrice}
+                onChange={(e) => setCurrentMonthlyPrice(e.target.value)}
+                placeholder="AED per month"
+                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+              />
+              <div className="text-[11px] text-white/45 font-ibm-plex-mono">
+                Daily rate: {currentPreviewDailyRate > 0 ? `AED ${formatAed(currentPreviewDailyRate)}` : "AED --"}
               </div>
             </div>
 
