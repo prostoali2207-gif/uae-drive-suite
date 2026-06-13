@@ -78,7 +78,6 @@ interface CombinedVehicleHistory {
   daily_rate: number | null;
   display_started_at: string;
   display_ended_at: string | null;
-  period_daily_rate: number | null;
   car: Car | null;
 }
 
@@ -162,8 +161,8 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     `AED ${Math.round(amount).toLocaleString()}`;
 
   const grandTotal = history.reduce((sum, item) => {
-    if (!item.period_daily_rate) return sum;
-    return sum + Math.round(calculateDays(item.display_started_at, item.display_ended_at) * item.period_daily_rate);
+    if (!item.daily_rate) return sum;
+    return sum + Math.round(calculateDays(item.display_started_at, item.display_ended_at) * item.daily_rate);
   }, 0);
 
   useEffect(() => {
@@ -237,7 +236,6 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                 ...v,
                 display_started_at: v.ended_at ? matchedPeriod?.extension_start ?? v.started_at : v.started_at,
                 display_ended_at: v.ended_at ?? matchedPeriod?.extension_end ?? null,
-                period_daily_rate: matchedPeriod ? Number(matchedPeriod.amount) / 30 : null,
                 car: carMap.get(v.car_id) || null,
               };
             });
@@ -309,7 +307,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                 const isActive = !item.ended_at;
                 const displayEndedAt = item.display_ended_at;
                 const days = calculateDays(item.display_started_at, displayEndedAt);
-                const rowTotal = item.period_daily_rate ? Math.round(days * item.period_daily_rate) : null;
+                const rowTotal = item.daily_rate ? Math.round(days * item.daily_rate) : null;
                 return (
                   <div key={item.id} className="relative pl-6 pb-8 last:pb-2">
                     {/* Connector Line */}
@@ -403,7 +401,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                         <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
                           <div className="text-[9px] uppercase tracking-wider text-white/30">Daily Rate</div>
                           <div className="text-xs text-white/80">
-                            {item.period_daily_rate ? formatAed(item.period_daily_rate) : "--"}
+                            {item.daily_rate ? formatAed(item.daily_rate) : "--"}
                           </div>
                         </div>
                         <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
@@ -422,7 +420,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                   <span className="text-[10px] uppercase tracking-wider text-white/40">Grand Total</span>
                   <span className="text-sm font-semibold text-white">{formatAed(grandTotal)}</span>
                 </div>
-                {history.some((item) => !item.period_daily_rate) && (
+                {history.some((item) => !item.daily_rate) && (
                   <p className="mt-2 text-[11px] text-white/35">
                     Rows without daily rate are excluded from the total.
                   </p>
