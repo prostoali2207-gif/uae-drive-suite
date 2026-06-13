@@ -1631,7 +1631,7 @@ const FinancialsPanel = ({
                   {fmtAed(item.due)}
                 </span>
                 {item.id === "rental" ? (
-                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={onEditRentalAmount}>
+                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={onAddPayment}>
                     Pay
                   </Button>
                 ) : item.id === "fines" ? (
