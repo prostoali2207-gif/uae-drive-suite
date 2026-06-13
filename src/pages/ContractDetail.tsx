@@ -1408,6 +1408,22 @@ const FinancialsPanel = ({
   ]);
 
   const transactions = useMemo<FinancialTransaction[]>(() => {
+    const latestFineDate =
+      fines.reduce((latest, fine) => {
+        const currentTime = new Date(fine.fine_date).getTime() || 0;
+        const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
+        return currentTime > latestTime ? fine.fine_date : latest;
+      }, fines[0]?.fine_date ?? contract.start_date) || contract.start_date;
+    const latestSalikDate =
+      salik.reduce((latest, charge) => {
+        const currentTime = new Date(charge.charge_date).getTime() || 0;
+        const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
+        return currentTime > latestTime ? charge.charge_date : latest;
+      }, salik[0]?.charge_date ?? contract.start_date) || contract.start_date;
+    const finesTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
+    const salikTotal = salik.reduce((sum, charge) => sum + Number(charge.amount), 0);
+    const salikTripCount = salik.reduce((sum, charge) => sum + Number(charge.trips), 0);
+
     const rows: FinancialTransaction[] = [
       {
         id: `rent-${contract.id}`,
@@ -1451,32 +1467,32 @@ const FinancialsPanel = ({
         icon: Tag,
         iconTone: "violet" as const,
       })),
-      ...fines.map((fine) => ({
-        id: `fine-${fine.id}`,
-        date: fine.fine_date,
+      ...(fines.length > 0 ? [{
+        id: "fines-summary",
+        date: latestFineDate,
         group: "charges" as const,
         type: "Fine",
-        description: fine.fine_type,
-        details: fine.source,
-        amount: Number(fine.amount),
+        description: "Traffic Fines",
+        details: `${fines.length} ${fines.length === 1 ? "violation" : "violations"}`,
+        amount: finesTotal,
         amountTone: "debit" as const,
         reference: contractNumberLabel(contract.id),
         icon: CarFront,
         iconTone: "amber" as const,
-      })),
-      ...salik.map((charge) => ({
-        id: `salik-${charge.id}`,
-        date: charge.charge_date,
+      }] : []),
+      ...(salik.length > 0 ? [{
+        id: "salik-summary",
+        date: latestSalikDate,
         group: "charges" as const,
         type: "Salik",
-        description: "Salik Charge",
-        details: `${charge.trips} ${charge.trips === 1 ? "trip" : "trips"}${charge.toll_gate ? ` - ${charge.toll_gate}` : ""}`,
-        amount: Number(charge.amount),
+        description: "Salik Charges",
+        details: `${salikTripCount} ${salikTripCount === 1 ? "trip" : "trips"}`,
+        amount: salikTotal,
         amountTone: "debit" as const,
         reference: contractNumberLabel(contract.id),
         icon: Route,
         iconTone: "green" as const,
-      })),
+      }] : []),
       ...payments.map((payment) => ({
         id: `payment-${payment.id}`,
         date: payment.payment_date,
