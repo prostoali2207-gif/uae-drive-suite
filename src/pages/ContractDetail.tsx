@@ -4327,48 +4327,6 @@ const ContractDetail = () => {
               />
             </div>
 
-            <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                End Date
-              </Label>
-              <input
-                type="date"
-                value={editEndDate}
-                onChange={(e) => setEditEndDate(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              />
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                End Time
-              </Label>
-              <input
-                type="time"
-                value={editEndTime}
-                onChange={(e) => setEditEndTime(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              />
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Vehicle
-              </Label>
-              <Select value={editCarId} onValueChange={setEditCarId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select vehicle" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableCars.map((car) => (
-                    <SelectItem key={car.id} value={car.id}>
-                      {car.plate} · {car.year} {car.make} {car.model}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
           </div>
 
           <DialogFooter>
