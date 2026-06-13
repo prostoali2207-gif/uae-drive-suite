@@ -34,6 +34,8 @@ import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import FinesModal from "@/components/FinesModal";
 import SalikModal from "@/components/SalikModal";
+import FinesDetailModal from "@/components/FinesDetailModal";
+import SalikDetailModal from "@/components/SalikDetailModal";
 import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -1318,6 +1320,8 @@ const FinancialsPanel = ({
   const canAddPayment = contract.status.toLowerCase() !== "closed" || totals.outstanding > 0;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
+  const [finesModalOpen, setFinesModalOpen] = useState(false);
+  const [salikModalOpen, setSalikModalOpen] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
 
@@ -1795,6 +1799,27 @@ const FinancialsPanel = ({
                   {fmtAed(transaction.amount)}
                 </div>
                 <div className="flex justify-end gap-1">
+                  {transaction.type === "Fine" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => setFinesModalOpen(true)}
+                    >
+                      View all →
+                    </Button>
+                  ) : transaction.type === "Salik" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => setSalikModalOpen(true)}
+                    >
+                      View all →
+                    </Button>
+                  ) : null}
                   {transaction.allocationPayment ? (
                     <>
                       <Button
@@ -1934,6 +1959,8 @@ const FinancialsPanel = ({
 
       <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
       <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
+      <FinesDetailModal contractId={contract.id} open={finesModalOpen} onClose={() => setFinesModalOpen(false)} />
+      <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />
     </>
   );
 };
