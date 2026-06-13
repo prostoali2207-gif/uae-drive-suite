@@ -531,7 +531,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         return;
       }
 
-      if (Number.isNaN(currentVehicleStart.getTime()) || replacementDate <= currentVehicleStart) {
+      if (Number.isNaN(currentVehicleStart.getTime()) || replacementDate < currentVehicleStart) {
         toast({
           title: "Invalid replacement time",
           description: "Replacement date and time must be after the current vehicle start time.",
@@ -541,11 +541,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         return;
       }
 
+      const replacementTimestamp = replacementDate.toISOString();
+
       const conflict = await findVehicleContractOverlap(extendedDb, {
         carId: selectedNewCarId,
         startDate: replacement.date,
         startTime: replacement.time,
-        endDate: period.end_date,
+        endDate: matchingRentalPeriod.end,
         endTime: period.end_time,
         excludeContractId: contractId,
         operation: "vehicle-replacement",
@@ -564,7 +566,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       const { data: closedVehicles, error: errOldVehicle } = await extendedDb
         .from("contract_vehicles")
         .update({
-          ended_at: new Date(replacementTime).toISOString(),
+          ended_at: replacementTimestamp,
         })
         .eq("contract_id", contractId)
         .eq("car_id", currentCarId)
@@ -579,7 +581,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             contract_id: contractId,
             car_id: currentCarId,
             started_at: currentVehicleStartedAt,
-            ended_at: new Date(replacementTime).toISOString(),
+            ended_at: replacementTimestamp,
             owner_id: userId,
             daily_rate: currentVehicleDailyRate,
           });
@@ -613,7 +615,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         .insert({
           contract_id: contractId,
           car_id: selectedNewCarId,
-          started_at: new Date(replacementTime).toISOString(),
+          started_at: replacementTimestamp,
           ended_at: null,
           owner_id: userId,
           daily_rate: dailyRate,
