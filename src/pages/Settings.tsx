@@ -17,6 +17,7 @@ interface Profile {
   company_name: string;
   logo_url: string | null;
   phone_number?: string | null;
+  trn?: string | null;
   terms_en?: string | null;
   terms_ar?: string | null;
 }
@@ -26,6 +27,7 @@ const Settings = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [trn, setTrn] = useState("");
   const [termsEn, setTermsEn] = useState("");
   const [termsAr, setTermsAr] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -60,6 +62,7 @@ const Settings = () => {
       setProfile(p);
       setCompanyName(p.company_name || "");
       setPhoneNumber(p.phone_number || "");
+      setTrn(p.trn || "");
       setTermsEn(p.terms_en || "");
       setTermsAr(p.terms_ar || "");
       setLogoUrl(p.logo_url);
@@ -81,6 +84,7 @@ const Settings = () => {
       email: profile?.email ?? user.email ?? "",
       company_name: companyName.trim(),
       phone_number: phoneNumber.trim() || null,
+      trn: trn.trim() || null,
       terms_en: termsEn.trim() || null,
       terms_ar: termsAr.trim() || null,
     };
@@ -193,6 +197,16 @@ const Settings = () => {
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     placeholder="+971 50 000 0000"
+                  />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="trn">TRN (Tax Registration Number)</Label>
+                  <Input
+                    id="trn"
+                    value={trn}
+                    onChange={(e) => setTrn(e.target.value)}
+                    placeholder="e.g. 100123456700003"
                   />
                 </div>
 
