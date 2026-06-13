@@ -76,7 +76,16 @@ interface CombinedVehicleHistory {
   owner_id: string;
   created_at: string;
   daily_rate: number | null;
+  display_ended_at: string | null;
+  period_daily_rate: number | null;
   car: Car | null;
+}
+
+interface RentalPeriodFee {
+  id: string;
+  amount: number;
+  extension_start: string | null;
+  extension_end: string | null;
 }
 
 export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
@@ -99,28 +108,32 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     return `${day} ${month} ${hh}:${mm}`;
   };
 
-  // Helper to format duration to "Xd Xh" or "ongoing"
+  const toDateKey = (dateStr: string) =>
+    dateStr.includes("T") ? new Date(dateStr).toLocaleDateString("en-CA") : dateStr.slice(0, 10);
+
+  const findMatchingPeriod = (startedAt: string, periods: RentalPeriodFee[]) => {
+    const startKey = toDateKey(startedAt);
+    return periods.find((period) => {
+      if (!period.extension_start || !period.extension_end) return false;
+      return startKey >= period.extension_start.slice(0, 10) && startKey <= period.extension_end.slice(0, 10);
+    });
+  };
+
+  // Helper to format duration to "Xd" or "ongoing"
   const calculateDuration = (startedAt: string, endedAt: string | null) => {
     if (!endedAt) return "ongoing";
-    
-    const start = new Date(startedAt).getTime();
-    const end = new Date(endedAt).getTime();
-    const diffMs = Math.max(0, end - start);
-    
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const days = Math.floor(diffHours / 24);
-    const hours = diffHours % 24;
-    
-    return `${days}d ${hours}h`;
+
+    return `${calculateDays(startedAt, endedAt)}d`;
   };
 
   const calculateDays = (startedAt: string, endedAt: string | null) => {
-    const start = new Date(startedAt).getTime();
-    const end = endedAt ? new Date(endedAt).getTime() : Date.now();
-    const diffMs = Math.max(0, end - start);
-    const days = diffMs / (1000 * 60 * 60 * 24);
+    if (!endedAt) return 0;
 
-    return Math.round(days * 100) / 100;
+    const start = new Date(`${toDateKey(startedAt)}T00:00:00`).getTime();
+    const end = new Date(`${toDateKey(endedAt)}T00:00:00`).getTime();
+    const diffMs = Math.max(0, end - start);
+
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   };
 
   const formatDays = (days: number) => {
@@ -132,8 +145,8 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     `AED ${Math.round(amount).toLocaleString()}`;
 
   const grandTotal = history.reduce((sum, item) => {
-    if (!item.daily_rate) return sum;
-    return sum + calculateDays(item.started_at, item.ended_at) * item.daily_rate;
+    if (!item.period_daily_rate) return sum;
+    return sum + Math.round(calculateDays(item.started_at, item.display_ended_at) * item.period_daily_rate);
   }, 0);
 
   useEffect(() => {
@@ -142,13 +155,24 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
         setLoading(true);
         try {
           const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
-          const { data: vehiclesData, error: vehiclesError } = await extendedDb
-            .from("contract_vehicles")
-            .select("*")
-            .eq("contract_id", contractId)
-            .order("started_at", { ascending: true });
+          const [vehiclesResult, feePeriodsResult] = await Promise.all([
+            extendedDb
+              .from("contract_vehicles")
+              .select("*")
+              .eq("contract_id", contractId)
+              .order("started_at", { ascending: true }),
+            (extendedDb as any)
+              .from("contract_fees")
+              .select("id, amount, extension_start, extension_end")
+              .eq("contract_id", contractId)
+              .not("extension_start", "is", null)
+              .order("extension_start", { ascending: true }),
+          ]);
 
+          const { data: vehiclesData, error: vehiclesError } = vehiclesResult;
+          const { data: feePeriodsData, error: feePeriodsError } = feePeriodsResult;
           if (vehiclesError) throw vehiclesError;
+          if (feePeriodsError) throw feePeriodsError;
 
           if (vehiclesData && vehiclesData.length > 0) {
             const carIds = Array.from(new Set(vehiclesData.map((v) => v.car_id)));
@@ -160,8 +184,16 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
             if (carsError) throw carsError;
 
             const carMap = new Map(carsData?.map((car) => [car.id, car]));
+            const rentalPeriods = ((feePeriodsData ?? []) as RentalPeriodFee[]).filter(
+              (period) => period.extension_start && period.extension_end,
+            );
             const combined = vehiclesData.map((v) => ({
               ...v,
+              display_ended_at: v.ended_at ?? findMatchingPeriod(v.started_at, rentalPeriods)?.extension_end ?? null,
+              period_daily_rate: (() => {
+                const period = findMatchingPeriod(v.started_at, rentalPeriods);
+                return period ? Number(period.amount) / 30 : null;
+              })(),
               car: carMap.get(v.car_id) || null,
             }));
             setHistory(combined);
@@ -230,8 +262,9 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
             <div className="relative">
               {history.map((item, index) => {
                 const isActive = !item.ended_at;
-                const days = calculateDays(item.started_at, item.ended_at);
-                const rowTotal = item.daily_rate ? days * item.daily_rate : null;
+                const displayEndedAt = item.display_ended_at;
+                const days = calculateDays(item.started_at, displayEndedAt);
+                const rowTotal = item.period_daily_rate ? Math.round(days * item.period_daily_rate) : null;
                 return (
                   <div key={item.id} className="relative pl-6 pb-8 last:pb-2">
                     {/* Connector Line */}
@@ -298,10 +331,12 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-white/30 uppercase text-[9px] tracking-wider">To</span>
-                          {isActive ? (
-                            <span className="text-emerald-400 font-semibold">now (active)</span>
+                          {displayEndedAt ? (
+                            <span className={isActive ? "text-emerald-400 font-semibold" : "text-white/80"}>
+                              {formatDateTimeline(displayEndedAt)}
+                            </span>
                           ) : (
-                            <span className="text-white/80">{formatDateTimeline(item.ended_at!)}</span>
+                            <span className="text-emerald-400 font-semibold">active</span>
                           )}
                         </div>
                       </div>
@@ -310,7 +345,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] text-white/40 uppercase font-dm-sans tracking-wide">Duration:</span>
                         <span className="inline-flex items-center rounded bg-white/5 px-1.5 py-0.5 text-[11px] font-medium text-white/70 border border-white/5 font-ibm-plex-mono">
-                          {calculateDuration(item.started_at, item.ended_at)}
+                          {calculateDuration(item.started_at, displayEndedAt)}
                         </span>
                       </div>
 
@@ -323,7 +358,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                         <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
                           <div className="text-[9px] uppercase tracking-wider text-white/30">Daily Rate</div>
                           <div className="text-xs text-white/80">
-                            {item.daily_rate ? formatAed(item.daily_rate) : "--"}
+                            {item.period_daily_rate ? formatAed(item.period_daily_rate) : "--"}
                           </div>
                         </div>
                         <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
@@ -342,7 +377,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                   <span className="text-[10px] uppercase tracking-wider text-white/40">Grand Total</span>
                   <span className="text-sm font-semibold text-white">{formatAed(grandTotal)}</span>
                 </div>
-                {history.some((item) => !item.daily_rate) && (
+                {history.some((item) => !item.period_daily_rate) && (
                   <p className="mt-2 text-[11px] text-white/35">
                     Rows without daily rate are excluded from the total.
                   </p>
