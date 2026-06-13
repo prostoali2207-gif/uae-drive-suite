@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { Calculator } from "lucide-react";
 import {
   findVehicleContractOverlap,
   formatContractOverlapMessage,
@@ -113,12 +114,36 @@ interface VehicleRatePeriod {
   daily_rate: number | null;
 }
 
+interface SwapCalculatorPeriod extends VehicleRatePeriod {
+  car_id: string;
+}
+
 function splitDatetimeLocal(value: string) {
   return {
     date: value.slice(0, 10),
     time: value.slice(11, 16),
   };
 }
+
+const DAY_MS = 86_400_000;
+
+const startOfLocalDay = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const calculateInclusiveDays = (start: Date, end: Date) => {
+  const startDay = startOfLocalDay(start);
+  const endDay = startOfLocalDay(end);
+  const diffDays = Math.floor((endDay.getTime() - startDay.getTime()) / DAY_MS) + 1;
+  return Math.max(0, diffDays);
+};
+
+const formatAed = (amount: number) =>
+  Number.isFinite(amount)
+    ? amount.toLocaleString("en-AE", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : "--";
 
 function calculateContractDailyRate(rateType: string, rateAmount: number | string) {
   const amount = Number(rateAmount);
@@ -208,6 +233,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [loadingCars, setLoadingCars] = useState(false);
   const [currentCar, setCurrentCar] = useState<Car | null>(null);
   const [loadingCurrentCar, setLoadingCurrentCar] = useState(false);
+  const [loadingRentalPeriods, setLoadingRentalPeriods] = useState(false);
+  const [contractEndAt, setContractEndAt] = useState<string | null>(null);
+  const [swapCalculatorPeriods, setSwapCalculatorPeriods] = useState<SwapCalculatorPeriod[]>([]);
   const [selectedNewCarId, setSelectedNewCarId] = useState<string>("");
   
   const [replacementTime, setReplacementTime] = useState<string>("");
@@ -217,8 +245,45 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const monthlyPriceNumber = Number(monthlyPrice);
   const previewDailyRate =
     Number.isFinite(monthlyPriceNumber) && monthlyPriceNumber > 0
-      ? Math.round(monthlyPriceNumber / 30)
+      ? monthlyPriceNumber / 30
       : 0;
+  const swapCostPreview = useMemo(() => {
+    const swapDate = new Date(replacementTime);
+    if (Number.isNaN(swapDate.getTime())) return null;
+
+    const containingPeriod = swapCalculatorPeriods.find((period) => {
+      const periodStart = new Date(period.started_at);
+      const periodEnd = new Date(period.ended_at ?? contractEndAt ?? "");
+      if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) return false;
+
+      return isInsidePeriod(swapDate, periodStart, periodEnd);
+    });
+
+    if (!containingPeriod) return null;
+
+    const periodStart = new Date(containingPeriod.started_at);
+    const periodEnd = new Date(containingPeriod.ended_at ?? contractEndAt ?? "");
+    if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) return null;
+
+    const oldCarDays = Math.min(calculateInclusiveDays(periodStart, swapDate), 30);
+    const newCarDays = Math.min(calculateInclusiveDays(swapDate, periodEnd), 30);
+    const oldCarDailyRate = Number(containingPeriod.daily_rate);
+    const newCarDailyRate = previewDailyRate;
+    const oldCarTotal =
+      Number.isFinite(oldCarDailyRate) && oldCarDailyRate > 0 ? oldCarDays * oldCarDailyRate : 0;
+    const newCarTotal =
+      Number.isFinite(newCarDailyRate) && newCarDailyRate > 0 ? newCarDays * newCarDailyRate : 0;
+
+    return {
+      oldCarDays,
+      oldCarDailyRate,
+      oldCarTotal,
+      newCarDays,
+      newCarDailyRate,
+      newCarTotal,
+      total: oldCarTotal + newCarTotal,
+    };
+  }, [contractEndAt, previewDailyRate, replacementTime, swapCalculatorPeriods]);
 
   // Helper to format a Date object into local datetime-local string (YYYY-MM-DDTHH:MM)
   const formatDatetimeLocal = (date: Date) => {
@@ -240,12 +305,16 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setSelectedNewCarId("");
       setCurrentCar(null);
       setMonthlyPrice("");
+      setContractEndAt(null);
+      setSwapCalculatorPeriods([]);
       
       const fetchModalData = async () => {
         setLoadingCars(true);
         setLoadingCurrentCar(true);
+        setLoadingRentalPeriods(true);
         try {
-          const [availableRes, currentRes] = await Promise.all([
+          const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
+          const [availableRes, currentRes, contractRes, periodsRes] = await Promise.all([
             supabase
               .from("cars")
               .select("id, plate, make, model, year")
@@ -255,7 +324,17 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               .from("cars")
               .select("id, plate, make, model, year")
               .eq("id", currentCarId)
-              .maybeSingle()
+              .maybeSingle(),
+            extendedDb
+              .from("contracts")
+              .select("end_date, end_time")
+              .eq("id", contractId)
+              .maybeSingle(),
+            extendedDb
+              .from("contract_vehicles")
+              .select("car_id, started_at, ended_at, daily_rate")
+              .eq("contract_id", contractId)
+              .order("started_at", { ascending: true }),
           ]);
 
           if (availableRes.error) throw availableRes.error;
@@ -263,6 +342,15 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
           if (currentRes.error) throw currentRes.error;
           setCurrentCar(currentRes.data as Car | null);
+
+          if (contractRes.error) throw contractRes.error;
+          if (contractRes.data) {
+            const period = contractRes.data as Pick<ContractPeriod, "end_date" | "end_time">;
+            setContractEndAt(parseContractDateTime(period.end_date, period.end_time).toISOString());
+          }
+
+          if (periodsRes.error) throw periodsRes.error;
+          setSwapCalculatorPeriods(((periodsRes.data ?? []) as SwapCalculatorPeriod[]));
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Unknown error";
           console.error("Error fetching modal data:", err);
@@ -274,12 +362,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         } finally {
           setLoadingCars(false);
           setLoadingCurrentCar(false);
+          setLoadingRentalPeriods(false);
         }
       };
 
       fetchModalData();
     }
-  }, [isOpen, currentCarId, toast]);
+  }, [isOpen, contractId, currentCarId, toast]);
 
   const handleConfirm = async () => {
     if (!selectedNewCarId) return;
@@ -636,10 +725,47 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
               />
               <div className="text-[11px] text-white/45 font-ibm-plex-mono">
-                Daily rate: {previewDailyRate > 0 ? `AED ${previewDailyRate}` : "AED --"}
+                Daily rate: {previewDailyRate > 0 ? `AED ${formatAed(previewDailyRate)}` : "AED --"}
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+            <Calculator className="h-4 w-4 text-blue-300" aria-hidden="true" />
+            Swap cost calculator
+          </div>
+
+          {loadingRentalPeriods ? (
+            <div className="text-sm text-white/55">Loading rental periods...</div>
+          ) : swapCostPreview ? (
+            <div className="space-y-2 text-sm text-white/75">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>Car #1</span>
+                <span className="font-ibm-plex-mono text-white">
+                  {swapCostPreview.oldCarDays} days × AED {formatAed(swapCostPreview.oldCarDailyRate)} = AED{" "}
+                  {formatAed(swapCostPreview.oldCarTotal)}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>Car #2</span>
+                <span className="font-ibm-plex-mono text-white">
+                  {swapCostPreview.newCarDays} days × AED {formatAed(swapCostPreview.newCarDailyRate)} = AED{" "}
+                  {formatAed(swapCostPreview.newCarTotal)}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-white">
+                <span className="font-medium">Period total</span>
+                <span className="font-ibm-plex-mono">
+                  AED {formatAed(swapCostPreview.oldCarTotal)} + AED {formatAed(swapCostPreview.newCarTotal)} = AED{" "}
+                  {formatAed(swapCostPreview.total)}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-amber-200/80">Swap date does not fall within any rental period.</div>
+          )}
         </div>
 
         <DialogFooter className="flex justify-end gap-3">
