@@ -49,13 +49,6 @@ const diffDays = (start: string | null | undefined, end: string | null | undefin
 
 const formatAed = (amount: number) => `AED ${Number(amount).toLocaleString()}`;
 
-const readExtensionDateFromLabel = (label: string, index: 1 | 2) => {
-  const match = label
-    .trim()
-    .match(/^Rental Extension:\s*(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})$/i);
-  return match?.[index] ?? null;
-};
-
 const StatusBadge = ({ status }: { status: "Paid" | "Unpaid" }) => {
   const isPaid = status === "Paid";
   return (
@@ -77,25 +70,25 @@ export const RentalHistoryBlock = ({
   onManagePeriods,
   periodDueById = {},
 }: RentalHistoryBlockProps) => {
-  const sortedExtensions = [...extensions].sort((a, b) => {
-    const aStart = a.extension_start ?? readExtensionDateFromLabel(a.label, 1) ?? "";
-    const bStart = b.extension_start ?? readExtensionDateFromLabel(b.label, 1) ?? "";
-    return aStart.localeCompare(bStart);
-  });
-  const firstExtensionStart =
-    sortedExtensions[0]?.extension_start ?? readExtensionDateFromLabel(sortedExtensions[0]?.label ?? "", 1);
+  const sortedExtensions = extensions
+    .filter((extension) => extension.extension_start && extension.extension_end)
+    .sort((a, b) => {
+      const startCompare = String(a.extension_start).localeCompare(String(b.extension_start));
+      if (startCompare !== 0) return startCompare;
+      return String(a.extension_end).localeCompare(String(b.extension_end));
+    });
   const periods: RentalPeriod[] = [
     {
       id: "base-rental",
       start: contract.start_date,
-      end: firstExtensionStart ?? contract.end_date,
+      end: contract.end_date,
       amount: Number(contract.rate_amount),
       periodNumber: 1,
     },
     ...sortedExtensions.map((extension, index) => ({
       id: extension.id,
-      start: extension.extension_start ?? readExtensionDateFromLabel(extension.label, 1),
-      end: extension.extension_end ?? readExtensionDateFromLabel(extension.label, 2),
+      start: extension.extension_start ?? null,
+      end: extension.extension_end ?? null,
       amount: Number(extension.amount),
       periodNumber: index + 2,
     })),

@@ -444,11 +444,23 @@ const getDepositReconciliationInfo = (
   };
 };
 
-const isRentalExtensionFee = (fee: ContractFeeRow) =>
-  Boolean(fee.extension_start) ||
-  fee.label.trim().toLowerCase().startsWith(RENTAL_EXTENSION_LABEL.toLowerCase());
+const isRentalExtensionFee = (fee: ContractFeeRow) => Boolean(fee.extension_start && fee.extension_end);
 
 const isStructuredRentalExtensionFee = (fee: ContractFeeRow) => Boolean(fee.extension_start);
+
+const sortRentalExtensionFees = (fees: ContractFeeRow[]) =>
+  [...fees].filter(isRentalExtensionFee).sort((a, b) => {
+    const startCompare = String(a.extension_start).localeCompare(String(b.extension_start));
+    if (startCompare !== 0) return startCompare;
+    const endCompare = String(a.extension_end).localeCompare(String(b.extension_end));
+    if (endCompare !== 0) return endCompare;
+    return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+  });
+
+const getLatestRentalPeriodEnd = (contract: Pick<ContractRecord, "end_date">, fees: ContractFeeRow[]) => {
+  const sortedExtensions = sortRentalExtensionFees(fees);
+  return sortedExtensions[sortedExtensions.length - 1]?.extension_end ?? contract.end_date;
+};
 
 const formatRentalExtensionPeriod = (fee: ContractFeeRow) => {
   if (fee.extension_start && fee.extension_end) {
@@ -809,16 +821,9 @@ const FinancialsAccordion = ({
   onUpdateFineNote,
   onUpdateSalikNote,
 }: FinancialsAccordionProps) => {
-  const rentalFees = contractFees
-    .filter(isRentalExtensionFee)
-    .sort((a, b) => {
-      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return aTime - bTime;
-    });
+  const rentalFees = sortRentalExtensionFees(contractFees);
   const latestRentalFeeId = rentalFees.at(-1)?.id;
-  const firstExtensionStart = rentalFees[0] ? parseRentalExtensionPeriod(rentalFees[0].label)?.periodStart : null;
-  const originalRentalLabel = `${formatDate(contract.start_date)} → ${firstExtensionStart ? formatDate(firstExtensionStart) : formatDate(contract.end_date)}`;
+  const originalRentalLabel = `${formatDate(contract.start_date)} -> ${formatDate(contract.end_date)}`;
   const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
   const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
@@ -1250,34 +1255,14 @@ const FinancialsPanel = ({
   onMarkDepositReturned,
   markingDepositReturned,
 }: FinancialsPanelProps) => {
-  const rentalExtensions = contractFees
-    .filter((fee) => {
-      const feeCategory = String((fee as ContractFeeRow & { category?: string }).category ?? "").toLowerCase();
-      return feeCategory === "rent" || feeCategory === "extension" || fee.label?.startsWith("Rental Extension:");
-    })
-    .sort((a, b) => {
-      const aPeriod = parseRentalExtensionPeriod(a.label);
-      const bPeriod = parseRentalExtensionPeriod(b.label);
-      const aTime = new Date(a.extension_start ?? aPeriod?.periodStart ?? a.created_at ?? "").getTime() || 0;
-      const bTime = new Date(b.extension_start ?? bPeriod?.periodStart ?? b.created_at ?? "").getTime() || 0;
-      return aTime - bTime;
-    });
+  const rentalExtensions = sortRentalExtensionFees(contractFees);
   const otherFees = contractFees.filter((fee) => !rentalExtensions.some((extension) => extension.id === fee.id));
-  const firstExtensionStart =
-    rentalExtensions[0]?.extension_start ?? parseRentalExtensionPeriod(rentalExtensions[0]?.label ?? "")?.periodStart ?? null;
   const paymentAllocationLineLookup = useMemo(() => {
     const lookup = new Map<string, Pick<PaymentAllocationDisplayLine, "category" | "label">>();
     lookup.set(`rental-${contract.id}`, { category: "rental", label: "Original Contract" });
 
     rentalExtensions.forEach((fee, index) => {
-      const isCurrent = index === rentalExtensions.length - 1;
-      const label =
-        isCurrent
-          ? "Current Period"
-          : rentalExtensions.length > 2
-            ? `Previous Period ${index + 1}`
-            : "Previous Period";
-      lookup.set(`fee-${fee.id}`, { category: "rental", label });
+      lookup.set(`fee-${fee.id}`, { category: "rental", label: `Extension #${index + 1}` });
     });
 
     contractFees
@@ -1352,9 +1337,7 @@ const FinancialsPanel = ({
           id: "rental",
           title: "Rent Outstanding",
           detail: `${count} unpaid ${count === 1 ? "period" : "periods"}`,
-          meta: firstExtensionStart
-            ? `${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`
-            : `${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`,
+          meta: `${formatDate(contract.start_date)} - ${formatDate(getLatestRentalPeriodEnd(contract, rentalExtensions))}`,
           due: nextDue,
           icon: CalendarDays,
           iconTone: "blue",
@@ -1404,7 +1387,7 @@ const FinancialsPanel = ({
     contract.start_date,
     fines,
     finesVerificationLabel,
-    firstExtensionStart,
+    rentalExtensions,
     salik,
     salikVerificationLabel,
     unpaidAllocationLines,
@@ -1434,7 +1417,7 @@ const FinancialsPanel = ({
         group: "charges",
         type: "Rent",
         description: "Rent - Original Contract",
-        details: `${formatDate(contract.start_date)} - ${formatDate(firstExtensionStart ?? contract.end_date)}`,
+        details: `${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`,
         amount: Number(contract.total_amount),
         amountTone: "debit",
         reference: contractNumberLabel(contract.id),
@@ -1442,14 +1425,13 @@ const FinancialsPanel = ({
         iconTone: "blue",
       },
       ...rentalExtensions.map((fee, index) => {
-        const parsedPeriod = parseRentalExtensionPeriod(fee.label);
         return {
           id: `rent-extension-${fee.id}`,
-          date: fee.extension_start ?? parsedPeriod?.periodStart ?? fee.created_at ?? contract.start_date,
+          date: fee.extension_start ?? fee.created_at ?? contract.start_date,
           group: "charges" as const,
           type: "Rent",
-          description: "Contract Extended",
-          details: `${formatDate(fee.extension_start ?? parsedPeriod?.periodStart)} → ${formatDate(fee.extension_end ?? parsedPeriod?.periodEnd)}`,
+          description: `Extension #${index + 1}`,
+          details: `${formatDate(fee.extension_start)} -> ${formatDate(fee.extension_end)}`,
           amount: Number(fee.amount),
           amountTone: "debit" as const,
           reference: contractNumberLabel(contract.id),
@@ -1519,7 +1501,6 @@ const FinancialsPanel = ({
     contract.start_date,
     contract.total_amount,
     fines,
-    firstExtensionStart,
     otherFees,
     paymentAllocationLineLookup,
     payments,
@@ -1541,16 +1522,15 @@ const FinancialsPanel = ({
       name: "Original Contract",
       startDate: contract.start_date,
       endDate: contract.end_date,
-      amount: Number(contract.rate_amount),
+      amount: Number(contract.total_amount),
       onEdit: onEditRentalAmount,
     },
     ...rentalExtensions.map((fee, index) => {
-      const parsedPeriod = parseRentalExtensionPeriod(fee.label);
       return {
         id: fee.id,
         name: `Extension #${index + 1}`,
-        startDate: fee.extension_start ?? parsedPeriod?.periodStart ?? fee.created_at ?? contract.start_date,
-        endDate: fee.extension_end ?? parsedPeriod?.periodEnd ?? contract.end_date,
+        startDate: fee.extension_start ?? contract.end_date,
+        endDate: fee.extension_end ?? contract.end_date,
         amount: Number(fee.amount),
         onEdit: () => onEditFeeAmount(fee),
       };
@@ -2691,7 +2671,9 @@ const ContractDetail = () => {
       return;
     }
 
-    if (extendEndDate <= contract.end_date) {
+    const extensionStart = getLatestRentalPeriodEnd(contract, contractFees);
+
+    if (extendEndDate <= extensionStart) {
       setExtendError("New end date must be later than the current end date.");
       return;
     }
@@ -2703,7 +2685,6 @@ const ContractDetail = () => {
     }
 
     setIsExtending(true);
-    const extensionStart = contract.end_date;
     const extensionEnd = extendEndDate;
     const newEndTime = formatTimeForDb(contract.end_time);
 
@@ -2711,7 +2692,7 @@ const ContractDetail = () => {
     try {
       overlap = await findVehicleContractOverlap(supabase, {
         carId: contract.car_id,
-        startDate: contract.start_date,
+        startDate: extensionStart,
         startTime: contract.start_time,
         endDate: extensionEnd,
         endTime: newEndTime,
@@ -2731,6 +2712,32 @@ const ContractDetail = () => {
       return;
     }
 
+    const { data: existingExtension, error: existingExtensionError } = await (supabase as any)
+      .from("contract_fees")
+      .select("id")
+      .eq("contract_id", contract.id)
+      .eq("extension_start", extensionStart)
+      .eq("extension_end", extensionEnd)
+      .maybeSingle();
+
+    if (existingExtensionError) {
+      setIsExtending(false);
+      const message = "Could not verify existing extension periods. Try again.";
+      setExtendError(message);
+      toast.error(message);
+      return;
+    }
+
+    if (existingExtension?.id) {
+      setIsExtending(false);
+      toast.info("This extension period already exists");
+      setShowExtendModal(false);
+      setExtendEndDate("");
+      setExtendAmount("");
+      await fetchContractFees();
+      return;
+    }
+
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id;
     if (!userId) {
@@ -2739,7 +2746,7 @@ const ContractDetail = () => {
       return;
     }
 
-    const { data: insertedFee, error: feeError } = await (supabase as any)
+    const { error: feeError } = await (supabase as any)
       .from("contract_fees")
       .insert({
         contract_id: contract.id,
@@ -2757,27 +2764,6 @@ const ContractDetail = () => {
       setIsExtending(false);
       console.error("Failed to insert extension contract fee", feeError);
       const message = "Could not add the extension fee. The contract was not changed.";
-      setExtendError(message);
-      toast.error(message);
-      return;
-    }
-
-    const { error: contractError } = await supabase
-      .from("contracts")
-      .update({
-        end_date: extensionEnd,
-      } as never)
-      .eq("id", contract.id);
-
-    if (contractError) {
-      if (insertedFee?.id) {
-        await (supabase as any)
-          .from("contract_fees")
-          .delete()
-          .eq("id", insertedFee.id);
-      }
-      setIsExtending(false);
-      const message = "Could not extend the contract. The extension fee was not kept.";
       setExtendError(message);
       toast.error(message);
       return;
@@ -3389,13 +3375,7 @@ const ContractDetail = () => {
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
   const isContractClosed = contract.status.toLowerCase() === "closed";
   const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());
-  const rentalFeeLines = contractFees
-    .filter(isRentalExtensionFee)
-    .sort((a, b) => {
-      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return aTime - bTime;
-    });
+  const rentalFeeLines = sortRentalExtensionFees(contractFees);
   const manualFeeLines = contractFees.filter((fee) => !isRentalExtensionFee(fee));
   const grossPaymentAllocationLines: ContractPaymentAllocationLine[] = [
     {
@@ -3406,20 +3386,12 @@ const ContractDetail = () => {
       dueDate: contract.end_date,
     },
     ...rentalFeeLines.map((fee, index) => {
-      const isCurrent = index === rentalFeeLines.length - 1;
-      const parsedPeriod = parseRentalExtensionPeriod(fee.label);
-      const label =
-        isCurrent
-          ? "Current Period"
-          : rentalFeeLines.length > 2
-            ? `Previous Period ${index + 1}`
-            : "Previous Period";
       return {
         id: `fee-${fee.id}`,
         category: "rental" as const,
-        label,
+        label: `Extension #${index + 1}`,
         due: Number(fee.amount),
-        dueDate: fee.extension_end ?? parsedPeriod?.periodEnd ?? null,
+        dueDate: fee.extension_end ?? null,
       };
     }),
     ...manualFeeLines.map((fee) => ({
@@ -3557,8 +3529,9 @@ const ContractDetail = () => {
     !isCloseRetainPartialValid ||
     !isCloseRetainFullValid ||
     !isCloseDepositReturnDateValid;
-  const tomorrowDate = getTomorrowDateInput();
-  const extensionPreviewDays = extendEndDate ? diffDays(contract.end_date, extendEndDate) : 0;
+  const latestRentalPeriodEnd = getLatestRentalPeriodEnd(contract, rentalFeeLines);
+  const extensionMinDate = addDaysToDateInput(latestRentalPeriodEnd, 1);
+  const extensionPreviewDays = extendEndDate ? diffDays(latestRentalPeriodEnd, extendEndDate) : 0;
   const extensionPreviewCharge = Number(extendAmount);
   const extensionConfirmLabel = extendEndDate
     ? `Confirm Extension → ${formatDate(extendEndDate)}`
@@ -4359,7 +4332,7 @@ const ContractDetail = () => {
               </Label>
               <input
                 type="date"
-                min={tomorrowDate}
+                min={extensionMinDate}
                 value={extendEndDate}
                 onChange={(e) => {
                   setExtendEndDate(e.target.value);
@@ -4394,7 +4367,7 @@ const ContractDetail = () => {
                 <div className="flex items-center justify-between gap-3">
                   <span>Period</span>
                   <span className="text-right text-foreground">
-                    {formatDate(contract.end_date)} → {extendEndDate ? formatDate(extendEndDate) : "Select date"}
+                    {formatDate(latestRentalPeriodEnd)} {"->"} {extendEndDate ? formatDate(extendEndDate) : "Select date"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">

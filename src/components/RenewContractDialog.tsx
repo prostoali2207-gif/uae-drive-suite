@@ -14,6 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
+const buildRentalExtensionLabel = (periodStart: string, periodEnd: string) =>
+  `Rental Extension: ${periodStart} - ${periodEnd}`;
+
 interface RenewContractDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -73,14 +76,65 @@ const RenewContractDialog = ({
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
-        .from("contracts")
-        .update({ end_date: newEndDate })
-        .eq("id", contractId);
+      const { data: latestExtension, error: latestExtensionError } = await (supabase as any)
+        .from("contract_fees")
+        .select("extension_end")
+        .eq("contract_id", contractId)
+        .not("extension_start", "is", null)
+        .not("extension_end", "is", null)
+        .order("extension_end", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestExtensionError) throw latestExtensionError;
+
+      const extensionStart = latestExtension?.extension_end ?? currentEndDate;
+
+      if (newEndDate <= extensionStart) {
+        toast.error("New end date must be later than the current rental period");
+        return;
+      }
+
+      const amount = Number(paymentAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        toast.error("Enter a valid extension amount");
+        return;
+      }
+
+      const { data: existingExtension, error: existingExtensionError } = await (supabase as any)
+        .from("contract_fees")
+        .select("id")
+        .eq("contract_id", contractId)
+        .eq("extension_start", extensionStart)
+        .eq("extension_end", newEndDate)
+        .maybeSingle();
+
+      if (existingExtensionError) throw existingExtensionError;
+      if (existingExtension?.id) {
+        toast.info("This extension period already exists");
+        onOpenChange(false);
+        return;
+      }
+
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) throw new Error("Could not confirm current user");
+
+      const { error } = await (supabase as any)
+        .from("contract_fees")
+        .insert({
+          contract_id: contractId,
+          category: "other",
+          label: buildRentalExtensionLabel(extensionStart, newEndDate),
+          amount,
+          extension_start: extensionStart,
+          extension_end: newEndDate,
+          owner_id: userId,
+        });
 
       if (error) throw error;
 
-      toast.success("Contract renewed successfully");
+      toast.success("Contract extension saved");
       onOpenChange(false);
       
       // Reset form
