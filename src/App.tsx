@@ -26,7 +26,7 @@ import ClientRegisterV2 from "./pages/ClientRegisterV2";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <div className="dark min-h-screen w-full max-w-full min-w-0">
+  <div className="dark min-h-screen w-full min-w-0">
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
