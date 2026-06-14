@@ -27,7 +27,7 @@ export function DashboardLayout({ title, subtitle, children, mobileContractsNav 
               <NotificationBell />
             </div>
           </header>
-          <main className="min-w-0 flex-1 px-4 py-6 pb-24 md:px-8 md:py-8">
+          <main className="w-full min-w-0 flex-1 px-4 py-6 pb-24 md:px-8 md:py-8">
             <div className="w-full max-w-full min-w-0">{children}</div>
           </main>
         </div>
