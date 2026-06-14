@@ -3647,7 +3647,7 @@ const ContractDetail = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="overview" className="px-4 py-4 md:px-8">
+        <Tabs defaultValue="overview" className="w-full px-4 py-4 md:px-8">
           <TabsList className="h-9 bg-muted/60 p-0.5">
             <TabsTrigger value="overview" className="h-8 gap-1.5 px-3 text-xs">
               <LayoutGrid className="h-3.5 w-3.5" />
