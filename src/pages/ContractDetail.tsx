@@ -3558,7 +3558,7 @@ const ContractDetail = () => {
 
   return (
     <DashboardLayout title={contractNumber} subtitle="Contract details">
-      <div className="-mx-4 -my-6 md:-mx-8 md:-my-8">
+      <div className="w-full -mx-4 -my-6 md:-mx-8 md:-my-8">
         {/* Sticky header */}
         <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
