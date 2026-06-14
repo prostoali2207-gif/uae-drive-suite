@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload, XCircle } from "lucide-react";
+import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload, XCircle, MoreVertical } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +104,8 @@ interface ClientRegistrationRequest {
   created_at: string;
 }
 
+type ClientFilter = "All" | "Emirates ID" | "Passport" | "Active" | "Outstanding";
+
 type ClientDocumentUrlField =
   | "passport_photo_url"
   | "eid_front_url"
@@ -182,13 +184,38 @@ const documentLinks = (request: ClientRegistrationRequest) => [
   ["License Back", request.license_back_url],
 ].filter(([, url]) => Boolean(url)) as [string, string][];
 
+const getInitials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "?";
+
+const countryFlags: Record<string, string> = {
+  "United Arab Emirates": "🇦🇪",
+  India: "🇮🇳",
+  Pakistan: "🇵🇰",
+  Egypt: "🇪🇬",
+  Philippines: "🇵🇭",
+  Jordan: "🇯🇴",
+  Lebanon: "🇱🇧",
+  "Sri Lanka": "🇱🇰",
+  Bangladesh: "🇧🇩",
+  Nepal: "🇳🇵",
+  "United Kingdom": "🇬🇧",
+  "United States": "🇺🇸",
+};
+
+const getCountryFlag = (nationality: string) => countryFlags[nationality] || "🌐";
+
 const Clients = () => {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [registrationRequests, setRegistrationRequests] = useState<ClientRegistrationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [docFilter, setDocFilter] = useState<"All" | "Emirates ID" | "Passport">("All");
+  const [docFilter, setDocFilter] = useState<ClientFilter>("All");
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -210,6 +237,7 @@ const Clients = () => {
   const [reviewingRequest, setReviewingRequest] = useState<ClientRegistrationRequest | null>(null);
   const [reviewActionLoading, setReviewActionLoading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [isMobileClientsLayout, setIsMobileClientsLayout] = useState(false);
 
   const uploadClientDocument = async (file: File | undefined, field: ClientDocumentUrlField) => {
     if (!file) return;
@@ -250,6 +278,14 @@ const Clients = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const handleChange = () => setIsMobileClientsLayout(mediaQuery.matches);
+    handleChange();
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
   const enriched = useMemo(() => {
     return clients.map((c) => {
       const cs = contracts.filter((k) => k.client_id === c.id);
@@ -279,6 +315,10 @@ const Clients = () => {
       result = result.filter((c) => c.client_type === "Resident");
     } else if (docFilter === "Passport") {
       result = result.filter((c) => c.client_type === "Tourist");
+    } else if (docFilter === "Active") {
+      result = result.filter((c) => c.hasActive);
+    } else if (docFilter === "Outstanding") {
+      result = result.filter((c) => c.outstanding > 0);
     }
 
     return result;
@@ -288,15 +328,21 @@ const Clients = () => {
     setPage(1);
   }, [query, docFilter, pageSize]);
 
+  const effectivePageSize = isMobileClientsLayout ? 10 : pageSize;
+
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const totalPages = Math.max(1, Math.ceil(filtered.length / effectivePageSize));
     if (page > totalPages) setPage(totalPages);
-  }, [filtered.length, page, pageSize]);
+  }, [filtered.length, page, effectivePageSize]);
 
   const paginatedClients = useMemo(
-    () => getPaginatedRows(filtered, page, pageSize),
-    [filtered, page, pageSize],
+    () => getPaginatedRows(filtered, page, effectivePageSize),
+    [filtered, page, effectivePageSize],
   );
+
+  const mobileTotalPages = Math.max(1, Math.ceil(filtered.length / 10));
+  const activeClientsCount = enriched.filter((client) => client.hasActive).length;
+  const outstandingTotal = enriched.reduce((sum, client) => sum + client.outstanding, 0);
 
   const pendingRequests = useMemo(
     () => registrationRequests.filter((request) => request.status === "pending"),
@@ -571,6 +617,14 @@ const Clients = () => {
   return (
     <DashboardLayout title="Clients" subtitle="Manage your renters">
       <div className="flex flex-col gap-5">
+        <style>{`
+          @media (max-width: 767px) {
+            header h1 + p {
+              display: none;
+            }
+          }
+        `}</style>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative w-full max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -582,7 +636,7 @@ const Clients = () => {
             />
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-lg border border-border p-1 bg-muted/30">
+          <div className="hidden items-center gap-1.5 rounded-lg border border-border p-1 bg-muted/30 md:flex">
             {(["All", "Emirates ID", "Passport"] as const).map((opt) => (
               <button
                 key={opt}
@@ -842,7 +896,7 @@ const Clients = () => {
 
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setDupError(""); setStep(1); } }}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5 bg-fd-accent text-white hover:bg-fd-accent/90" onClick={openAdd}>
+              <Button size="sm" className="hidden gap-1.5 bg-fd-accent text-white hover:bg-fd-accent/90 md:inline-flex" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
                 Add Client
               </Button>
@@ -1195,7 +1249,135 @@ const Clients = () => {
           </AlertDialog>
         </div>
 
-        <div className="rounded-xl border border-border bg-card">
+        <div className="-mx-2 grid grid-cols-3 gap-2 md:hidden">
+          <div className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="text-sm font-semibold text-foreground">{activeClientsCount} Active</span>
+          </div>
+          <div className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
+            <span className="font-mono text-sm font-semibold text-red-400">AED {outstandingTotal.toLocaleString()}</span>
+            <span className="text-[11px] font-medium text-muted-foreground">Due</span>
+          </div>
+          <div className="flex min-h-14 items-center justify-center rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
+            <span className="text-sm font-semibold text-foreground">{clients.length} Total</span>
+          </div>
+        </div>
+
+        <div className="-mx-2 overflow-x-auto [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max gap-2 px-2">
+            {(["All", "Emirates ID", "Passport", "Active", "Outstanding"] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setDocFilter(opt)}
+                className={cn(
+                  "h-9 rounded-full px-4 text-sm font-medium transition-colors",
+                  docFilter === opt
+                    ? "bg-[#2563eb] text-white"
+                    : "bg-[#161b27] text-muted-foreground",
+                )}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="-mx-2 grid gap-2 px-2 md:hidden">
+          {loading ? (
+            <div className="rounded-xl border border-[#21293d] bg-[#161b27] px-4 py-8 text-center text-sm text-muted-foreground">
+              Loading clients...
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-xl border border-[#21293d] bg-[#161b27] px-4 py-8 text-center text-sm text-muted-foreground">
+              No clients found.
+            </div>
+          ) : (
+            paginatedClients.map((c) => {
+              const documentPrefix = c.client_type === "Resident" ? "EID" : "PAS";
+              const documentValue = c.client_type === "Resident" ? c.emirates_id : c.passport_number;
+              const amountLabel = c.outstanding > 0 ? "Due" : c.totalContracts > 0 ? "Paid" : "Balance";
+
+              return (
+                <Link
+                  key={c.id}
+                  to={`/clients/${c.id}`}
+                  className={cn(
+                    "relative grid grid-cols-[44px_minmax(0,1fr)_88px] gap-3 rounded-xl border border-[#21293d] bg-[#161b27] p-3 text-left transition-opacity",
+                    !c.hasActive && "opacity-60",
+                  )}
+                >
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#21293d] text-sm font-semibold text-foreground">
+                    {getInitials(c.full_name)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-sm font-semibold text-foreground">{c.full_name}</span>
+                      <span className="shrink-0 text-sm">{getCountryFlag(c.nationality)}</span>
+                    </div>
+                    <div className="mt-1 truncate text-xs text-muted-foreground">{c.phone}</div>
+                    <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                      {documentPrefix} {documentValue || "-"}
+                    </div>
+                  </div>
+                  <div className="flex min-w-0 flex-col items-end pr-5 text-right">
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                      <span className={cn("h-2 w-2 rounded-full", c.hasActive ? "bg-emerald-500" : "bg-slate-500")} />
+                      <span>{c.hasActive ? "Active" : "No active"}</span>
+                    </div>
+                    <div
+                      className={cn(
+                        "mt-2 font-mono text-xs font-semibold",
+                        c.outstanding > 0 ? "text-red-400" : "text-emerald-400",
+                      )}
+                    >
+                      AED {c.outstanding.toLocaleString()}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">{amountLabel}</div>
+                  </div>
+                  <MoreVertical className="absolute right-2 top-2 h-4 w-4 text-muted-foreground" />
+                </Link>
+              );
+            })
+          )}
+        </div>
+
+        <div className="flex items-center justify-center gap-3 md:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 bg-transparent"
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={page <= 1}
+          >
+            Prev
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {mobileTotalPages}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 bg-transparent"
+            onClick={() => setPage((current) => Math.min(mobileTotalPages, current + 1))}
+            disabled={page >= mobileTotalPages}
+          >
+            Next
+          </Button>
+        </div>
+
+        <Button
+          type="button"
+          aria-label="Add client"
+          onClick={openAdd}
+          className="fixed bottom-20 right-4 z-50 h-14 w-14 rounded-full bg-[#2563eb] p-0 text-white shadow-lg hover:bg-[#1d4ed8] md:hidden"
+        >
+          <Plus className="h-7 w-7" />
+        </Button>
+
+        <div className="hidden rounded-xl border border-border bg-card md:block">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
