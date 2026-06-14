@@ -1593,32 +1593,32 @@ const FinancialsPanel = ({
             <FinancialLine className="text-xs text-muted-foreground">No unpaid customer items.</FinancialLine>
           ) : (
             openItemGroups.map((item) => (
-              <FinancialLine key={item.id} className="flex-wrap sm:flex-nowrap">
+              <FinancialLine key={item.id} className="min-h-0 flex-nowrap py-2">
                 <FinancialIconBox icon={item.icon} tone={item.iconTone} />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="truncate text-xs font-semibold text-foreground">{item.title}</span>
-                  <span className="text-[11px] text-muted-foreground">{item.detail}</span>
+                  <span className="truncate text-[11px] text-muted-foreground">{item.detail}</span>
                 </div>
                 <div className="hidden min-w-[170px] text-xs text-muted-foreground md:block">{item.meta}</div>
-                <span className="ml-auto w-28 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
+                <span className="ml-auto w-28 shrink-0 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
                   {fmtAed(item.due)}
                 </span>
                 {item.id === "rental" ? (
-                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={onAddPayment}>
+                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" onClick={onAddPayment}>
                     Pay
                   </Button>
                 ) : item.id === "fines" ? (
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setShowFinesModal(true)}>
+                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowFinesModal(true)}>
                     View
                     <ExternalLink className="h-3.5 w-3.5" />
                   </Button>
                 ) : item.id === "salik" ? (
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setShowSalikModal(true)}>
+                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowSalikModal(true)}>
                     View
                     <ExternalLink className="h-3.5 w-3.5" />
                   </Button>
                 ) : (
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onAddPayment}>
+                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={onAddPayment}>
                     Pay
                   </Button>
                 )}
