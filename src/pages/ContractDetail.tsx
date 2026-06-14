@@ -630,15 +630,15 @@ const Panel = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <section className={cn("rounded-lg border border-border bg-card", className)}>
-    <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
-      <div className="flex items-center gap-2">
+  <section className={cn("min-w-0 rounded-lg border border-border bg-card", className)}>
+    <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+      <div className="flex min-w-0 items-center gap-2">
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">{title}</h3>
+        <h3 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-foreground">{title}</h3>
       </div>
       {action}
     </header>
-    <div className="px-4 py-3">{children}</div>
+    <div className="min-w-0 px-4 py-3">{children}</div>
   </section>
 );
 
@@ -1553,7 +1553,7 @@ const FinancialsPanel = ({
 
   return (
     <>
-      <div className="space-y-4 pb-20">
+      <div className="w-full max-w-full min-w-0 space-y-4 pb-20">
         <section className="space-y-1">
           <div className="flex items-center justify-between gap-3">
             <div
@@ -1942,17 +1942,17 @@ const FinancialsPanel = ({
           ) : null}
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-[#1a2640] bg-[#0d1421] px-4 py-3">
+        <div className="fixed inset-x-0 bottom-0 z-40 flex w-full max-w-[100vw] min-w-0 gap-3 border-t border-[#1a2640] bg-[#0d1421] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
-            className="flex-1 rounded-xl border border-[#2d4a6e] bg-[#1a2640] py-3 text-sm font-semibold text-[#94a3b8]"
+            className="min-w-0 flex-1 rounded-xl border border-[#2d4a6e] bg-[#1a2640] py-3 text-sm font-semibold text-[#94a3b8]"
             onClick={onAddFee}
           >
             + Add Fee
           </button>
           <button
             type="button"
-            className="flex-1 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white"
+            className="min-w-0 flex-1 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white"
             onClick={onAddPayment}
           >
             + Add Payment
@@ -3558,11 +3558,11 @@ const ContractDetail = () => {
 
   return (
     <DashboardLayout title={contractNumber} subtitle="Contract details">
-      <div className="w-full -mx-4 -my-6 md:-mx-8 md:-my-8">
+      <div className="w-[calc(100%+2rem)] max-w-[100vw] min-w-0 -mx-4 -my-6 md:w-[calc(100%+4rem)] md:-mx-8 md:-my-8">
         {/* Sticky header */}
-        <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
-            <div className="flex items-center gap-3">
+        <div className="sticky top-0 z-20 max-w-full min-w-0 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div className="flex max-w-full min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
+            <div className="flex min-w-0 items-center gap-3">
               <Button asChild variant="ghost" size="sm" className="h-8 -ml-2 gap-1.5 text-muted-foreground">
                 <Link to="/contracts">
                   <ArrowLeft className="h-3.5 w-3.5" />
@@ -3570,8 +3570,8 @@ const ContractDetail = () => {
                 </Link>
               </Button>
               <div className="h-5 w-px bg-border" />
-              <div className="flex items-center gap-2.5">
-                <h2 className="font-mono text-sm font-semibold tracking-tight text-foreground">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <h2 className="min-w-0 truncate font-mono text-sm font-semibold tracking-tight text-foreground">
                   {contractNumber}
                 </h2>
                 <span
@@ -3585,8 +3585,8 @@ const ContractDetail = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
+            <div className="flex max-w-full min-w-0 items-center gap-4">
+              <div className="flex max-w-full flex-wrap items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
@@ -3647,37 +3647,39 @@ const ContractDetail = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="overview" className="w-full px-4 py-4 md:px-8">
-          <TabsList className="h-9 bg-muted/60 p-0.5">
-            <TabsTrigger value="overview" className="h-8 gap-1.5 px-3 text-xs">
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="financials" className="h-8 gap-1.5 px-3 text-xs">
-              <Wallet className="h-3.5 w-3.5" />
-              Financials
-              {ledger.length > 0 && (
-                <span className="ml-1 rounded bg-background/70 px-1.5 text-[10px] tabular-nums">
-                  {ledger.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="h-8 gap-1.5 px-3 text-xs">
-              <FileText className="h-3.5 w-3.5" />
-              Documents
-            </TabsTrigger>
-            <TabsTrigger value="inspection" className="h-8 gap-1.5 px-3 text-xs">
-              <Camera className="h-3.5 w-3.5" />
-              Inspection
-            </TabsTrigger>
-            <TabsTrigger value="timeline" className="h-8 gap-1.5 px-3 text-xs">
-              <Clock className="h-3.5 w-3.5" />
-              Timeline & Notes
-            </TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="overview" className="w-full max-w-full min-w-0 px-4 py-4 md:px-8">
+          <div className="w-full max-w-full min-w-0 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsList className="h-9 w-max min-w-max bg-muted/60 p-0.5">
+              <TabsTrigger value="overview" className="h-8 gap-1.5 px-3 text-xs">
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="financials" className="h-8 gap-1.5 px-3 text-xs">
+                <Wallet className="h-3.5 w-3.5" />
+                Financials
+                {ledger.length > 0 && (
+                  <span className="ml-1 rounded bg-background/70 px-1.5 text-[10px] tabular-nums">
+                    {ledger.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="h-8 gap-1.5 px-3 text-xs">
+                <FileText className="h-3.5 w-3.5" />
+                Documents
+              </TabsTrigger>
+              <TabsTrigger value="inspection" className="h-8 gap-1.5 px-3 text-xs">
+                <Camera className="h-3.5 w-3.5" />
+                Inspection
+              </TabsTrigger>
+              <TabsTrigger value="timeline" className="h-8 gap-1.5 px-3 text-xs">
+                <Clock className="h-3.5 w-3.5" />
+                Timeline & Notes
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* OVERVIEW */}
-          <TabsContent value="overview" className="mt-4 space-y-3">
+          <TabsContent value="overview" className="mt-4 max-w-full min-w-0 space-y-3">
             <div className="flex flex-wrap gap-2">
               {canExtendContract && (
                 <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={openExtendModal}>
@@ -3818,7 +3820,7 @@ const ContractDetail = () => {
           </TabsContent>
 
           {/* FINANCIALS */}
-          <TabsContent value="financials" className="mt-4 space-y-3">
+          <TabsContent value="financials" className="mt-4 max-w-full min-w-0 space-y-3">
             <FinancialsPanel
               contract={contract}
               days={days}
@@ -3957,7 +3959,7 @@ const ContractDetail = () => {
           </TabsContent>
 
           {/* DOCUMENTS */}
-          <TabsContent value="documents" className="mt-4">
+          <TabsContent value="documents" className="mt-4 max-w-full min-w-0">
             <Panel
               title="Documents"
               icon={FileText}
@@ -3983,12 +3985,12 @@ const ContractDetail = () => {
           </TabsContent>
 
           {/* INSPECTION */}
-          <TabsContent value="inspection" className="mt-4">
+          <TabsContent value="inspection" className="mt-4 max-w-full min-w-0">
             <InspectionPhotosTab contractId={contract.id} uploadedBy={user?.id ?? null} />
           </TabsContent>
 
           {/* TIMELINE & NOTES */}
-          <TabsContent value="timeline" className="mt-4 grid gap-3 lg:grid-cols-2">
+          <TabsContent value="timeline" className="mt-4 grid max-w-full min-w-0 gap-3 lg:grid-cols-2">
             <Panel
               title="Notes"
               icon={Pencil}
