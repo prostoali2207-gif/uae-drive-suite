@@ -1553,7 +1553,7 @@ const FinancialsPanel = ({
 
   return (
     <>
-      <div className="space-y-4">
+      <div className="space-y-4 pb-20">
         <section className="space-y-1">
           <div className="flex items-center justify-between gap-3">
             <div
@@ -1695,12 +1695,6 @@ const FinancialsPanel = ({
         <FinancialSection
           title="Transaction History"
           meta="All charges, payments, and adjustments"
-          action={canAddPayment ? (
-            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={onAddFee}>
-              <Plus className="h-3.5 w-3.5" />
-              Add Fee
-            </Button>
-          ) : undefined}
         >
           <div className="border-b border-border px-4 py-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1946,6 +1940,23 @@ const FinancialsPanel = ({
               )}
             </div>
           ) : null}
+        </div>
+
+        <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-[#1a2640] bg-[#0d1421] px-4 py-3">
+          <button
+            type="button"
+            className="flex-1 rounded-xl border border-[#2d4a6e] bg-[#1a2640] py-3 text-sm font-semibold text-[#94a3b8]"
+            onClick={onAddFee}
+          >
+            + Add Fee
+          </button>
+          <button
+            type="button"
+            className="flex-1 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white"
+            onClick={onAddPayment}
+          >
+            + Add Payment
+          </button>
         </div>
       </div>
 
