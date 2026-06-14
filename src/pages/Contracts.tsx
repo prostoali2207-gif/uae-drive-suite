@@ -66,7 +66,6 @@ import {
 
 type ContractFilter = "All" | "Active" | "Expiring Soon" | "Overdue" | "Closed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
-type RateType = "Daily" | "Weekly" | "Monthly" | "Yearly";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
 
 interface ContractRow {
@@ -170,6 +169,11 @@ function getRoundedCurrentTimeInput(): string {
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 }
 
+function getTodayDateInput(): string {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
 function formatTimeForDb(time: string | undefined): string {
   if (time == null || time.trim() === "") return `${getRoundedCurrentTimeInput()}:00`;
   const trimmed = time.trim();
@@ -215,23 +219,6 @@ function getBillingDays(startDate: string, startTime: string, endDate: string, e
   return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86_400_000));
 }
 
-function getCalendarMonths(startDate: string, endDate: string): number {
-  if (!startDate || !endDate) return 0;
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 0;
-
-  const months = (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
-  const lastDayOfTargetMonth = new Date(start.getFullYear(), start.getMonth() + months + 1, 0).getDate();
-  const anniversary = new Date(
-    start.getFullYear(),
-    start.getMonth() + months,
-    Math.min(start.getDate(), lastDayOfTargetMonth),
-  );
-
-  return Math.max(0, months - (end < anniversary ? 1 : 0));
-}
-
 function createContractId(): string {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -258,20 +245,19 @@ function isAtLeastFullMonth(start: string, end: string): boolean {
   return isWholeCalendarMonth;
 }
 
-const emptyForm = {
+const createEmptyForm = () => ({
   client_id: "",
   car_id: "",
-  start_date: "",
+  start_date: getTodayDateInput(),
   start_time: "",
   end_date: "",
   end_time: "",
-  rate_type: "Daily",
-  rate_amount: 100,
-  deposit_amount: 0,
+  rate_amount: "0",
+  deposit_amount: "0",
   initial_mileage: "",
   fuel_level: "Full" as FuelLevel,
   special_conditions: "",
-};
+});
 
 const PICKUP_PHOTO_SLOTS = [
   { key: "front", label: "Front", legacySlots: ["Front"] },
@@ -564,7 +550,7 @@ const Contracts = () => {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(createEmptyForm);
   const [endTimeManuallyEdited, setEndTimeManuallyEdited] = useState(false);
   const [clientSelectOpen, setClientSelectOpen] = useState(false);
   const [carSelectOpen, setCarSelectOpen] = useState(false);
@@ -718,12 +704,9 @@ const Contracts = () => {
     [form.start_date, form.start_time, form.end_date, form.end_time],
   );
   const total = useMemo(() => {
-    if (!form.rate_amount || !days) return 0;
-    if (form.rate_type === "Daily") return form.rate_amount * days;
-    if (form.rate_type === "Weekly") return form.rate_amount * (days / 7);
-    if (form.rate_type === "Monthly") return form.rate_amount * getCalendarMonths(form.start_date, form.end_date);
-    return form.rate_amount * (days / 365);
-  }, [form.rate_type, form.rate_amount, form.start_date, form.end_date, days]);
+    const rentAmount = Number(form.rate_amount);
+    return Number.isFinite(rentAmount) && rentAmount > 0 ? rentAmount : 0;
+  }, [form.rate_amount]);
 
   const filteredClients = useMemo(() => {
     const q = clientSearch.trim().toLowerCase();
@@ -836,7 +819,12 @@ const Contracts = () => {
     setOpen(nextOpen);
     if (nextOpen) {
       const defaultTime = getRoundedCurrentTimeInput();
-      setForm((prev) => ({ ...prev, start_time: defaultTime, end_time: defaultTime }));
+      setForm((prev) => ({
+        ...prev,
+        start_date: prev.start_date || getTodayDateInput(),
+        start_time: defaultTime,
+        end_time: defaultTime,
+      }));
       setEndTimeManuallyEdited(false);
       return;
     }
@@ -910,8 +898,8 @@ const Contracts = () => {
       return;
     }
 
-    if (!Number.isFinite(Number(form.rate_amount)) || Number(form.rate_amount) <= 0) {
-      toast.error("Please enter a valid rate amount");
+    if (String(form.rate_amount).trim() === "" || !Number.isFinite(Number(form.rate_amount)) || Number(form.rate_amount) <= 0) {
+      toast.error("Please enter a valid rent amount");
       return;
     }
 
@@ -925,7 +913,7 @@ const Contracts = () => {
       return;
     }
 
-    if (!Number.isFinite(Number(form.deposit_amount)) || Number(form.deposit_amount) < 0) {
+    if (String(form.deposit_amount).trim() !== "" && (!Number.isFinite(Number(form.deposit_amount)) || Number(form.deposit_amount) < 0)) {
       toast.error("Please enter a valid deposit amount");
       return;
     }
@@ -973,10 +961,10 @@ const Contracts = () => {
         end_date: form.end_date,
         start_time: formatTimeForDb(form.start_time),
         end_time: formatTimeForDb(form.end_time),
-        rate_type: form.rate_type,
+        rate_type: "Daily",
         rate_amount: Number(form.rate_amount),
         total_amount: total,
-        deposit_amount: Number(form.deposit_amount),
+        deposit_amount: form.deposit_amount === "" ? 0 : Number(form.deposit_amount),
         initial_mileage: Number(form.initial_mileage),
         fuel_level: form.fuel_level,
         status: "Active",
@@ -1002,7 +990,7 @@ const Contracts = () => {
         setSigningClientName(resolvedClientName);
         setSigningUserId(userId);
         setShowPickupInspectionModal(true);
-        setForm(emptyForm);
+        setForm(createEmptyForm());
         setEndTimeManuallyEdited(false);
         setClientSearch("");
         setCarSearch("");
@@ -1269,33 +1257,21 @@ const Contracts = () => {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label>Rate Type</Label>
-                    <Select value={form.rate_type} onValueChange={(v) => setForm((prev) => ({ ...prev, rate_type: v as RateType }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Daily">Daily</SelectItem>
-                        <SelectItem value="Weekly">Weekly</SelectItem>
-                        <SelectItem value="Monthly">Monthly</SelectItem>
-                        <SelectItem value="Yearly">Yearly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="rate">Rate (AED)</Label>
-                    <Input
-                      id="rate"
-                      type="number"
-                      min={0}
-                      required
-                      value={form.rate_amount}
-                      onFocus={(e) => {
-                        if (Number(form.rate_amount) === 0) e.currentTarget.select();
-                      }}
-                      onChange={(e) => setForm((prev) => ({ ...prev, rate_amount: Number(e.target.value) }))}
-                    />
-                  </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="rate">Rent Amount (AED)</Label>
+                  <Input
+                    id="rate"
+                    type="number"
+                    min={0}
+                    required
+                    value={form.rate_amount}
+                    onFocus={() => {
+                      if (Number(form.rate_amount) === 0) {
+                        setForm((prev) => ({ ...prev, rate_amount: "" }));
+                      }
+                    }}
+                    onChange={(e) => setForm((prev) => ({ ...prev, rate_amount: e.target.value }))}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
@@ -1326,10 +1302,12 @@ const Contracts = () => {
                     type="number"
                     min={0}
                     value={form.deposit_amount}
-                    onFocus={(e) => {
-                      if (Number(form.deposit_amount) === 0) e.currentTarget.select();
+                    onFocus={() => {
+                      if (Number(form.deposit_amount) === 0) {
+                        setForm((prev) => ({ ...prev, deposit_amount: "" }));
+                      }
                     }}
-                    onChange={(e) => setForm((prev) => ({ ...prev, deposit_amount: Number(e.target.value) }))}
+                    onChange={(e) => setForm((prev) => ({ ...prev, deposit_amount: e.target.value }))}
                   />
                 </div>
                 <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
@@ -1341,7 +1319,7 @@ const Contracts = () => {
                   </div>
                   <div className="text-right text-xs text-muted-foreground">
                     <div>{days} days</div>
-                    <div>{form.rate_type.toLowerCase()} rate</div>
+                    <div>rent amount</div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -1628,7 +1606,7 @@ const Contracts = () => {
             onComplete={() => {
               setShowSignModal(false);
               setOpen(false);
-              setForm(emptyForm);
+              setForm(createEmptyForm());
               setEndTimeManuallyEdited(false);
               setClientSearch("");
               setCarSearch("");
