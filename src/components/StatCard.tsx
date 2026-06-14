@@ -34,23 +34,23 @@ export function StatCard({ label, value, icon: Icon, tint = "blue", highlight, c
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-card p-5 transition-colors hover:border-foreground/15",
+        "min-w-0 rounded-xl border border-border bg-card p-5 transition-colors hover:border-foreground/15",
         highlight && highlightClasses[highlight],
         containerClassName,
       )}
     >
-      <div className="flex items-center justify-between">
-        <span className={cn("text-xs font-medium text-muted-foreground", labelClassName)}>{label}</span>
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className={cn("min-w-0 text-xs font-medium text-muted-foreground", labelClassName)}>{label}</span>
         <div
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
             tintClasses[tint]
           )}
         >
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div className={cn("mt-4 text-2xl font-semibold tracking-tight text-foreground", valueClassName)}>
+      <div className={cn("mt-4 min-w-0 break-words text-2xl font-semibold tracking-tight text-foreground", valueClassName)}>
         {value}
       </div>
     </div>

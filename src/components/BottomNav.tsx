@@ -33,8 +33,8 @@ export function BottomNav() {
   const isMoreActive = moreNav.some((item) => isActivePath(location.pathname, item.url));
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 shadow-lg backdrop-blur md:hidden">
-      <div className="grid grid-cols-5 items-center gap-1">
+    <nav className="fixed inset-x-0 bottom-0 z-50 w-full max-w-[100vw] border-t border-border bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 shadow-lg backdrop-blur md:hidden">
+      <div className="grid min-w-0 grid-cols-5 items-center gap-1">
         {primaryNav.map((item) => {
           const active = isActivePath(location.pathname, item.url);
 
@@ -44,12 +44,12 @@ export function BottomNav() {
               to={item.url}
               end={item.url === "/"}
               className={cn(
-                "flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-medium text-muted-foreground",
+                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-medium text-muted-foreground",
                 active && "bg-muted text-foreground",
               )}
             >
               <item.icon className="h-4 w-4" />
-              <span>{item.title}</span>
+              <span className="max-w-full truncate">{item.title}</span>
             </NavLink>
           );
         })}
@@ -59,12 +59,12 @@ export function BottomNav() {
               type="button"
               variant="ghost"
               className={cn(
-                "flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-medium text-muted-foreground",
+                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-medium text-muted-foreground",
                 isMoreActive && "bg-muted text-foreground",
               )}
             >
               <MoreHorizontal className="h-4 w-4" />
-              <span>More</span>
+              <span className="max-w-full truncate">More</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="mb-2 w-48">
