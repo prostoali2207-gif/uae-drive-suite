@@ -653,20 +653,21 @@ const Clients = () => {
             ))}
           </div>
 
-          <Dialog open={importOpen} onOpenChange={(v) => { setImportOpen(v); if (!v) setImportPreview(null); }}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline" className="gap-1.5 bg-transparent" onClick={() => setImportOpen(true)}>
-                <Upload className="h-4 w-4" />
-                Import CSV
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px] text-foreground font-dm-sans">
-              <DialogHeader>
-                <DialogTitle className="text-foreground">Import legacy clients</DialogTitle>
-                <DialogDescription className="text-muted-foreground">
-                  Preview old CSV clients before inserting them. Existing phone numbers are skipped.
-                </DialogDescription>
-              </DialogHeader>
+          <div className="flex w-full flex-wrap gap-2 md:w-auto md:flex-nowrap">
+            <Dialog open={importOpen} onOpenChange={(v) => { setImportOpen(v); if (!v) setImportPreview(null); }}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="w-full gap-1.5 bg-transparent sm:w-auto" onClick={() => setImportOpen(true)}>
+                  <Upload className="h-4 w-4" />
+                  Import CSV
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px] text-foreground font-dm-sans">
+                <DialogHeader>
+                  <DialogTitle className="text-foreground">Import legacy clients</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Preview old CSV clients before inserting them. Existing phone numbers are skipped.
+                  </DialogDescription>
+                </DialogHeader>
 
               <div className="grid gap-4 py-2">
                 <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center hover:border-foreground/30">
@@ -761,26 +762,26 @@ const Clients = () => {
                   {importing ? "Importing..." : `Import ${importPreview?.rowsReady ?? 0} ready rows`}
                 </Button>
               </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
 
-          <Dialog open={requestsOpen} onOpenChange={(v) => { setRequestsOpen(v); if (!v) { setReviewingRequest(null); setRejectionReason(""); } }}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline" className="gap-1.5 bg-transparent" onClick={() => setRequestsOpen(true)}>
-                <Inbox className="h-4 w-4" />
-                Pending Requests
-                {pendingRequests.length > 0 && (
-                  <Badge className="ml-1 bg-fd-accent text-white">{pendingRequests.length}</Badge>
-                )}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[760px] text-foreground font-dm-sans">
-              <DialogHeader>
-                <DialogTitle className="text-foreground">Pending client requests</DialogTitle>
-                <DialogDescription className="text-muted-foreground">
-                  Review public registration submissions before creating active client records.
-                </DialogDescription>
-              </DialogHeader>
+            <Dialog open={requestsOpen} onOpenChange={(v) => { setRequestsOpen(v); if (!v) { setReviewingRequest(null); setRejectionReason(""); } }}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="w-full gap-1.5 bg-transparent sm:w-auto" onClick={() => setRequestsOpen(true)}>
+                  <Inbox className="h-4 w-4" />
+                  Pending Requests
+                  {pendingRequests.length > 0 && (
+                    <Badge className="ml-1 bg-fd-accent text-white">{pendingRequests.length}</Badge>
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[760px] text-foreground font-dm-sans">
+                <DialogHeader>
+                  <DialogTitle className="text-foreground">Pending client requests</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Review public registration submissions before creating active client records.
+                  </DialogDescription>
+                </DialogHeader>
 
               {!reviewingRequest ? (
                 <div className="grid gap-3 py-2">
@@ -893,6 +894,7 @@ const Clients = () => {
               )}
             </DialogContent>
           </Dialog>
+          </div>
 
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setDupError(""); setStep(1); } }}>
             <DialogTrigger asChild>
