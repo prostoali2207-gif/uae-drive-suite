@@ -1554,23 +1554,15 @@ const FinancialsPanel = ({
   return (
     <>
       <div className="space-y-4">
-        <section className="rounded-md border border-border bg-card px-4 py-4 sm:px-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Outstanding Balance
-              </div>
-              <div
-                className={cn(
-                  "mt-1 font-mono text-3xl font-semibold tabular-nums",
-                  totals.outstanding > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground",
-                )}
-              >
-                {fmtAed(totals.outstanding)}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Total unpaid customer balance. Security deposit is tracked separately.
-              </div>
+        <section className="space-y-1">
+          <div className="flex items-center justify-between gap-3">
+            <div
+              className={cn(
+                "font-mono text-xl font-semibold tabular-nums",
+                totals.outstanding > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground",
+              )}
+            >
+              {fmtAed(totals.outstanding)}
             </div>
             {canAddPayment ? (
               <Button className="h-10 gap-2 self-start bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:self-center" onClick={onAddPayment}>
@@ -1579,6 +1571,7 @@ const FinancialsPanel = ({
               </Button>
             ) : null}
           </div>
+          <div className="text-xs text-muted-foreground">Deposit tracked separately below</div>
         </section>
 
         <FinancialSection
