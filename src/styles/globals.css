@@ -60,7 +60,7 @@
     --fd-red-dim: rgba(240, 78, 78, 0.10);
   }
 
-  html, body {
+  html, body, #root {
     background-color: #121830;
     color: #E8ECF8;
   }
