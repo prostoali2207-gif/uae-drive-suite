@@ -145,12 +145,6 @@ function matchesContractFilter(contract: ContractRow, selectedFilter: ContractFi
   return contract.status === selectedFilter;
 }
 
-function getClientInitials(name: string | undefined | null): string {
-  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
-}
-
 function getMobileStatusLabel(status: string): string {
   const normalized = status.toLowerCase();
   if (normalized === "closed" || normalized === "completed" || normalized === "returned") return "Closed";
@@ -1389,37 +1383,31 @@ const Contracts = () => {
                 const clientName = c.clients?.full_name ?? "-";
                 return (
                   <div key={c.id} className="px-1.5">
-                    <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(72px,0.8fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-2.5 py-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/80 text-[11px] font-semibold text-muted-foreground">
-                          {getClientInitials(clientName)}
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-2.5 py-2">
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          className="block max-w-full truncate text-left text-sm font-semibold leading-4 text-foreground"
+                          onClick={() => navigate(`/contracts/${c.id}`)}
+                        >
+                          {clientName}
+                        </button>
+                        <div className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">
+                          <span className="font-mono text-foreground">{c.cars?.plate ?? "-"}</span>
+                          {c.cars && <span> - {c.cars.make} {c.cars.model}</span>}
                         </div>
-                        <div className="min-w-0">
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left text-sm font-semibold leading-4 text-foreground"
-                            onClick={() => navigate(`/contracts/${c.id}`)}
-                          >
-                            {clientName}
-                          </button>
-                          <div className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">
-                            <span className="font-mono text-foreground">{c.cars?.plate ?? "-"}</span>
-                            {c.cars && <span> - {c.cars.make} {c.cars.model}</span>}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 text-xs text-muted-foreground">
-                        <div className="truncate font-mono text-[11px] leading-4">
-                          {formatMobileDate(c.start_date)} - {formatMobileDate(c.end_date)}
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-1 text-[11px] leading-4">
-                          <CalendarDays className="h-3 w-3" />
-                          <span>{d} days</span>
+                        <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] leading-4 text-muted-foreground">
+                          <span className="whitespace-nowrap font-mono">
+                            {formatMobileDate(c.start_date)} - {formatMobileDate(c.end_date)}
+                          </span>
+                          <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                            <CalendarDays className="h-3 w-3 shrink-0" />
+                            <span>{d} days</span>
+                          </span>
                         </div>
                       </div>
 
-                      <div className="flex min-w-[82px] items-center justify-end gap-1.5">
+                      <div className="flex min-w-[112px] items-center justify-end gap-1">
                         <div className="min-w-0 text-right">
                           <span className={cn("inline-flex rounded-full px-2 py-[1px] text-[10px] font-medium", getMobileStatusClass(c.status))}>
                             {getMobileStatusLabel(c.status)}
