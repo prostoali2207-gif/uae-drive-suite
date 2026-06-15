@@ -1745,10 +1745,6 @@ const FinancialsPanel = ({
             visibleTransactions.map((transaction) => {
               const isPaymentTransaction = transaction.type === "Payment" && transaction.allocationPayment;
               const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
-              const paymentNotes = isPaymentTransaction
-                ? (transaction.allocationPayment as PaymentRow & { notes?: string | null }).notes?.trim()
-                : "";
-              const appliedToLabel = paymentNotes || "General payment";
 
               return (
               <div key={transaction.id} className="px-4 py-3">
@@ -1856,14 +1852,6 @@ const FinancialsPanel = ({
                   ) : null}
                 </div>
                 </div>
-                {isPaymentTransaction && isPaymentExpanded ? (
-                  <div className="mt-3 rounded-b-md bg-white/5 p-3 text-sm text-gray-400 md:ml-[122px]">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate">Rent — {appliedToLabel}</span>
-                      <span className="shrink-0 font-mono tabular-nums">{fmtAed(transaction.allocationPayment!.amount)}</span>
-                    </div>
-                  </div>
-                ) : null}
               </div>
               );
             })
