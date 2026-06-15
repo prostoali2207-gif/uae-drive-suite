@@ -487,6 +487,12 @@ type PaymentAllocationDisplayLine = {
   amount: number;
 };
 
+type ExpandedPaymentAllocationRow = {
+  id: string;
+  label: string;
+  amount: number;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -596,6 +602,40 @@ const PaymentAllocationDetails = ({
       )}
     </div>
   );
+};
+
+const buildExpandedPaymentAllocationRows = (
+  payment: PaymentRow,
+  contractFees: ContractFeeRow[],
+): ExpandedPaymentAllocationRow[] => {
+  const savedAllocations = readSavedPaymentAllocations(payment.allocations);
+  const entries = savedAllocations?.lines
+    ? Object.entries(savedAllocations.lines)
+        .map(([id, amount]) => ({ id, amount: Number(amount) }))
+        .filter((line) => Number.isFinite(line.amount) && line.amount > 0)
+    : [];
+
+  if (entries.length === 0) {
+    return [{ id: `general-${payment.id}`, label: "General payment", amount: Number(payment.amount) || 0 }];
+  }
+
+  const feeLabels = new Map<string, string>();
+  contractFees.forEach((fee) => {
+    feeLabels.set(`fee-${fee.id}`, fee.label || "Fee");
+  });
+  sortRentalExtensionFees(contractFees).forEach((fee, index) => {
+    feeLabels.set(`fee-${fee.id}`, `Extension #${index + 1}`);
+  });
+
+  return entries.map((line) => {
+    let label = "General payment";
+    if (line.id.startsWith("fee-")) label = feeLabels.get(line.id) || "Fee";
+    if (line.id.startsWith("rental-")) label = "Original Contract";
+    if (line.id.startsWith("salik-")) label = "Salik";
+    if (line.id.startsWith("fine-")) label = "Traffic Fine";
+
+    return { ...line, label };
+  });
 };
 
 const FEE_CATEGORIES: { value: FeeCategory; label: string; defaultLabel: string }[] = [
@@ -1743,8 +1783,11 @@ const FinancialsPanel = ({
             <FinancialLine className="text-xs text-muted-foreground">No transactions match the current view.</FinancialLine>
           ) : (
             visibleTransactions.map((transaction) => {
-              const isPaymentTransaction = transaction.type === "Payment" && transaction.allocationPayment;
+              const payment = transaction.allocationPayment;
+              const isPaymentTransaction = transaction.type === "Payment" && Boolean(payment);
               const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
+              const expandedAllocationRows =
+                isPaymentTransaction && payment ? buildExpandedPaymentAllocationRows(payment, contractFees) : [];
 
               return (
               <div key={transaction.id} className="px-4 py-3">
@@ -1773,7 +1816,6 @@ const FinancialsPanel = ({
                         {fmtAed(transaction.amount)}
                       </span>
                     </div>
-                    {transaction.allocationPayment ? transaction.reference : null}
                     {isPaymentTransaction ? (
                       <button
                         type="button"
@@ -1852,6 +1894,20 @@ const FinancialsPanel = ({
                   ) : null}
                 </div>
                 </div>
+                {isPaymentTransaction && isPaymentExpanded ? (
+                  <div className="mt-3 rounded-b-md bg-white/5 p-3 text-sm text-gray-400 md:ml-[122px]">
+                    <div className="grid gap-2">
+                      {expandedAllocationRows.map((line) => (
+                        <div key={line.id} className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 truncate">{line.label}</span>
+                          <span className="shrink-0 font-mono tabular-nums text-foreground">
+                            {fmtAed(line.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               );
             })
