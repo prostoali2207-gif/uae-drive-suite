@@ -1554,15 +1554,18 @@ const FinancialsPanel = ({
   return (
     <>
       <div className="w-full max-w-full min-w-0 space-y-4 pb-20">
-        <section className="space-y-1">
+        <section>
           <div className="flex items-center justify-between gap-3">
-            <div
-              className={cn(
-                "font-mono text-xl font-semibold tabular-nums",
-                totals.outstanding > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground",
-              )}
-            >
-              {fmtAed(totals.outstanding)}
+            <div className="min-w-0">
+              <div
+                className={cn(
+                  "font-mono text-xl font-semibold tabular-nums",
+                  totals.outstanding > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground",
+                )}
+              >
+                {fmtAed(totals.outstanding)}
+              </div>
+              <div className="text-xs text-muted-foreground">Deposit tracked separately below</div>
             </div>
             {canAddPayment ? (
               <Button className="h-10 gap-2 self-start bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:self-center" onClick={onAddPayment}>
@@ -1571,7 +1574,6 @@ const FinancialsPanel = ({
               </Button>
             ) : null}
           </div>
-          <div className="text-xs text-muted-foreground">Deposit tracked separately below</div>
         </section>
 
         <FinancialSection
@@ -3586,7 +3588,7 @@ const ContractDetail = () => {
             </div>
 
             <div className="flex max-w-full min-w-0 items-center gap-4">
-              <div className="flex max-w-full flex-wrap items-center gap-1.5">
+              <div className="flex max-w-full flex-nowrap items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
