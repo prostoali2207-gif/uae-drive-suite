@@ -1305,7 +1305,6 @@ const FinancialsPanel = ({
     depositStatus !== "Returned" &&
     depositInfo.pendingReturn > 0 &&
     hasUnverifiedAdditionalCharges;
-  const canAddPayment = contract.status.toLowerCase() !== "closed" || totals.outstanding > 0;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
   const [finesModalOpen, setFinesModalOpen] = useState(false);
@@ -1567,12 +1566,6 @@ const FinancialsPanel = ({
               </div>
               <div className="text-xs text-muted-foreground">Deposit tracked separately below</div>
             </div>
-            {canAddPayment ? (
-              <Button className="h-10 gap-2 self-start bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:self-center" onClick={onAddPayment}>
-                <Plus className="h-4 w-4" />
-                Add Payment
-              </Button>
-            ) : null}
           </div>
         </section>
 
@@ -1944,21 +1937,24 @@ const FinancialsPanel = ({
           ) : null}
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-40 flex w-full max-w-[100vw] min-w-0 gap-3 border-t border-[#1a2640] bg-[#0d1421] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button
+        <div className="fixed inset-x-0 bottom-16 z-40 flex w-full max-w-[100vw] min-w-0 gap-3 bg-[#121830] p-3">
+          <Button
             type="button"
-            className="min-w-0 flex-1 rounded-xl border border-[#2d4a6e] bg-[#1a2640] py-3 text-sm font-semibold text-[#94a3b8]"
-            onClick={onAddFee}
+            variant="outline"
+            className="h-11 min-w-0 flex-1 gap-2 border-border bg-transparent text-foreground hover:bg-white/10 hover:text-foreground"
+            onClick={() => console.log("add fee")}
           >
-            + Add Fee
-          </button>
-          <button
+            <Plus className="h-4 w-4" />
+            Add Fee
+          </Button>
+          <Button
             type="button"
-            className="min-w-0 flex-1 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white"
+            className="h-11 min-w-0 flex-1 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={onAddPayment}
           >
-            + Add Payment
-          </button>
+            <Plus className="h-4 w-4" />
+            Add Payment
+          </Button>
         </div>
       </div>
 
