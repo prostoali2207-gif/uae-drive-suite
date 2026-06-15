@@ -704,9 +704,9 @@ const Contracts = () => {
     [form.start_date, form.start_time, form.end_date, form.end_time],
   );
   const total = useMemo(() => {
-    const rentAmount = Number(form.rate_amount);
-    return Number.isFinite(rentAmount) && rentAmount > 0 ? rentAmount : 0;
-  }, [form.rate_amount]);
+    const dailyRate = Number(form.rate_amount);
+    return Number.isFinite(dailyRate) && dailyRate > 0 ? Math.round(days * dailyRate) : 0;
+  }, [days, form.rate_amount]);
 
   const filteredClients = useMemo(() => {
     const q = clientSearch.trim().toLowerCase();
@@ -899,7 +899,7 @@ const Contracts = () => {
     }
 
     if (String(form.rate_amount).trim() === "" || !Number.isFinite(Number(form.rate_amount)) || Number(form.rate_amount) <= 0) {
-      toast.error("Please enter a valid rent amount");
+      toast.error("Please enter a valid daily rate");
       return;
     }
 
@@ -1258,7 +1258,7 @@ const Contracts = () => {
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="rate">Rent Amount (AED)</Label>
+                  <Label htmlFor="rate">Daily Rate (AED per day)</Label>
                   <Input
                     id="rate"
                     type="number"
@@ -1319,7 +1319,7 @@ const Contracts = () => {
                   </div>
                   <div className="text-right text-xs text-muted-foreground">
                     <div>{days} days</div>
-                    <div>rent amount</div>
+                    <div>daily rate total</div>
                   </div>
                 </div>
                 <DialogFooter>
