@@ -1311,6 +1311,7 @@ const FinancialsPanel = ({
   const [salikModalOpen, setSalikModalOpen] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
+  const [expandedPaymentTransactionIds, setExpandedPaymentTransactionIds] = useState<Set<string>>(new Set());
 
   const openItemGroups = useMemo(() => {
     const groups = new Map<
@@ -1741,8 +1742,17 @@ const FinancialsPanel = ({
           {visibleTransactions.length === 0 ? (
             <FinancialLine className="text-xs text-muted-foreground">No transactions match the current view.</FinancialLine>
           ) : (
-            visibleTransactions.map((transaction) => (
-              <div key={transaction.id} className="grid gap-2 px-4 py-3 md:grid-cols-[110px_1fr_140px_40px] md:items-start md:gap-3">
+            visibleTransactions.map((transaction) => {
+              const isPaymentTransaction = transaction.type === "Payment" && transaction.allocationPayment;
+              const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
+              const paymentNotes = isPaymentTransaction
+                ? (transaction.allocationPayment as PaymentRow & { notes?: string | null }).notes?.trim()
+                : "";
+              const appliedToLabel = paymentNotes || "General payment";
+
+              return (
+              <div key={transaction.id} className="px-4 py-3">
+                <div className="grid gap-2 md:grid-cols-[110px_1fr_140px_40px] md:items-start md:gap-3">
                 <div className="font-mono text-[11px] text-muted-foreground">{formatDate(transaction.date)}</div>
                 <div className="flex min-w-0 gap-3">
                   <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", getTransactionIconClass(transaction))}>
@@ -1768,6 +1778,25 @@ const FinancialsPanel = ({
                       </span>
                     </div>
                     {transaction.allocationPayment ? transaction.reference : null}
+                    {isPaymentTransaction ? (
+                      <button
+                        type="button"
+                        className="mt-2 block text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() =>
+                          setExpandedPaymentTransactionIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(transaction.id)) {
+                              next.delete(transaction.id);
+                            } else {
+                              next.add(transaction.id);
+                            }
+                            return next;
+                          })
+                        }
+                      >
+                        {isPaymentExpanded ? "↑ Applied to" : "↓ Applied to"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 <div
@@ -1826,8 +1855,18 @@ const FinancialsPanel = ({
                     </>
                   ) : null}
                 </div>
+                </div>
+                {isPaymentTransaction && isPaymentExpanded ? (
+                  <div className="mt-3 rounded-b-md bg-white/5 p-3 text-sm text-gray-400 md:ml-[122px]">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate">Rent — {appliedToLabel}</span>
+                      <span className="shrink-0 font-mono tabular-nums">{fmtAed(transaction.allocationPayment!.amount)}</span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ))
+              );
+            })
           )}
         </FinancialSection>
 
