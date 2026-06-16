@@ -87,11 +87,14 @@ interface RentalPeriod {
   amount: number;
   extension_start: string | null;
   extension_end: string | null;
+  start_time: string | null;
+  end_time: string | null;
 }
 
 interface ContractPeriod {
   id: string;
   start_date: string;
+  start_time: string | null;
   end_date: string;
   end_time: string | null;
   rate_type: string;
@@ -119,14 +122,66 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
   };
 
   const toDateKey = (dateStr: string) =>
-    dateStr.includes("T") ? new Date(dateStr).toLocaleDateString("en-CA") : dateStr.slice(0, 10);
+    dateStr.includes("T")
+      ? new Date(dateStr).toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" })
+      : dateStr.slice(0, 10);
+
+  const toDubaiTimestamp = (dateKey: string, time: string | null | undefined) =>
+    new Date(`${dateKey}T${(time || "00:00").slice(0, 5)}:00+04:00`).toISOString();
 
   const findMatchingPeriod = (dateStr: string, periods: RentalPeriod[]) => {
     const dateKey = toDateKey(dateStr);
-    return periods.find((period) => {
-      if (!period.extension_start || !period.extension_end) return false;
-      return dateKey >= period.extension_start.slice(0, 10) && dateKey <= period.extension_end.slice(0, 10);
-    });
+    return [...periods]
+      .filter((period) => {
+        if (!period.extension_start || !period.extension_end) return false;
+        return dateKey >= period.extension_start.slice(0, 10) && dateKey <= period.extension_end.slice(0, 10);
+      })
+      .sort((a, b) => String(b.extension_start).localeCompare(String(a.extension_start)))[0];
+  };
+
+  const findCurrentActivePeriod = (periods: RentalPeriod[]) => {
+    const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+    return (
+      periods.find((period) => {
+        if (!period.extension_start || !period.extension_end) return false;
+        return todayKey >= period.extension_start.slice(0, 10) && todayKey <= period.extension_end.slice(0, 10);
+      }) ??
+      [...periods]
+        .filter((period) => period.extension_start && period.extension_end)
+        .sort((a, b) => String(b.extension_end).localeCompare(String(a.extension_end)))[0]
+    );
+  };
+
+  const buildVehicleDisplayPeriod = (
+    vehicle: ExtendedDatabase["public"]["Tables"]["contract_vehicles"]["Row"],
+    rentalPeriods: RentalPeriod[],
+    activePeriod: RentalPeriod | undefined,
+  ) => {
+    const replacementPeriod = vehicle.ended_at
+      ? findMatchingPeriod(vehicle.ended_at, rentalPeriods)
+      : findMatchingPeriod(vehicle.started_at, rentalPeriods);
+    const displayStartedAt =
+      vehicle.ended_at && replacementPeriod?.extension_start
+        ? toDubaiTimestamp(replacementPeriod.extension_start.slice(0, 10), replacementPeriod.start_time)
+        : vehicle.started_at;
+    const endPeriod = vehicle.ended_at ? replacementPeriod : activePeriod ?? replacementPeriod;
+    const displayEndedAt = vehicle.ended_at
+      ? vehicle.ended_at
+      : endPeriod?.extension_end
+        ? toDubaiTimestamp(endPeriod.extension_end.slice(0, 10), endPeriod.end_time)
+        : null;
+
+    if (displayEndedAt && new Date(displayStartedAt).getTime() > new Date(displayEndedAt).getTime()) {
+      return {
+        display_started_at: vehicle.started_at,
+        display_ended_at: vehicle.ended_at ?? null,
+      };
+    }
+
+    return {
+      display_started_at: displayStartedAt,
+      display_ended_at: displayEndedAt,
+    };
   };
 
   const calculateContractDailyRate = (rateType: string, rateAmount: number | string) => {
@@ -187,7 +242,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               .order("extension_start", { ascending: true }),
             supabase
               .from("contracts")
-              .select("id, start_date, end_date, end_time, rate_type, rate_amount")
+              .select("id, start_date, start_time, end_date, end_time, rate_type, rate_amount")
               .eq("id", contractId)
               .maybeSingle(),
           ]);
@@ -221,23 +276,28 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                       amount: originalDailyRate * 30,
                       extension_start: contractPeriod.start_date,
                       extension_end: contractPeriod.end_date,
+                      start_time: contractPeriod.start_time,
+                      end_time: contractPeriod.end_time,
                     },
                   ]
                 : [];
             const rentalPeriods = [
               ...originalPeriod,
-              ...((feePeriodsData ?? []) as RentalPeriod[]).filter(
-                (period) => period.extension_start && period.extension_end,
-              ),
+              ...((feePeriodsData ?? []) as RentalPeriod[])
+                .filter((period) => period.extension_start && period.extension_end)
+                .map((period) => ({
+                  ...period,
+                  start_time: contractPeriod?.end_time ?? null,
+                  end_time: contractPeriod?.end_time ?? null,
+                })),
             ];
+            const activePeriod = findCurrentActivePeriod(rentalPeriods);
             const combined = vehiclesData.map((v) => {
-              const matchedPeriod = v.ended_at
-                ? findMatchingPeriod(v.ended_at, rentalPeriods)
-                : findMatchingPeriod(v.started_at, rentalPeriods);
+              const displayPeriod = buildVehicleDisplayPeriod(v, rentalPeriods, activePeriod);
               return {
                 ...v,
-                display_started_at: v.started_at,
-                display_ended_at: v.ended_at ?? (contractPeriod?.end_date && contractPeriod.end_time ? new Date(`${contractPeriod.end_date}T${contractPeriod.end_time}+04:00`).toISOString() : null),
+                display_started_at: displayPeriod.display_started_at,
+                display_ended_at: displayPeriod.display_ended_at,
                 display_daily_rate: v.daily_rate === null ? null : Number(v.daily_rate),
                 car: carMap.get(v.car_id) || null,
               };
