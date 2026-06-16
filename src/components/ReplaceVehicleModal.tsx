@@ -562,7 +562,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         return;
       }
 
-      const replacementTimestamp = replacementDate.toISOString();
+      const replacementTimestamp = new Date(`${replacement.date}T${replacement.time}:00+04:00`).toISOString();
 
       const conflict = await findVehicleContractOverlap(extendedDb, {
         carId: selectedNewCarId,
