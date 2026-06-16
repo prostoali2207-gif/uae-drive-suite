@@ -93,6 +93,7 @@ interface ContractPeriod {
   id: string;
   start_date: string;
   end_date: string;
+  end_time: string | null;
   rate_type: string;
   rate_amount: number | string;
 }
@@ -186,7 +187,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               .order("extension_start", { ascending: true }),
             supabase
               .from("contracts")
-              .select("id, start_date, end_date, rate_type, rate_amount")
+              .select("id, start_date, end_date, end_time, rate_type, rate_amount")
               .eq("id", contractId)
               .maybeSingle(),
           ]);
@@ -236,7 +237,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               return {
                 ...v,
                 display_started_at: v.started_at,
-                display_ended_at: v.ended_at ?? matchedPeriod?.extension_end ?? null,
+                display_ended_at: v.ended_at ?? (contractPeriod?.end_date && contractPeriod.end_time ? new Date(`${contractPeriod.end_date}T${contractPeriod.end_time}+04:00`).toISOString() : null),
                 display_daily_rate: v.daily_rate === null ? null : Number(v.daily_rate),
                 car: carMap.get(v.car_id) || null,
               };
