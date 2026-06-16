@@ -235,7 +235,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                 : findMatchingPeriod(v.started_at, rentalPeriods);
               return {
                 ...v,
-                display_started_at: v.ended_at ? matchedPeriod?.extension_start ?? v.started_at : v.started_at,
+                display_started_at: v.started_at,
                 display_ended_at: v.ended_at ?? matchedPeriod?.extension_end ?? null,
                 display_daily_rate: v.daily_rate === null ? null : Number(v.daily_rate),
                 car: carMap.get(v.car_id) || null,
