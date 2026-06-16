@@ -67,6 +67,7 @@ import {
 type ContractFilter = "All" | "Active" | "Expiring Soon" | "Overdue" | "Closed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
+type RateType = "Daily" | "Monthly" | "Annual";
 
 interface ContractRow {
   id: string;
@@ -126,6 +127,12 @@ const paymentClasses: Record<string, string> = {
 const desktopFilters: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue"];
 const mobileFilterOrder: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue", "Closed"];
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
+const rateTypes: RateType[] = ["Daily", "Monthly", "Annual"];
+const rateLabels: Record<RateType, string> = {
+  Daily: "Daily Rate (AED per day)",
+  Monthly: "Monthly Rate (AED per month)",
+  Annual: "Annual Rate (AED per year)",
+};
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -206,6 +213,31 @@ function diffDays(start: string, end: string): number {
   return Math.max(0, Math.round((e - s) / 86_400_000));
 }
 
+function getRateUnits(days: number, rateType: RateType): number {
+  if (rateType === "Monthly") return days / 30;
+  if (rateType === "Annual") return days / 365;
+  return days;
+}
+
+function formatMonthlyUnits(months: number): string {
+  return Number.isInteger(months) ? String(months) : months.toFixed(1);
+}
+
+function formatRateSummary(days: number, rateAmount: string, rateType: RateType, total: number): string {
+  const rate = Number(rateAmount);
+  const safeRate = Number.isFinite(rate) ? rate : 0;
+
+  if (rateType === "Monthly") {
+    return `${formatMonthlyUnits(getRateUnits(days, rateType))} months × ${safeRate.toLocaleString()} AED = AED ${total.toLocaleString()}`;
+  }
+
+  if (rateType === "Annual") {
+    return `${getRateUnits(days, rateType).toFixed(2)} years × ${safeRate.toLocaleString()} AED = AED ${total.toLocaleString()}`;
+  }
+
+  return `${days} days × ${safeRate.toLocaleString()} AED = AED ${total.toLocaleString()}`;
+}
+
 function getContractDateTime(date: string, time: string): Date | null {
   if (!date || !time || !/^\d{2}:\d{2}$/.test(time)) return null;
   const parsed = new Date(`${date}T${time}:00`);
@@ -252,6 +284,7 @@ const createEmptyForm = () => ({
   start_time: "",
   end_date: "",
   end_time: "",
+  rate_type: "Daily" as RateType,
   rate_amount: "0",
   deposit_amount: "0",
   initial_mileage: "",
@@ -704,9 +737,14 @@ const Contracts = () => {
     [form.start_date, form.start_time, form.end_date, form.end_time],
   );
   const total = useMemo(() => {
-    const dailyRate = Number(form.rate_amount);
-    return Number.isFinite(dailyRate) && dailyRate > 0 ? Math.round(days * dailyRate) : 0;
-  }, [days, form.rate_amount]);
+    const rate = Number(form.rate_amount);
+    return Number.isFinite(rate) && rate > 0 ? Math.round(getRateUnits(days, form.rate_type) * rate) : 0;
+  }, [days, form.rate_amount, form.rate_type]);
+
+  const rateSummary = useMemo(
+    () => formatRateSummary(days, form.rate_amount, form.rate_type, total),
+    [days, form.rate_amount, form.rate_type, total],
+  );
 
   const filteredClients = useMemo(() => {
     const q = clientSearch.trim().toLowerCase();
@@ -899,7 +937,7 @@ const Contracts = () => {
     }
 
     if (String(form.rate_amount).trim() === "" || !Number.isFinite(Number(form.rate_amount)) || Number(form.rate_amount) <= 0) {
-      toast.error("Please enter a valid daily rate");
+      toast.error(`Please enter a valid ${form.rate_type.toLowerCase()} rate`);
       return;
     }
 
@@ -961,7 +999,7 @@ const Contracts = () => {
         end_date: form.end_date,
         start_time: formatTimeForDb(form.start_time),
         end_time: formatTimeForDb(form.end_time),
-        rate_type: "Daily",
+        rate_type: form.rate_type,
         rate_amount: Number(form.rate_amount),
         total_amount: total,
         deposit_amount: form.deposit_amount === "" ? 0 : Number(form.deposit_amount),
@@ -1258,12 +1296,29 @@ const Contracts = () => {
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="rate">Daily Rate (AED per day)</Label>
+                  <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-[#121830] p-1">
+                    {rateTypes.map((rateType) => (
+                      <Button
+                        key={rateType}
+                        type="button"
+                        variant="ghost"
+                        className={cn(
+                          "h-10 rounded-md px-2 text-sm font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+                          form.rate_type === rateType && "bg-muted text-foreground shadow-sm hover:bg-muted",
+                        )}
+                        onClick={() => setForm((prev) => ({ ...prev, rate_type: rateType }))}
+                      >
+                        {rateType}
+                      </Button>
+                    ))}
+                  </div>
+                  <Label htmlFor="rate">{rateLabels[form.rate_type]}</Label>
                   <Input
                     id="rate"
                     type="number"
                     min={0}
                     required
+                    className="font-mono"
                     value={form.rate_amount}
                     onFocus={() => {
                       if (Number(form.rate_amount) === 0) {
@@ -1313,13 +1368,14 @@ const Contracts = () => {
                 <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
                   <div>
                     <div className="text-xs text-muted-foreground">Total Amount</div>
-                    <div className="text-lg font-semibold text-foreground">
+                    <div className="font-mono text-lg font-semibold text-foreground">
                       AED {total.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                     </div>
+                    <div className="mt-1 font-mono text-xs text-muted-foreground">{rateSummary}</div>
                   </div>
-                  <div className="text-right text-xs text-muted-foreground">
+                  <div className="text-right font-mono text-xs text-muted-foreground">
                     <div>{days} days</div>
-                    <div>daily rate total</div>
+                    <div>{form.rate_type} total</div>
                   </div>
                 </div>
                 <DialogFooter>
