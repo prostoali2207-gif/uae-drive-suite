@@ -152,36 +152,44 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     );
   };
 
-  const buildVehicleDisplayPeriod = (
-    vehicle: ExtendedDatabase["public"]["Tables"]["contract_vehicles"]["Row"],
+  const getPeriodStartTimestamp = (period: RentalPeriod | undefined) =>
+    period?.extension_start
+      ? toDubaiTimestamp(period.extension_start.slice(0, 10), period.start_time)
+      : null;
+
+  const getPeriodEndTimestamp = (period: RentalPeriod | undefined) =>
+    period?.extension_end
+      ? toDubaiTimestamp(period.extension_end.slice(0, 10), period.end_time)
+      : null;
+
+  const preventReversedRange = (startedAt: string, endedAt: string | null) => {
+    if (!endedAt) return { display_started_at: startedAt, display_ended_at: endedAt };
+
+    return new Date(startedAt).getTime() <= new Date(endedAt).getTime()
+      ? { display_started_at: startedAt, display_ended_at: endedAt }
+      : { display_started_at: endedAt, display_ended_at: endedAt };
+  };
+
+  const buildVehicleDisplayPeriods = (
+    vehicles: ExtendedDatabase["public"]["Tables"]["contract_vehicles"]["Row"][],
     rentalPeriods: RentalPeriod[],
     activePeriod: RentalPeriod | undefined,
   ) => {
-    const replacementPeriod = vehicle.ended_at
-      ? findMatchingPeriod(vehicle.ended_at, rentalPeriods)
-      : findMatchingPeriod(vehicle.started_at, rentalPeriods);
-    const displayStartedAt =
-      vehicle.ended_at && replacementPeriod?.extension_start
-        ? toDubaiTimestamp(replacementPeriod.extension_start.slice(0, 10), replacementPeriod.start_time)
-        : vehicle.started_at;
-    const endPeriod = vehicle.ended_at ? replacementPeriod : activePeriod ?? replacementPeriod;
-    const displayEndedAt = vehicle.ended_at
-      ? vehicle.ended_at
-      : endPeriod?.extension_end
-        ? toDubaiTimestamp(endPeriod.extension_end.slice(0, 10), endPeriod.end_time)
-        : null;
+    const firstReplacementAt = vehicles.find((vehicle) => vehicle.ended_at)?.ended_at;
+    const firstReplacementPeriod = firstReplacementAt ? findMatchingPeriod(firstReplacementAt, rentalPeriods) : undefined;
+    const firstSegmentStart = getPeriodStartTimestamp(firstReplacementPeriod);
+    const currentPeriodEnd = getPeriodEndTimestamp(activePeriod);
 
-    if (displayEndedAt && new Date(displayStartedAt).getTime() > new Date(displayEndedAt).getTime()) {
-      return {
-        display_started_at: vehicle.started_at,
-        display_ended_at: vehicle.ended_at ?? null,
-      };
-    }
+    return vehicles.map((vehicle, index) => {
+      const previousReplacementAt = index > 0 ? vehicles[index - 1]?.ended_at : null;
+      const displayStartedAt =
+        index === 0
+          ? firstSegmentStart ?? vehicle.started_at
+          : previousReplacementAt ?? vehicle.started_at;
+      const displayEndedAt = vehicle.ended_at ?? currentPeriodEnd;
 
-    return {
-      display_started_at: displayStartedAt,
-      display_ended_at: displayEndedAt,
-    };
+      return preventReversedRange(displayStartedAt, displayEndedAt);
+    });
   };
 
   const calculateContractDailyRate = (rateType: string, rateAmount: number | string) => {
@@ -292,8 +300,9 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                 })),
             ];
             const activePeriod = findCurrentActivePeriod(rentalPeriods);
-            const combined = vehiclesData.map((v) => {
-              const displayPeriod = buildVehicleDisplayPeriod(v, rentalPeriods, activePeriod);
+            const displayPeriods = buildVehicleDisplayPeriods(vehiclesData, rentalPeriods, activePeriod);
+            const combined = vehiclesData.map((v, index) => {
+              const displayPeriod = displayPeriods[index];
               return {
                 ...v,
                 display_started_at: displayPeriod.display_started_at,
