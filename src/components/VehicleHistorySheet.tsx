@@ -106,15 +106,15 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
   const [history, setHistory] = useState<CombinedVehicleHistory[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Helper to format timestamps to "DD MMM HH:mm" using plain JS
+  // Helper to format timestamps to "DD MMM HH:mm" in Dubai time
   const formatDateTimeline = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const day = String(date.getDate()).padStart(2, "0");
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const month = months[date.getMonth()];
-    const hh = String(date.getHours()).padStart(2, "0");
-    const mm = String(date.getMinutes()).padStart(2, "0");
-    return `${day} ${month} ${hh}:${mm}`;
+    return new Date(dateStr).toLocaleString("en-GB", {
+      timeZone: "Asia/Dubai",
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "short",
+    });
   };
 
   const toDateKey = (dateStr: string) =>
