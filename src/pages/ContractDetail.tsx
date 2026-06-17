@@ -2291,7 +2291,7 @@ const ContractDetail = () => {
         type: "Payment",
         description: `Payment received · ${p.method}`,
         debit: 0,
-        credit: p.status === "Paid" ? Number(p.amount) : 0,
+        credit: p.status?.toLowerCase() === "paid" ? Number(p.amount) : 0,
         status: p.status,
       }),
     );
