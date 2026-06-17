@@ -1595,7 +1595,7 @@ const FinancialsPanel = ({
 
   return (
     <>
-      <div className="w-full max-w-full min-w-0 space-y-4 pb-20">
+      <div className="w-full max-w-full min-w-0 space-y-4 pb-20 md:pb-0">
         <section>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -1614,11 +1614,18 @@ const FinancialsPanel = ({
 
         <FinancialSection
           title="Open Items"
-          meta="What the customer owes"
+          meta={`What the customer owes - ${openItemGroups.length} items`}
           action={
-            <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
-              {openItemGroups.length} items
-            </span>
+            <div className="hidden items-center gap-2 md:flex">
+              <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onAddFee}>
+                <Plus className="h-3.5 w-3.5" />
+                Add Fee
+              </Button>
+              <Button type="button" size="sm" className="h-8 gap-1.5" onClick={onAddPayment}>
+                <Plus className="h-3.5 w-3.5" />
+                Add Payment
+              </Button>
+            </div>
           }
         >
           {showDepositVerificationWarning ? (
@@ -2022,7 +2029,7 @@ const FinancialsPanel = ({
           ) : null}
         </div>
 
-        <div className="fixed inset-x-0 bottom-16 z-40 flex w-full max-w-[100vw] min-w-0 gap-3 bg-[#121830] p-3">
+        <div className="fixed inset-x-0 bottom-16 z-40 flex w-full max-w-[100vw] min-w-0 gap-3 bg-[#121830] p-3 md:hidden">
           <Button
             type="button"
             variant="outline"
