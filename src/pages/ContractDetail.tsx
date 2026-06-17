@@ -2300,7 +2300,7 @@ const ContractDetail = () => {
 
   const totals = useMemo(() => {
     const feeCharges = contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0);
-    const charges = ledger.reduce((s, e) => s + e.debit, 0) + feeCharges;
+    const charges = ledger.reduce((s, e) => e.type === "Deposit" ? s : s + e.debit, 0) + feeCharges;
     const credits = ledger.reduce((s, e) => s + e.credit, 0);
     // Security deposit is reconciled separately and must not reduce the customer balance.
     const outstanding = Math.max(0, charges - credits);
