@@ -165,6 +165,8 @@ interface PaymentRow {
   allocations?: unknown;
 }
 
+type PaymentMethod = "Cash" | "Card" | "Transfer";
+
 interface ExtensionCandidateRow {
   id: string;
   start_date: string;
@@ -2108,6 +2110,9 @@ const ContractDetail = () => {
   const [deletingFee, setDeletingFee] = useState(false);
   const [amountEditTarget, setAmountEditTarget] = useState<AmountEditTarget | null>(null);
   const [amountEditValue, setAmountEditValue] = useState("");
+  const [amountEditPaymentMethod, setAmountEditPaymentMethod] = useState<PaymentMethod>("Cash");
+  const [amountEditAllocations, setAmountEditAllocations] = useState<Record<string, number>>({});
+  const [amountEditAllocationError, setAmountEditAllocationError] = useState("");
   const [amountEditExtensionEndDate, setAmountEditExtensionEndDate] = useState("");
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
   const [markingDepositReturned, setMarkingDepositReturned] = useState(false);
@@ -3168,8 +3173,24 @@ const ContractDetail = () => {
   };
 
   const openAmountEditDialog = (target: AmountEditTarget) => {
+    const targetPaymentMethod =
+      target.type === "payment" && target.payment.method === "Bank Transfer"
+        ? "Transfer"
+        : target.type === "payment" && ["Cash", "Card", "Transfer"].includes(target.payment.method)
+          ? (target.payment.method as PaymentMethod)
+          : "Cash";
+    const savedPaymentAllocations =
+      target.type === "payment" ? readSavedPaymentAllocations(target.payment.allocations) : null;
+    const savedLineAllocations =
+      savedPaymentAllocations?.lines && Object.keys(savedPaymentAllocations.lines).length > 0
+        ? savedPaymentAllocations.lines
+        : {};
+
     setAmountEditTarget(target);
     setAmountEditValue(String(target.amount));
+    setAmountEditPaymentMethod(targetPaymentMethod);
+    setAmountEditAllocations(target.type === "payment" ? savedLineAllocations : {});
+    setAmountEditAllocationError("");
     setAmountEditExtensionEndDate(
       target.type === "fee" && isStructuredRentalExtensionFee(target.fee)
         ? target.fee.extension_end ?? ""
@@ -3181,6 +3202,9 @@ const ContractDetail = () => {
     if (savingAmountEdit) return;
     setAmountEditTarget(null);
     setAmountEditValue("");
+    setAmountEditPaymentMethod("Cash");
+    setAmountEditAllocations({});
+    setAmountEditAllocationError("");
     setAmountEditExtensionEndDate("");
   };
 
@@ -3218,9 +3242,47 @@ const ContractDetail = () => {
     }
 
     if (amountEditTarget.type === "payment") {
-      const { error } = await supabase
+      const totalAllocated = Object.values(amountEditAllocations).reduce(
+        (sum, value) => sum + (Number(value) || 0),
+        0,
+      );
+      const unallocatedAmount = Math.round((nextAmount - totalAllocated) * 100) / 100;
+
+      if (Math.abs(unallocatedAmount) > 0.01) {
+        const message = "Allocate the full payment before saving.";
+        setSavingAmountEdit(false);
+        setAmountEditAllocationError(message);
+        toast.error(message);
+        return;
+      }
+
+      const groupedAllocations: Record<"rental" | "fines" | "salik" | "fees", number> = {
+        rental: 0,
+        fines: 0,
+        salik: 0,
+        fees: 0,
+      };
+      const lineAllocations: Record<string, number> = {};
+
+      for (const row of amountEditAllocationRows) {
+        const value = Math.round((Number(amountEditAllocations[row.id] ?? 0) || 0) * 100) / 100;
+        if (value <= 0) continue;
+        groupedAllocations[row.category] += value;
+        lineAllocations[row.id] = value;
+      }
+
+      const nextAllocations = {
+        ...groupedAllocations,
+        lines: lineAllocations,
+      };
+
+      const { error } = await (supabase as any)
         .from("payments")
-        .update({ amount: nextAmount } as never)
+        .update({
+          amount: nextAmount,
+          method: amountEditPaymentMethod,
+          allocations: nextAllocations,
+        })
         .eq("id", amountEditTarget.payment.id);
 
       if (error) {
@@ -3232,26 +3294,23 @@ const ContractDetail = () => {
       setPayments((prev) =>
         prev.map((payment) =>
           payment.id === amountEditTarget.payment.id
-            ? { ...payment, amount: nextAmount }
+            ? {
+                ...payment,
+                amount: nextAmount,
+                method: amountEditPaymentMethod,
+                allocations: nextAllocations,
+              }
             : payment,
         ),
       );
 
-      const { data, error: refetchError } = await supabase
-        .from("payments")
-        .select("id, payment_date, amount, method, status")
-        .eq("contract_id", contract.id)
-        .order("payment_date", { ascending: false });
-
-      if (refetchError) {
-        toast.error("Payment updated, but payments could not refresh");
-      } else {
-        setPayments(data || []);
-        toast.success("Payment amount updated");
-      }
       setSavingAmountEdit(false);
       setAmountEditTarget(null);
       setAmountEditValue("");
+      setAmountEditPaymentMethod("Cash");
+      setAmountEditAllocations({});
+      setAmountEditAllocationError("");
+      toast.success("Payment updated");
       return;
     }
 
@@ -3560,6 +3619,32 @@ const ContractDetail = () => {
       due: Math.max(0, Number(line.due) - (paidByLine.get(line.id) ?? 0)),
     }))
     .filter((line) => line.due > 0.01);
+  const amountEditSavedAllocations =
+    amountEditTarget?.type === "payment"
+      ? readSavedPaymentAllocations(amountEditTarget.payment.allocations)?.lines ?? {}
+      : {};
+  const amountEditAllocationRows: ContractPaymentAllocationLine[] =
+    amountEditTarget?.type === "payment"
+      ? grossPaymentAllocationLines
+          .map((line) => {
+            const currentAllocation = Number(amountEditSavedAllocations[line.id] ?? 0);
+            const unpaidLine = paymentAllocationLines.find((item) => item.id === line.id);
+            return {
+              ...line,
+              due: Math.max(0, Number(unpaidLine?.due ?? 0) + currentAllocation),
+            };
+          })
+          .filter((line) => line.due > 0.01 || Number(amountEditAllocations[line.id] ?? 0) > 0)
+      : [];
+  const amountEditPaymentAmount = Number(amountEditValue);
+  const amountEditTotalAllocated = Object.values(amountEditAllocations).reduce(
+    (sum, value) => sum + (Number(value) || 0),
+    0,
+  );
+  const amountEditUnallocatedAmount =
+    Number.isFinite(amountEditPaymentAmount)
+      ? Math.round((amountEditPaymentAmount - amountEditTotalAllocated) * 100) / 100
+      : 0;
   const todayDate = getTodayDateInput();
   // contract_fees, fines, and Salik do not carry due dates, so non-rental unpaid charges are treated as overdue once attached.
   const overdueBalance = paymentAllocationLines.reduce((sum, line) => {
@@ -4228,9 +4313,15 @@ const ContractDetail = () => {
           if (!open) closeAmountEditDialog();
         }}
       >
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className={cn("sm:max-w-[420px]", amountEditTarget?.type === "payment" && "sm:max-w-[560px]")}>
           <DialogHeader>
-            <DialogTitle>{amountEditIsExtension ? "Edit Rental Period" : "Edit Amount"}</DialogTitle>
+            <DialogTitle>
+              {amountEditTarget?.type === "payment"
+                ? "Edit Payment"
+                : amountEditIsExtension
+                  ? "Edit Rental Period"
+                  : "Edit Amount"}
+            </DialogTitle>
             <DialogDescription className="text-xs">
               {amountEditIsExtension ? (
                 <>
@@ -4239,12 +4330,14 @@ const ContractDetail = () => {
                     {formatDate(amountEditExtensionStartDate)} → {formatDate(amountEditExtensionEndDisplay)}
                   </span>
                 </>
+              ) : amountEditTarget?.type === "payment" ? (
+                amountEditTarget.label
               ) : (
                 amountEditTarget?.label ?? "Financial entry"
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-4 py-2">
             {amountEditIsExtension && (
               <div className="space-y-2">
                 <Label htmlFor="edit-extension-end-date" className="text-xs">
@@ -4258,22 +4351,153 @@ const ContractDetail = () => {
                 />
               </div>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="edit-financial-amount" className="text-xs">
-                {amountEditIsExtension ? "Amount" : "Amount (AED)"}
-              </Label>
-              <Input
-                id="edit-financial-amount"
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                value={amountEditValue}
-                onChange={(event) => setAmountEditValue(event.target.value)}
-                className="font-mono tabular-nums"
-                placeholder="0.00"
-              />
-            </div>
+            {amountEditTarget?.type === "payment" ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-financial-amount" className="text-xs">
+                      Amount (AED)
+                    </Label>
+                    <Input
+                      id="edit-financial-amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={amountEditValue}
+                      onChange={(event) => {
+                        setAmountEditValue(event.target.value);
+                        setAmountEditAllocationError("");
+                      }}
+                      className="font-mono tabular-nums"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Payment Method</Label>
+                    <Select
+                      value={amountEditPaymentMethod}
+                      onValueChange={(value) => setAmountEditPaymentMethod(value as PaymentMethod)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="Card">Card</SelectItem>
+                        <SelectItem value="Transfer">Transfer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Allocate Payment
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-[10px] uppercase"
+                      onClick={() => {
+                        let remaining = Number(amountEditValue) || 0;
+                        const nextAllocations: Record<string, number> = {};
+                        for (const row of amountEditAllocationRows) {
+                          if (remaining <= 0) break;
+                          const value = Math.min(remaining, Number(row.due));
+                          if (value > 0) nextAllocations[row.id] = Math.round(value * 100) / 100;
+                          remaining -= value;
+                        }
+                        setAmountEditAllocations(nextAllocations);
+                        setAmountEditAllocationError("");
+                      }}
+                    >
+                      Fill all unpaid
+                    </Button>
+                  </div>
+
+                  <div className="max-h-[240px] space-y-3 overflow-y-auto rounded-md border border-border p-3 [scrollbar-width:thin]">
+                    {amountEditAllocationRows.length === 0 ? (
+                      <div className="py-6 text-center text-xs text-muted-foreground">
+                        No unpaid allocation lines
+                      </div>
+                    ) : (
+                      amountEditAllocationRows.map((row) => (
+                        <div key={row.id} className="flex items-center gap-3 text-xs">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-foreground">{row.label}</p>
+                            <p className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                              Due: {fmtAed(row.due)}
+                            </p>
+                          </div>
+                          <div className="relative w-32 shrink-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                              AED
+                            </span>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              inputMode="decimal"
+                              max={row.due}
+                              value={amountEditAllocations[row.id] ?? ""}
+                              onChange={(event) => {
+                                const value = Math.min(
+                                  Number(row.due),
+                                  Math.max(0, Number(event.target.value) || 0),
+                                );
+                                setAmountEditAllocations((prev) => ({
+                                  ...prev,
+                                  [row.id]: Math.round(value * 100) / 100,
+                                }));
+                                setAmountEditAllocationError("");
+                              }}
+                              className="h-8 pl-8 text-right font-mono text-xs tabular-nums"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 px-1 text-xs">
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        Math.abs(amountEditUnallocatedAmount) > 0.01
+                          ? "text-destructive"
+                          : "text-tint-green-foreground",
+                      )}
+                    >
+                      Unallocated: <span className="font-mono tabular-nums">{fmtAed(amountEditUnallocatedAmount)}</span>
+                    </span>
+                    {amountEditAllocationError ? (
+                      <span className="text-right text-destructive">{amountEditAllocationError}</span>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="edit-financial-amount" className="text-xs">
+                  {amountEditIsExtension ? "Amount" : "Amount (AED)"}
+                </Label>
+                <Input
+                  id="edit-financial-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={amountEditValue}
+                  onChange={(event) => setAmountEditValue(event.target.value)}
+                  className="font-mono tabular-nums"
+                  placeholder="0.00"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
