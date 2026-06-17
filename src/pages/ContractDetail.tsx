@@ -2027,7 +2027,7 @@ const FinancialsPanel = ({
             type="button"
             variant="outline"
             className="h-11 min-w-0 flex-1 gap-2 border-border bg-transparent text-foreground hover:bg-white/10 hover:text-foreground"
-            onClick={() => console.log("add fee")}
+            onClick={onAddFee}
           >
             <Plus className="h-4 w-4" />
             Add Fee
