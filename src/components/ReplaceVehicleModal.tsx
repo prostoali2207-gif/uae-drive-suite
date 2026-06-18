@@ -696,8 +696,8 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl bg-[#0F1117] border-white/10 text-white p-6 rounded-lg shadow-xl font-dm-sans">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[95dvh] max-w-2xl flex-col overflow-hidden bg-[#0F1117] border-white/10 text-white p-6 rounded-lg shadow-xl font-dm-sans">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="text-xl font-semibold tracking-tight text-white">
             Replace Vehicle Mid-Contract
           </DialogTitle>
@@ -709,7 +709,8 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-4 border-t border-b border-white/10 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-4 border-t border-b border-white/10 py-6">
           {/* Section 1 — Current Vehicle End */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-white/90 border-b border-white/5 pb-2">
@@ -819,46 +820,47 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               </div>
             </div>
           </div>
-        </div>
-
-        <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
-          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
-            <Calculator className="h-4 w-4 text-blue-300" aria-hidden="true" />
-            Swap cost calculator
           </div>
 
-          {loadingRentalPeriods ? (
-            <div className="text-sm text-white/55">Loading rental periods...</div>
-          ) : swapCostPreview ? (
-            <div className="space-y-2 text-sm text-white/75">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>Car #1</span>
-                <span className="font-ibm-plex-mono text-white">
-                  {swapCostPreview.oldCarDays} days × AED {formatAed(swapCostPreview.oldCarDailyRate)} = AED{" "}
-                  {formatAed(swapCostPreview.oldCarTotal)}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>Car #2</span>
-                <span className="font-ibm-plex-mono text-white">
-                  {swapCostPreview.newCarDays} days × AED {formatAed(swapCostPreview.newCarDailyRate)} = AED{" "}
-                  {formatAed(swapCostPreview.newCarTotal)}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-white">
-                <span className="font-medium">Period total</span>
-                <span className="font-ibm-plex-mono">
-                  AED {formatAed(swapCostPreview.oldCarTotal)} + AED {formatAed(swapCostPreview.newCarTotal)} = AED{" "}
-                  {formatAed(swapCostPreview.total)}
-                </span>
-              </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+              <Calculator className="h-4 w-4 text-blue-300" aria-hidden="true" />
+              Swap cost calculator
             </div>
-          ) : (
-            <div className="text-sm text-amber-200/80">Swap date does not fall within any rental period.</div>
-          )}
+
+            {loadingRentalPeriods ? (
+              <div className="text-sm text-white/55">Loading rental periods...</div>
+            ) : swapCostPreview ? (
+              <div className="space-y-2 text-sm text-white/75">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Car #1</span>
+                  <span className="font-ibm-plex-mono text-white">
+                    {swapCostPreview.oldCarDays} days × AED {formatAed(swapCostPreview.oldCarDailyRate)} = AED{" "}
+                    {formatAed(swapCostPreview.oldCarTotal)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Car #2</span>
+                  <span className="font-ibm-plex-mono text-white">
+                    {swapCostPreview.newCarDays} days × AED {formatAed(swapCostPreview.newCarDailyRate)} = AED{" "}
+                    {formatAed(swapCostPreview.newCarTotal)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-white">
+                  <span className="font-medium">Period total</span>
+                  <span className="font-ibm-plex-mono">
+                    AED {formatAed(swapCostPreview.oldCarTotal)} + AED {formatAed(swapCostPreview.newCarTotal)} = AED{" "}
+                    {formatAed(swapCostPreview.total)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-amber-200/80">Swap date does not fall within any rental period.</div>
+            )}
+          </div>
         </div>
 
-        <DialogFooter className="flex justify-end gap-3">
+        <DialogFooter className="shrink-0 flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose} className="text-white/60 hover:text-white hover:bg-white/5">
             Cancel
           </Button>

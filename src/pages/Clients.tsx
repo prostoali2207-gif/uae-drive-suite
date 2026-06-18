@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload, XCircle, MoreVertical } from "lucide-react";
+import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload, XCircle, MoreVertical, CalendarDays } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -147,6 +150,92 @@ const emptyForm = {
   license_back_url: "",
 };
 
+const PHONE_COUNTRIES = [
+  { name: "United Arab Emirates", iso: "AE", dial: "971" },
+  { name: "Saudi Arabia", iso: "SA", dial: "966" },
+  { name: "Kuwait", iso: "KW", dial: "965" },
+  { name: "Qatar", iso: "QA", dial: "974" },
+  { name: "Bahrain", iso: "BH", dial: "973" },
+  { name: "Oman", iso: "OM", dial: "968" },
+  { name: "Jordan", iso: "JO", dial: "962" },
+  { name: "Lebanon", iso: "LB", dial: "961" },
+  { name: "Egypt", iso: "EG", dial: "20" },
+  { name: "Iraq", iso: "IQ", dial: "964" },
+  { name: "India", iso: "IN", dial: "91" },
+  { name: "Pakistan", iso: "PK", dial: "92" },
+  { name: "Bangladesh", iso: "BD", dial: "880" },
+  { name: "Sri Lanka", iso: "LK", dial: "94" },
+  { name: "Nepal", iso: "NP", dial: "977" },
+  { name: "Philippines", iso: "PH", dial: "63" },
+  { name: "United Kingdom", iso: "GB", dial: "44" },
+  { name: "United States", iso: "US", dial: "1" },
+  { name: "Germany", iso: "DE", dial: "49" },
+  { name: "France", iso: "FR", dial: "33" },
+  { name: "Turkey", iso: "TR", dial: "90" },
+  { name: "Russia / Kazakhstan", iso: "RU", dial: "7" },
+  { name: "China", iso: "CN", dial: "86" },
+  { name: "Indonesia", iso: "ID", dial: "62" },
+  { name: "Malaysia", iso: "MY", dial: "60" },
+  { name: "Ukraine", iso: "UA", dial: "380" },
+  { name: "Uzbekistan", iso: "UZ", dial: "998" },
+  { name: "Armenia", iso: "AM", dial: "374" },
+  { name: "Georgia", iso: "GE", dial: "995" },
+] as const;
+
+const toDateInputString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getAdultMaxDate = () => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setFullYear(date.getFullYear() - 18);
+  return date;
+};
+
+const validateDateOfBirth = (value: string) => {
+  if (!value) return "Select date of birth.";
+  const selectedDate = parseISO(value);
+  if (Number.isNaN(selectedDate.getTime())) return "Enter a valid date of birth.";
+  if (selectedDate > getAdultMaxDate()) return "Client must be at least 18 years old.";
+  return "";
+};
+
+const normalizeLocalPhone = (value: string, dialCode: string) =>
+  value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 15 - dialCode.length);
+
+const normalizePhone = (dialCode: string, localNumber: string) => {
+  const digits = normalizeLocalPhone(localNumber, dialCode);
+  return digits ? `+${dialCode}${digits}` : "";
+};
+
+const parsePhone = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  const country = [...PHONE_COUNTRIES]
+    .sort((a, b) => b.dial.length - a.dial.length)
+    .find((item) => digits.startsWith(item.dial));
+
+  if (!country) {
+    return { dialCode: "971", localNumber: normalizeLocalPhone(digits, "971") };
+  }
+
+  return {
+    dialCode: country.dial,
+    localNumber: normalizeLocalPhone(digits.slice(country.dial.length), country.dial),
+  };
+};
+
+const validatePhone = (dialCode: string, localNumber: string) => {
+  const digits = normalizeLocalPhone(localNumber, dialCode);
+  if (!digits) return "Enter a phone number.";
+  if (dialCode === "971" && digits.length !== 9) return "Enter a valid UAE phone number.";
+  if (dialCode !== "971" && digits.length < 6) return "Enter a valid phone number.";
+  return "";
+};
+
 const requestToClientPayload = (request: ClientRegistrationRequest) => ({
   full_name: request.full_name.trim(),
   phone: request.phone.trim(),
@@ -222,7 +311,10 @@ const Clients = () => {
   const [deleting, setDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [phoneDialCode, setPhoneDialCode] = useState("971");
+  const [phoneLocalNumber, setPhoneLocalNumber] = useState("");
   const [phoneError, setPhoneError] = useState("");
+  const [dobError, setDobError] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [dupError, setDupError] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -352,13 +444,17 @@ const Clients = () => {
   const openAdd = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setPhoneDialCode("971");
+    setPhoneLocalNumber("");
     setPhoneError("");
+    setDobError("");
     setDupError("");
     setStep(1);
     setOpen(true);
   };
 
   const openEdit = (c: ClientRecord) => {
+    const parsedPhone = parsePhone(c.phone);
     setEditingId(c.id);
     setForm({
       full_name: c.full_name,
@@ -379,7 +475,10 @@ const Clients = () => {
       license_front_url: c.license_front_url ?? "",
       license_back_url: c.license_back_url ?? "",
     });
+    setPhoneDialCode(parsedPhone.dialCode);
+    setPhoneLocalNumber(parsedPhone.localNumber);
     setPhoneError("");
+    setDobError("");
     setDupError("");
     setStep(1);
     setOpen(true);
@@ -445,11 +544,17 @@ const Clients = () => {
       return;
     }
 
-    setPhoneError("");
+    const nextPhoneError = validatePhone(phoneDialCode, phoneLocalNumber);
+    const nextDobError = validateDateOfBirth(form.date_of_birth);
+    setPhoneError(nextPhoneError);
+    setDobError(nextDobError);
+    if (nextPhoneError || nextDobError) return;
+
+    const normalizedPhone = normalizePhone(phoneDialCode, phoneLocalNumber);
     setDupError("");
 
     if (!editingId) {
-      const phoneToCheck = form.phone.trim();
+      const phoneToCheck = normalizedPhone;
       const emailToCheck = form.email.trim();
       const orParts: string[] = [];
       if (phoneToCheck) orParts.push(`phone.eq.${phoneToCheck}`);
@@ -474,7 +579,7 @@ const Clients = () => {
     setSaving(true);
     const payload: any = {
       full_name: form.full_name.trim(),
-      phone: form.phone.trim(),
+      phone: normalizedPhone,
       client_type: form.client_type,
       emirates_id: form.client_type === "Resident" ? form.emirates_id.trim() : "",
       emirates_id_expiry: form.client_type === "Resident" ? (form.emirates_id_expiry || null) : null,
@@ -896,7 +1001,7 @@ const Clients = () => {
           </Dialog>
           </div>
 
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setDupError(""); setStep(1); } }}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setPhoneError(""); setDobError(""); setDupError(""); setStep(1); } }}>
             <DialogTrigger asChild>
               <Button size="sm" className="hidden gap-1.5 bg-fd-accent text-white hover:bg-fd-accent/90 md:inline-flex" onClick={openAdd}>
                 <Plus className="h-4 w-4" />
@@ -938,29 +1043,101 @@ const Clients = () => {
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="phone" className="text-foreground">Phone <span className="text-red-500">*</span></Label>
-                        <Input
-                        id="phone"
-                        required
-                        value={form.phone}
-                        onChange={(e) => {
-                          setForm({ ...form, phone: e.target.value });
-                          setPhoneError("");
-                          setDupError("");
-                        }}
-                        className="bg-input border-border text-foreground focus-visible:ring-ring"
-                      />
-                      {phoneError && <p className="text-xs text-red-400">{phoneError}</p>}
+                      <div className={cn(
+                        "flex min-h-11 overflow-hidden rounded-md border border-input bg-input focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+                        phoneError && "border-destructive",
+                      )}>
+                        <select
+                          aria-label="Phone country code"
+                          value={phoneDialCode}
+                          onChange={(e) => {
+                            const dialCode = e.target.value;
+                            const normalizedPhone = normalizePhone(dialCode, phoneLocalNumber);
+                            setPhoneDialCode(dialCode);
+                            setPhoneLocalNumber((current) => normalizeLocalPhone(current, dialCode));
+                            setForm((current) => ({ ...current, phone: normalizedPhone }));
+                            setPhoneError("");
+                            setDupError("");
+                          }}
+                          className="h-11 w-[7.5rem] shrink-0 border-0 border-r border-border bg-muted px-2 font-mono text-sm text-foreground outline-none sm:w-[8.5rem]"
+                        >
+                          {PHONE_COUNTRIES.map((country) => (
+                            <option key={`${country.iso}-${country.dial}`} value={country.dial}>
+                              {country.iso} +{country.dial}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          id="phone"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          required
+                          placeholder="50 245 6090"
+                          value={phoneLocalNumber}
+                          onChange={(e) => {
+                            const localNumber = e.target.value.replace(/\D/g, "").slice(0, 15 - phoneDialCode.length);
+                            setPhoneLocalNumber(localNumber);
+                            setForm((current) => ({
+                              ...current,
+                              phone: normalizePhone(phoneDialCode, localNumber),
+                            }));
+                            setPhoneError("");
+                            setDupError("");
+                          }}
+                          onBlur={() => {
+                            const localNumber = normalizeLocalPhone(phoneLocalNumber, phoneDialCode);
+                            setPhoneLocalNumber(localNumber);
+                            setForm((current) => ({
+                              ...current,
+                              phone: normalizePhone(phoneDialCode, localNumber),
+                            }));
+                            setPhoneError("");
+                          }}
+                          className="h-11 min-w-0 flex-1 border-0 bg-transparent px-3 font-mono text-base text-foreground outline-none placeholder:text-muted-foreground"
+                        />
+                      </div>
+                      {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-red-500">*</span></Label>
-                      <Input 
-                        id="dob" 
-                        type="date" 
-                        required
-                        value={form.date_of_birth || ""} 
-                        onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
-                        className="bg-input border-border text-foreground [color-scheme:dark]"
-                      />
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="dob"
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                              "h-11 w-full justify-start bg-input px-3 text-left font-normal",
+                              !form.date_of_birth && "text-muted-foreground",
+                              dobError && "border-destructive",
+                            )}
+                          >
+                            <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
+                            {form.date_of_birth
+                              ? format(parseISO(form.date_of_birth), "dd.MM.yyyy")
+                              : "Select date of birth"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] p-0">
+                          <Calendar
+                            mode="single"
+                            captionLayout="dropdown-buttons"
+                            fromYear={1920}
+                            toYear={getAdultMaxDate().getFullYear()}
+                            selected={form.date_of_birth ? parseISO(form.date_of_birth) : undefined}
+                            defaultMonth={form.date_of_birth ? parseISO(form.date_of_birth) : getAdultMaxDate()}
+                            disabled={{ after: getAdultMaxDate() }}
+                            onSelect={(date) => {
+                              const dateOfBirth = date ? toDateInputString(date) : "";
+                              setForm((current) => ({ ...current, date_of_birth: dateOfBirth }));
+                              setDobError(validateDateOfBirth(dateOfBirth));
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      {dobError && <p className="text-xs text-destructive">{dobError}</p>}
                     </div>
                   </div>
                 ) : (
@@ -1191,8 +1368,12 @@ const Clients = () => {
                       <Button 
                         type="button" 
                         onClick={() => {
-                          if (!form.full_name.trim() || !form.phone.trim() || !form.date_of_birth) {
-                            toast.error("Please fill in all required fields");
+                          const nextPhoneError = validatePhone(phoneDialCode, phoneLocalNumber);
+                          const nextDobError = validateDateOfBirth(form.date_of_birth);
+                          setPhoneError(nextPhoneError);
+                          setDobError(nextDobError);
+                          if (!form.full_name.trim() || nextPhoneError || nextDobError) {
+                            if (!form.full_name.trim()) toast.error("Please enter the client's full name");
                             return;
                           }
                           setStep(2);
