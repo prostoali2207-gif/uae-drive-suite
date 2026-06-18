@@ -357,15 +357,123 @@ interface DateOfBirthPickerProps {
 
 function DateOfBirthPicker({ value, hasError, onChange }: DateOfBirthPickerProps) {
   const selectedDate = value ? parseISO(value) : undefined;
+  const nativeInputRef = useRef<HTMLInputElement>(null);
+  const manualInputRef = useRef<HTMLInputElement>(null);
+  const [manualValue, setManualValue] = useState(
+    selectedDate ? format(selectedDate, "dd.MM.yyyy") : "",
+  );
+  const isNativeMobilePicker = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    const userAgent = navigator.userAgent;
+    const isAndroidChrome = /Android/i.test(userAgent) && /Chrome/i.test(userAgent);
+    const isIOS =
+      /iPhone|iPad|iPod/i.test(userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    return isAndroidChrome || isIOS;
+  }, []);
+
+  useEffect(() => {
+    setManualValue(value ? format(parseISO(value), "dd.MM.yyyy") : "");
+  }, [value]);
+
+  const openNativePicker = () => {
+    const input = nativeInputRef.current;
+    if (!input) return;
+
+    try {
+      if (typeof input.showPicker === "function") {
+        input.showPicker();
+        return;
+      }
+    } catch {
+      // Browser denied showPicker; use focus/click fallback below.
+    }
+
+    input.focus({ preventScroll: true });
+    input.click();
+    window.setTimeout(() => manualInputRef.current?.focus({ preventScroll: true }), 0);
+  };
+
+  const handleManualChange = (rawValue: string) => {
+    const digits = rawValue.replace(/\D/g, "").slice(0, 8);
+    const formatted = [
+      digits.slice(0, 2),
+      digits.slice(2, 4),
+      digits.slice(4, 8),
+    ].filter(Boolean).join(".");
+    setManualValue(formatted);
+
+    if (!formatted) {
+      onChange("");
+      return;
+    }
+
+    const match = formatted.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!match) return;
+
+    const [, day, month, year] = match;
+    const internalValue = `${year}-${month}-${day}`;
+    const parsedDate = parseISO(internalValue);
+    if (
+      !Number.isNaN(parsedDate.getTime()) &&
+      format(parsedDate, "dd.MM.yyyy") === formatted
+    ) {
+      onChange(internalValue);
+    } else {
+      onChange("");
+    }
+  };
+
+  const fieldClassName = cn(
+    "relative flex h-12 w-full items-center rounded-md border border-input bg-input px-3 text-left ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+    !value && "text-muted-foreground",
+    hasError && "border-destructive",
+  );
+
+  if (!isNativeMobilePicker) {
+    return (
+      <div className={fieldClassName}>
+        <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
+        <input
+          ref={manualInputRef}
+          type="text"
+          inputMode="numeric"
+          autoComplete="bday"
+          aria-label="Date of Birth"
+          placeholder="Select date of birth"
+          value={manualValue}
+          onChange={(event) => handleManualChange(event.target.value)}
+          onClick={openNativePicker}
+          onBlur={() => {
+            if (manualValue && manualValue.length !== 10) onChange("");
+          }}
+          className="h-full min-w-0 flex-1 bg-transparent font-mono text-sm text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground"
+        />
+        <button
+          type="button"
+          aria-label="Open date of birth picker"
+          onClick={openNativePicker}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+        <input
+          ref={nativeInputRef}
+          id="dob"
+          type="date"
+          required
+          tabIndex={-1}
+          aria-hidden="true"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+        />
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={cn(
-        "relative flex h-12 w-full items-center rounded-md border border-input bg-input px-3 text-left ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
-        !value && "text-muted-foreground",
-        hasError && "border-destructive",
-      )}
-    >
+    <div className={fieldClassName}>
       <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
       <span className={cn("text-sm", value && "font-mono text-foreground")}>
         {selectedDate ? format(selectedDate, "dd.MM.yyyy") : "Select date of birth"}
