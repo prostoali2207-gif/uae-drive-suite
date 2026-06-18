@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, IdCard, FileText, Trash2, Upload, XCircle, MoreVertical, CalendarDays } from "lucide-react";
+import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, ChevronDown, IdCard, FileText, Trash2, Upload, XCircle, MoreVertical, CalendarDays } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -151,35 +151,35 @@ const emptyForm = {
 };
 
 const PHONE_COUNTRIES = [
-  { name: "United Arab Emirates", iso: "AE", dial: "971" },
-  { name: "Saudi Arabia", iso: "SA", dial: "966" },
-  { name: "Kuwait", iso: "KW", dial: "965" },
-  { name: "Qatar", iso: "QA", dial: "974" },
-  { name: "Bahrain", iso: "BH", dial: "973" },
-  { name: "Oman", iso: "OM", dial: "968" },
-  { name: "Jordan", iso: "JO", dial: "962" },
-  { name: "Lebanon", iso: "LB", dial: "961" },
-  { name: "Egypt", iso: "EG", dial: "20" },
-  { name: "Iraq", iso: "IQ", dial: "964" },
-  { name: "India", iso: "IN", dial: "91" },
-  { name: "Pakistan", iso: "PK", dial: "92" },
-  { name: "Bangladesh", iso: "BD", dial: "880" },
-  { name: "Sri Lanka", iso: "LK", dial: "94" },
-  { name: "Nepal", iso: "NP", dial: "977" },
-  { name: "Philippines", iso: "PH", dial: "63" },
-  { name: "United Kingdom", iso: "GB", dial: "44" },
-  { name: "United States", iso: "US", dial: "1" },
-  { name: "Germany", iso: "DE", dial: "49" },
-  { name: "France", iso: "FR", dial: "33" },
-  { name: "Turkey", iso: "TR", dial: "90" },
-  { name: "Russia / Kazakhstan", iso: "RU", dial: "7" },
-  { name: "China", iso: "CN", dial: "86" },
-  { name: "Indonesia", iso: "ID", dial: "62" },
-  { name: "Malaysia", iso: "MY", dial: "60" },
-  { name: "Ukraine", iso: "UA", dial: "380" },
-  { name: "Uzbekistan", iso: "UZ", dial: "998" },
-  { name: "Armenia", iso: "AM", dial: "374" },
-  { name: "Georgia", iso: "GE", dial: "995" },
+  { name: "United Arab Emirates", iso: "ae", dial: "971" },
+  { name: "Saudi Arabia", iso: "sa", dial: "966" },
+  { name: "Kuwait", iso: "kw", dial: "965" },
+  { name: "Qatar", iso: "qa", dial: "974" },
+  { name: "Bahrain", iso: "bh", dial: "973" },
+  { name: "Oman", iso: "om", dial: "968" },
+  { name: "Jordan", iso: "jo", dial: "962" },
+  { name: "Lebanon", iso: "lb", dial: "961" },
+  { name: "Egypt", iso: "eg", dial: "20" },
+  { name: "Iraq", iso: "iq", dial: "964" },
+  { name: "Russia", iso: "ru", dial: "7" },
+  { name: "Kazakhstan", iso: "kz", dial: "7" },
+  { name: "India", iso: "in", dial: "91" },
+  { name: "Pakistan", iso: "pk", dial: "92" },
+  { name: "United Kingdom", iso: "gb", dial: "44" },
+  { name: "Germany", iso: "de", dial: "49" },
+  { name: "France", iso: "fr", dial: "33" },
+  { name: "United States", iso: "us", dial: "1" },
+  { name: "Turkey", iso: "tr", dial: "90" },
+  { name: "Philippines", iso: "ph", dial: "63" },
+  { name: "Indonesia", iso: "id", dial: "62" },
+  { name: "Malaysia", iso: "my", dial: "60" },
+  { name: "Ukraine", iso: "ua", dial: "380" },
+  { name: "Uzbekistan", iso: "uz", dial: "998" },
+  { name: "Kyrgyzstan", iso: "kg", dial: "996" },
+  { name: "Tajikistan", iso: "tj", dial: "992" },
+  { name: "China", iso: "cn", dial: "86" },
+  { name: "Armenia", iso: "am", dial: "374" },
+  { name: "Georgia", iso: "ge", dial: "995" },
 ] as const;
 
 const toDateInputString = (date: Date) => {
@@ -219,11 +219,12 @@ const parsePhone = (value: string) => {
     .find((item) => digits.startsWith(item.dial));
 
   if (!country) {
-    return { dialCode: "971", localNumber: normalizeLocalPhone(digits, "971") };
+    return { dialCode: "971", isoCountry: "ae", localNumber: normalizeLocalPhone(digits, "971") };
   }
 
   return {
     dialCode: country.dial,
+    isoCountry: country.iso,
     localNumber: normalizeLocalPhone(digits.slice(country.dial.length), country.dial),
   };
 };
@@ -235,6 +236,274 @@ const validatePhone = (dialCode: string, localNumber: string) => {
   if (dialCode !== "971" && digits.length < 6) return "Enter a valid phone number.";
   return "";
 };
+
+interface ClientPhoneInputProps {
+  dialCode: string;
+  isoCountry: string;
+  phoneNumber: string;
+  hasError: boolean;
+  onCountryChange: (dialCode: string, isoCountry: string) => void;
+  onNumberChange: (phoneNumber: string) => void;
+}
+
+function ClientPhoneInput({
+  dialCode,
+  isoCountry,
+  phoneNumber,
+  hasError,
+  onCountryChange,
+  onNumberChange,
+}: ClientPhoneInputProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const filteredCountries = PHONE_COUNTRIES.filter((country) => {
+    const query = search.trim().toLowerCase();
+    return country.name.toLowerCase().includes(query) || country.dial.startsWith(query.replace(/\D/g, ""));
+  });
+
+  return (
+    <div className="w-full min-w-0">
+      <div
+        className={cn(
+          "flex h-12 w-full overflow-hidden rounded-md border bg-input text-base ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+          hasError ? "border-destructive" : "border-input",
+        )}
+      >
+        <Popover
+          open={open}
+          onOpenChange={(nextOpen) => {
+            setOpen(nextOpen);
+            if (!nextOpen) setSearch("");
+            else window.setTimeout(() => searchRef.current?.focus(), 0);
+          }}
+        >
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Select phone country code"
+              className="flex h-12 w-28 shrink-0 items-center justify-between gap-2 border-r border-border bg-muted px-3 text-foreground hover:bg-muted/80 focus:outline-none"
+            >
+              <img
+                src={`https://flagcdn.com/20x15/${isoCountry}.png`}
+                alt=""
+                className="h-[15px] w-5 shrink-0 rounded-sm object-cover"
+              />
+              <span className="font-mono text-sm font-semibold">+{dialCode}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            sideOffset={8}
+            className="w-[min(19rem,calc(100vw-2rem))] overflow-hidden border-border bg-popover p-0 text-popover-foreground shadow-xl"
+          >
+            <div className="border-b border-border p-2">
+              <Input
+                ref={searchRef}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search country or code..."
+                className="h-11 bg-input text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto p-1">
+              {filteredCountries.length === 0 && (
+                <p className="px-3 py-5 text-center text-sm text-muted-foreground">No countries found</p>
+              )}
+              {filteredCountries.map((country) => (
+                <button
+                  key={`${country.iso}-${country.dial}`}
+                  type="button"
+                  onClick={() => {
+                    onCountryChange(country.dial, country.iso);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                    isoCountry === country.iso && dialCode === country.dial && "bg-accent text-accent-foreground",
+                  )}
+                >
+                  <img
+                    src={`https://flagcdn.com/20x15/${country.iso}.png`}
+                    alt=""
+                    className="h-[15px] w-5 shrink-0 rounded-sm object-cover"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-left">{country.name}</span>
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">+{country.dial}</span>
+                </button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <input
+          id="phone"
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel-national"
+          required
+          placeholder="50 245 6090"
+          value={phoneNumber}
+          onChange={(event) => onNumberChange(event.target.value)}
+          className="h-12 min-w-0 flex-1 border-0 bg-transparent px-3 font-mono text-base text-foreground outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+    </div>
+  );
+}
+
+interface DateOfBirthPickerProps {
+  value: string;
+  hasError: boolean;
+  onChange: (value: string) => void;
+}
+
+function DateOfBirthPicker({ value, hasError, onChange }: DateOfBirthPickerProps) {
+  const adultMaxDate = getAdultMaxDate();
+  const selectedDate = value ? parseISO(value) : undefined;
+  const [open, setOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(selectedDate ?? adultMaxDate);
+  const [pickerView, setPickerView] = useState<"calendar" | "month" | "year">("calendar");
+  const years = Array.from(
+    { length: adultMaxDate.getFullYear() - 1920 + 1 },
+    (_, index) => adultMaxDate.getFullYear() - index,
+  );
+  const months = Array.from({ length: 12 }, (_, index) =>
+    format(new Date(2000, index, 1), "MMM"),
+  );
+
+  const updateVisibleMonth = (year: number, month: number) => {
+    const maxMonth = year === adultMaxDate.getFullYear() ? adultMaxDate.getMonth() : 11;
+    setVisibleMonth(new Date(year, Math.min(month, maxMonth), 1));
+  };
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) {
+          setVisibleMonth(selectedDate ?? adultMaxDate);
+          setPickerView("calendar");
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          id="dob"
+          type="button"
+          variant="outline"
+          className={cn(
+            "h-12 w-full justify-start bg-input px-3 text-left font-normal",
+            !value && "text-muted-foreground",
+            hasError && "border-destructive",
+          )}
+        >
+          <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
+          {selectedDate ? format(selectedDate, "dd.MM.yyyy") : "Select date of birth"}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={8}
+        className="w-[min(21rem,calc(100vw-2rem))] border-border bg-popover p-3 text-popover-foreground shadow-xl"
+      >
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 bg-input"
+            onClick={() => setPickerView((view) => view === "month" ? "calendar" : "month")}
+          >
+            {format(visibleMonth, "MMMM")}
+            <ChevronDown className="ml-2 h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 bg-input font-mono"
+            onClick={() => setPickerView((view) => view === "year" ? "calendar" : "year")}
+          >
+            {visibleMonth.getFullYear()}
+            <ChevronDown className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+
+        {pickerView === "year" && (
+          <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto pr-1">
+            {years.map((year) => (
+              <Button
+                key={year}
+                type="button"
+                variant={visibleMonth.getFullYear() === year ? "default" : "ghost"}
+                className="h-11 font-mono"
+                onClick={() => {
+                  updateVisibleMonth(year, visibleMonth.getMonth());
+                  setPickerView("calendar");
+                }}
+              >
+                {year}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {pickerView === "month" && (
+          <div className="grid grid-cols-3 gap-2">
+            {months.map((month, monthIndex) => {
+              const disabled =
+                visibleMonth.getFullYear() === adultMaxDate.getFullYear() &&
+                monthIndex > adultMaxDate.getMonth();
+              return (
+                <Button
+                  key={month}
+                  type="button"
+                  variant={visibleMonth.getMonth() === monthIndex ? "default" : "ghost"}
+                  disabled={disabled}
+                  className="h-11"
+                  onClick={() => {
+                    updateVisibleMonth(visibleMonth.getFullYear(), monthIndex);
+                    setPickerView("calendar");
+                  }}
+                >
+                  {month}
+                </Button>
+              );
+            })}
+          </div>
+        )}
+
+        {pickerView === "calendar" && (
+          <Calendar
+            mode="single"
+            month={visibleMonth}
+            onMonthChange={setVisibleMonth}
+            selected={selectedDate}
+            fromMonth={new Date(1920, 0, 1)}
+            toMonth={adultMaxDate}
+            disabled={{ after: adultMaxDate }}
+            onSelect={(date) => {
+              if (!date) return;
+              onChange(toDateInputString(date));
+              setOpen(false);
+            }}
+            className="p-0"
+            classNames={{
+              caption_label: "hidden",
+              head_cell: "w-10 rounded-md text-[0.8rem] font-normal text-muted-foreground",
+              cell: "relative h-10 w-10 p-0 text-center text-sm focus-within:relative focus-within:z-20",
+              day: "h-10 w-10 p-0 font-normal aria-selected:opacity-100",
+              nav_button: "h-10 w-10 border-border bg-input p-0 opacity-100 hover:bg-accent",
+            }}
+            initialFocus
+          />
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const requestToClientPayload = (request: ClientRegistrationRequest) => ({
   full_name: request.full_name.trim(),
@@ -312,6 +581,7 @@ const Clients = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [phoneDialCode, setPhoneDialCode] = useState("971");
+  const [phoneIsoCountry, setPhoneIsoCountry] = useState("ae");
   const [phoneLocalNumber, setPhoneLocalNumber] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [dobError, setDobError] = useState("");
@@ -445,6 +715,7 @@ const Clients = () => {
     setEditingId(null);
     setForm(emptyForm);
     setPhoneDialCode("971");
+    setPhoneIsoCountry("ae");
     setPhoneLocalNumber("");
     setPhoneError("");
     setDobError("");
@@ -476,6 +747,7 @@ const Clients = () => {
       license_back_url: c.license_back_url ?? "",
     });
     setPhoneDialCode(parsedPhone.dialCode);
+    setPhoneIsoCountry(parsedPhone.isoCountry);
     setPhoneLocalNumber(parsedPhone.localNumber);
     setPhoneError("");
     setDobError("");
@@ -1043,100 +1315,46 @@ const Clients = () => {
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="phone" className="text-foreground">Phone <span className="text-red-500">*</span></Label>
-                      <div className={cn(
-                        "flex min-h-11 overflow-hidden rounded-md border border-input bg-input focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
-                        phoneError && "border-destructive",
-                      )}>
-                        <select
-                          aria-label="Phone country code"
-                          value={phoneDialCode}
-                          onChange={(e) => {
-                            const dialCode = e.target.value;
-                            const normalizedPhone = normalizePhone(dialCode, phoneLocalNumber);
-                            setPhoneDialCode(dialCode);
-                            setPhoneLocalNumber((current) => normalizeLocalPhone(current, dialCode));
-                            setForm((current) => ({ ...current, phone: normalizedPhone }));
-                            setPhoneError("");
-                            setDupError("");
-                          }}
-                          className="h-11 w-[7.5rem] shrink-0 border-0 border-r border-border bg-muted px-2 font-mono text-sm text-foreground outline-none sm:w-[8.5rem]"
-                        >
-                          {PHONE_COUNTRIES.map((country) => (
-                            <option key={`${country.iso}-${country.dial}`} value={country.dial}>
-                              {country.iso} +{country.dial}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          id="phone"
-                          type="tel"
-                          inputMode="numeric"
-                          autoComplete="tel-national"
-                          required
-                          placeholder="50 245 6090"
-                          value={phoneLocalNumber}
-                          onChange={(e) => {
-                            const localNumber = e.target.value.replace(/\D/g, "").slice(0, 15 - phoneDialCode.length);
-                            setPhoneLocalNumber(localNumber);
-                            setForm((current) => ({
-                              ...current,
-                              phone: normalizePhone(phoneDialCode, localNumber),
-                            }));
-                            setPhoneError("");
-                            setDupError("");
-                          }}
-                          onBlur={() => {
-                            const localNumber = normalizeLocalPhone(phoneLocalNumber, phoneDialCode);
-                            setPhoneLocalNumber(localNumber);
-                            setForm((current) => ({
-                              ...current,
-                              phone: normalizePhone(phoneDialCode, localNumber),
-                            }));
-                            setPhoneError("");
-                          }}
-                          className="h-11 min-w-0 flex-1 border-0 bg-transparent px-3 font-mono text-base text-foreground outline-none placeholder:text-muted-foreground"
-                        />
-                      </div>
+                      <ClientPhoneInput
+                        dialCode={phoneDialCode}
+                        isoCountry={phoneIsoCountry}
+                        phoneNumber={phoneLocalNumber}
+                        hasError={Boolean(phoneError)}
+                        onCountryChange={(dialCode, isoCountry) => {
+                          const localNumber = normalizeLocalPhone(phoneLocalNumber, dialCode);
+                          setPhoneDialCode(dialCode);
+                          setPhoneIsoCountry(isoCountry);
+                          setPhoneLocalNumber(localNumber);
+                          setForm((current) => ({
+                            ...current,
+                            phone: normalizePhone(dialCode, localNumber),
+                          }));
+                          setPhoneError("");
+                          setDupError("");
+                        }}
+                        onNumberChange={(value) => {
+                          const localNumber = value.replace(/\D/g, "").slice(0, 15 - phoneDialCode.length);
+                          setPhoneLocalNumber(localNumber);
+                          setForm((current) => ({
+                            ...current,
+                            phone: normalizePhone(phoneDialCode, localNumber),
+                          }));
+                          setPhoneError("");
+                          setDupError("");
+                        }}
+                      />
                       {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-red-500">*</span></Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            id="dob"
-                            type="button"
-                            variant="outline"
-                            className={cn(
-                              "h-11 w-full justify-start bg-input px-3 text-left font-normal",
-                              !form.date_of_birth && "text-muted-foreground",
-                              dobError && "border-destructive",
-                            )}
-                          >
-                            <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
-                            {form.date_of_birth
-                              ? format(parseISO(form.date_of_birth), "dd.MM.yyyy")
-                              : "Select date of birth"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] p-0">
-                          <Calendar
-                            mode="single"
-                            captionLayout="dropdown-buttons"
-                            fromYear={1920}
-                            toYear={getAdultMaxDate().getFullYear()}
-                            selected={form.date_of_birth ? parseISO(form.date_of_birth) : undefined}
-                            defaultMonth={form.date_of_birth ? parseISO(form.date_of_birth) : getAdultMaxDate()}
-                            disabled={{ after: getAdultMaxDate() }}
-                            onSelect={(date) => {
-                              const dateOfBirth = date ? toDateInputString(date) : "";
-                              setForm((current) => ({ ...current, date_of_birth: dateOfBirth }));
-                              setDobError(validateDateOfBirth(dateOfBirth));
-                            }}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <DateOfBirthPicker
+                        value={form.date_of_birth}
+                        hasError={Boolean(dobError)}
+                        onChange={(dateOfBirth) => {
+                          setForm((current) => ({ ...current, date_of_birth: dateOfBirth }));
+                          setDobError(validateDateOfBirth(dateOfBirth));
+                        }}
+                      />
                       {dobError && <p className="text-xs text-destructive">{dobError}</p>}
                     </div>
                   </div>
