@@ -208,21 +208,39 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     return amount;
   };
 
-  // Helper to format duration to "Xd" or "ongoing"
+  const MILLISECONDS_PER_MINUTE = 1000 * 60;
+  const MILLISECONDS_PER_HOUR = MILLISECONDS_PER_MINUTE * 60;
+  const MILLISECONDS_PER_DAY = MILLISECONDS_PER_HOUR * 24;
+
+  const calculateDurationMs = (startedAt: string, endedAt: string | null) => {
+    if (!endedAt) return 0;
+
+    return Math.max(0, new Date(endedAt).getTime() - new Date(startedAt).getTime());
+  };
+
+  const calculateBillableDays = (startedAt: string, endedAt: string | null) =>
+    calculateDurationMs(startedAt, endedAt) / MILLISECONDS_PER_DAY;
+
+  const calculateDisplayedAmount = (
+    startedAt: string,
+    endedAt: string | null,
+    dailyRate: number | null,
+  ) => {
+    if (dailyRate === null) return null;
+
+    return Math.round(calculateBillableDays(startedAt, endedAt) * dailyRate);
+  };
+
+  // Helper to format actual elapsed duration as "Xd Xh Xm" or "ongoing"
   const calculateDuration = (startedAt: string, endedAt: string | null) => {
     if (!endedAt) return "ongoing";
 
-    return `${calculateDays(startedAt, endedAt)}d`;
-  };
+    const totalMinutes = Math.floor(calculateDurationMs(startedAt, endedAt) / MILLISECONDS_PER_MINUTE);
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
 
-  const calculateDays = (startedAt: string, endedAt: string | null) => {
-    if (!endedAt) return 0;
-
-    const start = new Date(`${toDateKey(startedAt)}T00:00:00`).getTime();
-    const end = new Date(`${toDateKey(endedAt)}T00:00:00`).getTime();
-    const diffMs = Math.max(0, end - start);
-
-    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    return `${days}d ${hours}h ${minutes}m`;
   };
 
   const formatDays = (days: number) => {
@@ -234,8 +252,12 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     `AED ${Math.round(amount).toLocaleString()}`;
 
   const grandTotal = history.reduce((sum, item) => {
-    if (item.display_daily_rate === null) return sum;
-    return sum + Math.round(calculateDays(item.display_started_at, item.display_ended_at) * item.display_daily_rate);
+    const displayedAmount = calculateDisplayedAmount(
+      item.display_started_at,
+      item.display_ended_at,
+      item.display_daily_rate,
+    );
+    return sum + (displayedAmount ?? 0);
   }, 0);
 
   const fetchHistory = useCallback(async () => {
@@ -526,9 +548,12 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               {history.map((item, index) => {
                 const isActive = !item.ended_at;
                 const displayEndedAt = item.display_ended_at;
-                const days = calculateDays(item.display_started_at, displayEndedAt);
-                const rowTotal =
-                  item.display_daily_rate === null ? null : Math.round(days * item.display_daily_rate);
+                const days = calculateBillableDays(item.display_started_at, displayEndedAt);
+                const rowTotal = calculateDisplayedAmount(
+                  item.display_started_at,
+                  displayEndedAt,
+                  item.display_daily_rate,
+                );
                 return (
                   <div key={item.id} className="relative pl-6 pb-8 last:pb-2">
                     {/* Connector Line */}
@@ -635,7 +660,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                       {/* Informational Cost Breakdown */}
                       <div className="mt-2 grid grid-cols-3 gap-1.5 font-ibm-plex-mono">
                         <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
-                          <div className="text-[9px] uppercase tracking-wider text-white/30">Days</div>
+                          <div className="text-[9px] uppercase tracking-wider text-white/30">Charged Days</div>
                           <div className="text-xs text-white/80">{formatDays(days)}</div>
                         </div>
                         <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5">
