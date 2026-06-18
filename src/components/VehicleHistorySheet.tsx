@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
   Sheet,
   SheetContent,
@@ -6,7 +6,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { History } from "lucide-react";
+import { History, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
@@ -65,6 +65,7 @@ interface Car {
   make: string;
   model: string;
   year: number;
+  status?: string;
 }
 
 interface CombinedVehicleHistory {
@@ -109,6 +110,13 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
   const { toast } = useToast();
   const [history, setHistory] = useState<CombinedVehicleHistory[]>([]);
   const [loading, setLoading] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [availableCars, setAvailableCars] = useState<Car[]>([]);
+  const [swapDateTime, setSwapDateTime] = useState("");
+  const [firstDailyRate, setFirstDailyRate] = useState("");
+  const [secondDailyRate, setSecondDailyRate] = useState("");
+  const [replacementCarId, setReplacementCarId] = useState("");
 
   // Helper to format timestamps to "DD MMM HH:mm" in Dubai time
   const formatDateTimeline = (dateStr: string) => {
@@ -230,107 +238,247 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     return sum + Math.round(calculateDays(item.display_started_at, item.display_ended_at) * item.display_daily_rate);
   }, 0);
 
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
+      const [vehiclesResult, feePeriodsResult, contractResult] = await Promise.all([
+        extendedDb
+          .from("contract_vehicles")
+          .select("*")
+          .eq("contract_id", contractId)
+          .order("started_at", { ascending: true }),
+        // contract_fees is not present in the generated database types.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (extendedDb as any)
+          .from("contract_fees")
+          .select("id, amount, extension_start, extension_end")
+          .eq("contract_id", contractId)
+          .not("extension_start", "is", null)
+          .order("extension_start", { ascending: true }),
+        supabase
+          .from("contracts")
+          .select("id, start_date, start_time, end_date, end_time, rate_type, rate_amount")
+          .eq("id", contractId)
+          .maybeSingle(),
+      ]);
+
+      const { data: vehiclesData, error: vehiclesError } = vehiclesResult;
+      const { data: feePeriodsData, error: feePeriodsError } = feePeriodsResult;
+      const { data: contractData, error: contractError } = contractResult;
+      if (vehiclesError) throw vehiclesError;
+      if (feePeriodsError) throw feePeriodsError;
+      if (contractError) throw contractError;
+
+      if (vehiclesData && vehiclesData.length > 0) {
+        const carIds = Array.from(new Set(vehiclesData.map((v) => v.car_id)));
+        const { data: carsData, error: carsError } = await supabase
+          .from("cars")
+          .select("id, plate, make, model, year")
+          .in("id", carIds);
+
+        if (carsError) throw carsError;
+
+        const carMap = new Map(carsData?.map((car) => [car.id, car]));
+        const contractPeriod = contractData as ContractPeriod | null;
+        const originalDailyRate = contractPeriod
+          ? calculateContractDailyRate(contractPeriod.rate_type, contractPeriod.rate_amount)
+          : 0;
+        const originalPeriod =
+          contractPeriod && originalDailyRate > 0
+            ? [
+                {
+                  id: contractPeriod.id,
+                  amount: originalDailyRate * 30,
+                  extension_start: contractPeriod.start_date,
+                  extension_end: contractPeriod.end_date,
+                  start_time: contractPeriod.start_time,
+                  end_time: contractPeriod.end_time,
+                },
+              ]
+            : [];
+        const rentalPeriods = [
+          ...originalPeriod,
+          ...((feePeriodsData ?? []) as RentalPeriod[])
+            .filter((period) => period.extension_start && period.extension_end)
+            .map((period) => ({
+              ...period,
+              start_time: contractPeriod?.end_time ?? null,
+              end_time: contractPeriod?.end_time ?? null,
+            })),
+        ];
+        const activePeriod = findCurrentActivePeriod(rentalPeriods);
+        const displayPeriods = buildVehicleDisplayPeriods(vehiclesData, rentalPeriods, activePeriod);
+        const combined = vehiclesData.map((v, index) => {
+          const displayPeriod = displayPeriods[index];
+          return {
+            ...v,
+            display_started_at: displayPeriod.display_started_at,
+            display_ended_at: displayPeriod.display_ended_at,
+            display_daily_rate: v.daily_rate === null ? null : Number(v.daily_rate),
+            car: carMap.get(v.car_id) || null,
+          };
+        });
+        setHistory(combined);
+      } else {
+        setHistory([]);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("Error fetching vehicle history:", err);
+      toast({
+        title: "Error",
+        description: `Failed to load vehicle history: ${message}`,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  // Display-period helpers are pure and intentionally kept local to this focused component.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractId, toast]);
+
   useEffect(() => {
     if (open && contractId) {
-      const fetchHistory = async () => {
-        setLoading(true);
-        try {
-          const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
-          const [vehiclesResult, feePeriodsResult, contractResult] = await Promise.all([
-            extendedDb
-              .from("contract_vehicles")
-              .select("*")
-              .eq("contract_id", contractId)
-              .order("started_at", { ascending: true }),
-            (extendedDb as any)
-              .from("contract_fees")
-              .select("id, amount, extension_start, extension_end")
-              .eq("contract_id", contractId)
-              .not("extension_start", "is", null)
-              .order("extension_start", { ascending: true }),
-            supabase
-              .from("contracts")
-              .select("id, start_date, start_time, end_date, end_time, rate_type, rate_amount")
-              .eq("id", contractId)
-              .maybeSingle(),
-          ]);
-
-          const { data: vehiclesData, error: vehiclesError } = vehiclesResult;
-          const { data: feePeriodsData, error: feePeriodsError } = feePeriodsResult;
-          const { data: contractData, error: contractError } = contractResult;
-          if (vehiclesError) throw vehiclesError;
-          if (feePeriodsError) throw feePeriodsError;
-          if (contractError) throw contractError;
-
-          if (vehiclesData && vehiclesData.length > 0) {
-            const carIds = Array.from(new Set(vehiclesData.map((v) => v.car_id)));
-            const { data: carsData, error: carsError } = await supabase
-              .from("cars")
-              .select("id, plate, make, model, year")
-              .in("id", carIds);
-
-            if (carsError) throw carsError;
-
-            const carMap = new Map(carsData?.map((car) => [car.id, car]));
-            const contractPeriod = contractData as ContractPeriod | null;
-            const originalDailyRate = contractPeriod
-              ? calculateContractDailyRate(contractPeriod.rate_type, contractPeriod.rate_amount)
-              : 0;
-            const originalPeriod =
-              contractPeriod && originalDailyRate > 0
-                ? [
-                    {
-                      id: contractPeriod.id,
-                      amount: originalDailyRate * 30,
-                      extension_start: contractPeriod.start_date,
-                      extension_end: contractPeriod.end_date,
-                      start_time: contractPeriod.start_time,
-                      end_time: contractPeriod.end_time,
-                    },
-                  ]
-                : [];
-            const rentalPeriods = [
-              ...originalPeriod,
-              ...((feePeriodsData ?? []) as RentalPeriod[])
-                .filter((period) => period.extension_start && period.extension_end)
-                .map((period) => ({
-                  ...period,
-                  start_time: contractPeriod?.end_time ?? null,
-                  end_time: contractPeriod?.end_time ?? null,
-                })),
-            ];
-            const activePeriod = findCurrentActivePeriod(rentalPeriods);
-            const displayPeriods = buildVehicleDisplayPeriods(vehiclesData, rentalPeriods, activePeriod);
-            const combined = vehiclesData.map((v, index) => {
-              const displayPeriod = displayPeriods[index];
-              return {
-                ...v,
-                display_started_at: displayPeriod.display_started_at,
-                display_ended_at: displayPeriod.display_ended_at,
-                display_daily_rate: v.daily_rate === null ? null : Number(v.daily_rate),
-                car: carMap.get(v.car_id) || null,
-              };
-            });
-            setHistory(combined);
-          } else {
-            setHistory([]);
-          }
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : "Unknown error";
-          console.error("Error fetching vehicle history:", err);
-          toast({
-            title: "Error",
-            description: `Failed to load vehicle history: ${message}`,
-            variant: "destructive",
-          });
-        } finally {
-          setLoading(false);
-        }
-      };
-
+      setEditOpen(false);
       fetchHistory();
     }
-  }, [open, contractId, toast]);
+  }, [open, contractId, fetchHistory]);
+
+  const handleEditToggle = async () => {
+    if (editOpen) {
+      setEditOpen(false);
+      return;
+    }
+
+    const firstVehicle = history[0];
+    const secondVehicle = history[1];
+    if (!firstVehicle?.ended_at || !secondVehicle) return;
+
+    setSwapDateTime(
+      new Date(firstVehicle.ended_at)
+        .toLocaleString("en-CA", {
+          timeZone: "Asia/Dubai",
+          hour12: false,
+        })
+        .replace(", ", "T")
+        .slice(0, 16),
+    );
+    setFirstDailyRate(firstVehicle.daily_rate === null ? "" : String(firstVehicle.daily_rate));
+    setSecondDailyRate(secondVehicle.daily_rate === null ? "" : String(secondVehicle.daily_rate));
+    setReplacementCarId(secondVehicle.car_id);
+
+    try {
+      const { data, error } = await supabase
+        .from("cars")
+        .select("id, plate, make, model, year, status")
+        .or(`status.ilike.available,id.eq.${secondVehicle.car_id}`)
+        .order("make")
+        .order("model");
+      if (error) throw error;
+      setAvailableCars((data as Car[]) ?? []);
+      setEditOpen(true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast({
+        title: "Error",
+        description: `Failed to load replacement vehicles: ${message}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveSwap = async () => {
+    const firstVehicle = history[0];
+    const secondVehicle = history[1];
+    const firstRate = Number(firstDailyRate);
+    const secondRate = Number(secondDailyRate);
+
+    if (
+      !firstVehicle ||
+      !secondVehicle ||
+      !swapDateTime ||
+      !replacementCarId ||
+      !Number.isFinite(firstRate) ||
+      firstRate < 0 ||
+      !Number.isFinite(secondRate) ||
+      secondRate < 0
+    ) {
+      toast({
+        title: "Invalid swap details",
+        description: "Enter a swap date, replacement vehicle, and valid daily rates.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const swapDate = new Date(`${swapDateTime}+04:00`);
+    if (Number.isNaN(swapDate.getTime())) {
+      toast({
+        title: "Invalid swap date",
+        description: "Enter a valid Dubai date and time.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const swapTimestamp = swapDate.toISOString();
+    const vehicleChanged = replacementCarId !== secondVehicle.car_id;
+    const supabaseClient = supabase;
+    const extendedDb = supabaseClient as unknown as SupabaseClient<ExtendedDatabase>;
+
+    setSaving(true);
+    try {
+      const { error: firstVehicleError } = await extendedDb
+        .from("contract_vehicles")
+        .update({
+          ended_at: swapTimestamp,
+          daily_rate: firstRate,
+        })
+        .eq("id", firstVehicle.id);
+      if (firstVehicleError) throw firstVehicleError;
+
+      const { error: secondVehicleError } = await extendedDb
+        .from("contract_vehicles")
+        .update({
+          started_at: swapTimestamp,
+          daily_rate: secondRate,
+          car_id: replacementCarId,
+        })
+        .eq("id", secondVehicle.id);
+      if (secondVehicleError) throw secondVehicleError;
+
+      if (vehicleChanged) {
+        const { error: oldCarError } = await extendedDb
+          .from("cars")
+          .update({ status: "Available" })
+          .eq("id", secondVehicle.car_id);
+        if (oldCarError) throw oldCarError;
+
+        const { error: newCarError } = await extendedDb
+          .from("cars")
+          .update({ status: "Rented" })
+          .eq("id", replacementCarId);
+        if (newCarError) throw newCarError;
+      }
+
+      setEditOpen(false);
+      await fetchHistory();
+      toast({
+        title: "Vehicle swap updated",
+        description: "Swap date, rates, vehicle, and totals have been refreshed.",
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast({
+        title: "Update failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
@@ -391,17 +539,20 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                     {/* Timeline Dot */}
                     <div className="absolute left-0 top-[4px] z-10">
                       {isActive ? (
-                        <span className="relative flex h-3 w-3">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                        </span>
+                        <span className="flex h-3 w-3 rounded-full bg-green-400 shadow shadow-green-400/40" />
                       ) : (
-                        <div className="h-3 w-3 rounded-full bg-white/20" />
+                        <div className="h-3 w-3 rounded-full bg-zinc-600" />
                       )}
                     </div>
 
                     {/* Timeline Card */}
-                    <div className="space-y-1">
+                    <div
+                      className={`space-y-1 rounded-lg border bg-[#1c1c1f] p-3 transition ${
+                        editOpen && index === 0
+                          ? "border-blue-500"
+                          : "border-white/5"
+                      } ${editOpen && index === 1 ? "opacity-50" : ""}`}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         {/* Vehicle Name */}
                         <span
@@ -414,16 +565,32 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                             : "Unknown Vehicle"}
                         </span>
                         
-                        {/* Status Pill */}
-                        {isActive ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
-                            active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-white/5 px-2 py-0.5 text-[9px] font-medium text-white/40 border border-white/5 uppercase tracking-wider">
-                            returned
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {/* Status Pill */}
+                          {isActive ? (
+                            <span className="inline-flex items-center rounded-full bg-green-950/40 px-2 py-0.5 text-[9px] font-semibold text-green-400 border border-green-500/30 uppercase tracking-wider">
+                              active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-[9px] font-medium text-zinc-500 uppercase tracking-wider">
+                              returned
+                            </span>
+                          )}
+                          {index === 0 && history.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={handleEditToggle}
+                              aria-label={editOpen ? "Close vehicle swap editor" : "Edit vehicle swap"}
+                              className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                editOpen
+                                  ? "border-blue-500 bg-blue-900/30 text-blue-400"
+                                  : "border-zinc-700 bg-transparent text-zinc-500 hover:text-zinc-300"
+                              }`}
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* Plate and Year */}
@@ -484,6 +651,109 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                           </div>
                         </div>
                       </div>
+
+                      {index === 0 && editOpen && history[1] && (
+                        <div className="-mx-3 -mb-3 mt-4 space-y-4 border-t border-blue-500/20 bg-[#0f1117] p-4">
+                          <section>
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className="shrink-0 text-[9px] uppercase tracking-widest text-zinc-500">
+                                Swap Date
+                              </span>
+                              <div className="h-px flex-1 bg-zinc-800" />
+                            </div>
+                            <input
+                              type="datetime-local"
+                              value={swapDateTime}
+                              onChange={(event) => setSwapDateTime(event.target.value)}
+                              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-ibm-plex-mono text-sm text-white outline-none focus:border-blue-500"
+                            />
+                            <p className="mt-1.5 text-[10px] text-blue-400">
+                              Updates start of replacement vehicle automatically
+                            </p>
+                          </section>
+
+                          <section>
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className="shrink-0 text-[9px] uppercase tracking-widest text-zinc-500">
+                                Daily Rates
+                              </span>
+                              <div className="h-px flex-1 bg-zinc-800" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="min-w-0">
+                                <span className="mb-1 block truncate text-[10px] text-zinc-400">
+                                  {item.car ? `${item.car.make} ${item.car.model}` : "First vehicle"}
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={firstDailyRate}
+                                  onChange={(event) => setFirstDailyRate(event.target.value)}
+                                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-ibm-plex-mono text-sm text-white outline-none focus:border-blue-500"
+                                />
+                              </label>
+                              <label className="min-w-0">
+                                <span className="mb-1 block truncate text-[10px] text-zinc-400">
+                                  {history[1].car
+                                    ? `${history[1].car.make} ${history[1].car.model}`
+                                    : "Replacement vehicle"}
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={secondDailyRate}
+                                  onChange={(event) => setSecondDailyRate(event.target.value)}
+                                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-ibm-plex-mono text-sm text-white outline-none focus:border-blue-500"
+                                />
+                              </label>
+                            </div>
+                          </section>
+
+                          <section>
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className="shrink-0 text-[9px] uppercase tracking-widest text-zinc-500">
+                                Replacement Vehicle
+                              </span>
+                              <div className="h-px flex-1 bg-zinc-800" />
+                            </div>
+                            <select
+                              value={replacementCarId}
+                              onChange={(event) => setReplacementCarId(event.target.value)}
+                              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-ibm-plex-mono text-sm text-white outline-none focus:border-blue-500"
+                            >
+                              {availableCars.map((car) => (
+                                <option key={car.id} value={car.id}>
+                                  {car.make} {car.model} — {car.plate}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="mt-1.5 text-[10px] text-amber-400">
+                              Changing vehicle updates fleet status
+                            </p>
+                          </section>
+
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setEditOpen(false)}
+                              disabled={saving}
+                              className="rounded-lg border border-zinc-700 py-2 text-sm text-zinc-500 transition hover:text-zinc-300 disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveSwap}
+                              disabled={saving}
+                              className="rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {saving ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
