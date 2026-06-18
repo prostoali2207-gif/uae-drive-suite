@@ -201,6 +201,10 @@ type AmountEditTarget =
   | { type: "payment"; label: string; amount: number; payment: PaymentRow }
   | { type: "fee"; label: string; amount: number; fee: ContractFeeRow };
 
+type RentalPeriodEditTarget =
+  | { type: "contract"; startDate: string; endDate: string }
+  | { type: "extension"; startDate: string; endDate: string; fee: ContractFeeRow };
+
 type ContractFinancialTotals = {
   charges: number;
   credits: number;
@@ -283,6 +287,13 @@ function diffDays(start: string, end: string): number {
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
   return Math.max(0, Math.round((e - s) / 86_400_000));
+}
+
+function calculateRentalAmount(rateType: string, rateAmount: number, days: number): number {
+  if (!Number.isFinite(rateAmount) || rateAmount <= 0 || days <= 0) return 0;
+  if (rateType === "Monthly") return Math.round((days / 30) * rateAmount);
+  if (rateType === "Annual" || rateType === "Yearly") return Math.round((days / 365) * rateAmount);
+  return Math.round(days * rateAmount);
 }
 
 function formatTimeForDb(time: string | undefined): string {
@@ -1180,7 +1191,7 @@ type FinancialsPanelProps = {
   totals: ContractFinancialTotals;
   onAddFee: () => void;
   onAddPayment: () => void;
-  onEditRentalAmount: () => void;
+  onEditRentalPeriod: (fee?: ContractFeeRow) => void;
   onEditPaymentAmount: (payment: PaymentRow) => void;
   onEditFeeAmount: (fee: ContractFeeRow) => void;
   onDeletePayment: (payment: PaymentRow) => void;
@@ -1289,7 +1300,7 @@ const FinancialsPanel = ({
   totals,
   onAddFee,
   onAddPayment,
-  onEditRentalAmount,
+  onEditRentalPeriod,
   onEditPaymentAmount,
   onEditFeeAmount,
   onDeletePayment,
@@ -1565,7 +1576,7 @@ const FinancialsPanel = ({
       startDate: contract.start_date,
       endDate: contract.end_date,
       amount: Number(contract.total_amount),
-      onEdit: onEditRentalAmount,
+      onEdit: () => onEditRentalPeriod(),
     },
     ...rentalExtensions.map((fee, index) => {
       return {
@@ -1574,7 +1585,7 @@ const FinancialsPanel = ({
         startDate: fee.extension_start ?? contract.end_date,
         endDate: fee.extension_end ?? contract.end_date,
         amount: Number(fee.amount),
-        onEdit: () => onEditFeeAmount(fee),
+        onEdit: () => onEditRentalPeriod(fee),
       };
     }),
   ].sort((a, b) => {
@@ -2122,6 +2133,10 @@ const ContractDetail = () => {
   const [amountEditAllocationError, setAmountEditAllocationError] = useState("");
   const [amountEditExtensionEndDate, setAmountEditExtensionEndDate] = useState("");
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
+  const [rentalPeriodEditTarget, setRentalPeriodEditTarget] = useState<RentalPeriodEditTarget | null>(null);
+  const [rentalPeriodEndDate, setRentalPeriodEndDate] = useState("");
+  const [rentalPeriodEditError, setRentalPeriodEditError] = useState("");
+  const [savingRentalPeriod, setSavingRentalPeriod] = useState(false);
   const [markingDepositReturned, setMarkingDepositReturned] = useState(false);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
@@ -3396,6 +3411,131 @@ const ContractDetail = () => {
     toast.success("Fee amount updated");
   };
 
+  const openRentalPeriodEditDialog = (fee?: ContractFeeRow) => {
+    if (!contract) return;
+
+    if (fee && isStructuredRentalExtensionFee(fee)) {
+      const startDate = fee.extension_start ?? contract.end_date;
+      const endDate = fee.extension_end ?? contract.end_date;
+      setRentalPeriodEditTarget({ type: "extension", startDate, endDate, fee });
+      setRentalPeriodEndDate(endDate);
+    } else {
+      setRentalPeriodEditTarget({
+        type: "contract",
+        startDate: contract.start_date,
+        endDate: contract.end_date,
+      });
+      setRentalPeriodEndDate(contract.end_date);
+    }
+
+    setRentalPeriodEditError("");
+  };
+
+  const closeRentalPeriodEditDialog = () => {
+    if (savingRentalPeriod) return;
+    setRentalPeriodEditTarget(null);
+    setRentalPeriodEndDate("");
+    setRentalPeriodEditError("");
+  };
+
+  const handleSaveRentalPeriod = async () => {
+    if (!contract || !rentalPeriodEditTarget) return;
+
+    if (!rentalPeriodEndDate) {
+      setRentalPeriodEditError("Select an end date.");
+      return;
+    }
+
+    if (rentalPeriodEndDate < rentalPeriodEditTarget.startDate) {
+      setRentalPeriodEditError("End Date cannot be before Start Date.");
+      return;
+    }
+
+    setSavingRentalPeriod(true);
+    setRentalPeriodEditError("");
+
+    try {
+      const conflict = await findVehicleContractOverlap(supabase, {
+        carId: contract.car_id,
+        startDate:
+          rentalPeriodEditTarget.type === "contract"
+            ? contract.start_date
+            : rentalPeriodEditTarget.startDate,
+        startTime: contract.start_time,
+        endDate: rentalPeriodEndDate,
+        endTime: contract.end_time,
+        excludeContractId: contract.id,
+        operation: rentalPeriodEditTarget.type === "contract" ? "contract-edit" : "contract-extension",
+      });
+
+      if (conflict) {
+        setSavingRentalPeriod(false);
+        setRentalPeriodEditError(formatContractOverlapMessage(conflict));
+        return;
+      }
+    } catch (error) {
+      setSavingRentalPeriod(false);
+      setRentalPeriodEditError(
+        error instanceof Error ? error.message : "Could not check vehicle availability.",
+      );
+      return;
+    }
+
+    if (rentalPeriodEditTarget.type === "contract") {
+      const nextDays = diffDays(contract.start_date, rentalPeriodEndDate);
+      const nextAmount = calculateRentalAmount(
+        contract.rate_type,
+        Number(contract.rate_amount),
+        nextDays,
+      );
+      const { error } = await supabase
+        .from("contracts")
+        .update({
+          end_date: rentalPeriodEndDate,
+          total_amount: nextAmount,
+        } as never)
+        .eq("id", contract.id);
+
+      if (error) {
+        setSavingRentalPeriod(false);
+        setRentalPeriodEditError("Failed to update rental period.");
+        return;
+      }
+
+      setContract((current) =>
+        current
+          ? { ...current, end_date: rentalPeriodEndDate, total_amount: nextAmount }
+          : current,
+      );
+      await fetchData();
+    } else {
+      const nextLabel = buildRentalExtensionLabel(
+        rentalPeriodEditTarget.startDate,
+        rentalPeriodEndDate,
+      );
+      const { error } = await (supabase as any)
+        .from("contract_fees")
+        .update({
+          extension_end: rentalPeriodEndDate,
+          label: nextLabel,
+        })
+        .eq("id", rentalPeriodEditTarget.fee.id);
+
+      if (error) {
+        setSavingRentalPeriod(false);
+        setRentalPeriodEditError("Failed to update rental period.");
+        return;
+      }
+
+      await fetchContractFees();
+    }
+
+    setSavingRentalPeriod(false);
+    setRentalPeriodEditTarget(null);
+    setRentalPeriodEndDate("");
+    toast.success("End date updated");
+  };
+
   const handleOpenEditModal = async () => {
     if (!contract) return;
     setEditStartDate(contract.start_date);
@@ -4006,13 +4146,7 @@ const ContractDetail = () => {
               totals={financialTotals}
               onAddFee={() => setShowFeeModal(true)}
               onAddPayment={() => setShowPaymentModal(true)}
-              onEditRentalAmount={() =>
-                openAmountEditDialog({
-                  type: "rental",
-                  label: "Rental charge",
-                  amount: Number(contract.total_amount),
-                })
-              }
+              onEditRentalPeriod={openRentalPeriodEditDialog}
               onEditPaymentAmount={(payment) =>
                 openAmountEditDialog({
                   type: "payment",
@@ -4521,6 +4655,69 @@ const ContractDetail = () => {
               disabled={savingAmountEdit}
             >
               {savingAmountEdit ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rentalPeriodEditTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closeRentalPeriodEditDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Edit End Date</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="rental-period-start-date" className="text-xs">
+                Start Date
+              </Label>
+              <Input
+                id="rental-period-start-date"
+                type="date"
+                value={rentalPeriodEditTarget?.startDate ?? ""}
+                readOnly
+                aria-readonly="true"
+                className="bg-muted/40"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="rental-period-end-date" className="text-xs">
+                End Date
+              </Label>
+              <Input
+                id="rental-period-end-date"
+                type="date"
+                min={rentalPeriodEditTarget?.startDate}
+                value={rentalPeriodEndDate}
+                onChange={(event) => {
+                  setRentalPeriodEndDate(event.target.value);
+                  setRentalPeriodEditError("");
+                }}
+              />
+            </div>
+            {rentalPeriodEditError ? (
+              <p className="text-xs text-destructive">{rentalPeriodEditError}</p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeRentalPeriodEditDialog}
+              disabled={savingRentalPeriod}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveRentalPeriod}
+              disabled={savingRentalPeriod || !rentalPeriodEndDate}
+            >
+              {savingRentalPeriod ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
