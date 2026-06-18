@@ -6,7 +6,6 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
@@ -182,13 +181,6 @@ const PHONE_COUNTRIES = [
   { name: "Georgia", iso: "ge", dial: "995" },
 ] as const;
 
-const toDateInputString = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
 const getAdultMaxDate = () => {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -200,7 +192,10 @@ const validateDateOfBirth = (value: string) => {
   if (!value) return "Select date of birth.";
   const selectedDate = parseISO(value);
   if (Number.isNaN(selectedDate.getTime())) return "Enter a valid date of birth.";
-  if (selectedDate > getAdultMaxDate()) return "Client must be at least 18 years old.";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (selectedDate > today) return "Date of birth cannot be in the future";
+  if (selectedDate > getAdultMaxDate()) return "Client must be at least 18 years old";
   return "";
 };
 
@@ -361,147 +356,30 @@ interface DateOfBirthPickerProps {
 }
 
 function DateOfBirthPicker({ value, hasError, onChange }: DateOfBirthPickerProps) {
-  const adultMaxDate = getAdultMaxDate();
   const selectedDate = value ? parseISO(value) : undefined;
-  const [open, setOpen] = useState(false);
-  const [visibleMonth, setVisibleMonth] = useState(selectedDate ?? adultMaxDate);
-  const [pickerView, setPickerView] = useState<"calendar" | "month" | "year">("calendar");
-  const years = Array.from(
-    { length: adultMaxDate.getFullYear() - 1920 + 1 },
-    (_, index) => adultMaxDate.getFullYear() - index,
-  );
-  const months = Array.from({ length: 12 }, (_, index) =>
-    format(new Date(2000, index, 1), "MMM"),
-  );
-
-  const updateVisibleMonth = (year: number, month: number) => {
-    const maxMonth = year === adultMaxDate.getFullYear() ? adultMaxDate.getMonth() : 11;
-    setVisibleMonth(new Date(year, Math.min(month, maxMonth), 1));
-  };
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (nextOpen) {
-          setVisibleMonth(selectedDate ?? adultMaxDate);
-          setPickerView("calendar");
-        }
-      }}
+    <div
+      className={cn(
+        "relative flex h-12 w-full items-center rounded-md border border-input bg-input px-3 text-left ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+        !value && "text-muted-foreground",
+        hasError && "border-destructive",
+      )}
     >
-      <PopoverTrigger asChild>
-        <Button
-          id="dob"
-          type="button"
-          variant="outline"
-          className={cn(
-            "h-12 w-full justify-start bg-input px-3 text-left font-normal",
-            !value && "text-muted-foreground",
-            hasError && "border-destructive",
-          )}
-        >
-          <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
-          {selectedDate ? format(selectedDate, "dd.MM.yyyy") : "Select date of birth"}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={8}
-        className="w-[min(21rem,calc(100vw-2rem))] border-border bg-popover p-3 text-popover-foreground shadow-xl"
-      >
-        <div className="mb-3 grid grid-cols-2 gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 bg-input"
-            onClick={() => setPickerView((view) => view === "month" ? "calendar" : "month")}
-          >
-            {format(visibleMonth, "MMMM")}
-            <ChevronDown className="ml-2 h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 bg-input font-mono"
-            onClick={() => setPickerView((view) => view === "year" ? "calendar" : "year")}
-          >
-            {visibleMonth.getFullYear()}
-            <ChevronDown className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-
-        {pickerView === "year" && (
-          <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto pr-1">
-            {years.map((year) => (
-              <Button
-                key={year}
-                type="button"
-                variant={visibleMonth.getFullYear() === year ? "default" : "ghost"}
-                className="h-11 font-mono"
-                onClick={() => {
-                  updateVisibleMonth(year, visibleMonth.getMonth());
-                  setPickerView("calendar");
-                }}
-              >
-                {year}
-              </Button>
-            ))}
-          </div>
-        )}
-
-        {pickerView === "month" && (
-          <div className="grid grid-cols-3 gap-2">
-            {months.map((month, monthIndex) => {
-              const disabled =
-                visibleMonth.getFullYear() === adultMaxDate.getFullYear() &&
-                monthIndex > adultMaxDate.getMonth();
-              return (
-                <Button
-                  key={month}
-                  type="button"
-                  variant={visibleMonth.getMonth() === monthIndex ? "default" : "ghost"}
-                  disabled={disabled}
-                  className="h-11"
-                  onClick={() => {
-                    updateVisibleMonth(visibleMonth.getFullYear(), monthIndex);
-                    setPickerView("calendar");
-                  }}
-                >
-                  {month}
-                </Button>
-              );
-            })}
-          </div>
-        )}
-
-        {pickerView === "calendar" && (
-          <Calendar
-            mode="single"
-            month={visibleMonth}
-            onMonthChange={setVisibleMonth}
-            selected={selectedDate}
-            fromMonth={new Date(1920, 0, 1)}
-            toMonth={adultMaxDate}
-            disabled={{ after: adultMaxDate }}
-            onSelect={(date) => {
-              if (!date) return;
-              onChange(toDateInputString(date));
-              setOpen(false);
-            }}
-            className="p-0"
-            classNames={{
-              caption_label: "hidden",
-              head_cell: "w-10 rounded-md text-[0.8rem] font-normal text-muted-foreground",
-              cell: "relative h-10 w-10 p-0 text-center text-sm focus-within:relative focus-within:z-20",
-              day: "h-10 w-10 p-0 font-normal aria-selected:opacity-100",
-              nav_button: "h-10 w-10 border-border bg-input p-0 opacity-100 hover:bg-accent",
-            }}
-            initialFocus
-          />
-        )}
-      </PopoverContent>
-    </Popover>
+      <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
+      <span className={cn("text-sm", value && "font-mono text-foreground")}>
+        {selectedDate ? format(selectedDate, "dd.MM.yyyy") : "Select date of birth"}
+      </span>
+      <input
+        id="dob"
+        type="date"
+        required
+        aria-label="Date of Birth"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </div>
   );
 }
 
