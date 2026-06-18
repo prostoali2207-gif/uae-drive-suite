@@ -581,7 +581,7 @@ const Contracts = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ContractFilter>("All");
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(createEmptyForm);
   const [endTimeManuallyEdited, setEndTimeManuallyEdited] = useState(false);
@@ -853,7 +853,7 @@ const Contracts = () => {
   }, [contracts]);
 
   const handleContractDialogOpenChange = (nextOpen: boolean) => {
-    if (saving && !nextOpen) return;
+    if (isSubmitting && !nextOpen) return;
     setOpen(nextOpen);
     if (nextOpen) {
       const defaultTime = getRoundedCurrentTimeInput();
@@ -890,69 +890,83 @@ const Contracts = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     console.log("Submitting contract form...", { form });
 
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const userId = authData.user?.id;
     if (authError || !userId) {
       toast.error("Could not create contract: please sign in again.");
+      setIsSubmitting(false);
       return;
     }
 
     if (!form.client_id) {
       toast.error("Please select a client");
+      setIsSubmitting(false);
       return;
     }
 
     const selectedClient = clients.find((client) => client.id === form.client_id);
     if (!selectedClient) {
       toast.error("Selected client is no longer available. Please choose a valid client.");
+      setIsSubmitting(false);
       return;
     }
 
     if (!form.car_id) {
       toast.error("Please select a car");
+      setIsSubmitting(false);
       return;
     }
 
     const selectedCar = availableCars.find((car) => car.id === form.car_id);
     if (!selectedCar) {
       toast.error("Selected car is no longer available. Please choose another car.");
+      setIsSubmitting(false);
       return;
     }
 
     if (!form.start_date || !form.end_date) {
       toast.error("Please select start and end dates");
+      setIsSubmitting(false);
       return;
     }
 
     if (!getContractDateTime(form.start_date, form.start_time) || !getContractDateTime(form.end_date, form.end_time)) {
       toast.error("Please enter valid start and end times");
+      setIsSubmitting(false);
       return;
     }
 
     if (days <= 0) {
       toast.error("End date and time must be after start date and time.");
+      setIsSubmitting(false);
       return;
     }
 
     if (String(form.rate_amount).trim() === "" || !Number.isFinite(Number(form.rate_amount)) || Number(form.rate_amount) <= 0) {
       toast.error(`Please enter a valid ${form.rate_type.toLowerCase()} rate`);
+      setIsSubmitting(false);
       return;
     }
 
     if (String(form.initial_mileage).trim() === "") {
       toast.error("Please enter initial mileage");
+      setIsSubmitting(false);
       return;
     }
 
     if (!Number.isFinite(Number(form.initial_mileage)) || Number(form.initial_mileage) < 0) {
       toast.error("Please enter a valid initial mileage");
+      setIsSubmitting(false);
       return;
     }
 
     if (String(form.deposit_amount).trim() !== "" && (!Number.isFinite(Number(form.deposit_amount)) || Number(form.deposit_amount) < 0)) {
       toast.error("Please enter a valid deposit amount");
+      setIsSubmitting(false);
       return;
     }
 
@@ -980,9 +994,8 @@ const Contracts = () => {
       return false;
     };
 
-    setSaving(true);
     if (await checkVehicleOverlap()) {
-      setSaving(false);
+      setIsSubmitting(false);
       return;
     }
 
@@ -1010,7 +1023,7 @@ const Contracts = () => {
         owner_id: userId,
       });
 
-      setSaving(false);
+      setIsSubmitting(false);
       if (error) {
 
         toast.error("Failed to create contract: " + toSupabaseMessage(error));
@@ -1036,7 +1049,7 @@ const Contracts = () => {
         fetchData();
       }
     } catch (err) {
-      setSaving(false);
+      setIsSubmitting(false);
       toast.error("An unexpected error occurred while creating contract");
       console.error(err);
     }
@@ -1379,8 +1392,8 @@ const Contracts = () => {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={saving || docExpiredWarnings.length > 0}>{saving ? "Creating..." : "Create Contract"}</Button>
+                  <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={isSubmitting || docExpiredWarnings.length > 0}>{isSubmitting ? "Creating..." : "Create Contract"}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
