@@ -202,8 +202,8 @@ type AmountEditTarget =
   | { type: "fee"; label: string; amount: number; fee: ContractFeeRow };
 
 type RentalPeriodEditTarget =
-  | { type: "contract"; startDate: string; endDate: string }
-  | { type: "extension"; startDate: string; endDate: string; fee: ContractFeeRow };
+  | { type: "contract"; startDate: string; endDate: string; amount: number }
+  | { type: "extension"; startDate: string; endDate: string; amount: number; fee: ContractFeeRow };
 
 type ContractFinancialTotals = {
   charges: number;
@@ -287,13 +287,6 @@ function diffDays(start: string, end: string): number {
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
   return Math.max(0, Math.round((e - s) / 86_400_000));
-}
-
-function calculateRentalAmount(rateType: string, rateAmount: number, days: number): number {
-  if (!Number.isFinite(rateAmount) || rateAmount <= 0 || days <= 0) return 0;
-  if (rateType === "Monthly") return Math.round((days / 30) * rateAmount);
-  if (rateType === "Annual" || rateType === "Yearly") return Math.round((days / 365) * rateAmount);
-  return Math.round(days * rateAmount);
 }
 
 function formatTimeForDb(time: string | undefined): string {
@@ -2135,6 +2128,7 @@ const ContractDetail = () => {
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
   const [rentalPeriodEditTarget, setRentalPeriodEditTarget] = useState<RentalPeriodEditTarget | null>(null);
   const [rentalPeriodEndDate, setRentalPeriodEndDate] = useState("");
+  const [rentalPeriodAmount, setRentalPeriodAmount] = useState("");
   const [rentalPeriodEditError, setRentalPeriodEditError] = useState("");
   const [savingRentalPeriod, setSavingRentalPeriod] = useState(false);
   const [markingDepositReturned, setMarkingDepositReturned] = useState(false);
@@ -3417,15 +3411,20 @@ const ContractDetail = () => {
     if (fee && isStructuredRentalExtensionFee(fee)) {
       const startDate = fee.extension_start ?? contract.end_date;
       const endDate = fee.extension_end ?? contract.end_date;
-      setRentalPeriodEditTarget({ type: "extension", startDate, endDate, fee });
+      const amount = Number(fee.amount);
+      setRentalPeriodEditTarget({ type: "extension", startDate, endDate, amount, fee });
       setRentalPeriodEndDate(endDate);
+      setRentalPeriodAmount(String(amount));
     } else {
+      const amount = Number(contract.total_amount);
       setRentalPeriodEditTarget({
         type: "contract",
         startDate: contract.start_date,
         endDate: contract.end_date,
+        amount,
       });
       setRentalPeriodEndDate(contract.end_date);
+      setRentalPeriodAmount(String(amount));
     }
 
     setRentalPeriodEditError("");
@@ -3435,6 +3434,7 @@ const ContractDetail = () => {
     if (savingRentalPeriod) return;
     setRentalPeriodEditTarget(null);
     setRentalPeriodEndDate("");
+    setRentalPeriodAmount("");
     setRentalPeriodEditError("");
   };
 
@@ -3448,6 +3448,12 @@ const ContractDetail = () => {
 
     if (rentalPeriodEndDate < rentalPeriodEditTarget.startDate) {
       setRentalPeriodEditError("End Date cannot be before Start Date.");
+      return;
+    }
+
+    const nextAmount = Number(rentalPeriodAmount);
+    if (!Number.isFinite(nextAmount) || nextAmount < 0) {
+      setRentalPeriodEditError("Amount must be 0 or greater.");
       return;
     }
 
@@ -3482,12 +3488,6 @@ const ContractDetail = () => {
     }
 
     if (rentalPeriodEditTarget.type === "contract") {
-      const nextDays = diffDays(contract.start_date, rentalPeriodEndDate);
-      const nextAmount = calculateRentalAmount(
-        contract.rate_type,
-        Number(contract.rate_amount),
-        nextDays,
-      );
       const { error } = await supabase
         .from("contracts")
         .update({
@@ -3517,6 +3517,7 @@ const ContractDetail = () => {
         .from("contract_fees")
         .update({
           extension_end: rentalPeriodEndDate,
+          amount: nextAmount,
           label: nextLabel,
         })
         .eq("id", rentalPeriodEditTarget.fee.id);
@@ -3533,7 +3534,8 @@ const ContractDetail = () => {
     setSavingRentalPeriod(false);
     setRentalPeriodEditTarget(null);
     setRentalPeriodEndDate("");
-    toast.success("End date updated");
+    setRentalPeriodAmount("");
+    toast.success("Rental period updated");
   };
 
   const handleOpenEditModal = async () => {
@@ -4668,7 +4670,7 @@ const ContractDetail = () => {
       >
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
-            <DialogTitle>Edit End Date</DialogTitle>
+            <DialogTitle>Edit Rental Period</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-1.5">
@@ -4699,23 +4701,43 @@ const ContractDetail = () => {
                 }}
               />
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="rental-period-amount" className="text-xs">
+                Amount (AED)
+              </Label>
+              <Input
+                id="rental-period-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={rentalPeriodAmount}
+                onChange={(event) => {
+                  setRentalPeriodAmount(event.target.value);
+                  setRentalPeriodEditError("");
+                }}
+                className="font-mono tabular-nums"
+              />
+            </div>
             {rentalPeriodEditError ? (
               <p className="text-xs text-destructive">{rentalPeriodEditError}</p>
             ) : null}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
             <Button
               type="button"
               variant="outline"
               onClick={closeRentalPeriodEditDialog}
               disabled={savingRentalPeriod}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
             <Button
               type="button"
               onClick={handleSaveRentalPeriod}
-              disabled={savingRentalPeriod || !rentalPeriodEndDate}
+              disabled={savingRentalPeriod || !rentalPeriodEndDate || rentalPeriodAmount === ""}
+              className="w-full sm:w-auto"
             >
               {savingRentalPeriod ? "Saving..." : "Save"}
             </Button>
