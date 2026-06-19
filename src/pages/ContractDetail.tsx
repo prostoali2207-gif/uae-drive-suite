@@ -1361,9 +1361,9 @@ const FinancialsPanel = ({
 
   const openItemGroups = useMemo(() => {
     const groups = new Map<
-      "rental" | "salik" | "fines" | "fees",
+      string,
       {
-        id: "rental" | "salik" | "fines" | "fees";
+        id: string;
         title: string;
         detail: string;
         meta: string;
@@ -1415,13 +1415,28 @@ const FinancialsPanel = ({
       }
 
       if (line.category === "fees") {
-        groups.set("fees", {
-          id: "fees",
+        const fee = otherFees.find((item) => `fee-${item.id}` === line.id);
+        const feeCategory = FEE_CATEGORIES.find((category) => category.value === fee?.category);
+        const feeIcon =
+          fee?.category === "delivery" || fee?.category === "pickup"
+            ? CarFront
+            : fee?.category === "fuel"
+              ? Wallet
+              : fee?.category === "extra_mileage"
+                ? Route
+                : fee?.category === "damage"
+                  ? ShieldCheck
+                  : fee?.category === "detailing"
+                    ? Camera
+                    : Tag;
+
+        groups.set(line.id, {
+          id: line.id,
           title: line.label || "Other unpaid charges",
-          detail: count === 1 ? "1 unpaid charge" : `${count} unpaid charges`,
-          meta: "Other unpaid charges",
-          due: nextDue,
-          icon: Tag,
+          detail: feeCategory?.label ?? "Other",
+          meta: "Unpaid fee",
+          due: Number(line.due),
+          icon: feeIcon,
           iconTone: "violet",
         });
       }
@@ -1433,6 +1448,7 @@ const FinancialsPanel = ({
     contract.start_date,
     fines,
     finesVerificationLabel,
+    otherFees,
     rentalExtensions,
     salik,
     salikVerificationLabel,
