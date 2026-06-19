@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Download, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, MoreHorizontal, Search, CalendarDays } from "lucide-react";
+import { Plus, FileText, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, Search, CalendarDays } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -39,12 +39,6 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
@@ -1466,46 +1460,22 @@ const Contracts = () => {
                             {balance > 0 ? "Due" : "Paid"}
                           </div>
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 shrink-0"
-                              aria-label="Contract actions"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem
-                              onClick={async () => {
-                                try {
-                                  await generateContractPdf(c);
-                                  toast.success("Contract PDF downloaded");
-                                } catch (err) {
-                                  toast.error("Failed to generate PDF");
-                                  console.error(err);
-                                }
-                              }}
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              Download PDF
-                            </DropdownMenuItem>
-                            {c.status === "closed" && (
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setReopenTargetId(c.id);
-                                  setReopenConfirmOpen(true);
-                                }}
-                              >
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                                Reopen
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {c.status === "closed" && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 text-blue-400 hover:bg-blue-400/10 hover:text-blue-300"
+                            aria-label="Reopen contract"
+                            title="Reopen contract"
+                            onClick={() => {
+                              setReopenTargetId(c.id);
+                              setReopenConfirmOpen(true);
+                            }}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1545,7 +1515,7 @@ const Contracts = () => {
                     {sortIcon("balance")}
                   </button>
                 </TableHead>
-                <TableHead className="px-5 text-xs text-right">Action</TableHead>
+                <TableHead className="w-[104px] px-2 text-right text-xs">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1588,12 +1558,14 @@ const Contracts = () => {
                       <TableCell className={cn("px-5 text-sm font-medium", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
                         AED {balance.toLocaleString()}
                       </TableCell>
-                      <TableCell className="px-5 text-right">
+                      <TableCell className="w-[104px] px-2 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="outline"
-                            className="h-7 gap-1 text-xs"
+                            className="h-8 w-8"
+                            aria-label="Download contract PDF"
+                            title="Download contract PDF"
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
@@ -1605,8 +1577,7 @@ const Contracts = () => {
                               }
                             }}
                           >
-                            <Download className="h-3.5 w-3.5" />
-                            Download
+                            <FileText className="h-3.5 w-3.5" />
                           </Button>
                           {c.status === "closed" && (
                             <Button
