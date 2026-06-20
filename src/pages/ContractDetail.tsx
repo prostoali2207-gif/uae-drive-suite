@@ -1279,6 +1279,7 @@ type FinancialTransaction = {
   icon: React.ComponentType<{ className?: string }>;
   iconTone: "blue" | "green" | "amber" | "violet" | "rose" | "muted";
   allocationPayment?: PaymentRow;
+  contractFee?: ContractFeeRow;
 };
 
 const FinancialsPanel = ({
@@ -1499,6 +1500,7 @@ const FinancialsPanel = ({
           reference: contractNumberLabel(contract.id),
           icon: CalendarDays,
           iconTone: "blue" as const,
+          contractFee: fee,
         };
       }),
       ...otherFees.map((fee) => ({
@@ -1513,6 +1515,7 @@ const FinancialsPanel = ({
         reference: contractNumberLabel(contract.id),
         icon: Tag,
         iconTone: "violet" as const,
+        contractFee: fee,
       })),
       ...(fines.length > 0 ? [{
         id: "fines-summary",
@@ -1920,6 +1923,18 @@ const FinancialsPanel = ({
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </>
+                  ) : null}
+                  {transaction.contractFee ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete fee"
+                      className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                      onClick={() => onDeleteFee(transaction.contractFee!)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   ) : null}
                 </div>
                 </div>
@@ -3183,9 +3198,32 @@ const ContractDetail = () => {
   };
 
   const handleConfirmDeleteFee = async () => {
-    if (!feeToDelete) return;
+    if (!contract || !feeToDelete) return;
 
     setDeletingFee(true);
+    const { data: contractPayments, error: allocationCheckError } = await supabase
+      .from("payments")
+      .select("allocations")
+      .eq("contract_id", contract.id);
+
+    if (allocationCheckError) {
+      setDeletingFee(false);
+      toast.error("Failed to verify fee allocations");
+      return;
+    }
+
+    const allocationKey = `fee-${feeToDelete.id}`;
+    const hasAllocatedPayment = (contractPayments ?? []).some((payment) => {
+      const allocations = readSavedPaymentAllocations(payment.allocations);
+      return Number(allocations?.lines?.[allocationKey] ?? 0) > 0;
+    });
+
+    if (hasAllocatedPayment) {
+      setDeletingFee(false);
+      toast.error("This fee has a payment allocated to it and cannot be deleted.");
+      return;
+    }
+
     const { error } = await (supabase as any)
       .from("contract_fees")
       .delete()
@@ -4800,7 +4838,7 @@ const ContractDetail = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Fee</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete {feeToDelete?.label ?? "selected"} fee of {feeToDelete ? fmtAed(Number(feeToDelete.amount)) : "AED 0"}? This cannot be undone.
+              Delete this fee? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
