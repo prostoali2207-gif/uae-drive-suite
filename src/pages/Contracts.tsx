@@ -79,7 +79,7 @@ interface ContractRow {
   fuel_level: string;
   status: string;
   payment_status: string;
-  paid_amount?: number;
+  balance_due?: number;
   client_signature?: string | null;
   manager_signature?: string | null;
   clients: { full_name: string; phone: string; nationality: string; client_type: string; emirates_id: string | null; passport_number: string | null; license_number: string | null } | null;
@@ -625,27 +625,30 @@ const Contracts = () => {
     else {
       const contractRows = (contractsRes.data as ContractRow[]) || [];
       const contractIds = contractRows.map((contract) => contract.id);
-      let paidByContract: Record<string, number> = {};
+      let balanceByContract: Record<string, number> = {};
       if (contractIds.length > 0) {
-        const { data: paymentsData, error: paymentsErr } = await supabase
-          .from("payments")
-          .select("contract_id, amount")
-          .eq("owner_id", userId)
+        // contract_balances is not present in the generated database types.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: balancesData, error: balancesErr } = await (supabase as any)
+          .from("contract_balances")
+          .select("contract_id, balance_due")
           .in("contract_id", contractIds);
-        if (!paymentsErr) {
-          paidByContract = (paymentsData || []).reduce<Record<string, number>>((acc, payment) => {
-            const key = payment.contract_id;
-            if (!key) return acc;
-            acc[key] = (acc[key] || 0) + Number(payment.amount || 0);
-            return acc;
-          }, {});
+        if (balancesErr) {
+          toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesErr)}`);
+        } else {
+          balanceByContract = Object.fromEntries(
+            (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
+              balance.contract_id,
+              Number(balance.balance_due || 0),
+            ]),
+          );
         }
       }
 
       setContracts(
         contractRows.map((contract) => ({
           ...contract,
-          paid_amount: paidByContract[contract.id] || 0,
+          balance_due: balanceByContract[contract.id] ?? Number(contract.total_amount),
         })),
       );
     }
@@ -778,7 +781,7 @@ const Contracts = () => {
 
     const withBalance = bySearch.map((c) => ({
       ...c,
-      balance: Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0)),
+      balance: Number(c.balance_due || 0),
     }));
 
     return withBalance.sort((a, b) => {
@@ -1420,7 +1423,7 @@ const Contracts = () => {
             ) : (
               paginatedContracts.map((c) => {
                 const d = diffDays(c.start_date, c.end_date);
-                const balance = Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0));
+                const balance = Number(c.balance_due || 0);
                 const clientName = c.clients?.full_name ?? "-";
                 return (
                   <div key={c.id} className="px-1.5">
@@ -1454,10 +1457,7 @@ const Contracts = () => {
                             {getMobileStatusLabel(c.status)}
                           </span>
                           <div className={cn("mt-1 whitespace-nowrap font-mono text-sm font-semibold leading-4", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
-                            AED {balance.toLocaleString()}
-                          </div>
-                          <div className="mt-0.5 text-[10px] leading-3 text-muted-foreground">
-                            {balance > 0 ? "Due" : "Paid"}
+                            {balance > 0 ? `AED ${balance.toLocaleString()} Due` : "Paid"}
                           </div>
                         </div>
                         {c.status === "closed" && (
@@ -1530,7 +1530,7 @@ const Contracts = () => {
               ) : (
                 paginatedContracts.map((c) => {
                   const d = diffDays(c.start_date, c.end_date);
-                  const balance = Math.max(0, Number(c.total_amount) - Number(c.paid_amount || 0));
+                  const balance = Number(c.balance_due || 0);
                   return (
                     <TableRow key={c.id}>
                       <TableCell className="px-5 font-medium text-foreground">
@@ -1555,8 +1555,8 @@ const Contracts = () => {
                           {c.status}
                         </span>
                       </TableCell>
-                      <TableCell className={cn("px-5 text-sm font-medium", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
-                        AED {balance.toLocaleString()}
+                      <TableCell className={cn("px-5 font-mono text-sm font-medium", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
+                        {balance > 0 ? `AED ${balance.toLocaleString()} Due` : "Paid"}
                       </TableCell>
                       <TableCell className="w-[104px] px-2 text-right">
                         <div className="flex items-center justify-end gap-1">
