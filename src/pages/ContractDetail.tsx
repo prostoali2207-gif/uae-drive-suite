@@ -1833,28 +1833,26 @@ const FinancialsPanel = ({
                     })()}
                   </div>
                   <div className="min-w-0 flex-1 self-start">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <div className="truncate text-xs font-semibold text-foreground">{transaction.description}</div>
-                      {isPaymentTransaction ? (
-                        <button
-                          type="button"
-                          className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={() =>
-                            setExpandedPaymentTransactionIds((current) => {
-                              const next = new Set(current);
-                              if (next.has(transaction.id)) {
-                                next.delete(transaction.id);
-                              } else {
-                                next.add(transaction.id);
-                              }
-                              return next;
-                            })
-                          }
-                        >
-                          {isPaymentExpanded ? "↑ Applied to" : "↓ Applied to"}
-                        </button>
-                      ) : null}
-                    </div>
+                    <div className="truncate text-xs font-semibold text-foreground">{transaction.description}</div>
+                    {isPaymentTransaction ? (
+                      <button
+                        type="button"
+                        className="mt-0.5 block text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() =>
+                          setExpandedPaymentTransactionIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(transaction.id)) {
+                              next.delete(transaction.id);
+                            } else {
+                              next.add(transaction.id);
+                            }
+                            return next;
+                          })
+                        }
+                      >
+                        {isPaymentExpanded ? "↑ Applied to" : "↓ Applied to"}
+                      </button>
+                    ) : null}
                     {showsTransactionDetails && transaction.details ? (
                       <div className="mt-0.5 truncate text-xs text-slate-500">{transaction.details}</div>
                     ) : null}
