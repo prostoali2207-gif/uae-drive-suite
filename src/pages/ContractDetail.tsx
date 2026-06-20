@@ -1837,7 +1837,7 @@ const FinancialsPanel = ({
                     {transaction.details ? (
                       <div className="mt-0.5 truncate text-xs text-zinc-500">{transaction.details}</div>
                     ) : null}
-                    <div className="mt-1 md:hidden">
+                    {!transaction.contractFee ? <div className="mt-1 md:hidden">
                       <span
                         className={cn(
                           "font-mono text-sm font-bold tabular-nums",
@@ -1847,7 +1847,7 @@ const FinancialsPanel = ({
                         {transaction.amountTone === "credit" ? "+" : ""}
                         {fmtAed(transaction.amount)}
                       </span>
-                    </div>
+                    </div> : null}
                     {isPaymentTransaction ? (
                       <button
                         type="button"
@@ -1868,16 +1868,49 @@ const FinancialsPanel = ({
                       </button>
                     ) : null}
                   </div>
+                  {transaction.contractFee ? (
+                    <div className="ml-auto flex shrink-0 items-center gap-1 md:hidden">
+                      <span className="font-mono text-sm font-bold tabular-nums text-zinc-200">
+                        {fmtAed(transaction.amount)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete fee"
+                        className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                        onClick={() => onDeleteFee(transaction.contractFee!)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
-                <div
-                  className={cn(
-                    "hidden text-right font-mono text-sm font-bold tabular-nums md:block",
-                    transaction.amountTone === "credit" ? "text-green-400" : "text-zinc-200",
-                  )}
-                >
-                  {transaction.amountTone === "credit" ? "+" : ""}
-                  {fmtAed(transaction.amount)}
-                </div>
+                {transaction.contractFee ? (
+                  <div className="hidden items-center justify-end gap-1 text-right font-mono text-sm font-bold tabular-nums text-zinc-200 md:flex">
+                    <span>{fmtAed(transaction.amount)}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete fee"
+                      className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                      onClick={() => onDeleteFee(transaction.contractFee!)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "hidden text-right font-mono text-sm font-bold tabular-nums md:block",
+                      transaction.amountTone === "credit" ? "text-green-400" : "text-zinc-200",
+                    )}
+                  >
+                    {transaction.amountTone === "credit" ? "+" : ""}
+                    {fmtAed(transaction.amount)}
+                  </div>
+                )}
                 <div className="flex justify-end gap-1">
                   {transaction.type === "Fine" ? (
                     <Button
@@ -1923,18 +1956,6 @@ const FinancialsPanel = ({
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </>
-                  ) : null}
-                  {transaction.contractFee ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Delete fee"
-                      className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                      onClick={() => onDeleteFee(transaction.contractFee!)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
                   ) : null}
                 </div>
                 </div>
