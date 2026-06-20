@@ -1804,11 +1804,9 @@ const FinancialsPanel = ({
             </div>
           </div>
 
-          <div className="hidden grid-cols-[110px_1fr_140px_40px] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium text-muted-foreground md:grid">
-            <span>Date</span>
+          <div className="hidden grid-cols-[1fr_auto] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium text-muted-foreground md:grid">
             <span>Type / Description</span>
             <span className="text-right">Amount</span>
-            <span />
           </div>
 
           {visibleTransactions.length === 0 ? (
@@ -1818,26 +1816,51 @@ const FinancialsPanel = ({
               const payment = transaction.allocationPayment;
               const isPaymentTransaction = transaction.type === "Payment" && Boolean(payment);
               const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
+              const isFeeTransaction = transaction.type === "Charge" && Boolean(transaction.contractFee);
+              const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
+              const showsTransactionDetails =
+                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik";
               const expandedAllocationRows =
                 isPaymentTransaction && payment ? buildExpandedPaymentAllocationRows(payment, contractFees) : [];
 
               return (
               <div key={transaction.id} className="px-4 py-3">
-                <div className="grid gap-2 md:grid-cols-[110px_1fr_140px_40px] md:items-start md:gap-3">
-                <div className="font-mono text-[11px] text-muted-foreground">{formatDate(transaction.date)}</div>
-                <div className="flex min-w-0 gap-3">
-                  <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", getTransactionIconClass(transaction))}>
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className={cn("flex h-8 w-8 shrink-0 self-start items-center justify-center rounded-lg", getTransactionIconClass(transaction))}>
                     {(() => {
                       const TransactionIcon = transaction.icon;
                       return <TransactionIcon className="h-3.5 w-3.5" />;
                     })()}
                   </div>
-                  <div className="min-w-0">
-                    <div className="truncate text-xs font-semibold text-foreground">{transaction.description}</div>
-                    {transaction.details ? (
-                      <div className="mt-0.5 truncate text-xs text-zinc-500">{transaction.details}</div>
+                  <div className="min-w-0 flex-1 self-start">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="truncate text-xs font-semibold text-foreground">{transaction.description}</div>
+                      {isPaymentTransaction ? (
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            setExpandedPaymentTransactionIds((current) => {
+                              const next = new Set(current);
+                              if (next.has(transaction.id)) {
+                                next.delete(transaction.id);
+                              } else {
+                                next.add(transaction.id);
+                              }
+                              return next;
+                            })
+                          }
+                        >
+                          {isPaymentExpanded ? "↑ Applied to" : "↓ Applied to"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {showsTransactionDetails && transaction.details ? (
+                      <div className="mt-0.5 truncate text-xs text-slate-500">{transaction.details}</div>
                     ) : null}
-                    {!transaction.contractFee ? <div className="mt-1 md:hidden">
+                  </div>
+                  <div className="ml-auto flex shrink-0 self-start flex-col items-end">
+                    <div className="flex items-center justify-end gap-1">
                       <span
                         className={cn(
                           "font-mono text-sm font-bold tabular-nums",
@@ -1847,120 +1870,71 @@ const FinancialsPanel = ({
                         {transaction.amountTone === "credit" ? "+" : ""}
                         {fmtAed(transaction.amount)}
                       </span>
-                    </div> : null}
-                    {isPaymentTransaction ? (
-                      <button
-                        type="button"
-                        className="mt-2 block text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() =>
-                          setExpandedPaymentTransactionIds((current) => {
-                            const next = new Set(current);
-                            if (next.has(transaction.id)) {
-                              next.delete(transaction.id);
-                            } else {
-                              next.add(transaction.id);
-                            }
-                            return next;
-                          })
-                        }
-                      >
-                        {isPaymentExpanded ? "↑ Applied to" : "↓ Applied to"}
-                      </button>
+                      {transaction.type === "Fine" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                          onClick={() => setFinesModalOpen(true)}
+                        >
+                          View all →
+                        </Button>
+                      ) : transaction.type === "Salik" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                          onClick={() => setSalikModalOpen(true)}
+                        >
+                          View all →
+                        </Button>
+                      ) : null}
+                      {transaction.allocationPayment ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Edit payment amount"
+                            className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                            onClick={() => onEditPaymentAmount(transaction.allocationPayment!)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Delete payment"
+                            className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                            onClick={() => onDeletePayment(transaction.allocationPayment!)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      ) : null}
+                      {transaction.contractFee ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Delete fee"
+                          className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                          onClick={() => onDeleteFee(transaction.contractFee!)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                    </div>
+                    {showsTransactionDate ? (
+                      <div className="text-xs text-slate-500">{formatDate(transaction.date)}</div>
                     ) : null}
                   </div>
-                  {transaction.contractFee ? (
-                    <div className="ml-auto flex shrink-0 items-center gap-1 md:hidden">
-                      <span className="font-mono text-sm font-bold tabular-nums text-zinc-200">
-                        {fmtAed(transaction.amount)}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Delete fee"
-                        className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                        onClick={() => onDeleteFee(transaction.contractFee!)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-                {transaction.contractFee ? (
-                  <div className="hidden items-center justify-end gap-1 text-right font-mono text-sm font-bold tabular-nums text-zinc-200 md:flex">
-                    <span>{fmtAed(transaction.amount)}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Delete fee"
-                      className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                      onClick={() => onDeleteFee(transaction.contractFee!)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    className={cn(
-                      "hidden text-right font-mono text-sm font-bold tabular-nums md:block",
-                      transaction.amountTone === "credit" ? "text-green-400" : "text-zinc-200",
-                    )}
-                  >
-                    {transaction.amountTone === "credit" ? "+" : ""}
-                    {fmtAed(transaction.amount)}
-                  </div>
-                )}
-                <div className="flex justify-end gap-1">
-                  {transaction.type === "Fine" ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
-                      onClick={() => setFinesModalOpen(true)}
-                    >
-                      View all →
-                    </Button>
-                  ) : transaction.type === "Salik" ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
-                      onClick={() => setSalikModalOpen(true)}
-                    >
-                      View all →
-                    </Button>
-                  ) : null}
-                  {transaction.allocationPayment ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Edit payment amount"
-                        className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                        onClick={() => onEditPaymentAmount(transaction.allocationPayment!)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Delete payment"
-                        className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                        onClick={() => onDeletePayment(transaction.allocationPayment!)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
                 </div>
                 {isPaymentTransaction && isPaymentExpanded ? (
-                  <div className="mt-3 rounded-b-md bg-white/5 p-3 text-sm text-gray-400 md:ml-[122px]">
+                  <div className="ml-11 mt-3 rounded-b-md bg-white/5 p-3 text-sm text-gray-400">
                     <div className="grid gap-2">
                       {expandedAllocationRows.map((line) => (
                         <div key={line.id} className="flex items-center justify-between gap-3">
