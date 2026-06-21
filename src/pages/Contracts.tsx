@@ -1072,21 +1072,24 @@ const Contracts = () => {
         let additionalChargesError: { message?: string } | null = null;
         const chargesToInsert = additionalCharges.filter((charge) => {
           const amount = Number(charge.amount);
-          return Number.isFinite(amount) && amount > 0;
+          return charge.label.trim() !== "" && Number.isFinite(amount) && amount > 0;
         });
-        for (const charge of chargesToInsert) {
+        if (chargesToInsert.length > 0) {
           // contract_fees is not present in the generated database types.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error: feesError } = await (supabaseClient as any)
             .from("contract_fees")
-            .insert({
-              contract_id: createdId,
-              category: "extra",
-              label: charge.label,
-              amount: Number(charge.amount),
-              owner_id: userId,
-            });
-          if (feesError && !additionalChargesError) additionalChargesError = feesError;
+            .insert(
+              chargesToInsert.map((charge) => ({
+                contract_id: createdId,
+                category: "extra",
+                label: charge.label,
+                amount: Number(charge.amount),
+                owner_id: userId,
+              })),
+            );
+          additionalChargesError = feesError;
+          if (feesError) console.error("Additional charges insert error:", feesError);
         }
         setIsSubmitting(false);
 
