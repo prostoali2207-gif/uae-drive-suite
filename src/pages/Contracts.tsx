@@ -152,16 +152,25 @@ function matchesContractFilter(contract: ContractRow, selectedFilter: ContractFi
   return contract.status === selectedFilter;
 }
 
-function getMobileStatusLabel(status: string): string {
+function isClosedContract(status: string): boolean {
   const normalized = status.toLowerCase();
-  if (normalized === "closed" || normalized === "completed" || normalized === "returned") return "Closed";
-  return "Active";
+  return normalized === "closed" || normalized === "completed" || normalized === "returned";
 }
 
-function getMobileStatusClass(status: string): string {
-  const normalized = status.toLowerCase();
-  if (normalized === "closed" || normalized === "completed" || normalized === "returned") return "bg-muted text-muted-foreground";
-  return "bg-tint-green text-tint-green-foreground";
+function getMobileCardStatus(contract: ContractRow): { label: string; className: string; isClosed: boolean } {
+  if (isClosedContract(contract.status)) {
+    return { label: "Closed", className: "bg-muted text-muted-foreground", isClosed: true };
+  }
+
+  const daysUntilExpiry = getDaysUntilExpiry(contract.end_date);
+  if (contract.status === "Overdue" || daysUntilExpiry < 0) {
+    return { label: "Overdue", className: "bg-tint-rose text-tint-rose-foreground", isClosed: false };
+  }
+  if (daysUntilExpiry === 0) {
+    return { label: "Today", className: "bg-tint-amber text-tint-amber-foreground", isClosed: false };
+  }
+
+  return { label: "Active", className: "bg-tint-green text-tint-green-foreground", isClosed: false };
 }
 
 function getRoundedCurrentTimeInput(): string {
@@ -1426,75 +1435,56 @@ const Contracts = () => {
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">No contracts match this filter.</div>
             ) : (
               paginatedContracts.map((c) => {
-                const balance = Number(c.balance_due || 0);
                 const clientName = c.clients?.full_name ?? "-";
-                const daysUntilExpiry = getDaysUntilExpiry(c.end_date);
-                const expiresWithinSevenDays = daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
-                const isPaid = c.payment_status === "Paid";
+                const mobileStatus = getMobileCardStatus(c);
+                const vehicleLabel = c.cars ? `${c.cars.plate} • ${c.cars.make} ${c.cars.model}` : "-";
                 return (
                   <div key={c.id} className="px-1.5">
                     <div
-                      className={cn(
-                        "grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-2 gap-y-1 rounded-lg border border-border/70 bg-card/80 px-3 py-2.5",
-                        balance > 0 && "border-l-[3px] border-l-red-500",
-                      )}
+                      role="link"
+                      tabIndex={0}
+                      className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-x-3 rounded-lg border border-border/70 bg-card/80 px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => navigate(`/contracts/${c.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(`/contracts/${c.id}`);
+                        }
+                      }}
                     >
-                      <button
-                        type="button"
-                        className="min-w-0 truncate text-left text-sm font-bold leading-5 text-foreground"
-                        onClick={() => navigate(`/contracts/${c.id}`)}
-                      >
+                      <span className="min-w-0 truncate text-left text-sm font-bold leading-5 text-foreground">
                         {clientName}
-                      </button>
-                      <span className="self-center whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] leading-4 text-muted-foreground">
-                        {c.cars?.plate ?? "-"}
                       </span>
-                      {getMobileStatusLabel(c.status) === "Closed" ? (
+                      {mobileStatus.isClosed ? (
                         <button
                           type="button"
-                          className={cn("inline-flex self-center justify-self-end rounded-full px-2 py-0.5 text-[10px] font-medium", getMobileStatusClass(c.status))}
+                          className={cn("inline-flex h-8 items-center self-center justify-self-end rounded-full px-2 text-[10px] font-medium", mobileStatus.className)}
                           aria-label="Reopen contract"
                           title="Reopen contract"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             setReopenTargetId(c.id);
                             setReopenConfirmOpen(true);
                           }}
                         >
-                          Closed
+                          {mobileStatus.label}
                         </button>
                       ) : (
-                        <span className={cn("inline-flex self-center justify-self-end rounded-full px-2 py-0.5 text-[10px] font-medium", getMobileStatusClass(c.status))}>
-                          Active
+                        <span className={cn("inline-flex self-center justify-self-end rounded-full px-2 py-0.5 text-[10px] font-medium", mobileStatus.className)}>
+                          {mobileStatus.label}
                         </span>
                       )}
 
-                      <div className="col-start-2 col-end-4 min-w-0 text-[11px] leading-4 text-muted-foreground">
-                        <span className="block truncate">
-                          {c.cars ? `${c.cars.make} ${c.cars.model}` : "-"}
-                        </span>
+                      <div className="col-span-2 pb-1 font-mono text-xs leading-4 text-muted-foreground">
+                        {formatMobileDate(c.start_date)} → {formatMobileDate(c.end_date)}
                       </div>
 
-                      <div className="col-span-2 flex min-w-0 items-center gap-2">
-                        <span className="whitespace-nowrap font-mono text-xs text-foreground">
-                          {formatMobileDate(c.start_date)} → {formatMobileDate(c.end_date)}
-                        </span>
-                        {expiresWithinSevenDays && (
-                          <span className="whitespace-nowrap rounded-full bg-tint-amber px-2 py-0.5 text-[10px] font-medium text-tint-amber-foreground">
-                            {daysUntilExpiry} days
-                          </span>
-                        )}
-                      </div>
-                      <span
-                        className={cn(
-                          "justify-self-end whitespace-nowrap font-mono text-sm font-semibold",
-                          balance > 0
-                            ? "text-red-500"
-                            : isPaid
-                              ? "text-tint-green-foreground"
-                              : "text-muted-foreground",
-                        )}
-                      >
-                        {balance > 0 ? `AED ${balance.toLocaleString()}` : isPaid ? "Paid" : "—"}
+                      <span className="min-w-0 truncate text-xs leading-5 text-muted-foreground">
+                        {vehicleLabel}
+                      </span>
+                      <span className="justify-self-end whitespace-nowrap font-mono text-sm font-semibold leading-5 text-foreground">
+                        AED {Number(c.total_amount).toLocaleString()}
                       </span>
                     </div>
                   </div>
