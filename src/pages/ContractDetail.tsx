@@ -4204,6 +4204,14 @@ const ContractDetail = () => {
 
           {/* FINANCIALS */}
           <TabsContent value="financials" className="mt-4 max-w-full min-w-0 space-y-3">
+            <section className="min-w-0 rounded-lg border border-border bg-card">
+              <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+                <h3 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-foreground">
+                  Client Statement
+                </h3>
+                {InvoiceButton}
+              </header>
+            </section>
             <FinancialsPanel
               contract={contract}
               days={days}
