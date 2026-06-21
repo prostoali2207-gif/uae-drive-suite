@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +63,13 @@ type ContractFilter = "All" | "Active" | "Expiring Soon" | "Overdue" | "Closed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
 type RateType = "Daily" | "Monthly" | "Annual";
+type AdditionalChargeLabel = "Delivery" | "Pickup" | "Full Tank" | "Baby Seat" | "Other";
+
+interface AdditionalCharge {
+  id: string;
+  label: AdditionalChargeLabel;
+  amount: string;
+}
 
 interface ContractRow {
   id: string;
@@ -122,6 +130,7 @@ const desktopFilters: ContractFilter[] = ["All", "Active", "Expiring Soon", "Ove
 const mobileFilterOrder: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue", "Closed"];
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
 const rateTypes: RateType[] = ["Daily", "Monthly", "Annual"];
+const additionalChargeLabels: AdditionalChargeLabel[] = ["Delivery", "Pickup", "Full Tank", "Baby Seat", "Other"];
 const rateLabels: Record<RateType, string> = {
   Daily: "Daily Rate (AED per day)",
   Monthly: "Monthly Rate (AED per month)",
@@ -297,6 +306,7 @@ const createEmptyForm = () => ({
   initial_mileage: "",
   fuel_level: "Full" as FuelLevel,
   special_conditions: "",
+  notes: "",
 });
 
 const PICKUP_PHOTO_SLOTS = [
@@ -591,6 +601,8 @@ const Contracts = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(createEmptyForm);
+  const [showNotes, setShowNotes] = useState(false);
+  const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
   const [endTimeManuallyEdited, setEndTimeManuallyEdited] = useState(false);
   const [clientSelectOpen, setClientSelectOpen] = useState(false);
   const [carSelectOpen, setCarSelectOpen] = useState(false);
@@ -1030,6 +1042,7 @@ const Contracts = () => {
         fuel_level: form.fuel_level,
         status: "Active",
         payment_status: "Unpaid",
+        notes: form.notes.trim() || null,
         owner_id: userId,
       });
 
@@ -1039,6 +1052,24 @@ const Contracts = () => {
         toast.error("Failed to create contract: " + toSupabaseMessage(error));
         console.error("Contract creation error:", error);
       } else {
+        let additionalChargesError: { message?: string } | null = null;
+        if (additionalCharges.length > 0) {
+          // contract_fees is not present in the generated database types.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error: feesError } = await (supabase as any)
+            .from("contract_fees")
+            .insert(
+              additionalCharges.map((charge) => ({
+                contract_id: createdId,
+                category: "extra",
+                label: charge.label,
+                amount: Number(charge.amount),
+                owner_id: userId,
+              })),
+            );
+          additionalChargesError = feesError;
+        }
+
         try {
           await syncVehicleStatusesWithContracts();
         } catch (syncErr) {
@@ -1046,12 +1077,19 @@ const Contracts = () => {
         }
 
         const resolvedClientName = selectedClient.full_name;
-        toast.success("Contract created");
+        if (additionalChargesError) {
+          toast.error(`Contract created, but additional charges could not be saved: ${toSupabaseMessage(additionalChargesError)}`);
+          console.error("Additional charges creation error:", additionalChargesError);
+        } else {
+          toast.success("Contract created");
+        }
         setNewContractId(createdId);
         setSigningClientName(resolvedClientName);
         setSigningUserId(userId);
         setShowPickupInspectionModal(true);
         setForm(createEmptyForm());
+        setShowNotes(false);
+        setAdditionalCharges([]);
         setEndTimeManuallyEdited(false);
         setClientSearch("");
         setCarSearch("");
@@ -1400,6 +1438,90 @@ const Contracts = () => {
                     <div>{days} days</div>
                     <div>{form.rate_type} total</div>
                   </div>
+                </div>
+                <div className="grid gap-2">
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto w-fit p-0 text-sm"
+                    onClick={() => setShowNotes((visible) => !visible)}
+                  >
+                    {showNotes ? "− Hide notes" : "+ Add notes"}
+                  </Button>
+                  {showNotes && (
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="contract-notes">Notes</Label>
+                      <Textarea
+                        id="contract-notes"
+                        placeholder="e.g. deposit paid in cash USD, client requested early return"
+                        value={form.notes}
+                        onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  {additionalCharges.map((charge) => (
+                    <div key={charge.id} className="grid grid-cols-[minmax(0,1fr)_minmax(100px,0.7fr)_40px] gap-2">
+                      <Select
+                        value={charge.label}
+                        onValueChange={(value) => {
+                          setAdditionalCharges((charges) =>
+                            charges.map((item) =>
+                              item.id === charge.id ? { ...item, label: value as AdditionalChargeLabel } : item,
+                            ),
+                          );
+                        }}
+                      >
+                        <SelectTrigger aria-label="Charge type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {additionalChargeLabels.map((label) => (
+                            <SelectItem key={label} value={label}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="font-mono"
+                        aria-label={`${charge.label} amount in AED`}
+                        placeholder="AED"
+                        value={charge.amount}
+                        onChange={(e) => {
+                          const amount = e.target.value;
+                          setAdditionalCharges((charges) =>
+                            charges.map((item) => item.id === charge.id ? { ...item, amount } : item),
+                          );
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 text-lg"
+                        aria-label={`Remove ${charge.label} charge`}
+                        onClick={() => setAdditionalCharges((charges) => charges.filter((item) => item.id !== charge.id))}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-fit"
+                    onClick={() => {
+                      setAdditionalCharges((charges) => [
+                        ...charges,
+                        { id: createContractId(), label: "Delivery", amount: "" },
+                      ]);
+                    }}
+                  >
+                    + Add charge
+                  </Button>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setOpen(false)}>Cancel</Button>
