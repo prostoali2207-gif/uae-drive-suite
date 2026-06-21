@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Upload, Wrench } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { ChevronDown, Pencil, Plus, Search, Upload, Wrench } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { MaintenancePanel } from "@/components/MaintenancePanel";
 import { Button } from "@/components/ui/button";
@@ -106,22 +106,24 @@ function formatDate(iso: string | null): string {
   });
 }
 
-function expiryCellClass(iso: string | null): string {
-  if (!iso) return "text-muted-foreground";
-  const d = daysUntil(iso);
-  if (d < 0) return "bg-tint-rose/60 text-tint-rose-foreground font-medium";
-  if (d <= 30) return "bg-tint-amber/60 text-tint-amber-foreground font-medium";
-  return "text-muted-foreground";
+function expiryDotClass(iso: string | null): string {
+  if (!iso) return "bg-muted-foreground/40";
+  const days = daysUntil(iso);
+  if (days < 0) return "bg-red-500";
+  if (days <= 30) return "bg-amber-500";
+  return "bg-green-500";
 }
 
-function isCarIncomplete(car: Car): boolean {
-  return !car.plate?.trim()
-    || !car.make?.trim()
-    || !car.model?.trim()
-    || !car.year
-    || !car.tag_number?.trim()
-    || !car.insurance_expiry
-    || !car.mulkiya_expiry;
+function expiryWarning(label: string, iso: string | null): string | null {
+  if (!iso) return null;
+  const days = daysUntil(iso);
+  if (days > 30) return null;
+  if (days < 0) return `⚠️ ${label} expired ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} ago`;
+  return `⚠️ ${label} expires in ${days} day${days === 1 ? "" : "s"}`;
+}
+
+function displayStatus(status: string): string {
+  return status === "Service" ? "Maintenance" : status;
 }
 
 const Fleet = () => {
@@ -143,6 +145,8 @@ const Fleet = () => {
   const [importing, setImporting] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedCarId, setExpandedCarId] = useState<string | null>(null);
 
   const fetchCars = async () => {
     try {
@@ -167,14 +171,21 @@ const Fleet = () => {
     fetchCars();
   }, []);
 
-  const filtered = useMemo(
-    () => (filter === "All" ? cars : cars.filter((c) => c.status === filter)),
-    [cars, filter],
-  );
+  const filtered = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    return cars.filter((car) => {
+      const matchesStatus = filter === "All" || car.status === filter;
+      const matchesSearch = !normalizedQuery
+        || car.plate.toLowerCase().includes(normalizedQuery)
+        || car.make.toLowerCase().includes(normalizedQuery)
+        || car.model.toLowerCase().includes(normalizedQuery);
+      return matchesStatus && matchesSearch;
+    });
+  }, [cars, filter, searchQuery]);
 
   useEffect(() => {
     setPage(1);
-  }, [filter, pageSize]);
+  }, [filter, pageSize, searchQuery]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -680,96 +691,148 @@ const Fleet = () => {
           </AlertDialog>
         </div>
 
-        <div className="rounded-xl border border-border bg-card">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search by plate, make, or model"
+            aria-label="Search fleet"
+            className="h-10 pl-9"
+          />
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="px-5 text-xs">Plate</TableHead>
-                <TableHead className="text-xs">Make & Model</TableHead>
-                <TableHead className="text-xs">Year</TableHead>
+                <TableHead className="w-[90px] px-3 text-xs sm:px-5">Plate</TableHead>
+                <TableHead className="text-xs">Vehicle</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
-                <TableHead className="text-xs">Info</TableHead>
-                <TableHead className="text-xs">Insurance Expiry</TableHead>
-                <TableHead className="text-xs">Mulkiya Expiry</TableHead>
-                <TableHead className="px-5 text-xs text-right">Actions</TableHead>
+                <TableHead className="w-11 px-1">
+                  <span className="sr-only">Expand vehicle details</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
                     Loading fleet...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
-                    No cars match this filter.
+                  <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
+                    No cars match the current search and filter.
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedCars.map((car) => (
-                  <TableRow key={car.id}>
-                    <TableCell className="px-5 font-mono text-xs text-foreground">{car.plate}</TableCell>
-                    <TableCell className="font-medium text-foreground">{car.make} {car.model}</TableCell>
-                    <TableCell className="text-muted-foreground">{car.year}</TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                          statusClasses[car.status as Status] ?? "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {car.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={isCarIncomplete(car) ? "outline" : "secondary"}
-                        className={cn(
-                          "text-[11px]",
-                          isCarIncomplete(car)
-                            ? "border-amber-500/40 text-amber-700"
-                            : "bg-tint-green text-tint-green-foreground",
-                        )}
-                      >
-                        {isCarIncomplete(car) ? "Missing info" : "Complete"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.insurance_expiry))}>
-                        {formatDate(car.insurance_expiry)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={cn("inline-block rounded-md px-2 py-0.5 text-xs", expiryCellClass(car.mulkiya_expiry))}>
-                        {formatDate(car.mulkiya_expiry)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-5 text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 gap-1 text-xs"
-                          onClick={() => setSelectedMaintenanceCarId(car.id)}
-                        >
-                          <Wrench className="h-3.5 w-3.5" />
-                          Service
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 gap-1 text-xs"
-                          onClick={() => openEdit(car)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                paginatedCars.map((car) => {
+                  const isExpanded = expandedCarId === car.id;
+                  const warnings = [
+                    expiryWarning("Mulkiya", car.mulkiya_expiry),
+                    expiryWarning("Insurance", car.insurance_expiry),
+                  ].filter((warning): warning is string => Boolean(warning));
+
+                  return (
+                    <Fragment key={car.id}>
+                      <TableRow>
+                        <TableCell className="w-[90px] px-3 font-mono text-xs text-foreground sm:px-5">
+                          {car.plate}
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          <div className="truncate text-sm font-medium text-foreground">
+                            {car.make} {car.model}
+                          </div>
+                          <div className="font-mono text-xs text-muted-foreground">{car.year}</div>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              statusClasses[car.status as Status] ?? (
+                                car.status === "Overdue"
+                                  ? "bg-tint-rose text-tint-rose-foreground"
+                                  : "bg-muted text-muted-foreground"
+                              ),
+                            )}
+                          >
+                            {displayStatus(car.status)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="w-11 px-1 text-right">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-10 w-10"
+                            aria-label={`${isExpanded ? "Collapse" : "Expand"} details for ${car.plate}`}
+                            aria-expanded={isExpanded}
+                            onClick={() => setExpandedCarId(isExpanded ? null : car.id)}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 transition-transform duration-200",
+                                isExpanded && "rotate-180",
+                              )}
+                            />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableCell colSpan={4} className="px-3 py-4 sm:px-5">
+                            <div className="grid gap-4">
+                              {warnings.length > 0 && (
+                                <div className="space-y-1 text-xs font-medium text-amber-700">
+                                  {warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                                </div>
+                              )}
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {[
+                                  ["Mulkiya Expiry", car.mulkiya_expiry],
+                                  ["Insurance Expiry", car.insurance_expiry],
+                                ].map(([label, expiry]) => (
+                                  <div key={label} className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                      <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", expiryDotClass(expiry))} />
+                                      {label}
+                                    </div>
+                                    <span className="font-mono text-xs text-foreground">{formatDate(expiry)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="min-h-10 flex-1 gap-1.5"
+                                  onClick={() => setSelectedMaintenanceCarId(car.id)}
+                                >
+                                  <Wrench className="h-4 w-4" />
+                                  Maintenance
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="min-h-10 flex-1 gap-1.5"
+                                  onClick={() => openEdit(car)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  Edit
+                                </Button>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
