@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FileText, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, Search, CalendarDays } from "lucide-react";
+import { Plus, FileText, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -136,6 +136,13 @@ function formatMobileDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 }
 
+function getDaysUntilExpiry(iso: string): number {
+  const end = new Date(`${iso}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((end.getTime() - today.getTime()) / 86_400_000);
+}
+
 function matchesContractFilter(contract: ContractRow, selectedFilter: ContractFilter): boolean {
   if (selectedFilter === "All") return true;
   if (selectedFilter === "Closed") {
@@ -148,16 +155,13 @@ function matchesContractFilter(contract: ContractRow, selectedFilter: ContractFi
 function getMobileStatusLabel(status: string): string {
   const normalized = status.toLowerCase();
   if (normalized === "closed" || normalized === "completed" || normalized === "returned") return "Closed";
-  return status;
+  return "Active";
 }
 
 function getMobileStatusClass(status: string): string {
   const normalized = status.toLowerCase();
-  if (normalized === "active") return "bg-tint-green text-tint-green-foreground";
-  if (normalized === "expiring soon") return "bg-tint-amber text-tint-amber-foreground";
-  if (normalized.includes("overdue")) return "bg-tint-rose text-tint-rose-foreground";
   if (normalized === "closed" || normalized === "completed" || normalized === "returned") return "bg-muted text-muted-foreground";
-  return statusClasses[status] ?? "bg-muted text-muted-foreground";
+  return "bg-tint-green text-tint-green-foreground";
 }
 
 function getRoundedCurrentTimeInput(): string {
@@ -1083,7 +1087,7 @@ const Contracts = () => {
           </div>
           <div className="-mx-4 overflow-x-auto px-4">
             <div className="flex w-max gap-1.5 pb-1">
-              {mobileFilterOrder.map((item) => (
+              {mobileFilterOrder.filter((item) => counts[item] > 0).map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -1104,7 +1108,7 @@ const Contracts = () => {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="hidden flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1 md:flex">
-            {desktopFilters.map((f) => (
+            {desktopFilters.filter((item) => counts[item] > 0).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -1422,61 +1426,76 @@ const Contracts = () => {
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">No contracts match this filter.</div>
             ) : (
               paginatedContracts.map((c) => {
-                const d = diffDays(c.start_date, c.end_date);
                 const balance = Number(c.balance_due || 0);
                 const clientName = c.clients?.full_name ?? "-";
+                const daysUntilExpiry = getDaysUntilExpiry(c.end_date);
+                const expiresWithinSevenDays = daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
+                const isPaid = c.payment_status === "Paid";
                 return (
                   <div key={c.id} className="px-1.5">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-2.5 py-2">
-                      <div className="min-w-0">
+                    <div
+                      className={cn(
+                        "grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-2 gap-y-1 rounded-lg border border-border/70 bg-card/80 px-3 py-2.5",
+                        balance > 0 && "border-l-[3px] border-l-red-500",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="min-w-0 truncate text-left text-sm font-bold leading-5 text-foreground"
+                        onClick={() => navigate(`/contracts/${c.id}`)}
+                      >
+                        {clientName}
+                      </button>
+                      <span className="self-center whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] leading-4 text-muted-foreground">
+                        {c.cars?.plate ?? "-"}
+                      </span>
+                      {getMobileStatusLabel(c.status) === "Closed" ? (
                         <button
                           type="button"
-                          className="block max-w-full truncate text-left text-sm font-semibold leading-4 text-foreground"
-                          onClick={() => navigate(`/contracts/${c.id}`)}
+                          className={cn("inline-flex self-center justify-self-end rounded-full px-2 py-0.5 text-[10px] font-medium", getMobileStatusClass(c.status))}
+                          aria-label="Reopen contract"
+                          title="Reopen contract"
+                          onClick={() => {
+                            setReopenTargetId(c.id);
+                            setReopenConfirmOpen(true);
+                          }}
                         >
-                          {clientName}
+                          Closed
                         </button>
-                        <div className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">
-                          <span className="font-mono text-foreground">{c.cars?.plate ?? "-"}</span>
-                          {c.cars && <span> - {c.cars.make} {c.cars.model}</span>}
-                        </div>
-                        <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] leading-4 text-muted-foreground">
-                          <span className="whitespace-nowrap font-mono">
-                            {formatMobileDate(c.start_date)} - {formatMobileDate(c.end_date)}
-                          </span>
-                          <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-                            <CalendarDays className="h-3 w-3 shrink-0" />
-                            <span>{d} days</span>
-                          </span>
-                        </div>
+                      ) : (
+                        <span className={cn("inline-flex self-center justify-self-end rounded-full px-2 py-0.5 text-[10px] font-medium", getMobileStatusClass(c.status))}>
+                          Active
+                        </span>
+                      )}
+
+                      <div className="col-start-2 col-end-4 min-w-0 text-[11px] leading-4 text-muted-foreground">
+                        <span className="block truncate">
+                          {c.cars ? `${c.cars.make} ${c.cars.model}` : "-"}
+                        </span>
                       </div>
 
-                      <div className="flex min-w-[112px] items-center justify-end gap-1">
-                        <div className="min-w-0 text-right">
-                          <span className={cn("inline-flex rounded-full px-2 py-[1px] text-[10px] font-medium", getMobileStatusClass(c.status))}>
-                            {getMobileStatusLabel(c.status)}
+                      <div className="col-span-2 flex min-w-0 items-center gap-2">
+                        <span className="whitespace-nowrap font-mono text-xs text-foreground">
+                          {formatMobileDate(c.start_date)} → {formatMobileDate(c.end_date)}
+                        </span>
+                        {expiresWithinSevenDays && (
+                          <span className="whitespace-nowrap rounded-full bg-tint-amber px-2 py-0.5 text-[10px] font-medium text-tint-amber-foreground">
+                            {daysUntilExpiry} days
                           </span>
-                          <div className={cn("mt-1 whitespace-nowrap font-mono text-sm font-semibold leading-4", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
-                            {balance > 0 ? `AED ${balance.toLocaleString()} Due` : "Paid"}
-                          </div>
-                        </div>
-                        {c.status === "closed" && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 shrink-0 text-blue-400 hover:bg-blue-400/10 hover:text-blue-300"
-                            aria-label="Reopen contract"
-                            title="Reopen contract"
-                            onClick={() => {
-                              setReopenTargetId(c.id);
-                              setReopenConfirmOpen(true);
-                            }}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          </Button>
                         )}
                       </div>
+                      <span
+                        className={cn(
+                          "justify-self-end whitespace-nowrap font-mono text-sm font-semibold",
+                          balance > 0
+                            ? "text-red-500"
+                            : isPaid
+                              ? "text-tint-green-foreground"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {balance > 0 ? `AED ${balance.toLocaleString()}` : isPaid ? "Paid" : "—"}
+                      </span>
                     </div>
                   </div>
                 );
@@ -1555,8 +1574,17 @@ const Contracts = () => {
                           {c.status}
                         </span>
                       </TableCell>
-                      <TableCell className={cn("px-5 font-mono text-sm font-medium", balance > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground")}>
-                        {balance > 0 ? `AED ${balance.toLocaleString()} Due` : "Paid"}
+                      <TableCell
+                        className={cn(
+                          "px-5 font-mono text-sm font-medium",
+                          balance > 0
+                            ? "text-tint-rose-foreground"
+                            : c.payment_status === "Paid"
+                              ? "text-tint-green-foreground"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {balance > 0 ? `AED ${balance.toLocaleString()}` : c.payment_status === "Paid" ? "Paid" : "—"}
                       </TableCell>
                       <TableCell className="w-[104px] px-2 text-right">
                         <div className="flex items-center justify-end gap-1">
