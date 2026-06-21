@@ -59,6 +59,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+const supabaseClient = supabase;
+
 type ContractFilter = "All" | "Active" | "Expiring Soon" | "Overdue" | "Closed";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
@@ -239,19 +241,26 @@ function formatMonthlyUnits(months: number): string {
   return Number.isInteger(months) ? String(months) : months.toFixed(1);
 }
 
-function formatRateSummary(days: number, rateAmount: string, rateType: RateType, total: number): string {
+function formatRateSummary(
+  days: number,
+  rateAmount: string,
+  rateType: RateType,
+  rentalTotal: number,
+  extrasTotal: number,
+): string {
   const rate = Number(rateAmount);
   const safeRate = Number.isFinite(rate) ? rate : 0;
+  const grandTotal = rentalTotal + extrasTotal;
 
   if (rateType === "Monthly") {
-    return `${formatMonthlyUnits(getRateUnits(days, rateType))} months × ${safeRate.toLocaleString()} AED = AED ${total.toLocaleString()}`;
+    return `${formatMonthlyUnits(getRateUnits(days, rateType))} months × ${safeRate.toLocaleString()} AED + ${extrasTotal.toLocaleString()} AED extras = AED ${grandTotal.toLocaleString()}`;
   }
 
   if (rateType === "Annual") {
-    return `${getRateUnits(days, rateType).toFixed(2)} years × ${safeRate.toLocaleString()} AED = AED ${total.toLocaleString()}`;
+    return `${getRateUnits(days, rateType).toFixed(2)} years × ${safeRate.toLocaleString()} AED + ${extrasTotal.toLocaleString()} AED extras = AED ${grandTotal.toLocaleString()}`;
   }
 
-  return `${days} days × ${safeRate.toLocaleString()} AED = AED ${total.toLocaleString()}`;
+  return `${days} days × ${safeRate.toLocaleString()} AED + ${extrasTotal.toLocaleString()} AED extras = AED ${grandTotal.toLocaleString()}`;
 }
 
 function getContractDateTime(date: string, time: string): Date | null {
@@ -763,9 +772,18 @@ const Contracts = () => {
     return Number.isFinite(rate) && rate > 0 ? Math.round(getRateUnits(days, form.rate_type) * rate) : 0;
   }, [days, form.rate_amount, form.rate_type]);
 
+  const additionalChargesTotal = useMemo(
+    () => additionalCharges.reduce((sum, charge) => {
+      const amount = Number(charge.amount);
+      return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
+    }, 0),
+    [additionalCharges],
+  );
+  const totalWithExtras = total + additionalChargesTotal;
+
   const rateSummary = useMemo(
-    () => formatRateSummary(days, form.rate_amount, form.rate_type, total),
-    [days, form.rate_amount, form.rate_type, total],
+    () => formatRateSummary(days, form.rate_amount, form.rate_type, total, additionalChargesTotal),
+    [days, form.rate_amount, form.rate_type, total, additionalChargesTotal],
   );
 
   const filteredClients = useMemo(() => {
@@ -1046,29 +1064,31 @@ const Contracts = () => {
         owner_id: userId,
       });
 
-      setIsSubmitting(false);
       if (error) {
-
+        setIsSubmitting(false);
         toast.error("Failed to create contract: " + toSupabaseMessage(error));
         console.error("Contract creation error:", error);
       } else {
         let additionalChargesError: { message?: string } | null = null;
-        if (additionalCharges.length > 0) {
+        const chargesToInsert = additionalCharges.filter((charge) => {
+          const amount = Number(charge.amount);
+          return Number.isFinite(amount) && amount > 0;
+        });
+        for (const charge of chargesToInsert) {
           // contract_fees is not present in the generated database types.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: feesError } = await (supabase as any)
+          const { error: feesError } = await (supabaseClient as any)
             .from("contract_fees")
-            .insert(
-              additionalCharges.map((charge) => ({
-                contract_id: createdId,
-                category: "extra",
-                label: charge.label,
-                amount: Number(charge.amount),
-                owner_id: userId,
-              })),
-            );
-          additionalChargesError = feesError;
+            .insert({
+              contract_id: createdId,
+              category: "extra",
+              label: charge.label,
+              amount: Number(charge.amount),
+              owner_id: userId,
+            });
+          if (feesError && !additionalChargesError) additionalChargesError = feesError;
         }
+        setIsSubmitting(false);
 
         try {
           await syncVehicleStatusesWithContracts();
@@ -1411,55 +1431,6 @@ const Contracts = () => {
                     </Select>
                   </div>
                 </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="deposit">Deposit Amount (AED)</Label>
-                  <Input
-                    id="deposit"
-                    type="number"
-                    min={0}
-                    value={form.deposit_amount}
-                    onFocus={() => {
-                      if (Number(form.deposit_amount) === 0) {
-                        setForm((prev) => ({ ...prev, deposit_amount: "" }));
-                      }
-                    }}
-                    onChange={(e) => setForm((prev) => ({ ...prev, deposit_amount: e.target.value }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Total Amount</div>
-                    <div className="font-mono text-lg font-semibold text-foreground">
-                      AED {total.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="mt-1 font-mono text-xs text-muted-foreground">{rateSummary}</div>
-                  </div>
-                  <div className="text-right font-mono text-xs text-muted-foreground">
-                    <div>{days} days</div>
-                    <div>{form.rate_type} total</div>
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="h-auto w-fit p-0 text-sm"
-                    onClick={() => setShowNotes((visible) => !visible)}
-                  >
-                    {showNotes ? "− Hide notes" : "+ Add notes"}
-                  </Button>
-                  {showNotes && (
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="contract-notes">Notes</Label>
-                      <Textarea
-                        id="contract-notes"
-                        placeholder="e.g. deposit paid in cash USD, client requested early return"
-                        value={form.notes}
-                        onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-                      />
-                    </div>
-                  )}
-                </div>
                 <div className="grid gap-2">
                   {additionalCharges.map((charge) => (
                     <div key={charge.id} className="grid grid-cols-[minmax(0,1fr)_minmax(100px,0.7fr)_40px] gap-2">
@@ -1522,6 +1493,55 @@ const Contracts = () => {
                   >
                     + Add charge
                   </Button>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="deposit">Deposit Amount (AED)</Label>
+                  <Input
+                    id="deposit"
+                    type="number"
+                    min={0}
+                    value={form.deposit_amount}
+                    onFocus={() => {
+                      if (Number(form.deposit_amount) === 0) {
+                        setForm((prev) => ({ ...prev, deposit_amount: "" }));
+                      }
+                    }}
+                    onChange={(e) => setForm((prev) => ({ ...prev, deposit_amount: e.target.value }))}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto w-fit p-0 text-sm"
+                    onClick={() => setShowNotes((visible) => !visible)}
+                  >
+                    {showNotes ? "− Hide notes" : "+ Add notes"}
+                  </Button>
+                  {showNotes && (
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="contract-notes">Notes</Label>
+                      <Textarea
+                        id="contract-notes"
+                        placeholder="e.g. deposit paid in cash USD, client requested early return"
+                        value={form.notes}
+                        onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Total Amount</div>
+                    <div className="font-mono text-lg font-semibold text-foreground">
+                      AED {totalWithExtras.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="mt-1 font-mono text-xs text-muted-foreground">{rateSummary}</div>
+                  </div>
+                  <div className="text-right font-mono text-xs text-muted-foreground">
+                    <div>{days} days</div>
+                    <div>{form.rate_type} total</div>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setOpen(false)}>Cancel</Button>
