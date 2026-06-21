@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { CheckCircle2, Eye, Inbox, Pencil, Plus, Search, ChevronLeft, ChevronRight, ChevronDown, IdCard, FileText, Trash2, Upload, XCircle, MoreVertical, CalendarDays } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -554,6 +554,8 @@ const countryFlags: Record<string, string> = {
 const getCountryFlag = (nationality: string) => countryFlags[nationality] || "🌐";
 
 const Clients = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [registrationRequests, setRegistrationRequests] = useState<ClientRegistrationRequest[]>([]);
@@ -741,6 +743,15 @@ const Clients = () => {
     setStep(1);
     setOpen(true);
   };
+
+  useEffect(() => {
+    const editClientId = (location.state as { editClientId?: string } | null)?.editClientId;
+    if (!editClientId || clients.length === 0) return;
+
+    const clientToEdit = clients.find((client) => client.id === editClientId);
+    if (clientToEdit) openEdit(clientToEdit);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [clients, location.pathname, location.state, navigate]);
 
   const handleImportFile = async (file: File | undefined) => {
     if (!file) return;

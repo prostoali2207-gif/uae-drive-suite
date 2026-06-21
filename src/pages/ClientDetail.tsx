@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Pencil } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,6 +72,7 @@ const InfoRow = ({ label, value }: { label: string; value?: string | null }) => 
 
 const ClientDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [client, setClient] = useState<ClientRecord | null>(null);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,12 +136,21 @@ const ClientDetail = () => {
   return (
     <DashboardLayout title={client.full_name} subtitle="Client details">
       <div className="flex flex-col gap-5">
-        <div>
+        <div className="flex items-center justify-between gap-3">
           <Button asChild variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground">
             <Link to="/clients">
               <ArrowLeft className="h-4 w-4" />
               Back to clients
             </Link>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 gap-2 px-4 py-2 md:hidden"
+            onClick={() => navigate("/clients", { state: { editClientId: client.id } })}
+          >
+            <Pencil className="h-4 w-4" />
+            Edit
           </Button>
         </div>
 
