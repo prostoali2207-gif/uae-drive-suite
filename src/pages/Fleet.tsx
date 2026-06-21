@@ -703,7 +703,7 @@ const Fleet = () => {
           />
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="-mx-4 w-[calc(100%+2rem)] overflow-hidden border-y border-border md:mx-0 md:w-full md:rounded-xl md:border md:bg-card">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
