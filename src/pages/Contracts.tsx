@@ -133,6 +133,13 @@ const mobileFilterOrder: ContractFilter[] = ["All", "Active", "Expiring Soon", "
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
 const rateTypes: RateType[] = ["Daily", "Monthly", "Annual"];
 const additionalChargeLabels: AdditionalChargeLabel[] = ["Delivery", "Pickup", "Full Tank", "Baby Seat", "Other"];
+const additionalChargeCategories: Record<AdditionalChargeLabel, "delivery" | "pickup" | "fuel" | "other"> = {
+  Delivery: "delivery",
+  Pickup: "pickup",
+  "Full Tank": "fuel",
+  "Baby Seat": "other",
+  Other: "other",
+};
 const rateLabels: Record<RateType, string> = {
   Daily: "Daily Rate (AED per day)",
   Monthly: "Monthly Rate (AED per month)",
@@ -1082,7 +1089,7 @@ const Contracts = () => {
             .insert(
               chargesToInsert.map((charge) => ({
                 contract_id: createdId,
-                category: "extra",
+                category: additionalChargeCategories[charge.label],
                 label: charge.label,
                 amount: Number(charge.amount),
                 owner_id: userId,
