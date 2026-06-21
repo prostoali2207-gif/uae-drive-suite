@@ -6,6 +6,7 @@ import {
   Save,
   X,
   Download,
+  FileDown,
   Plus,
   CalendarPlus,
   CheckCircle2,
@@ -83,6 +84,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import { generateContractPdf } from "@/lib/contractPdf";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -3715,6 +3717,18 @@ const ContractDetail = () => {
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
   const isContractClosed = contract.status.toLowerCase() === "closed";
   const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());
+  const InvoiceButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-8 gap-1.5"
+      onClick={handleDownloadInvoice}
+      disabled={generatingInvoice}
+    >
+      <Download className="h-3.5 w-3.5" />
+      {generatingInvoice ? "Generating..." : "Invoice"}
+    </Button>
+  );
   const rentalFeeLines = sortRentalExtensionFees(contractFees);
   const manualFeeLines = contractFees.filter((fee) => !isRentalExtensionFee(fee));
   const grossPaymentAllocationLines: ContractPaymentAllocationLine[] = [
@@ -3953,11 +3967,18 @@ const ContractDetail = () => {
                   variant="outline"
                   size="sm"
                   className="h-8 gap-1.5"
-                  onClick={handleDownloadInvoice}
-                  disabled={generatingInvoice}
+                  onClick={async () => {
+                    try {
+                      await generateContractPdf(contract);
+                      toast.success("Contract PDF downloaded");
+                    } catch (error) {
+                      toast.error("Failed to generate PDF");
+                      console.error(error);
+                    }
+                  }}
                 >
-                  <Download className="h-3.5 w-3.5" />
-                  {generatingInvoice ? "Generating..." : "Invoice"}
+                  <FileDown className="h-3.5 w-3.5" />
+                  Contract
                 </Button>
                 {canExtendContract && (
                   <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={openExtendModal}>
