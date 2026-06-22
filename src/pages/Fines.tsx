@@ -546,6 +546,7 @@ const Fines = () => {
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="px-5 text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Transaction ID</TableHead>
                   <TableHead className="text-xs">Car</TableHead>
                   <TableHead className="text-xs">Client</TableHead>
                   <TableHead className="text-xs">Trips</TableHead>
@@ -557,16 +558,17 @@ const Fines = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
+                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
                   </TableRow>
                 ) : salik.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
+                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedSalik.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(s.charge_date)}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground">{s.transaction_id || "—"}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{s.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{s.trips}</TableCell>
