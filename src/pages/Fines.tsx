@@ -406,6 +406,7 @@ const Fines = () => {
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="px-5 text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Fine №</TableHead>
                   <TableHead className="text-xs">Car</TableHead>
                   <TableHead className="text-xs">Client</TableHead>
                   <TableHead className="text-xs">Type</TableHead>
@@ -419,16 +420,17 @@ const Fines = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">Loading fines...</TableCell>
+                    <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">Loading fines...</TableCell>
                   </TableRow>
                 ) : fines.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
+                    <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedFines.map((f) => (
                     <TableRow key={f.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(f.fine_date)}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground">{f.fine_number || "—"}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{f.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{f.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{f.fine_type}</TableCell>
