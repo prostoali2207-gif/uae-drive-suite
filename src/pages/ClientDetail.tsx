@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Pencil } from "lucide-react";
+import { ClientEditDialog } from "@/components/ClientEditDialog";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,10 +73,11 @@ const InfoRow = ({ label, value }: { label: string; value?: string | null }) => 
 
 const ClientDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [client, setClient] = useState<ClientRecord | null>(null);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [clientRefreshKey, setClientRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -101,7 +103,7 @@ const ClientDetail = () => {
       setLoading(false);
     };
     fetchData();
-  }, [id]);
+  }, [id, clientRefreshKey]);
 
   const totals = useMemo(() => {
     const totalBilled = contracts.reduce((s, c) => s + Number(c.total_amount), 0);
@@ -147,12 +149,18 @@ const ClientDetail = () => {
             type="button"
             variant="outline"
             className="h-11 gap-2 px-4 py-2 md:hidden"
-            onClick={() => navigate("/clients", { state: { editClientId: client.id } })}
+            onClick={() => setEditOpen(true)}
           >
             <Pencil className="h-4 w-4" />
             Edit
           </Button>
         </div>
+        <ClientEditDialog
+          client={client}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          onSaved={() => setClientRefreshKey((key) => key + 1)}
+        />
 
         <div className="rounded-xl border border-border bg-card p-6">
           <h2 className="text-sm font-semibold text-foreground">Client Information</h2>
