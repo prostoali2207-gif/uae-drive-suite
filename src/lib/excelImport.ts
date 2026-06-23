@@ -64,6 +64,14 @@ async function readSheet(
   const buf = await file.arrayBuffer();
   const data = new Uint8Array(buf);
   const wb = XLSX.read(data, { type: "buffer", cellDates: true, raw: false });
+  function getRawCellValue(ws: XLSX.WorkSheet, col: number, row: number): string {
+    const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+    const cell = ws[cellAddress];
+    if (!cell) return "";
+    // Use raw numeric value if available, formatted string otherwise
+    if (cell.t === "n" && cell.v !== undefined) return String(Math.round(cell.v));
+    return String(cell.w ?? cell.v ?? "");
+  }
   const ws = wb.Sheets[wb.SheetNames[0]];
 
   // Read as 2D array so we can locate the real header row (Salik .xls files
@@ -94,7 +102,12 @@ async function readSheet(
     if (row.every((c) => c === "" || c == null)) continue;
     const obj: Record<string, unknown> = {};
     headers.forEach((h, idx) => {
-      if (h) obj[h] = row[idx] ?? "";
+      if (h) {
+        const strVal = String(row[idx] ?? "");
+        obj[h] = strVal.includes("E+") || strVal.includes("e+")
+          ? getRawCellValue(ws, idx, i)
+          : strVal;
+      }
     });
     out.push(obj);
   }
