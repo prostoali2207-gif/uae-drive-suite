@@ -40,8 +40,10 @@ type ChargeStatus = "Unpaid" | "Charged to Client" | "Paid";
 
 interface FineRow {
   id: string;
+  fine_number: string | null;
   fine_date: string;
   fine_type: string;
+  black_points: number;
   amount: number;
   source: string;
   status: string;
@@ -429,7 +431,16 @@ const Fines = () => {
                   paginatedFines.map((f) => (
                     <TableRow key={f.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(f.fine_date)}</TableCell>
-                      <TableCell className="font-mono text-xs text-foreground">{f.fine_number || "—"}</TableCell>
+                      <TableCell>
+                        <div className="inline-flex items-center gap-1.5 font-mono text-xs text-foreground">
+                          <span>{f.fine_number || "—"}</span>
+                          {f.black_points > 0 && (
+                            <span className="rounded-full bg-red-600 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-white">
+                              BP {f.black_points}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{f.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{f.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{f.fine_type}</TableCell>

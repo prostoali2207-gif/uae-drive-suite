@@ -188,6 +188,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
       client_id: contract?.client_id ?? null,
       contract_id: contract?.id ?? null,
       fine_type: fineType,
+      black_points: parseInt(String(row["Black Points"] ?? "0"), 10) || 0,
       source: source || "",
       original_amount: original,
       service_fee: serviceFee,
