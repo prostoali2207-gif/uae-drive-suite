@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
 import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,14 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -33,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -105,6 +114,7 @@ const Fines = () => {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [fineOpen, setFineOpen] = useState(false);
+  const [fineCarOpen, setFineCarOpen] = useState(false);
   const [salikOpen, setSalikOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<{ kind: "Fines" | "Salik"; summary: ImportSummary } | null>(null);
@@ -136,11 +146,12 @@ const Fines = () => {
   };
 
   const [fineForm, setFineForm] = useState({
+    fine_number: "",
     fine_date: "",
     car_id: "",
-    client_id: "",
     fine_type: "Speeding",
     amount: 0,
+    black_points: "",
     source: "Dubai Police",
     notes: "",
   });
@@ -324,11 +335,11 @@ const Fines = () => {
 
   const handleAddFine = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fineForm.car_id || !fineForm.client_id || !fineForm.fine_date) return;
+    if (!fineForm.car_id || !fineForm.fine_date) return;
 
     const { data: activeContract, error: contractError } = await supabase
       .from("contracts")
-      .select("id")
+      .select("id, client_id")
       .eq("car_id", fineForm.car_id)
       .lte("start_date", fineForm.fine_date)
       .gte("end_date", fineForm.fine_date)
@@ -342,22 +353,36 @@ const Fines = () => {
       return;
     }
 
-    const { error } = await supabase.from("fines").insert({
+    const finePayload = {
+      fine_number: fineForm.fine_number.trim() || null,
       fine_date: fineForm.fine_date,
       car_id: fineForm.car_id,
-      client_id: fineForm.client_id,
+      client_id: activeContract?.client_id ?? null,
       contract_id: activeContract?.id ?? null,
       fine_type: fineForm.fine_type,
       amount: Number(fineForm.amount),
+      black_points: fineForm.black_points === "" ? null : Number(fineForm.black_points),
       source: fineForm.source,
       status: "Unpaid",
       notes: fineForm.notes.trim() || null,
-    });
+    };
+
+    const { error } = await supabase.from("fines").insert(finePayload);
     if (error) {
       toast.error("Failed to add fine: " + error.message);
     } else {
       toast.success("Fine added");
-      setFineForm({ fine_date: "", car_id: "", client_id: "", fine_type: "Speeding", amount: 0, source: "Dubai Police", notes: "" });
+      setFineForm({
+        fine_number: "",
+        fine_date: "",
+        car_id: "",
+        fine_type: "Speeding",
+        amount: 0,
+        black_points: "",
+        source: "Dubai Police",
+        notes: "",
+      });
+      setFineCarOpen(false);
       setFineOpen(false);
       fetchData();
     }
@@ -467,28 +492,71 @@ const Fines = () => {
                   <DialogDescription>Manually record a new fine for a vehicle.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleAddFine} className="grid gap-4 py-2">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5 sm:col-span-2">
+                      <Label htmlFor="f-number">Fine Number</Label>
+                      <Input
+                        id="f-number"
+                        type="text"
+                        value={fineForm.fine_number}
+                        onChange={(e) => setFineForm({ ...fineForm, fine_number: e.target.value })}
+                      />
+                    </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="f-date">Date</Label>
                       <Input id="f-date" type="date" required value={fineForm.fine_date} onChange={(e) => setFineForm({ ...fineForm, fine_date: e.target.value })} />
                     </div>
                     <div className="grid gap-1.5">
                       <Label>Car</Label>
-                      <Select value={fineForm.car_id} onValueChange={(v) => setFineForm({ ...fineForm, car_id: v })}>
-                        <SelectTrigger><SelectValue placeholder="Select car" /></SelectTrigger>
-                        <SelectContent>
-                          {cars.map((c) => <SelectItem key={c.id} value={c.id}>{c.plate} — {c.make} {c.model}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-2 grid gap-1.5">
-                      <Label>Client</Label>
-                      <Select value={fineForm.client_id} onValueChange={(v) => setFineForm({ ...fineForm, client_id: v })}>
-                        <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
-                        <SelectContent>
-                          {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Popover open={fineCarOpen} onOpenChange={setFineCarOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={fineCarOpen}
+                            className="w-full justify-between font-normal"
+                          >
+                            <span className={cn("truncate", !fineForm.car_id && "text-muted-foreground")}>
+                              {fineForm.car_id
+                                ? (() => {
+                                    const car = cars.find((item) => item.id === fineForm.car_id);
+                                    return car ? `${car.plate} — ${car.make} ${car.model}` : "Select car";
+                                  })()
+                                : "Select car"}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search plate or model..." />
+                            <CommandList>
+                              <CommandEmpty>No car found.</CommandEmpty>
+                              <CommandGroup>
+                                {cars.map((car) => (
+                                  <CommandItem
+                                    key={car.id}
+                                    value={`${car.plate} ${car.make} ${car.model}`}
+                                    onSelect={() => {
+                                      setFineForm({ ...fineForm, car_id: car.id });
+                                      setFineCarOpen(false);
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        fineForm.car_id === car.id ? "opacity-100" : "opacity-0",
+                                      )}
+                                    />
+                                    <span className="truncate">{car.plate} — {car.make} {car.model}</span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     <div className="grid gap-1.5">
                       <Label>Fine Type</Label>
@@ -503,7 +571,19 @@ const Fines = () => {
                       <Label htmlFor="f-amt">Amount (AED)</Label>
                       <Input id="f-amt" type="number" min={0} required value={fineForm.amount} onChange={(e) => setFineForm({ ...fineForm, amount: Number(e.target.value) })} />
                     </div>
-                    <div className="col-span-2 grid gap-1.5">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="f-black-points">Black Points</Label>
+                      <Input
+                        id="f-black-points"
+                        type="number"
+                        min={0}
+                        max={30}
+                        step={1}
+                        value={fineForm.black_points}
+                        onChange={(e) => setFineForm({ ...fineForm, black_points: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
                       <Label>Source</Label>
                       <Select value={fineForm.source} onValueChange={(v) => setFineForm({ ...fineForm, source: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -512,7 +592,7 @@ const Fines = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-2 grid gap-1.5">
+                    <div className="grid gap-1.5 sm:col-span-2">
                       <Label htmlFor="f-notes">Notes</Label>
                       <Textarea id="f-notes" rows={2} value={fineForm.notes} onChange={(e) => setFineForm({ ...fineForm, notes: e.target.value })} />
                     </div>
