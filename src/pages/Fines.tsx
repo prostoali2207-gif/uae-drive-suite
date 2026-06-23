@@ -413,7 +413,6 @@ const Fines = () => {
                   <TableHead className="text-xs">Amount</TableHead>
                   <TableHead className="text-xs">Source</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="text-xs">Notes</TableHead>
                   <TableHead className="px-5 text-xs text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -441,7 +440,6 @@ const Fines = () => {
                           {f.status}
                         </span>
                       </TableCell>
-                      <TableCell className="max-w-[180px] truncate text-xs text-muted-foreground">{f.notes || "—"}</TableCell>
                       <TableCell className="px-5 text-right">
                         {f.status === "Unpaid" && (
                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
