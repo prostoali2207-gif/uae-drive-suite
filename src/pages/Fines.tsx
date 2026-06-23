@@ -432,11 +432,12 @@ const Fines = () => {
                     <TableRow key={f.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(f.fine_date)}</TableCell>
                       <TableCell>
-                        <div className="inline-flex items-center gap-1.5 font-mono text-xs text-foreground">
-                          <span>{f.fine_number || "—"}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-sm">{f.fine_number || "—"}</span>
                           {f.black_points > 0 && (
-                            <span className="rounded-full bg-red-600 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-white">
-                              BP {f.black_points}
+                            <span className="flex items-center gap-1">
+                              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-red-500" />
+                              <span className="font-mono text-xs text-red-400">{f.black_points} BP</span>
                             </span>
                           )}
                         </div>
