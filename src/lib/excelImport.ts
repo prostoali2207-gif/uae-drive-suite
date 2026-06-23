@@ -122,9 +122,9 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     totalRows: 0, imported: 0, skippedZero: 0, skippedDuplicate: 0,
     unmatchedPlates: [], errors: [],
   };
-  const rows = await readSheet(file);
-  summary.totalRows = rows.length;
-  if (!rows.length) return summary;
+  const parsedRows = (await readSheet(file)).map((row) => ({ ...row, fineNumber: String(row["Fine Number"]) }));
+  summary.totalRows = parsedRows.length;
+  if (!parsedRows.length) return summary;
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
@@ -145,8 +145,8 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   const toInsert: Record<string, unknown>[] = [];
   const seenInBatch = new Set<string>();
 
-  for (const row of rows) {
-    const fineNumber = norm(getField(row, "Fine Number", "FineNumber", "Fine No"));
+  for (const row of parsedRows) {
+    const fineNumber = norm(row.fineNumber);
     const plate = norm(getField(row, "Plate Number", "Plate"));
     const dateIso = parseDate(getField(row, "Date", "Fine Date"));
     const source = norm(getField(row, "Source"));
