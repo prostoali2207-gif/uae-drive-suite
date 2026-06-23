@@ -7,6 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -33,7 +44,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 
 type ChargeStatus = "Unpaid" | "Charged to Client" | "Paid";
@@ -50,18 +61,21 @@ interface FineRow {
   notes: string | null;
   car_id: string | null;
   client_id: string | null;
+  contract_id: string | null;
   cars: { plate: string } | null;
   clients: { full_name: string } | null;
 }
 
 interface SalikRow {
   id: string;
+  transaction_id: string | null;
   charge_date: string;
   trips: number;
   amount: number;
   status: string;
   car_id: string | null;
   client_id: string | null;
+  contract_id: string | null;
   cars: { plate: string } | null;
   clients: { full_name: string } | null;
 }
@@ -100,6 +114,8 @@ const Fines = () => {
   const [finesPageSize, setFinesPageSize] = useState(25);
   const [salikPage, setSalikPage] = useState(1);
   const [salikPageSize, setSalikPageSize] = useState(25);
+  const [chargingAllFines, setChargingAllFines] = useState(false);
+  const [chargingAllSalik, setChargingAllSalik] = useState(false);
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: "Fines" | "Salik") => {
     const file = e.target.files?.[0];
@@ -197,10 +213,94 @@ const Fines = () => {
     [salik],
   );
 
+  const chargeableFines = useMemo(
+    () => fines.filter((fine) => fine.status === "Unpaid" && fine.contract_id !== null),
+    [fines],
+  );
+
+  const chargeableSalik = useMemo(
+    () => salik.filter((charge) => charge.status === "Unpaid" && charge.contract_id !== null),
+    [salik],
+  );
+
+  const chargeableFinesTotal = useMemo(
+    () => chargeableFines.reduce((sum, fine) => sum + Number(fine.amount), 0),
+    [chargeableFines],
+  );
+
+  const chargeableSalikTotal = useMemo(
+    () => chargeableSalik.reduce((sum, charge) => sum + Number(charge.amount), 0),
+    [chargeableSalik],
+  );
+
   const salikBalance = useMemo(
     () => salik.reduce((sum, s) => sum + Number(s.amount), 0),
     [salik],
   );
+
+  const refetchFines = async () => {
+    const { data, error } = await supabase
+      .from("fines")
+      .select("*, cars(plate), clients(full_name)")
+      .order("fine_date", { ascending: false });
+
+    if (error) throw error;
+    setFines((data as FineRow[]) || []);
+  };
+
+  const refetchSalik = async () => {
+    const { data, error } = await supabase
+      .from("salik")
+      .select("*, cars(plate), clients(full_name)")
+      .order("charge_date", { ascending: false });
+
+    if (error) throw error;
+    setSalik((data as SalikRow[]) || []);
+  };
+
+  const chargeAllUnpaidFines = async () => {
+    const count = chargeableFines.length;
+    if (count === 0) return;
+
+    setChargingAllFines(true);
+    try {
+      const { error } = await supabase
+        .from("fines")
+        .update({ status: "Charged to Client" })
+        .eq("status", "Unpaid")
+        .not("contract_id", "is", null);
+
+      if (error) throw error;
+      await refetchFines();
+      toast.success(`${count} fines charged to clients`);
+    } catch (error) {
+      toast.error(`Failed to charge fines: ${(error as Error).message}`);
+    } finally {
+      setChargingAllFines(false);
+    }
+  };
+
+  const chargeAllUnpaidSalik = async () => {
+    const count = chargeableSalik.length;
+    if (count === 0) return;
+
+    setChargingAllSalik(true);
+    try {
+      const { error } = await supabase
+        .from("salik")
+        .update({ status: "Charged to Client" })
+        .eq("status", "Unpaid")
+        .not("contract_id", "is", null);
+
+      if (error) throw error;
+      await refetchSalik();
+      toast.success(`${count} Salik charges charged to clients`);
+    } catch (error) {
+      toast.error(`Failed to charge Salik: ${(error as Error).message}`);
+    } finally {
+      setChargingAllSalik(false);
+    }
+  };
 
   const chargeFineToClient = async (id: string) => {
     const { error } = await supabase.from("fines").update({ status: "Charged to Client" }).eq("id", id);
@@ -226,7 +326,7 @@ const Fines = () => {
     e.preventDefault();
     if (!fineForm.car_id || !fineForm.client_id || !fineForm.fine_date) return;
 
-    const { data: activeContract, error: contractError } = await (supabase as any)
+    const { data: activeContract, error: contractError } = await supabase
       .from("contracts")
       .select("id")
       .eq("car_id", fineForm.car_id)
@@ -267,7 +367,7 @@ const Fines = () => {
     e.preventDefault();
     if (!salikForm.car_id || !salikForm.client_id || !salikForm.charge_date) return;
 
-    const { data: activeContract, error: contractError } = await (supabase as any)
+    const { data: activeContract, error: contractError } = await supabase
       .from("contracts")
       .select("id")
       .eq("car_id", salikForm.car_id)
@@ -325,12 +425,35 @@ const Fines = () => {
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <input ref={finesFileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Fines")} />
             <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => finesFileRef.current?.click()}>
               <Upload className="h-4 w-4" />
               {importing ? "Importing..." : "Import Fines (Excel)"}
             </Button>
+            {chargeableFines.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="outline" disabled={chargingAllFines}>
+                    Charge All Unpaid
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Charge all unpaid fines?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {chargeableFines.length} fines totalling AED {chargeableFinesTotal.toLocaleString()} will be charged to their clients.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={chargingAllFines}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction disabled={chargingAllFines} onClick={chargeAllUnpaidFines}>
+                      {chargingAllFines ? "Charging..." : "Charge All"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Dialog open={fineOpen} onOpenChange={setFineOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5">
@@ -491,12 +614,35 @@ const Fines = () => {
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <input ref={salikFileRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Salik")} />
             <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => salikFileRef.current?.click()}>
               <Upload className="h-4 w-4" />
               {importing ? "Importing..." : "Import Salik (Excel)"}
             </Button>
+            {chargeableSalik.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="outline" disabled={chargingAllSalik}>
+                    Charge All Unpaid
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Charge all unpaid Salik?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {chargeableSalik.length} Salik charges totalling AED {chargeableSalikTotal.toLocaleString()} will be charged to their clients.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={chargingAllSalik}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction disabled={chargingAllSalik} onClick={chargeAllUnpaidSalik}>
+                      {chargingAllSalik ? "Charging..." : "Charge All"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Dialog open={salikOpen} onOpenChange={setSalikOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5">
