@@ -26,6 +26,7 @@ interface ContractFine {
   id: string;
   fine_number: string | null;
   fine_type: string;
+  black_points: number | string | null;
   amount: number | string | null;
   fine_date: string;
   status: FineStatus;
@@ -76,7 +77,7 @@ export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) 
     try {
       const { data, error } = await (supabaseClient as any)
         .from("fines")
-        .select("id, fine_number, fine_type, amount, fine_date, status, paid_at, notes")
+        .select("id, fine_number, fine_type, black_points, amount, fine_date, status, paid_at, notes")
         .eq("contract_id", contractId)
         .order("fine_date", { ascending: false });
 
@@ -177,6 +178,7 @@ export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) 
                 const statusClass = statusStyles[fine.status] ?? statusStyles.Unpaid;
                 const isPaid = fine.status === "Paid";
                 const isPaying = payingFineId === fine.id;
+                const blackPoints = Number(fine.black_points) || 0;
 
                 return (
                   <div
@@ -185,24 +187,35 @@ export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) 
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-[#e8eaf0]">
-                          {fine.fine_type || "Traffic fine"}
+                        <h3 className="break-words font-mono text-base font-semibold leading-5 text-[#e8eaf0]">
+                          {fine.fine_number || "No fine number"}
                         </h3>
-                        <p className="mt-1 font-ibm-plex-mono text-[11px] text-[#e8eaf0]/55">
-                          {formatDate(fine.fine_date)}
-                          {fine.fine_number ? ` - ${fine.fine_number}` : ""}
-                        </p>
+                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <p className="min-w-0 break-words text-xs leading-5 text-[#e8eaf0]/60">
+                            {formatDate(fine.fine_date)} · {(fine.fine_type || "Traffic fine").slice(0, 30)}
+                          </p>
+                          {blackPoints > 0 ? (
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 rounded-full border-[#f59e0b]/25 bg-[#f59e0b]/15 px-2 py-0.5 text-[10px] font-semibold text-[#f59e0b]"
+                            >
+                              ● {blackPoints} BP
+                            </Badge>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="font-ibm-plex-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                        <p className="font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
                           {formatAed(toAmount(fine.amount))}
                         </p>
-                        <Badge
-                          variant="outline"
-                          className={cn("mt-2 rounded-full px-2 py-0.5 text-[10px]", statusClass)}
-                        >
-                          {fine.status || "Unpaid"}
-                        </Badge>
+                        {fine.status !== "Charged to Client" ? (
+                          <Badge
+                            variant="outline"
+                            className={cn("mt-2 rounded-full px-2 py-0.5 text-[10px]", statusClass)}
+                          >
+                            {fine.status || "Unpaid"}
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
 
