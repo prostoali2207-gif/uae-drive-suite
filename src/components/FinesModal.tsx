@@ -245,9 +245,9 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
 
     return (
       <div className="mt-3 -mx-3 border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
-        <div className="space-y-3">
-          <div className="flex gap-3">
-            <div className="grid flex-[7] gap-1.5">
+        <div className="flex flex-col md:flex-row md:items-end md:gap-3 md:flex-wrap">
+          <div className="flex w-full gap-3 md:w-auto">
+            <div className="grid w-full gap-1.5 md:w-48">
               <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
               <Input
                 type="number"
@@ -258,7 +258,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                 className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-[#e8eaf0]"
               />
             </div>
-            <div className="grid flex-[3] gap-1.5">
+            <div className="grid w-full gap-1.5 md:w-24">
               <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
               <Input
                 type="number"
@@ -270,7 +270,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
               />
             </div>
           </div>
-          <div className="space-y-1">
+          <div className="w-full space-y-1 text-sm md:w-auto md:self-center">
             <div className="flex items-center justify-between gap-3 text-xs text-[#e8eaf0]/55">
               <span>Tax amount</span>
               <span className="font-mono tabular-nums">{formatAed(taxAmount)}</span>
@@ -284,7 +284,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
             value={paymentDraft.method}
             onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
           >
-            <SelectTrigger className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] py-2 text-sm text-[#e8eaf0]">
+            <SelectTrigger className="h-9 w-full rounded-lg border border-[#2a3a55] bg-[#1a2338] py-2 text-sm text-[#e8eaf0] md:w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -294,7 +294,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
               <SelectItem value="Cheque">Cheque</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex gap-2">
+          <div className="flex w-full gap-2 md:w-auto">
             <Button
               type="button"
               size="sm"
