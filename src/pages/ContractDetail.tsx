@@ -2817,66 +2817,66 @@ const ContractDetail = () => {
         }
       };
 
-      const headerTextX = logoImage ? margin + 62 : margin;
-      const headerMaxW = pageW - margin * 2 - 240 - (headerTextX - margin);
+      const headerTextX = logoImage ? margin + 54 : margin;
+      const headerMaxW = pageW - margin * 2 - 208 - (headerTextX - margin);
       if (logoImage) {
-        drawImageFit(logoImage, margin, 38, 48, 48);
+        drawImageFit(logoImage, margin, 38, 40, 40);
       }
       const companyNameLines = (doc.splitTextToSize(companyName, headerMaxW) as string[]).slice(0, 2);
       companyNameLines.forEach((line, index) => {
-        text(line, headerTextX, 50 + index * 12, { size: 13, style: "bold", color: navy });
+        text(line, headerTextX, 49 + index * 11, { size: 12, style: "bold", color: navy });
       });
-      const contactStartY = 54 + companyNameLines.length * 12;
+      const contactStartY = 52 + companyNameLines.length * 11;
       const companyContactLines = [
-        ...doc.splitTextToSize(companyAddress, headerMaxW).slice(0, 2),
+        ...doc.splitTextToSize(companyAddress, headerMaxW).slice(0, 3),
         companyPhone ? `Phone: ${companyPhone}` : "",
       ].filter(Boolean);
       companyContactLines.forEach((line, index) => {
-        text(line, headerTextX, contactStartY + index * 10, { size: 8, color: grey });
+        text(line, headerTextX, contactStartY + index * 9, { size: 7.5, color: grey });
       });
       if (companyTrn) {
-        const trnY = contactStartY + companyContactLines.length * 10 + 6;
+        const trnY = contactStartY + companyContactLines.length * 9 + 5;
         doc.setFillColor(243, 244, 246);
-        doc.roundedRect(headerTextX, trnY - 12, 150, 18, 3, 3, "F");
-        text(`TRN: ${companyTrn}`, headerTextX + 6, trnY, { size: 8, font: "courier", color: [55, 65, 81] });
+        doc.roundedRect(headerTextX, trnY - 11, 146, 16, 3, 3, "F");
+        text(`TRN: ${companyTrn}`, headerTextX + 6, trnY, { size: 7.5, font: "courier", color: [55, 65, 81] });
       }
 
-      text("TAX INVOICE", pageW - margin, 54, { size: 20, style: "bold", color: navy, align: "right" });
-      text("Original Document", pageW - margin, 70, { size: 8, color: grey, align: "right" });
+      text("TAX INVOICE", pageW - margin, 52, { size: 19, style: "bold", color: navy, align: "right" });
+      text("Original Document", pageW - margin, 67, { size: 8, color: grey, align: "right" });
       const metaX = pageW - margin - 150;
       [
         ["Invoice No", invoiceNo],
         ["Date", invoiceDate],
       ].forEach(([label, value], index) => {
-        const y = 91 + index * 16;
+        const y = 86 + index * 15;
         text(label, metaX, y, { size: 9, color: grey, align: "right" });
         text(value, metaX + 16, y, { size: 9, font: "courier" });
       });
-      text("Status", metaX, 123, { size: 9, color: grey, align: "right" });
+      text("Status", metaX, 116, { size: 9, color: grey, align: "right" });
       doc.setFillColor(...statusColors.fill);
-      doc.roundedRect(metaX + 16, 111, 90, 17, 8, 8, "F");
-      text(invoiceStatus, metaX + 61, 123, { size: 8, style: "bold", color: statusColors.text, align: "center" });
+      doc.roundedRect(metaX + 16, 104, 90, 17, 8, 8, "F");
+      text(invoiceStatus, metaX + 61, 116, { size: 8, style: "bold", color: statusColors.text, align: "center" });
 
       doc.setDrawColor(...navy);
       doc.setLineWidth(1.4);
-      doc.line(margin, 132, pageW - margin, 132);
+      doc.line(margin, 124, pageW - margin, 124);
 
-      const blockY = 154;
+      const blockY = 136;
       const blockW = (pageW - margin * 2 - 16) / 2;
       const drawInfoBlock = (x: number, title: string, main: string, lines: Array<[string, string]>, plate?: string) => {
         doc.setFillColor(...lightGrey);
         doc.setDrawColor(...borderGrey);
-        doc.roundedRect(x, blockY, blockW, 86, 6, 6, "FD");
-        text(title.toUpperCase(), x + 12, blockY + 18, { size: 7, style: "bold", color: [156, 163, 175] });
-        text(main, x + 12, blockY + 36, { size: 11, style: "bold" });
+        doc.roundedRect(x, blockY, blockW, 76, 6, 6, "FD");
+        text(title.toUpperCase(), x + 12, blockY + 16, { size: 7, style: "bold", color: [156, 163, 175] });
+        text(main, x + 12, blockY + 33, { size: 10.5, style: "bold" });
         lines.forEach(([key, value], index) => {
-          text(key, x + 12, blockY + 53 + index * 13, { size: 8, color: [156, 163, 175] });
-          text(value || "-", x + 66, blockY + 53 + index * 13, { size: 8, color: [75, 85, 99] });
+          text(key, x + 12, blockY + 48 + index * 11, { size: 7.5, color: [156, 163, 175] });
+          text(value || "-", x + 66, blockY + 48 + index * 11, { size: 7.5, color: [75, 85, 99] });
         });
         if (plate) {
           doc.setFillColor(229, 231, 235);
-          doc.roundedRect(x + 12, blockY + 59, 82, 18, 3, 3, "F");
-          text(plate, x + 18, blockY + 71, { size: 9, font: "courier", style: "bold", color: navy });
+          doc.roundedRect(x + 12, blockY + 55, 82, 16, 3, 3, "F");
+          text(plate, x + 18, blockY + 66, { size: 8.5, font: "courier", style: "bold", color: navy });
         }
       };
       drawInfoBlock(margin, "Invoice To", client?.full_name || "-", [
@@ -2892,32 +2892,32 @@ const ContractDetail = () => {
       );
 
       doc.setFillColor(...navy);
-      doc.roundedRect(margin, 252, pageW - margin * 2, 48, 6, 6, "F");
-      text("RENTAL PERIOD", margin + 16, 271, { size: 8, color: [156, 163, 175], style: "bold" });
-      text(`${formatDate(contract.start_date)} -> ${formatDate(contract.end_date)}`, margin + 16, 288, {
-        size: 10,
+      doc.roundedRect(margin, 224, pageW - margin * 2, 40, 6, 6, "F");
+      text("RENTAL PERIOD", margin + 16, 241, { size: 7.5, color: [156, 163, 175], style: "bold" });
+      text(`${formatDate(contract.start_date)} -> ${formatDate(contract.end_date)}`, margin + 16, 257, {
+        size: 9.5,
         font: "courier",
         color: [255, 255, 255],
       });
-      text(String(rentalDays), pageW - margin - 20, 277, {
-        size: 20,
+      text(String(rentalDays), pageW - margin - 20, 248, {
+        size: 18,
         font: "courier",
         style: "bold",
         color: [255, 255, 255],
         align: "right",
       });
-      text("days", pageW - margin - 20, 292, { size: 8, color: [156, 163, 175], align: "right" });
+      text("days", pageW - margin - 20, 261, { size: 7.5, color: [156, 163, 175], align: "right" });
 
       autoTable(doc, {
-        startY: 324,
+        startY: 286,
         head: [["#", "Description", "Qty", "Amount", "VAT 5%", "Total"]],
         body: rows,
         theme: "plain",
         margin: { left: margin, right: margin },
         styles: {
           font: "helvetica",
-          fontSize: 9,
-          cellPadding: { top: 8, right: 10, bottom: 8, left: 10 },
+          fontSize: 8.5,
+          cellPadding: { top: 5, right: 8, bottom: 5, left: 8 },
           lineColor: borderGrey,
           lineWidth: 0.5,
           valign: "top",
@@ -2946,7 +2946,7 @@ const ContractDetail = () => {
         },
       });
 
-      const tableEndY = ((doc as any).lastAutoTable?.finalY ?? 430) + 12;
+      const tableEndY = ((doc as any).lastAutoTable?.finalY ?? 410) + 8;
       doc.setDrawColor(...borderGrey);
       doc.line(margin, tableEndY, pageW - margin, tableEndY);
       const totalsX = pageW - margin - 250;
@@ -2958,12 +2958,12 @@ const ContractDetail = () => {
         ["Paid Amount", `- ${aed(paidAmount)}`, "paid"],
         ["Remaining Balance", aed(remainingBalance), "remaining"],
       ];
-      let y = tableEndY + 18;
+      let y = tableEndY + 14;
       totalsRows.forEach(([label, value, kind]) => {
         if (kind === "total" || kind === "remaining") {
           doc.setDrawColor(kind === "remaining" ? 220 : 17, kind === "remaining" ? 38 : 24, kind === "remaining" ? 38 : 39);
           doc.setLineWidth(1.2);
-          doc.line(totalsX, y - 12, pageW - margin, y - 12);
+          doc.line(totalsX, y - 10, pageW - margin, y - 10);
         }
         const color =
           kind === "paid"
@@ -2974,51 +2974,51 @@ const ContractDetail = () => {
                 ? [156, 163, 175]
                 : [107, 114, 128];
         text(label, totalsX, y, {
-          size: kind === "total" ? 11 : kind === "remaining" ? 10 : 9,
+          size: kind === "total" ? 10.5 : kind === "remaining" ? 9.5 : 8.5,
           style: kind === "total" || kind === "remaining" ? "bold" : "normal",
           color,
         });
         text(value, pageW - margin, y, {
-          size: kind === "total" ? 11 : kind === "remaining" ? 10 : 9,
+          size: kind === "total" ? 10.5 : kind === "remaining" ? 9.5 : 8.5,
           style: kind === "total" || kind === "remaining" || kind === "paid" ? "bold" : "normal",
           font: "courier",
           color,
           align: "right",
         });
-        y += kind === "total" ? 24 : 18;
+        y += kind === "total" ? 20 : 15;
       });
 
       let bankBottomY = y;
       if (bankRows.length > 0) {
-        const bankY = y + 8;
+        const bankY = y + 4;
         const bankW = pageW - margin * 2;
-        const labelW = 96;
+        const labelW = 100;
         const valueX = margin + 12 + labelW;
         const valueW = bankW - labelW - 24;
         const wrappedBankRows = bankRows.map(([label, value]) => ({
           label,
           lines: doc.splitTextToSize(value, valueW) as string[],
         }));
-        const bankH = 30 + wrappedBankRows.reduce((height, row) => height + Math.max(15, row.lines.length * 11), 0);
+        const bankH = 24 + wrappedBankRows.reduce((height, row) => height + Math.max(13, row.lines.length * 10), 0);
         doc.setDrawColor(...borderGrey);
         doc.roundedRect(margin, bankY - 14, bankW, bankH, 6, 6);
         text("BANK DETAILS", margin + 12, bankY + 2, { size: 7, color: [156, 163, 175], style: "bold" });
-        let bankRowY = bankY + 20;
+        let bankRowY = bankY + 17;
         wrappedBankRows.forEach(({ label, lines }) => {
-          text(label, margin + 12, bankRowY, { size: 8, color: [107, 114, 128] });
+          text(label, margin + 12, bankRowY, { size: 7.5, color: [107, 114, 128] });
           lines.forEach((line, lineIndex) => {
-            text(line, valueX, bankRowY + lineIndex * 11, {
-              size: 8,
+            text(line, valueX, bankRowY + lineIndex * 10, {
+              size: 7.5,
               font: label === "IBAN" ? "courier" : "helvetica",
               color: [17, 24, 39],
             });
           });
-          bankRowY += Math.max(15, lines.length * 11);
+          bankRowY += Math.max(13, lines.length * 10);
         });
         bankBottomY = bankY - 14 + bankH;
       }
 
-      const sigY = Math.max(y + 18, bankBottomY + 22, 606);
+      const sigY = Math.max(y + 12, bankBottomY + 14, 568);
       doc.setDrawColor(...borderGrey);
       doc.line(margin, sigY - 14, pageW - margin, sigY - 14);
       const sigW = (pageW - margin * 2 - 24) / 3;
@@ -3026,13 +3026,13 @@ const ContractDetail = () => {
         const x = margin + index * (sigW + 12);
         doc.setDrawColor(209, 213, 219);
         doc.setLineDashPattern([3, 3], 0);
-        doc.roundedRect(x, sigY, sigW, 68, 5, 5);
+        doc.roundedRect(x, sigY, sigW, 56, 5, 5);
         doc.setLineDashPattern([], 0);
         if (label === "Company Stamp" && stampImage) {
           const stampW = Math.min(90, sigW - 18);
-          drawImageFit(stampImage, x + (sigW - stampW) / 2, sigY + 5, stampW, 58);
+          drawImageFit(stampImage, x + (sigW - stampW) / 2, sigY + 4, stampW, 48);
         }
-        text(label.toUpperCase(), x + sigW / 2, sigY + 86, {
+        text(label.toUpperCase(), x + sigW / 2, sigY + 72, {
           size: 7,
           color: [156, 163, 175],
           style: "bold",
@@ -3040,16 +3040,11 @@ const ContractDetail = () => {
         });
       });
 
-      const remarksY = sigY + 112;
+      const remarksY = sigY + 84;
       doc.setDrawColor(...borderGrey);
-      doc.roundedRect(margin, remarksY, pageW - margin * 2, 54, 6, 6);
-      text("REMARKS", margin + 12, remarksY + 18, { size: 7, color: [156, 163, 175], style: "bold" });
-      text("Notes or comments...", margin + 12, remarksY + 36, { size: 9, color: [209, 213, 219], style: "normal" });
-
-      doc.setDrawColor(...navy);
-      doc.setLineWidth(1.4);
-      doc.line(margin, pageH - 42, pageW - margin, pageH - 42);
-      text("Thank you for your business", margin, pageH - 24, { size: 8, color: [156, 163, 175] });
+      doc.roundedRect(margin, remarksY, pageW - margin * 2, 38, 6, 6);
+      text("REMARKS", margin + 12, remarksY + 15, { size: 7, color: [156, 163, 175], style: "bold" });
+      text("Notes or comments...", margin + 12, remarksY + 29, { size: 8, color: [209, 213, 219], style: "normal" });
 
       doc.save(`Invoice-${contract.id}.pdf`);
       toast.success("Invoice downloaded");
