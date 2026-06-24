@@ -168,6 +168,13 @@ interface PaymentRow {
 }
 
 type PaymentMethod = "Cash" | "Card" | "Transfer";
+type InlinePaymentMethod = "Cash" | "Card" | "Bank Transfer" | "Cheque";
+
+type InlinePaymentDraft = {
+  amount: string;
+  taxRate: string;
+  method: InlinePaymentMethod;
+};
 
 interface ExtensionCandidateRow {
   id: string;
@@ -1167,7 +1174,13 @@ const FinancialsAccordion = ({
 
     </div>
 
-      <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
+      <FinesModal
+        contractId={contract.id}
+        clientId={contract.client_id}
+        ownerId={contract.owner_id}
+        open={showFinesModal}
+        onOpenChange={setShowFinesModal}
+      />
       <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
 
     </>
@@ -1193,6 +1206,7 @@ type FinancialsPanelProps = {
   onDeleteFee: (fee: ContractFeeRow) => void;
   onMarkDepositReturned: (amount: number) => void;
   markingDepositReturned: boolean;
+  onInlinePaymentRecorded: () => void;
 };
 
 const FinancialBadge = ({ status }: { status: string }) => {
@@ -1284,6 +1298,16 @@ type FinancialTransaction = {
   contractFee?: ContractFeeRow;
 };
 
+type OpenItemGroup = {
+  id: string;
+  title: string;
+  detail: string;
+  meta: string;
+  due: number;
+  icon: React.ComponentType<{ className?: string }>;
+  iconTone: "blue" | "green" | "amber" | "violet";
+};
+
 const FinancialsPanel = ({
   contract,
   days,
@@ -1303,6 +1327,7 @@ const FinancialsPanel = ({
   onDeleteFee,
   onMarkDepositReturned,
   markingDepositReturned,
+  onInlinePaymentRecorded,
 }: FinancialsPanelProps) => {
   const rentalExtensions = sortRentalExtensionFees(contractFees);
   const otherFees = contractFees.filter((fee) => !rentalExtensions.some((extension) => extension.id === fee.id));
@@ -1361,20 +1386,16 @@ const FinancialsPanel = ({
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
   const [expandedPaymentTransactionIds, setExpandedPaymentTransactionIds] = useState<Set<string>>(new Set());
+  const [openInlinePaymentId, setOpenInlinePaymentId] = useState<string | null>(null);
+  const [inlinePaymentDraft, setInlinePaymentDraft] = useState<InlinePaymentDraft>({
+    amount: "",
+    taxRate: "0",
+    method: "Cash",
+  });
+  const [savingInlinePayment, setSavingInlinePayment] = useState(false);
 
   const openItemGroups = useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        id: string;
-        title: string;
-        detail: string;
-        meta: string;
-        due: number;
-        icon: React.ComponentType<{ className?: string }>;
-        iconTone: "blue" | "green" | "amber" | "violet";
-      }
-    >();
+    const groups = new Map<string, OpenItemGroup>();
 
     unpaidAllocationLines.forEach((line) => {
       const existing = groups.get(line.category);
@@ -1618,6 +1639,172 @@ const FinancialsPanel = ({
     return "bg-purple-950 text-purple-300";
   };
 
+  const getOpenItemAllocationLines = (item: OpenItemGroup) => {
+    if (item.id === "rental") return unpaidAllocationLines.filter((line) => line.category === "rental");
+    if (item.id.startsWith("fee-")) return unpaidAllocationLines.filter((line) => line.id === item.id);
+    return unpaidAllocationLines.filter((line) => line.category === item.id);
+  };
+
+  const toggleInlinePayment = (item: OpenItemGroup) => {
+    if (openInlinePaymentId === item.id) {
+      setOpenInlinePaymentId(null);
+      return;
+    }
+
+    setInlinePaymentDraft({
+      amount: Number(item.due).toFixed(2),
+      taxRate: "0",
+      method: "Cash",
+    });
+    setOpenInlinePaymentId(item.id);
+  };
+
+  const recordInlinePayment = async (item: OpenItemGroup) => {
+    const amount = Number(inlinePaymentDraft.amount);
+    const taxRate = Number(inlinePaymentDraft.taxRate);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid payment amount");
+      return;
+    }
+    if (!Number.isFinite(taxRate) || taxRate < 0) {
+      toast.error("Enter a valid tax rate");
+      return;
+    }
+
+    const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
+    const lineAllocations: Record<string, number> = {};
+    const groupedAllocations: SavedPaymentAllocations = {
+      rental: 0,
+      fines: 0,
+      salik: 0,
+      fees: 0,
+      lines: lineAllocations,
+    };
+    let remaining = amount;
+
+    for (const line of getOpenItemAllocationLines(item)) {
+      if (remaining <= 0) break;
+      const allocated = Math.min(Number(line.due), remaining);
+      if (allocated <= 0) continue;
+      const roundedAllocated = Math.round(allocated * 100) / 100;
+      lineAllocations[line.id] = roundedAllocated;
+      groupedAllocations[line.category] += roundedAllocated;
+      remaining -= allocated;
+    }
+
+    setSavingInlinePayment(true);
+    const { error } = await supabase.from("payments").insert({
+      amount,
+      tax_rate: taxRate,
+      tax_amount: taxAmount,
+      method: inlinePaymentDraft.method,
+      contract_id: contract.id,
+      client_id: contract.client_id,
+      owner_id: contract.owner_id,
+      payment_date: getTodayDateInput(),
+      status: "Paid",
+      allocations: groupedAllocations,
+    } as never);
+
+    setSavingInlinePayment(false);
+
+    if (error) {
+      toast.error("Failed to record payment");
+      return;
+    }
+
+    toast.success("Payment recorded");
+    setOpenInlinePaymentId(null);
+    onInlinePaymentRecorded();
+  };
+
+  const renderInlinePaymentForm = (item: OpenItemGroup) => {
+    const amount = Number(inlinePaymentDraft.amount) || 0;
+    const taxRate = Number(inlinePaymentDraft.taxRate) || 0;
+    const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
+    const total = Math.round((amount + taxAmount) * 100) / 100;
+
+    return (
+      <div className="bg-muted/20 px-4 py-3">
+        <div className="grid gap-3 rounded-md border border-border bg-card p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:items-end">
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={inlinePaymentDraft.amount}
+              onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
+              className="h-9 font-mono tabular-nums"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tax %</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={inlinePaymentDraft.taxRate}
+              onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
+              className="h-9 font-mono tabular-nums"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tax Amount</Label>
+            <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 font-mono text-sm tabular-nums">
+              {fmtAed(taxAmount)}
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Total</Label>
+            <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 font-mono text-sm font-semibold tabular-nums">
+              {fmtAed(total)}
+            </div>
+          </div>
+          <div className="grid gap-2 md:min-w-44">
+            <Select
+              value={inlinePaymentDraft.method}
+              onValueChange={(value) =>
+                setInlinePaymentDraft((draft) => ({ ...draft, method: value as InlinePaymentMethod }))
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Cash">Cash</SelectItem>
+                <SelectItem value="Card">Card</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Cheque">Cheque</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 flex-1"
+                disabled={savingInlinePayment}
+                onClick={() => void recordInlinePayment(item)}
+              >
+                {savingInlinePayment ? "Recording..." : "Record Payment"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8"
+                disabled={savingInlinePayment}
+                onClick={() => setOpenInlinePaymentId(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="w-full max-w-full min-w-0 space-y-4 pb-20 md:pb-0">
@@ -1663,36 +1850,35 @@ const FinancialsPanel = ({
             <FinancialLine className="text-xs text-muted-foreground">No unpaid customer items.</FinancialLine>
           ) : (
             openItemGroups.map((item) => (
-              <FinancialLine key={item.id} className="min-h-0 flex-nowrap py-2">
-                <FinancialIconBox icon={item.icon} tone={item.iconTone} />
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-xs font-semibold text-foreground">{item.title}</span>
-                  <span className="truncate text-[11px] text-muted-foreground">{item.detail}</span>
-                </div>
-                <div className="hidden min-w-[170px] text-xs text-muted-foreground md:block">{item.meta}</div>
-                <span className="ml-auto w-28 shrink-0 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
-                  {fmtAed(item.due)}
-                </span>
-                {item.id === "rental" ? (
-                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" onClick={onAddPayment}>
-                    Pay
-                  </Button>
-                ) : item.id === "fines" ? (
-                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowFinesModal(true)}>
-                    View
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                ) : item.id === "salik" ? (
-                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowSalikModal(true)}>
-                    View
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                ) : (
-                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={onAddPayment}>
-                    Pay
-                  </Button>
-                )}
-              </FinancialLine>
+              <div key={item.id}>
+                <FinancialLine className="min-h-0 flex-nowrap py-2">
+                  <FinancialIconBox icon={item.icon} tone={item.iconTone} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-xs font-semibold text-foreground">{item.title}</span>
+                    <span className="truncate text-[11px] text-muted-foreground">{item.detail}</span>
+                  </div>
+                  <div className="hidden min-w-[170px] text-xs text-muted-foreground md:block">{item.meta}</div>
+                  <span className="ml-auto w-28 shrink-0 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
+                    {fmtAed(item.due)}
+                  </span>
+                  {item.id === "fines" ? (
+                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowFinesModal(true)}>
+                      View
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : item.id === "salik" ? (
+                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowSalikModal(true)}>
+                      View
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => toggleInlinePayment(item)}>
+                      Pay
+                    </Button>
+                  )}
+                </FinancialLine>
+                {openInlinePaymentId === item.id ? renderInlinePaymentForm(item) : null}
+              </div>
             ))
           )}
         </FinancialSection>
@@ -2080,7 +2266,14 @@ const FinancialsPanel = ({
         </div>
       </div>
 
-      <FinesModal contractId={contract.id} open={showFinesModal} onOpenChange={setShowFinesModal} />
+      <FinesModal
+        contractId={contract.id}
+        clientId={contract.client_id}
+        ownerId={contract.owner_id}
+        open={showFinesModal}
+        onOpenChange={setShowFinesModal}
+        onPaymentRecorded={onInlinePaymentRecorded}
+      />
       <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
       <FinesDetailModal contractId={contract.id} open={finesModalOpen} onClose={() => setFinesModalOpen(false)} />
       <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />
@@ -4245,6 +4438,7 @@ const ContractDetail = () => {
               onDeleteFee={setFeeToDelete}
               onMarkDepositReturned={handleMarkDepositReturned}
               markingDepositReturned={markingDepositReturned}
+              onInlinePaymentRecorded={fetchData}
             />
             <RecordPaymentModal
               open={showPaymentModal}

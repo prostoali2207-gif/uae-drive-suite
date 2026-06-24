@@ -1,8 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, ReceiptText } from "lucide-react";
+import { AlertCircle, Loader2, ReceiptText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -16,8 +25,11 @@ import { cn } from "@/lib/utils";
 
 interface FinesModalProps {
   contractId: string;
+  clientId: string;
+  ownerId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onPaymentRecorded?: () => void;
 }
 
 type FineStatus = "Paid" | "Charged to Client" | "Unpaid" | string;
@@ -61,11 +73,25 @@ const formatDate = (dateValue: string) => {
 
 const toAmount = (amount: ContractFine["amount"]) => Number(amount) || 0;
 
-export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) {
+type FinePaymentMethod = "Cash" | "Card" | "Bank Transfer" | "Cheque";
+
+type FinePaymentDraft = {
+  amount: string;
+  taxRate: string;
+  method: FinePaymentMethod;
+};
+
+export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, onPaymentRecorded }: FinesModalProps) {
   const { toast } = useToast();
   const [fines, setFines] = useState<ContractFine[]>([]);
   const [loading, setLoading] = useState(false);
   const [payingFineId, setPayingFineId] = useState<string | null>(null);
+  const [openPaymentFineId, setOpenPaymentFineId] = useState<string | null>(null);
+  const [paymentDraft, setPaymentDraft] = useState<FinePaymentDraft>({
+    amount: "",
+    taxRate: "0",
+    method: "Cash",
+  });
 
   const fetchFines = useCallback(async () => {
     if (!contractId) {
@@ -117,10 +143,70 @@ export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) 
     );
   }, [fines]);
 
-  const markFinePaid = async (fineId: string) => {
+  const toggleFinePayment = (fine: ContractFine) => {
+    if (openPaymentFineId === fine.id) {
+      setOpenPaymentFineId(null);
+      return;
+    }
+
+    setPaymentDraft({
+      amount: toAmount(fine.amount).toFixed(2),
+      taxRate: "0",
+      method: "Cash",
+    });
+    setOpenPaymentFineId(fine.id);
+  };
+
+  const recordFinePayment = async (fine: ContractFine) => {
+    const fineId = fine.id;
+    const amount = Number(paymentDraft.amount);
+    const taxRate = Number(paymentDraft.taxRate);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({
+        title: "Invalid amount",
+        description: "Enter a payment amount greater than zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!Number.isFinite(taxRate) || taxRate < 0) {
+      toast({
+        title: "Invalid tax",
+        description: "Enter a valid tax percentage.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
     setPayingFineId(fineId);
     try {
-      const { error } = await (supabaseClient as any)
+      const { error: paymentError } = await (supabaseClient as any)
+        .from("payments")
+        .insert({
+          amount,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
+          method: paymentDraft.method,
+          contract_id: contractId,
+          client_id: clientId,
+          owner_id: ownerId,
+          payment_date: new Date().toISOString().split("T")[0],
+          status: "Paid",
+          allocations: {
+            rental: 0,
+            fines: amount,
+            salik: 0,
+            fees: 0,
+            lines: {
+              [`fine-${fineId}`]: amount,
+            },
+          },
+        });
+
+      if (paymentError) throw paymentError;
+
+      const { error: fineError } = await (supabaseClient as any)
         .from("fines")
         .update({
           status: "Paid",
@@ -128,24 +214,113 @@ export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) 
         })
         .eq("id", fineId);
 
-      if (error) throw error;
+      if (fineError) throw fineError;
 
       toast({
-        title: "Fine marked paid",
-        description: "The fine status was updated successfully.",
+        title: "Payment recorded",
+        description: "The fine payment was recorded successfully.",
       });
+      setOpenPaymentFineId(null);
       await fetchFines();
+      onPaymentRecorded?.();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      console.error("Failed to mark fine paid:", error);
+      console.error("Failed to record fine payment:", error);
       toast({
-        title: "Failed to mark paid",
+        title: "Failed to record payment",
         description: message,
         variant: "destructive",
       });
     } finally {
       setPayingFineId(null);
     }
+  };
+
+  const renderFinePaymentForm = (fine: ContractFine) => {
+    const amount = Number(paymentDraft.amount) || 0;
+    const taxRate = Number(paymentDraft.taxRate) || 0;
+    const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
+    const total = Math.round((amount + taxAmount) * 100) / 100;
+    const isSaving = payingFineId === fine.id;
+
+    return (
+      <div className="mt-3 rounded-md border border-[#232d4a] bg-[#12182d] p-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentDraft.amount}
+              onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
+              className="h-9 border-[#232d4a] bg-[#161d35] font-mono tabular-nums text-[#e8eaf0]"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentDraft.taxRate}
+              onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
+              className="h-9 border-[#232d4a] bg-[#161d35] font-mono tabular-nums text-[#e8eaf0]"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Tax Amount</Label>
+            <div className="flex h-9 items-center rounded-md border border-[#232d4a] bg-white/[0.03] px-3 font-mono text-sm tabular-nums text-[#e8eaf0]">
+              {formatAed(taxAmount)}
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Total</Label>
+            <div className="flex h-9 items-center rounded-md border border-[#232d4a] bg-white/[0.03] px-3 font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+              {formatAed(total)}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <Select
+            value={paymentDraft.method}
+            onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
+          >
+            <SelectTrigger className="h-9 border-[#232d4a] bg-[#161d35] text-[#e8eaf0]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Cash">Cash</SelectItem>
+              <SelectItem value="Card">Card</SelectItem>
+              <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+              <SelectItem value="Cheque">Cheque</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={payingFineId !== null}
+              onClick={() => void recordFinePayment(fine)}
+              className="h-9 bg-[#22c55e] px-3 text-xs font-medium text-[#06140b] hover:bg-[#22c55e]/90"
+            >
+              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Record Payment
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={payingFineId !== null}
+              onClick={() => setOpenPaymentFineId(null)}
+              className="h-9 border-[#232d4a] bg-transparent px-3 text-xs text-[#e8eaf0] hover:bg-white/[0.06] hover:text-[#e8eaf0]"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -177,7 +352,6 @@ export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) 
               {fines.map((fine) => {
                 const statusClass = statusStyles[fine.status] ?? statusStyles.Unpaid;
                 const isPaid = fine.status === "Paid";
-                const isPaying = payingFineId === fine.id;
                 const blackPoints = Number(fine.black_points) || 0;
 
                 return (
@@ -230,19 +404,15 @@ export function FinesModal({ contractId, open, onOpenChange }: FinesModalProps) 
                         <Button
                           type="button"
                           size="sm"
-                          onClick={() => markFinePaid(fine.id)}
+                          onClick={() => toggleFinePayment(fine)}
                           disabled={payingFineId !== null}
                           className="h-8 border border-[#22c55e]/25 bg-[#22c55e]/15 px-3 text-xs font-medium text-[#22c55e] hover:bg-[#22c55e]/25"
                         >
-                          {isPaying ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          )}
-                          Mark Paid
+                          Pay
                         </Button>
                       </div>
                     ) : null}
+                    {!isPaid && openPaymentFineId === fine.id ? renderFinePaymentForm(fine) : null}
                   </div>
                 );
               })}
