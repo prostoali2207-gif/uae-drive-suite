@@ -14,7 +14,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ title, subtitle, children, mobileContractsNav = false }: DashboardLayoutProps) {
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full max-w-full min-w-0 bg-background">
+      <div className="flex min-h-screen min-h-[100dvh] w-full max-w-full min-w-0 bg-background">
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-14 w-full max-w-full min-w-0 items-center gap-3 border-b border-border bg-background px-4 md:px-6">

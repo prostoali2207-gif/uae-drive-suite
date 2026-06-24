@@ -1,3 +1,5 @@
+import { parseDateTimeInput } from "@/lib/dateUtils";
+
 export interface ContractOverlapRow {
   id: string;
   start_date: string;
@@ -49,7 +51,7 @@ export function formatTimeForOverlap(time: string | null | undefined): string {
 }
 
 export function parseContractDateTime(date: string, time?: string | null): Date {
-  return new Date(`${date.slice(0, 10)}T${formatTimeForOverlap(time)}`);
+  return parseDateTimeInput(date, formatTimeForOverlap(time)) ?? new Date(Number.NaN);
 }
 
 export function isIgnoredOverlapStatus(status: string | null | undefined): boolean {

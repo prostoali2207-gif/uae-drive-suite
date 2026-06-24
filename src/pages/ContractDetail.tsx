@@ -84,6 +84,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import { addDaysToDateInputValue, diffCalendarDays } from "@/lib/dateUtils";
 import { generateContractPdf } from "@/lib/contractPdf";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -323,10 +324,7 @@ function getChargeVerificationLabel(recordCount: number, lastImportAt: string | 
 }
 
 function diffDays(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const s = new Date(start).getTime();
-  const e = new Date(end).getTime();
-  return Math.max(0, Math.round((e - s) / 86_400_000));
+  return diffCalendarDays(start, end);
 }
 
 function formatTimeForDb(time: string | undefined): string {
@@ -361,13 +359,7 @@ function getTodayDateInput(): string {
 }
 
 function addDaysToDateInput(value: string, daysToAdd: number): string {
-  const datePart = value?.slice(0, 10) || getTodayDateInput();
-  const date = new Date(`${datePart}T00:00:00`);
-  date.setDate(date.getDate() + daysToAdd);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return addDaysToDateInputValue(value, daysToAdd, getTodayDateInput());
 }
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
@@ -2670,7 +2662,6 @@ const ContractDetail = () => {
         contract_prefix?: string | null;
       };
       const companyName = cleanPdfValue(profile.company_name) || "Company Name";
-      const companyNameAr = cleanPdfValue(profile.company_name_ar);
       const companyPhone = cleanPdfValue(profile.phone_number);
       const companyTrn = cleanPdfValue(profile.trn);
       const companyAddress = cleanPdfValue(profile.address);
@@ -2826,31 +2817,31 @@ const ContractDetail = () => {
         }
       };
 
-      const safeArabic = (value: string) => {
-        const processor = (doc as unknown as { processArabic?: (input: string) => string }).processArabic;
-        return processor ? processor.call(doc, value) : value;
-      };
-
-      const headerTextX = logoImage ? margin + 58 : margin;
+      const headerTextX = logoImage ? margin + 62 : margin;
+      const headerMaxW = pageW - margin * 2 - 240 - (headerTextX - margin);
       if (logoImage) {
-        drawImageFit(logoImage, margin, 38, 42, 42);
+        drawImageFit(logoImage, margin, 38, 48, 48);
       }
-      if (companyNameAr) {
-        text(safeArabic(companyNameAr), headerTextX, 48, { size: 12, style: "bold", color: navy });
-      }
-      text(companyName, headerTextX, companyNameAr ? 63 : 54, { size: 15, style: "bold", color: navy });
-      const companyContactLines = [companyAddress, companyPhone ? `Phone: ${companyPhone}` : ""].filter(Boolean);
+      const companyNameLines = (doc.splitTextToSize(companyName, headerMaxW) as string[]).slice(0, 2);
+      companyNameLines.forEach((line, index) => {
+        text(line, headerTextX, 50 + index * 12, { size: 13, style: "bold", color: navy });
+      });
+      const contactStartY = 54 + companyNameLines.length * 12;
+      const companyContactLines = [
+        ...doc.splitTextToSize(companyAddress, headerMaxW).slice(0, 2),
+        companyPhone ? `Phone: ${companyPhone}` : "",
+      ].filter(Boolean);
       companyContactLines.forEach((line, index) => {
-        text(line, headerTextX, (companyNameAr ? 78 : 70) + index * 12, { size: 8.5, color: grey });
+        text(line, headerTextX, contactStartY + index * 10, { size: 8, color: grey });
       });
       if (companyTrn) {
-        const trnY = companyNameAr ? 102 : 90;
+        const trnY = contactStartY + companyContactLines.length * 10 + 6;
         doc.setFillColor(243, 244, 246);
         doc.roundedRect(headerTextX, trnY - 12, 150, 18, 3, 3, "F");
         text(`TRN: ${companyTrn}`, headerTextX + 6, trnY, { size: 8, font: "courier", color: [55, 65, 81] });
       }
 
-      text("TAX INVOICE", pageW - margin, 54, { size: 21, style: "bold", color: navy, align: "right" });
+      text("TAX INVOICE", pageW - margin, 54, { size: 20, style: "bold", color: navy, align: "right" });
       text("Original Document", pageW - margin, 70, { size: 8, color: grey, align: "right" });
       const metaX = pageW - margin - 150;
       [
@@ -2868,9 +2859,9 @@ const ContractDetail = () => {
 
       doc.setDrawColor(...navy);
       doc.setLineWidth(1.4);
-      doc.line(margin, 114, pageW - margin, 114);
+      doc.line(margin, 132, pageW - margin, 132);
 
-      const blockY = 142;
+      const blockY = 154;
       const blockW = (pageW - margin * 2 - 16) / 2;
       const drawInfoBlock = (x: number, title: string, main: string, lines: Array<[string, string]>, plate?: string) => {
         doc.setFillColor(...lightGrey);
@@ -2997,18 +2988,32 @@ const ContractDetail = () => {
         y += kind === "total" ? 24 : 18;
       });
 
-      let bankBottomY = tableEndY + 18;
+      let bankBottomY = y;
       if (bankRows.length > 0) {
-        const bankY = tableEndY + 18;
-        const bankW = 250;
-        const bankH = 30 + bankRows.length * 15;
+        const bankY = y + 8;
+        const bankW = pageW - margin * 2;
+        const labelW = 96;
+        const valueX = margin + 12 + labelW;
+        const valueW = bankW - labelW - 24;
+        const wrappedBankRows = bankRows.map(([label, value]) => ({
+          label,
+          lines: doc.splitTextToSize(value, valueW) as string[],
+        }));
+        const bankH = 30 + wrappedBankRows.reduce((height, row) => height + Math.max(15, row.lines.length * 11), 0);
         doc.setDrawColor(...borderGrey);
         doc.roundedRect(margin, bankY - 14, bankW, bankH, 6, 6);
         text("BANK DETAILS", margin + 12, bankY + 2, { size: 7, color: [156, 163, 175], style: "bold" });
-        bankRows.forEach(([label, value], index) => {
-          const rowY = bankY + 20 + index * 15;
-          text(label, margin + 12, rowY, { size: 8, color: [107, 114, 128] });
-          text(value, margin + 98, rowY, { size: 8, font: label === "IBAN" ? "courier" : "helvetica", color: [17, 24, 39] });
+        let bankRowY = bankY + 20;
+        wrappedBankRows.forEach(({ label, lines }) => {
+          text(label, margin + 12, bankRowY, { size: 8, color: [107, 114, 128] });
+          lines.forEach((line, lineIndex) => {
+            text(line, valueX, bankRowY + lineIndex * 11, {
+              size: 8,
+              font: label === "IBAN" ? "courier" : "helvetica",
+              color: [17, 24, 39],
+            });
+          });
+          bankRowY += Math.max(15, lines.length * 11);
         });
         bankBottomY = bankY - 14 + bankH;
       }
@@ -3021,12 +3026,13 @@ const ContractDetail = () => {
         const x = margin + index * (sigW + 12);
         doc.setDrawColor(209, 213, 219);
         doc.setLineDashPattern([3, 3], 0);
-        doc.roundedRect(x, sigY, sigW, 48, 5, 5);
+        doc.roundedRect(x, sigY, sigW, 68, 5, 5);
         doc.setLineDashPattern([], 0);
         if (label === "Company Stamp" && stampImage) {
-          drawImageFit(stampImage, x + 8, sigY + 5, sigW - 16, 38);
+          const stampW = Math.min(90, sigW - 18);
+          drawImageFit(stampImage, x + (sigW - stampW) / 2, sigY + 5, stampW, 58);
         }
-        text(label.toUpperCase(), x + sigW / 2, sigY + 66, {
+        text(label.toUpperCase(), x + sigW / 2, sigY + 86, {
           size: 7,
           color: [156, 163, 175],
           style: "bold",
@@ -3034,7 +3040,7 @@ const ContractDetail = () => {
         });
       });
 
-      const remarksY = sigY + 92;
+      const remarksY = sigY + 112;
       doc.setDrawColor(...borderGrey);
       doc.roundedRect(margin, remarksY, pageW - margin * 2, 54, 6, 6);
       text("REMARKS", margin + 12, remarksY + 18, { size: 7, color: [156, 163, 175], style: "bold" });
@@ -3044,7 +3050,6 @@ const ContractDetail = () => {
       doc.setLineWidth(1.4);
       doc.line(margin, pageH - 42, pageW - margin, pageH - 42);
       text("Thank you for your business", margin, pageH - 24, { size: 8, color: [156, 163, 175] });
-      text("Powered by FleetDesk", pageW - margin, pageH - 24, { size: 8, style: "bold", color: navy, align: "right" });
 
       doc.save(`Invoice-${contract.id}.pdf`);
       toast.success("Invoice downloaded");
@@ -4254,7 +4259,7 @@ const ContractDetail = () => {
     <DashboardLayout title={contractNumber} subtitle="Contract details">
       <div className="w-[calc(100%+2rem)] max-w-[100vw] min-w-0 -mx-4 -my-6 md:w-[calc(100%+4rem)] md:-mx-8 md:-my-8">
         {/* Sticky header */}
-        <div className="sticky top-0 z-20 max-w-full min-w-0 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="sticky top-0 z-20 max-w-full min-w-0 border-b border-border bg-background md:bg-background/95 md:backdrop-blur md:supports-[backdrop-filter]:bg-background/80">
           <div className="flex max-w-full min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <Button asChild variant="ghost" size="sm" className="h-8 -ml-2 gap-1.5 text-muted-foreground">
@@ -5199,7 +5204,7 @@ const ContractDetail = () => {
       </AlertDialog>
 
       <Dialog open={showEditModal} onOpenChange={(v) => !v && setShowEditModal(false)}>
-        <DialogContent className="sm:max-w-[440px]">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle>Edit Contract</DialogTitle>
             <DialogDescription className="text-xs">
@@ -5216,7 +5221,7 @@ const ContractDetail = () => {
                 type="date"
                 value={editStartDate}
                 onChange={(e) => setEditStartDate(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
               />
             </div>
 
@@ -5228,13 +5233,13 @@ const ContractDetail = () => {
                 type="time"
                 value={editStartTime}
                 onChange={(e) => setEditStartTime(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
               />
             </div>
 
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setShowEditModal(false)}>
               Cancel
             </Button>
@@ -5249,7 +5254,7 @@ const ContractDetail = () => {
       </Dialog>
 
       <Dialog open={showExtendModal} onOpenChange={(v) => !v && setShowExtendModal(false)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[440px]">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle>Extend Contract</DialogTitle>
             <DialogDescription className="text-xs">
@@ -5270,7 +5275,7 @@ const ContractDetail = () => {
                   setExtendEndDate(e.target.value);
                   setExtendError("");
                 }}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-10 md:text-sm"
               />
             </div>
 
@@ -5337,7 +5342,7 @@ const ContractDetail = () => {
       </Dialog>
 
       <Dialog open={showCloseModal} onOpenChange={(v) => !v && setShowCloseModal(false)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px]">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Close Contract</DialogTitle>
             <DialogDescription className="text-xs">
@@ -5360,7 +5365,7 @@ const ContractDetail = () => {
                     setDepositReturnDueDate(addDaysToDateInput(nextCloseDate, 15));
                   }
                 }}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
               />
             </div>
 
@@ -5524,7 +5529,7 @@ const ContractDetail = () => {
                         setDepositReturnDueDate(e.target.value);
                         setDepositReturnDueDateEdited(true);
                       }}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm tabular-nums ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-base tabular-nums ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Default is 15 days after close. Same-day return is allowed.
@@ -5656,7 +5661,7 @@ const ContractDetail = () => {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setShowCloseModal(false)}>
               Cancel
             </Button>

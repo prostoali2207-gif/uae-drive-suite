@@ -79,7 +79,7 @@ const Auth = () => {
   if (user) return <Navigate to={from} replace />;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen min-h-[100dvh] items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-center gap-2">
           <div className="flex h-10 w-10 items-center justify-center rounded-md bg-foreground text-background">
@@ -110,7 +110,7 @@ const Auth = () => {
                 <button
                   type="button"
                   onClick={() => { setForgotEmail(email); setForgotOpen(true); }}
-                  className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                  className="min-h-11 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground hover:underline md:min-h-0"
                 >
                   Forgot?
                 </button>
@@ -129,7 +129,7 @@ const Auth = () => {
       </div>
 
       <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>Reset your password</DialogTitle>
             <DialogDescription>
@@ -147,7 +147,7 @@ const Auth = () => {
                 onChange={(e) => setForgotEmail(e.target.value)}
               />
             </div>
-            <DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-0">
               <Button type="button" variant="outline" onClick={() => setForgotOpen(false)}>
                 Cancel
               </Button>

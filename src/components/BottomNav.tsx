@@ -33,7 +33,7 @@ export function BottomNav() {
   const isMoreActive = moreNav.some((item) => isActivePath(location.pathname, item.url));
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 w-full max-w-[100vw] border-t border-border bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 shadow-lg backdrop-blur md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-50 w-full max-w-[100vw] border-t border-border bg-background px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 shadow-lg md:hidden">
       <div className="grid min-w-0 grid-cols-5 items-center gap-1">
         {primaryNav.map((item) => {
           const active = isActivePath(location.pathname, item.url);

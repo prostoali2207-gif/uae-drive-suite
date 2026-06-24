@@ -423,7 +423,7 @@ const Fleet = () => {
                 Import XLSX
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px] text-foreground font-dm-sans">
+            <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[720px] text-foreground font-dm-sans">
               <DialogHeader>
                 <DialogTitle className="text-foreground">Import legacy fleet</DialogTitle>
                 <DialogDescription className="text-muted-foreground">
@@ -532,7 +532,7 @@ const Fleet = () => {
                 Add Car
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[480px]">
+            <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[480px]">
               <DialogHeader>
                 <DialogTitle>{editingId ? "Edit vehicle" : "Add a new car"}</DialogTitle>
                 <DialogDescription>

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DialogFooter } from "@/components/ui/dialog";
+import { diffCalendarDays, parseDateInput } from "@/lib/dateUtils";
 
 export type RateType = "Daily" | "Monthly" | "Yearly";
 export type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
@@ -61,17 +62,14 @@ interface ContractFormProps {
 }
 
 function diffDays(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const s = new Date(start).getTime();
-  const e = new Date(end).getTime();
-  return Math.max(0, Math.round((e - s) / 86_400_000));
+  return diffCalendarDays(start, end);
 }
 
 function getCalendarMonths(startDate: string, endDate: string): number {
   if (!startDate || !endDate) return 0;
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 0;
+  const start = parseDateInput(startDate);
+  const end = parseDateInput(endDate);
+  if (!start || !end || end <= start) return 0;
 
   const months = (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
   const lastDayOfTargetMonth = new Date(start.getFullYear(), start.getMonth() + months + 1, 0).getDate();

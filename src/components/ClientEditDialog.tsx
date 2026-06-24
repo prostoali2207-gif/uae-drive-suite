@@ -172,7 +172,7 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto text-foreground font-dm-sans sm:max-w-[560px]">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain text-foreground font-dm-sans sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle>Edit client</DialogTitle>
           <DialogDescription>Update the client's details below.</DialogDescription>

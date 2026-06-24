@@ -1035,7 +1035,7 @@ const Clients = () => {
                   Import CSV
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px] text-foreground font-dm-sans">
+              <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[720px] text-foreground font-dm-sans">
                 <DialogHeader>
                   <DialogTitle className="text-foreground">Import legacy clients</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
@@ -1149,7 +1149,7 @@ const Clients = () => {
                   )}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[760px] text-foreground font-dm-sans">
+              <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[760px] text-foreground font-dm-sans">
                 <DialogHeader>
                   <DialogTitle className="text-foreground">Pending client requests</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
@@ -1277,7 +1277,7 @@ const Clients = () => {
                 Add Client
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px] text-foreground font-dm-sans">
+            <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[560px] text-foreground font-dm-sans">
               <DialogHeader>
                 <div className="flex items-center justify-between">
                   <div>

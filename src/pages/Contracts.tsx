@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import { diffCalendarDays, parseDateInput, parseDateTimeInput } from "@/lib/dateUtils";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { toast } from "sonner";
 import { SignContractModal } from "@/components/SignContractModal";
@@ -232,10 +233,7 @@ function formatDateWithTime(date: string, time?: string | null) {
 }
 
 function diffDays(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const s = new Date(start).getTime();
-  const e = new Date(end).getTime();
-  return Math.max(0, Math.round((e - s) / 86_400_000));
+  return diffCalendarDays(start, end);
 }
 
 function getRateUnits(days: number, rateType: RateType): number {
@@ -272,8 +270,7 @@ function formatRateSummary(
 
 function getContractDateTime(date: string, time: string): Date | null {
   if (!date || !time || !/^\d{2}:\d{2}$/.test(time)) return null;
-  const parsed = new Date(`${date}T${time}:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseDateTimeInput(date, time);
 }
 
 function getBillingDays(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -294,9 +291,9 @@ function createContractId(): string {
 
 function isAtLeastFullMonth(start: string, end: string): boolean {
   if (!start || !end) return false;
-  const s = new Date(start);
-  const e = new Date(end);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return false;
+  const s = parseDateInput(start);
+  const e = parseDateInput(end);
+  if (!s || !e) return false;
   const oneMonthLater = new Date(s);
   oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
   if (e.getTime() >= oneMonthLater.getTime()) return true;
@@ -1209,7 +1206,7 @@ const Contracts = () => {
                 New Contract
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
+            <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-[640px]">
               <DialogHeader>
                 <DialogTitle>Create new contract</DialogTitle>
                 <DialogDescription>Total amount is calculated automatically.</DialogDescription>
@@ -1228,7 +1225,7 @@ const Contracts = () => {
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <PopoverContent className="z-[70] w-[var(--radix-popover-trigger-width)] p-0" align="start">
                       <Command shouldFilter={false}>
                         <CommandInput
                           placeholder="Search client..."
@@ -1286,7 +1283,7 @@ const Contracts = () => {
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <PopoverContent className="z-[70] w-[var(--radix-popover-trigger-width)] p-0" align="start">
                       <Command shouldFilter={false}>
                         <CommandInput
                           placeholder="Search car..."
@@ -1443,7 +1440,7 @@ const Contracts = () => {
                 </div>
                 <div className="grid gap-2">
                   {additionalCharges.map((charge) => (
-                    <div key={charge.id} className="grid grid-cols-[minmax(0,1fr)_minmax(100px,0.7fr)_40px] gap-2">
+                    <div key={charge.id} className="grid grid-cols-[minmax(0,1fr)_minmax(100px,0.7fr)_44px] gap-2">
                       <Select
                         value={charge.label}
                         onValueChange={(value) => {
@@ -1482,7 +1479,7 @@ const Contracts = () => {
                         type="button"
                         variant="outline"
                         size="icon"
-                        className="h-10 w-10 text-lg"
+                        className="h-11 w-11 text-lg md:h-10 md:w-10"
                         aria-label={`Remove ${charge.label} charge`}
                         onClick={() => setAdditionalCharges((charges) => charges.filter((item) => item.id !== charge.id))}
                       >
@@ -1553,9 +1550,14 @@ const Contracts = () => {
                     <div>{form.rate_type} total</div>
                   </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="gap-2 sm:gap-0">
                   <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={isSubmitting || docExpiredWarnings.length > 0}>{isSubmitting ? "Creating..." : "Create Contract"}</Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting || docExpiredWarnings.length > 0 || vehicleAvailability?.status === "conflict" || vehicleAvailability?.status === "checking"}
+                  >
+                    {isSubmitting ? "Creating..." : "Create Contract"}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
