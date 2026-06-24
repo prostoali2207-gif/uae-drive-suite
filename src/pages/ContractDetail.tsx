@@ -1734,7 +1734,7 @@ const FinancialsPanel = ({
                 type="number"
                 min="0"
                 step="0.01"
-                value={inlinePaymentDraft.amount}
+                value={Math.round(Number(inlinePaymentDraft.amount))}
                 onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
                 className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-foreground"
               />

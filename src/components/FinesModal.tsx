@@ -253,7 +253,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                 type="number"
                 min="0"
                 step="0.01"
-                value={paymentDraft.amount}
+                value={Math.round(Number(paymentDraft.amount))}
                 onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
                 className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-[#e8eaf0]"
               />
