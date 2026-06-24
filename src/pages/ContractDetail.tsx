@@ -1725,80 +1725,78 @@ const FinancialsPanel = ({
     const total = Math.round((amount + taxAmount) * 100) / 100;
 
     return (
-      <div className="bg-muted/20 px-4 py-3">
-        <div className="grid gap-3 rounded-md border border-border bg-card p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:items-end">
-          <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={inlinePaymentDraft.amount}
-              onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
-              className="h-9 font-mono tabular-nums"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tax %</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={inlinePaymentDraft.taxRate}
-              onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
-              className="h-9 font-mono tabular-nums"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tax Amount</Label>
-            <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 font-mono text-sm tabular-nums">
-              {fmtAed(taxAmount)}
+      <div className="border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
+        <div className="space-y-3">
+          <div className="flex gap-3">
+            <div className="grid flex-[7] gap-1.5">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={inlinePaymentDraft.amount}
+                onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
+                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-foreground"
+              />
+            </div>
+            <div className="grid flex-[3] gap-1.5">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tax %</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={inlinePaymentDraft.taxRate}
+                onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
+                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-foreground"
+              />
             </div>
           </div>
-          <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Total</Label>
-            <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 font-mono text-sm font-semibold tabular-nums">
-              {fmtAed(total)}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>Tax amount</span>
+              <span className="font-mono tabular-nums">{fmtAed(taxAmount)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-sm font-semibold text-foreground">
+              <span>Total</span>
+              <span className="font-mono tabular-nums text-tint-green-foreground">{fmtAed(total)}</span>
             </div>
           </div>
-          <div className="grid gap-2 md:min-w-44">
-            <Select
-              value={inlinePaymentDraft.method}
-              onValueChange={(value) =>
-                setInlinePaymentDraft((draft) => ({ ...draft, method: value as InlinePaymentMethod }))
-              }
+          <Select
+            value={inlinePaymentDraft.method}
+            onValueChange={(value) =>
+              setInlinePaymentDraft((draft) => ({ ...draft, method: value as InlinePaymentMethod }))
+            }
+          >
+            <SelectTrigger className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] py-2 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Cash">Cash</SelectItem>
+              <SelectItem value="Card">Card</SelectItem>
+              <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+              <SelectItem value="Cheque">Cheque</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 flex-1 rounded-lg border border-blue-800 bg-blue-900 text-sm font-semibold text-blue-300 hover:bg-blue-900/80 hover:text-blue-300"
+              disabled={savingInlinePayment}
+              onClick={() => void recordInlinePayment(item)}
             >
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Cash">Cash</SelectItem>
-                <SelectItem value="Card">Card</SelectItem>
-                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                <SelectItem value="Cheque">Cheque</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 flex-1"
-                disabled={savingInlinePayment}
-                onClick={() => void recordInlinePayment(item)}
-              >
-                {savingInlinePayment ? "Recording..." : "Record Payment"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8"
-                disabled={savingInlinePayment}
-                onClick={() => setOpenInlinePaymentId(null)}
-              >
-                Cancel
-              </Button>
-            </div>
+              {savingInlinePayment ? "Recording..." : "Record Payment"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 w-24 rounded-lg border border-[#2a3a55] bg-transparent text-sm font-semibold text-foreground hover:bg-white/5 hover:text-foreground"
+              disabled={savingInlinePayment}
+              onClick={() => setOpenInlinePaymentId(null)}
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       </div>

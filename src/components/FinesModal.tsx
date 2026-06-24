@@ -244,49 +244,47 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
     const isSaving = payingFineId === fine.id;
 
     return (
-      <div className="mt-3 rounded-md border border-[#232d4a] bg-[#12182d] p-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="grid gap-1.5">
-            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={paymentDraft.amount}
-              onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
-              className="h-9 border-[#232d4a] bg-[#161d35] font-mono tabular-nums text-[#e8eaf0]"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={paymentDraft.taxRate}
-              onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
-              className="h-9 border-[#232d4a] bg-[#161d35] font-mono tabular-nums text-[#e8eaf0]"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Tax Amount</Label>
-            <div className="flex h-9 items-center rounded-md border border-[#232d4a] bg-white/[0.03] px-3 font-mono text-sm tabular-nums text-[#e8eaf0]">
-              {formatAed(taxAmount)}
+      <div className="mt-3 -mx-3 border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
+        <div className="space-y-3">
+          <div className="flex gap-3">
+            <div className="grid flex-[7] gap-1.5">
+              <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={paymentDraft.amount}
+                onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
+                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-[#e8eaf0]"
+              />
+            </div>
+            <div className="grid flex-[3] gap-1.5">
+              <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={paymentDraft.taxRate}
+                onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
+                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-[#e8eaf0]"
+              />
             </div>
           </div>
-          <div className="grid gap-1.5">
-            <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Total</Label>
-            <div className="flex h-9 items-center rounded-md border border-[#232d4a] bg-white/[0.03] px-3 font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
-              {formatAed(total)}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-3 text-xs text-[#e8eaf0]/55">
+              <span>Tax amount</span>
+              <span className="font-mono tabular-nums">{formatAed(taxAmount)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-sm font-semibold text-[#e8eaf0]">
+              <span>Total</span>
+              <span className="font-mono tabular-nums text-[#22c55e]">{formatAed(total)}</span>
             </div>
           </div>
-        </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
           <Select
             value={paymentDraft.method}
             onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
           >
-            <SelectTrigger className="h-9 border-[#232d4a] bg-[#161d35] text-[#e8eaf0]">
+            <SelectTrigger className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] py-2 text-sm text-[#e8eaf0]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -302,7 +300,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
               size="sm"
               disabled={payingFineId !== null}
               onClick={() => void recordFinePayment(fine)}
-              className="h-9 bg-[#22c55e] px-3 text-xs font-medium text-[#06140b] hover:bg-[#22c55e]/90"
+              className="h-9 flex-1 rounded-lg border border-blue-800 bg-blue-900 px-3 text-sm font-semibold text-blue-300 hover:bg-blue-900/80 hover:text-blue-300"
             >
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Record Payment
@@ -313,7 +311,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
               size="sm"
               disabled={payingFineId !== null}
               onClick={() => setOpenPaymentFineId(null)}
-              className="h-9 border-[#232d4a] bg-transparent px-3 text-xs text-[#e8eaf0] hover:bg-white/[0.06] hover:text-[#e8eaf0]"
+              className="h-9 w-24 rounded-lg border border-[#2a3a55] bg-transparent px-3 text-sm font-semibold text-[#e8eaf0] hover:bg-white/[0.06] hover:text-[#e8eaf0]"
             >
               Cancel
             </Button>
