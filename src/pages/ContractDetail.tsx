@@ -259,6 +259,37 @@ type LedgerEntry = {
   status: string;
 };
 
+type PdfImage = { dataUrl: string; w: number; h: number };
+
+const cleanPdfValue = (value: unknown) => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "undefined") return "";
+  return trimmed;
+};
+
+const loadPdfImage = async (url: string): Promise<PdfImage | null> => {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const img = new Image();
+        img.onload = () => resolve({ dataUrl, w: img.width, h: img.height });
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
 const statusBadgeClass = (status: string) => {
   switch (status) {
     case "Active":
@@ -2565,7 +2596,9 @@ const ContractDetail = () => {
       const [profileRes, feesRes, finesRes, salikRes, paymentsRes] = await Promise.all([
         (supabase as any)
           .from("profiles")
-          .select("company_name, phone_number, trn")
+          .select(
+            "company_name, company_name_ar, phone_number, trn, address, logo_url, stamp_url, bank_name, beneficiary_name, iban, account_number, swift_code, invoice_prefix, contract_prefix",
+          )
           .eq("id", user.id)
           .maybeSingle(),
         (supabase as any)
@@ -2622,11 +2655,35 @@ const ContractDetail = () => {
 
       const profile = (profileRes.data ?? {}) as {
         company_name?: string | null;
+        company_name_ar?: string | null;
         phone_number?: string | null;
         trn?: string | null;
+        address?: string | null;
+        logo_url?: string | null;
+        stamp_url?: string | null;
+        bank_name?: string | null;
+        beneficiary_name?: string | null;
+        iban?: string | null;
+        account_number?: string | null;
+        swift_code?: string | null;
+        invoice_prefix?: string | null;
+        contract_prefix?: string | null;
       };
+      const companyName = cleanPdfValue(profile.company_name) || "Company Name";
+      const companyNameAr = cleanPdfValue(profile.company_name_ar);
+      const companyPhone = cleanPdfValue(profile.phone_number);
+      const companyTrn = cleanPdfValue(profile.trn);
+      const companyAddress = cleanPdfValue(profile.address);
+      const invoicePrefix = cleanPdfValue(profile.invoice_prefix) || "INV";
+      const bankRows: Array<[string, string]> = [
+        ["Bank Name", cleanPdfValue(profile.bank_name)],
+        ["Beneficiary Name", cleanPdfValue(profile.beneficiary_name)],
+        ["IBAN", cleanPdfValue(profile.iban)],
+        ["Account Number", cleanPdfValue(profile.account_number)],
+        ["SWIFT Code", cleanPdfValue(profile.swift_code)],
+      ].filter(([, value]) => Boolean(value));
       const client = contract.clients;
-      const invoiceNo = `INV-${contract.id}`;
+      const invoiceNo = `${invoicePrefix}-${contract.id}`;
       const invoiceDate = new Date().toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "short",
@@ -2715,6 +2772,22 @@ const ContractDetail = () => {
         ]);
       });
 
+      const loadCompanyImage = async (path: string | null | undefined) => {
+        const imagePath = cleanPdfValue(path);
+        if (!imagePath) return null;
+        let fetchUrl = imagePath;
+        if (!imagePath.startsWith("http")) {
+          const { data } = await supabase.storage.from("company-logos").createSignedUrl(imagePath, 60);
+          if (!data?.signedUrl) return null;
+          fetchUrl = data.signedUrl;
+        }
+        return loadPdfImage(fetchUrl);
+      };
+      const [logoImage, stampImage] = await Promise.all([
+        loadCompanyImage(profile.logo_url),
+        loadCompanyImage(profile.stamp_url),
+      ]);
+
       const doc = new jsPDF({ unit: "pt", format: "a4" });
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
@@ -2736,11 +2809,46 @@ const ContractDetail = () => {
         doc.text(value, x, y, { align: options.align ?? "left" });
       };
 
-      text(profile.company_name || "Company Name", margin, 54, { size: 15, style: "bold", color: navy });
-      text(`Dubai / Ajman, UAE | ${profile.phone_number || "-"}`, margin, 70, { size: 9, color: grey });
-      doc.setFillColor(243, 244, 246);
-      doc.roundedRect(margin, 78, 150, 18, 3, 3, "F");
-      text(`TRN: ${profile.trn || "-"}`, margin + 6, 90, { size: 8, font: "courier", color: [55, 65, 81] });
+      const drawImageFit = (image: PdfImage, x: number, y: number, maxW: number, maxH: number) => {
+        const ratio = Math.min(maxW / image.w, maxH / image.h);
+        const w = image.w * ratio;
+        const h = image.h * ratio;
+        const imageX = x + (maxW - w) / 2;
+        const imageY = y + (maxH - h) / 2;
+        try {
+          doc.addImage(image.dataUrl, "PNG", imageX, imageY, w, h);
+        } catch {
+          try {
+            doc.addImage(image.dataUrl, "JPEG", imageX, imageY, w, h);
+          } catch {
+            // Ignore unsupported or unreachable image data so invoice generation still succeeds.
+          }
+        }
+      };
+
+      const safeArabic = (value: string) => {
+        const processor = (doc as unknown as { processArabic?: (input: string) => string }).processArabic;
+        return processor ? processor.call(doc, value) : value;
+      };
+
+      const headerTextX = logoImage ? margin + 58 : margin;
+      if (logoImage) {
+        drawImageFit(logoImage, margin, 38, 42, 42);
+      }
+      if (companyNameAr) {
+        text(safeArabic(companyNameAr), headerTextX, 48, { size: 12, style: "bold", color: navy });
+      }
+      text(companyName, headerTextX, companyNameAr ? 63 : 54, { size: 15, style: "bold", color: navy });
+      const companyContactLines = [companyAddress, companyPhone ? `Phone: ${companyPhone}` : ""].filter(Boolean);
+      companyContactLines.forEach((line, index) => {
+        text(line, headerTextX, (companyNameAr ? 78 : 70) + index * 12, { size: 8.5, color: grey });
+      });
+      if (companyTrn) {
+        const trnY = companyNameAr ? 102 : 90;
+        doc.setFillColor(243, 244, 246);
+        doc.roundedRect(headerTextX, trnY - 12, 150, 18, 3, 3, "F");
+        text(`TRN: ${companyTrn}`, headerTextX + 6, trnY, { size: 8, font: "courier", color: [55, 65, 81] });
+      }
 
       text("TAX INVOICE", pageW - margin, 54, { size: 21, style: "bold", color: navy, align: "right" });
       text("Original Document", pageW - margin, 70, { size: 8, color: grey, align: "right" });
@@ -2889,16 +2997,35 @@ const ContractDetail = () => {
         y += kind === "total" ? 24 : 18;
       });
 
-      const sigY = Math.max(y + 18, 606);
+      let bankBottomY = tableEndY + 18;
+      if (bankRows.length > 0) {
+        const bankY = tableEndY + 18;
+        const bankW = 250;
+        const bankH = 30 + bankRows.length * 15;
+        doc.setDrawColor(...borderGrey);
+        doc.roundedRect(margin, bankY - 14, bankW, bankH, 6, 6);
+        text("BANK DETAILS", margin + 12, bankY + 2, { size: 7, color: [156, 163, 175], style: "bold" });
+        bankRows.forEach(([label, value], index) => {
+          const rowY = bankY + 20 + index * 15;
+          text(label, margin + 12, rowY, { size: 8, color: [107, 114, 128] });
+          text(value, margin + 98, rowY, { size: 8, font: label === "IBAN" ? "courier" : "helvetica", color: [17, 24, 39] });
+        });
+        bankBottomY = bankY - 14 + bankH;
+      }
+
+      const sigY = Math.max(y + 18, bankBottomY + 22, 606);
       doc.setDrawColor(...borderGrey);
       doc.line(margin, sigY - 14, pageW - margin, sigY - 14);
       const sigW = (pageW - margin * 2 - 24) / 3;
-      ["Receiver Signature", "Manager Signature", "Account Signature"].forEach((label, index) => {
+      ["Receiver Signature", "Manager Signature", "Company Stamp"].forEach((label, index) => {
         const x = margin + index * (sigW + 12);
         doc.setDrawColor(209, 213, 219);
         doc.setLineDashPattern([3, 3], 0);
         doc.roundedRect(x, sigY, sigW, 48, 5, 5);
         doc.setLineDashPattern([], 0);
+        if (label === "Company Stamp" && stampImage) {
+          drawImageFit(stampImage, x + 8, sigY + 5, sigW - 16, 38);
+        }
         text(label.toUpperCase(), x + sigW / 2, sigY + 66, {
           size: 7,
           color: [156, 163, 175],
