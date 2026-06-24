@@ -66,11 +66,18 @@ const Settings = () => {
   const loadStoragePreview = async (path: string | null, setSignedUrl: (url: string | null) => void) => {
     if (!path) {
       setSignedUrl(null);
-      return;
+      return true;
     }
 
-    const { data } = await supabase.storage.from("company-logos").createSignedUrl(path, 60 * 60);
+    const { data, error } = await supabase.storage.from("company-logos").createSignedUrl(path, 60 * 60);
+    if (error) {
+      setSignedUrl(null);
+      toast.error("Failed to load preview: " + error.message);
+      return false;
+    }
+
     setSignedUrl(data?.signedUrl ?? null);
+    return true;
   };
 
   const updateProfileStoragePath = async (values: Partial<ProfileStoragePathUpdate>) => {
@@ -160,60 +167,66 @@ const Settings = () => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
     setUploadingLogo(true);
-    const uploadFile = await prepareImageForStorageUpload(file);
-    const ext = uploadFile.name.split(".").pop() || "jpg";
-    const path = `${user.id}/logo-${Date.now()}.${ext}`;
-    logImageCompressionUpload("Settings", file, uploadFile, path);
-    const { error: upErr } = await supabase.storage
-      .from("company-logos")
-      .upload(path, uploadFile, { upsert: true, contentType: uploadFile.type });
+    try {
+      const uploadFile = await prepareImageForStorageUpload(file);
+      const ext = uploadFile.name.split(".").pop() || "jpg";
+      const path = `${user.id}/logo-${Date.now()}.${ext}`;
+      logImageCompressionUpload("Settings", file, uploadFile, path);
+      const { error: upErr } = await supabase.storage
+        .from("company-logos")
+        .upload(path, uploadFile, { upsert: true, contentType: uploadFile.type });
 
-    if (upErr) {
+      if (upErr) {
+        toast.error("Upload failed: " + upErr.message);
+        return;
+      }
+
+      const { error: dbErr } = await supabase.from("profiles").update({ logo_url: path }).eq("id", user.id);
+      if (dbErr) {
+        toast.error("Saved file but failed to update profile: " + dbErr.message);
+        return;
+      }
+
+      setLogoUrl(path);
+      await loadStoragePreview(path, setLogoSignedUrl);
+      toast.success("Logo updated");
+    } finally {
       setUploadingLogo(false);
-      toast.error("Upload failed: " + upErr.message);
-      return;
+      e.target.value = "";
     }
-
-    const { error: dbErr } = await supabase.from("profiles").update({ logo_url: path }).eq("id", user.id);
-    setUploadingLogo(false);
-
-    if (dbErr) {
-      toast.error("Saved file but failed to update profile");
-      return;
-    }
-
-    setLogoUrl(path);
-    loadStoragePreview(path, setLogoSignedUrl);
-    toast.success("Logo updated");
   };
 
   const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
     setUploadingStamp(true);
-    const ext = file.name.split(".").pop() || "png";
-    const path = `${user.id}/stamp-${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage
-      .from("company-logos")
-      .upload(path, file, { upsert: true, contentType: file.type });
+    try {
+      const uploadFile = await prepareImageForStorageUpload(file);
+      const ext = uploadFile.name.split(".").pop() || "jpg";
+      const path = `${user.id}/stamp-${Date.now()}.${ext}`;
+      logImageCompressionUpload("Settings stamp", file, uploadFile, path);
+      const { error: upErr } = await supabase.storage
+        .from("company-logos")
+        .upload(path, uploadFile, { upsert: true, contentType: uploadFile.type });
 
-    if (upErr) {
+      if (upErr) {
+        toast.error("Upload failed: " + upErr.message);
+        return;
+      }
+
+      const { error: dbErr } = await updateProfileStoragePath({ stamp_url: path });
+      if (dbErr) {
+        toast.error("Saved file but failed to update profile: " + dbErr.message);
+        return;
+      }
+
+      setStampUrl(path);
+      await loadStoragePreview(path, setStampSignedUrl);
+      toast.success("Stamp uploaded");
+    } finally {
       setUploadingStamp(false);
-      toast.error("Upload failed: " + upErr.message);
-      return;
+      e.target.value = "";
     }
-
-    const { error: dbErr } = await updateProfileStoragePath({ stamp_url: path });
-    setUploadingStamp(false);
-
-    if (dbErr) {
-      toast.error("Saved file but failed to update profile");
-      return;
-    }
-
-    setStampUrl(path);
-    loadStoragePreview(path, setStampSignedUrl);
-    toast.success("Stamp updated");
   };
 
   return (
