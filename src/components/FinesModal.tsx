@@ -244,7 +244,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
     const isSaving = payingFineId === fine.id;
 
     return (
-      <div className="mt-3 -mx-3 max-w-lg border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
+      <div className="mt-3 -mx-3 border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
         <div className="space-y-3">
           <div className="flex gap-3">
             <div className="grid flex-[7] gap-1.5">
