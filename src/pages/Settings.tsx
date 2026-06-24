@@ -298,6 +298,7 @@ const Settings = () => {
                       placeholder="اسم الشركة"
                       className="text-right"
                       dir="rtl"
+                      style={{ unicodeBidi: "plaintext" }}
                     />
                   </div>
 
