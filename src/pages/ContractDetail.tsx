@@ -3223,6 +3223,36 @@ const ContractDetail = () => {
       return;
     }
 
+    const { data: latestExtensionFee, error: latestExtensionError } = await (supabase as any)
+      .from("contract_fees")
+      .select("extension_end")
+      .eq("contract_id", contract.id)
+      .not("extension_end", "is", null)
+      .order("extension_end", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestExtensionError || !latestExtensionFee?.extension_end) {
+      setIsExtending(false);
+      const message = "Could not confirm the latest extension end date.";
+      setExtendError(message);
+      toast.error(message);
+      return;
+    }
+
+    const { error: contractEndDateError } = await supabase
+      .from("contracts")
+      .update({ end_date: latestExtensionFee.extension_end } as never)
+      .eq("id", contract.id);
+
+    if (contractEndDateError) {
+      setIsExtending(false);
+      const message = "Could not update the contract end date.";
+      setExtendError(message);
+      toast.error(message);
+      return;
+    }
+
     setIsExtending(false);
 
     toast.success("Contract extended");
