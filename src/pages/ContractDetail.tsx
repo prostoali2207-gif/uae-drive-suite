@@ -3229,7 +3229,8 @@ const ContractDetail = () => {
     setShowExtendModal(false);
     setExtendEndDate("");
     setExtendAmount("");
-    await Promise.all([fetchData(), fetchContractFees()]);
+    await fetchData();
+    await fetchContractFees();
     setFeeRefreshKey((key) => key + 1);
   };
 
