@@ -2033,20 +2033,20 @@ const FinancialsPanel = ({
                 isPaymentTransaction && payment ? buildExpandedPaymentAllocationRows(payment, contractFees) : [];
 
               return (
-              <div key={transaction.id} className="py-3 px-4">
-                <div className="flex min-w-0 items-start justify-between gap-3">
+              <div key={transaction.id}>
+                <div className="flex items-center gap-3 px-4 py-3">
                   <div className={cn("flex h-8 w-8 shrink-0 self-start items-center justify-center rounded-lg", getTransactionIconClass(transaction))}>
                     {(() => {
                       const TransactionIcon = transaction.icon;
                       return <TransactionIcon className="h-3.5 w-3.5" />;
                     })()}
                   </div>
-                  <div className="min-w-0 flex-1 self-start">
-                    <div className="whitespace-normal text-xs font-semibold text-foreground">{transaction.description}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm font-semibold text-foreground">{transaction.description}</div>
                     {isPaymentTransaction ? (
                       <button
                         type="button"
-                        className="mt-0.5 block text-xs text-muted-foreground hover:text-foreground"
+                        className="mt-0.5 block truncate text-xs text-muted-foreground hover:text-foreground"
                         onClick={() =>
                           setExpandedPaymentTransactionIds((current) => {
                             const next = new Set(current);
@@ -2063,11 +2063,11 @@ const FinancialsPanel = ({
                       </button>
                     ) : null}
                     {showsTransactionDetails && transaction.details ? (
-                      <div className="mt-0.5 truncate text-xs text-slate-500">{transaction.details}</div>
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">{transaction.details}</div>
                     ) : null}
                   </div>
-                  <div className="ml-auto flex shrink-0 self-start flex-col items-end">
-                    <div className="flex items-center justify-end gap-1">
+                  <div className="ml-auto flex flex-shrink-0 flex-col items-end">
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
                       <span
                         className={cn(
                           "font-mono text-sm font-bold tabular-nums",
@@ -2099,7 +2099,7 @@ const FinancialsPanel = ({
                         </Button>
                       ) : null}
                       {transaction.allocationPayment || transaction.contractFee ? (
-                        <div className="ml-auto flex items-center gap-1">
+                        <>
                           {transaction.allocationPayment ? (
                             <>
                               <Button
@@ -2136,11 +2136,11 @@ const FinancialsPanel = ({
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           ) : null}
-                        </div>
+                        </>
                       ) : null}
                     </div>
                     {showsTransactionDate ? (
-                      <div className="text-xs text-slate-500">{formatDate(transaction.date)}</div>
+                      <div className="text-xs text-right text-muted-foreground">{formatDate(transaction.date)}</div>
                     ) : null}
                   </div>
                 </div>
