@@ -341,6 +341,12 @@ function formatTimeDisplay(time: string | null | undefined): string {
   return match ? `${match[1]}:${match[2]}` : "12:00";
 }
 
+function formatDateWithOptionalTime(date: string | null, time: string | null | undefined): string {
+  const formattedDate = formatDate(date);
+  const formattedTime = time?.trim().slice(0, 5);
+  return formattedTime ? `${formattedDate} · ${formattedTime}` : formattedDate;
+}
+
 function getTomorrowDateInput(): string {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -4497,8 +4503,8 @@ const ContractDetail = () => {
 
               <Panel title="Rental Period">
                 <div className="grid grid-cols-2 gap-x-4">
-                  <Field label="Start Date" value={formatDate(contract.start_date)} />
-                  <Field label="End Date" value={formatDate(contract.end_date)} />
+                  <Field label="Start Date" value={formatDateWithOptionalTime(contract.start_date, contract.start_time)} />
+                  <Field label="End Date" value={formatDateWithOptionalTime(contract.end_date, contract.end_time)} />
                   <Field label="Total Days" value={days} />
                   <Field label="Rate Type" value={contract.rate_type} />
                   <Field label={`${contract.rate_type} Rate`} value={fmtAed(contract.rate_amount)} />
