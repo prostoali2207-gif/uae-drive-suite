@@ -1594,7 +1594,7 @@ const FinancialsPanel = ({
         date: payment.payment_date,
         group: "payments" as const,
         type: "Payment",
-        description: `Payment - ${payment.method}`,
+        description: payment.method ?? "Payment",
         details: `${payment.method} payment received`,
         amount: Number(payment.amount),
         amountTone: "credit" as const,
@@ -2042,7 +2042,7 @@ const FinancialsPanel = ({
                     })()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="truncate text-sm font-semibold text-foreground">{transaction.description}</div>
+                    <div className="text-sm font-semibold text-foreground">{transaction.description}</div>
                     {isPaymentTransaction ? (
                       <button
                         type="button"
