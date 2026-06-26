@@ -618,21 +618,28 @@ const Fines = () => {
                   <TableHead className="text-xs">Amount</TableHead>
                   <TableHead className="text-xs">Source</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="px-5 text-xs text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">Loading fines...</TableCell>
+                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">Loading fines...</TableCell>
                   </TableRow>
                 ) : fines.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
+                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
                   </TableRow>
                 ) : (
-                  paginatedFines.map((f) => (
-                    <TableRow key={f.id}>
+                  paginatedFines.map((f) => {
+                    const paidAt = (f as FineRow & { paid_at?: string | null }).paid_at;
+                    const displayedStatus: ChargeStatus = paidAt
+                      ? "Paid"
+                      : f.status === "Charged to Client"
+                        ? "Charged to Client"
+                        : "Unpaid";
+
+                    return (
+                      <TableRow key={f.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(f.fine_date)}</TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
@@ -651,19 +658,20 @@ const Fines = () => {
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(f.amount).toLocaleString()}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{f.source}</TableCell>
                       <TableCell>
-                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[f.status] ?? "bg-muted text-muted-foreground")}>
-                          {f.status}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[displayedStatus])}>
+                            {displayedStatus}
+                          </span>
+                          {displayedStatus === "Unpaid" && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
+                              Charge to Client
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="px-5 text-right">
-                        {f.status === "Unpaid" && (
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
-                            Charge to Client
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
