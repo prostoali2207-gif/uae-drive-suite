@@ -802,18 +802,17 @@ const Fines = () => {
                   <TableHead className="text-xs">Car</TableHead>
                   <TableHead className="text-xs">Client</TableHead>
                   <TableHead className="text-xs">Amount</TableHead>
-                  <TableHead className="text-xs">Payment</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
                   </TableRow>
                 ) : salik.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedSalik.map((s) => {
@@ -831,13 +830,6 @@ const Fines = () => {
                       <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{s.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(s.amount).toLocaleString()}</TableCell>
-                      <TableCell>
-                        {paidAt && (
-                          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses.Paid)}>
-                            Paid
-                          </span>
-                        )}
-                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">
                           {displayedStatus === "Charged to Client" && (
