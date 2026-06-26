@@ -86,6 +86,7 @@ interface ContractRow {
   rate_amount: number;
   total_amount: number;
   deposit_amount: number;
+  deposit_returned: string | null;
   initial_mileage: number;
   fuel_level: string;
   status: string;
@@ -653,7 +654,7 @@ const Contracts = () => {
     const [contractsRes, clientsRes, carsRes] = await Promise.all([
       supabase
         .from("contracts")
-        .select("*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)")
+        .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)")
         .eq("owner_id", userId)
         .order("created_at", { ascending: false }),
       supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
@@ -1592,6 +1593,10 @@ const Contracts = () => {
                 const clientName = c.clients?.full_name ?? "-";
                 const mobileStatus = getMobileCardStatus(c);
                 const vehicleLabel = c.cars ? `${c.cars.plate} • ${c.cars.make} ${c.cars.model}` : "-";
+                const balance = Number(c.balance_due || 0);
+                const depositAmount = Number(c.deposit_amount || 0);
+                const hasDeposit = depositAmount > 0;
+                const isDepositReturned = c.deposit_returned !== null;
                 return (
                   <div key={c.id} className="px-1.5">
                     <div
@@ -1640,6 +1645,39 @@ const Contracts = () => {
                       <span className="justify-self-end whitespace-nowrap font-mono text-sm font-semibold leading-5 text-foreground">
                         AED {Number(c.total_amount).toLocaleString()}
                       </span>
+
+                      <div className="col-span-2 mt-1 border-t border-border/70 pt-2">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DUE</div>
+                            <div className={cn("mt-1 font-mono text-base leading-5", balance > 0 ? "text-[#f87171]" : "text-[#3d5478]")}>
+                              {balance > 0 ? `AED ${balance.toLocaleString()}` : "—"}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DEPOSIT</div>
+                            {!hasDeposit ? (
+                              <div className="mt-1 font-mono text-sm leading-5 text-[#2d3f5c]">—</div>
+                            ) : (
+                              <div className="mt-1 flex items-center justify-end gap-2">
+                                <span className={cn("font-mono text-sm leading-5", isDepositReturned ? "text-[#475569]" : "text-[#cbd5e1]")}>
+                                  AED {depositAmount.toLocaleString()}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "rounded border px-[7px] py-0.5 text-[10px] font-bold leading-3",
+                                    isDepositReturned
+                                      ? "border-[#1a3520] bg-[#0f1f12] text-[#4ade80]"
+                                      : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
+                                  )}
+                                >
+                                  {isDepositReturned ? "RETURNED" : "HELD"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
