@@ -616,6 +616,7 @@ const Fines = () => {
                   <TableHead className="text-xs">Client</TableHead>
                   <TableHead className="text-xs">Type</TableHead>
                   <TableHead className="text-xs">Amount</TableHead>
+                  <TableHead className="text-xs">Payment</TableHead>
                   <TableHead className="text-xs">Source</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
                 </TableRow>
@@ -623,11 +624,11 @@ const Fines = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">Loading fines...</TableCell>
+                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">Loading fines...</TableCell>
                   </TableRow>
                 ) : fines.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
+                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedFines.map((f) => {
@@ -656,6 +657,11 @@ const Fines = () => {
                       <TableCell className="text-sm font-medium text-foreground">{f.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{f.fine_type}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(f.amount).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[paidAt ? "Paid" : "Unpaid"])}>
+                          {paidAt ? "Paid" : "Unpaid"}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{f.source}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">
