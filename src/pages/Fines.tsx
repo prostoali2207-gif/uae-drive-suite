@@ -665,9 +665,11 @@ const Fines = () => {
                       <TableCell className="text-xs text-muted-foreground">{f.source}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[displayedStatus])}>
-                            {displayedStatus}
-                          </span>
+                          {displayedStatus !== "Unpaid" && (
+                            <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[displayedStatus])}>
+                              {displayedStatus}
+                            </span>
+                          )}
                           {displayedStatus === "Unpaid" && (
                             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
                               Charge to Client
