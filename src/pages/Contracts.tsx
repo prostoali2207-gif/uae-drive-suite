@@ -1716,22 +1716,26 @@ const Contracts = () => {
                     {sortIcon("balance")}
                   </button>
                 </TableHead>
+                <TableHead className="px-5 text-right text-xs">Deposit</TableHead>
                 <TableHead className="w-[104px] px-2 text-right text-xs">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">Loading contracts...</TableCell>
+                  <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">Loading contracts...</TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No contracts match this filter.</TableCell>
+                  <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">No contracts match this filter.</TableCell>
                 </TableRow>
               ) : (
                 paginatedContracts.map((c) => {
                   const d = diffDays(c.start_date, c.end_date);
                   const balance = Number(c.balance_due || 0);
+                  const depositAmount = Number(c.deposit_amount || 0);
+                  const hasDeposit = depositAmount > 0;
+                  const isDepositReturned = c.deposit_returned !== null;
                   return (
                     <TableRow key={c.id}>
                       <TableCell className="px-5 font-medium text-foreground">
@@ -1767,6 +1771,27 @@ const Contracts = () => {
                         )}
                       >
                         {balance > 0 ? `AED ${balance.toLocaleString()}` : c.payment_status === "Paid" ? "Paid" : "—"}
+                      </TableCell>
+                      <TableCell className="px-5 text-right">
+                        {!hasDeposit ? (
+                          <div className="text-sm text-[#2d3f5c]">—</div>
+                        ) : (
+                          <div className="flex flex-col items-end gap-1">
+                            <div className={cn("font-mono text-sm font-medium", isDepositReturned ? "text-[#475569]" : "text-foreground")}>
+                              AED {depositAmount.toLocaleString()}
+                            </div>
+                            <span
+                              className={cn(
+                                "rounded border px-[7px] py-0.5 text-[10px] font-bold uppercase leading-3",
+                                isDepositReturned
+                                  ? "border-[#1a3520] bg-[#0f1f12] text-[#4ade80]"
+                                  : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
+                              )}
+                            >
+                              {isDepositReturned ? "RETURNED" : "HELD"}
+                            </span>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="w-[104px] px-2 text-right">
                         <div className="flex items-center justify-end gap-1">
