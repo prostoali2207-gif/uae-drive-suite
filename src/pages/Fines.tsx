@@ -801,44 +801,60 @@ const Fines = () => {
                   <TableHead className="text-xs">Transaction ID</TableHead>
                   <TableHead className="text-xs">Car</TableHead>
                   <TableHead className="text-xs">Client</TableHead>
-                  <TableHead className="text-xs">Trips</TableHead>
                   <TableHead className="text-xs">Amount</TableHead>
+                  <TableHead className="text-xs">Payment</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="px-5 text-xs text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
+                    <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
                   </TableRow>
                 ) : salik.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
+                    <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
                   </TableRow>
                 ) : (
-                  paginatedSalik.map((s) => (
-                    <TableRow key={s.id}>
+                  paginatedSalik.map((s) => {
+                    const paidAt = (s as SalikRow & { paid_at?: string | null }).paid_at;
+                    const displayedStatus: ChargeStatus = paidAt
+                      ? "Paid"
+                      : s.status === "Charged to Client"
+                        ? "Charged to Client"
+                        : "Unpaid";
+
+                    return (
+                      <TableRow key={s.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(s.charge_date)}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.transaction_id || "—"}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{s.clients?.full_name ?? "—"}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{s.trips}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(s.amount).toLocaleString()}</TableCell>
                       <TableCell>
-                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[s.status] ?? "bg-muted text-muted-foreground")}>
-                          {s.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="px-5 text-right">
-                        {s.status === "Unpaid" && (
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeSalikToClient(s.id)}>
-                            Charge to Client
-                          </Button>
+                        {paidAt && (
+                          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses.Paid)}>
+                            Paid
+                          </span>
                         )}
                       </TableCell>
-                    </TableRow>
-                  ))
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {displayedStatus === "Charged to Client" && (
+                            <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[displayedStatus])}>
+                              {displayedStatus}
+                            </span>
+                          )}
+                          {displayedStatus === "Unpaid" && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeSalikToClient(s.id)}>
+                              Charge to Client
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
