@@ -17,6 +17,7 @@ import { RecentContracts } from "@/components/RecentContracts";
 import ExpiringContracts from "@/components/ExpiringContracts";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 const formatAED = (n: number) => `AED ${n.toLocaleString("en-AE")}`;
 
@@ -34,6 +35,7 @@ interface Stats {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [stats, setStats] = useState<Stats>({
     activeContracts: 0,
     availableCars: 0,
@@ -47,14 +49,23 @@ const Index = () => {
   });
 
   useEffect(() => {
+    if (!user) return;
+
     const load = async () => {
       const today = new Date();
       const inAWeek = new Date();
       inAWeek.setDate(today.getDate() + 7);
       const todayStr = today.toISOString().slice(0, 10);
       const weekStr = inAWeek.toISOString().slice(0, 10);
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("deposit_return_days" as never)
+        .eq("id", user.id)
+        .single();
+
+      const depositReturnDays = (profileData as { deposit_return_days?: number | null } | null)?.deposit_return_days ?? 15;
       const fifteenDaysAgo = new Date();
-      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - depositReturnDays);
       const cutoff = fifteenDaysAgo.toISOString().split("T")[0];
 
       const [contractsRes, carsRes, finesRes, salikRes, renewalsRes, totalCarsRes, returnsTodayRes, overdueReturnsRes, depositsReadyRes] = await Promise.all([
@@ -88,7 +99,7 @@ const Index = () => {
       });
     };
     load();
-  }, []);
+  }, [user]);
 
   const urgentWorkCount = stats.returnsToday + stats.overdueReturns;
   const todayWorkRows = [
