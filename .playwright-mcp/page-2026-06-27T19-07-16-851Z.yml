@@ -1,0 +1,456 @@
+- generic [ref=e3]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e7]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - img [ref=e15]
+          - generic [ref=e19]:
+            - generic [ref=e20]: FleetDesk
+            - generic [ref=e21]: UAE Rentals
+        - list [ref=e24]:
+          - listitem [ref=e25]:
+            - link "Dashboard" [ref=e26] [cursor=pointer]:
+              - /url: /
+              - img [ref=e27]
+              - generic [ref=e32]: Dashboard
+          - listitem [ref=e33]:
+            - link "Fleet" [ref=e34] [cursor=pointer]:
+              - /url: /fleet
+              - img [ref=e35]
+              - generic [ref=e39]: Fleet
+          - listitem [ref=e40]:
+            - link "Contracts" [ref=e41] [cursor=pointer]:
+              - /url: /contracts
+              - img [ref=e42]
+              - generic [ref=e45]: Contracts
+          - listitem [ref=e46]:
+            - link "Clients" [ref=e47] [cursor=pointer]:
+              - /url: /clients
+              - img [ref=e48]
+              - generic [ref=e53]: Clients
+          - listitem [ref=e54]:
+            - link "Fines & Salik" [ref=e55] [cursor=pointer]:
+              - /url: /fines
+              - img [ref=e56]
+              - generic [ref=e58]: Fines & Salik
+          - listitem [ref=e59]:
+            - link "Payments" [ref=e60] [cursor=pointer]:
+              - /url: /payments
+              - img [ref=e61]
+              - generic [ref=e63]: Payments
+          - listitem [ref=e64]:
+            - link "Reports" [ref=e65] [cursor=pointer]:
+              - /url: /reports
+              - img [ref=e66]
+              - generic [ref=e68]: Reports
+          - listitem [ref=e69]:
+            - link "Settings" [ref=e70] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e71]
+              - generic [ref=e74]: Settings
+      - generic [ref=e76]:
+        - generic [ref=e77]: muzafirvat@gmail.com
+        - button "Sign out" [ref=e78] [cursor=pointer]:
+          - img [ref=e79]
+          - generic [ref=e82]: Sign out
+    - generic [ref=e83]:
+      - banner [ref=e84]:
+        - button "Toggle Sidebar" [ref=e85] [cursor=pointer]:
+          - img
+          - generic [ref=e86]: Toggle Sidebar
+        - generic [ref=e87]:
+          - heading "Fines & Salik" [level=1] [ref=e88]
+          - paragraph [ref=e89]: Traffic fines and toll charges
+        - button "9+" [ref=e91] [cursor=pointer]:
+          - img
+          - generic [ref=e92]: 9+
+      - main [ref=e93]:
+        - generic [ref=e95]:
+          - tablist [ref=e96]:
+            - tab "Traffic Fines" [selected] [ref=e97] [cursor=pointer]
+            - tab "Salik Charges" [ref=e98] [cursor=pointer]
+          - generic [ref=e99]:
+            - img
+            - textbox "Search fine number, client, or plate..." [ref=e100]
+          - tabpanel "Traffic Fines" [ref=e101]:
+            - generic [ref=e102]:
+              - img [ref=e103]
+              - generic [ref=e105]:
+                - generic [ref=e106]: AED 56 605 in unpaid fines
+                - generic [ref=e107]: 138 fines awaiting action
+            - generic [ref=e108]:
+              - button "Import Fines (Excel)" [ref=e109] [cursor=pointer]:
+                - img
+                - text: Import Fines (Excel)
+              - button "Charge All Unpaid" [ref=e110] [cursor=pointer]
+              - button "Add Fine" [ref=e111] [cursor=pointer]:
+                - img
+                - text: Add Fine
+            - generic [ref=e112]:
+              - table [ref=e114]:
+                - rowgroup [ref=e115]:
+                  - row "Date Fine № Car Client Type Amount Payment Source Status" [ref=e116]:
+                    - columnheader "Date" [ref=e117]
+                    - columnheader "Fine №" [ref=e118]
+                    - columnheader "Car" [ref=e119]
+                    - columnheader "Client" [ref=e120]
+                    - columnheader "Type" [ref=e121]
+                    - columnheader "Amount" [ref=e122]
+                    - columnheader "Payment" [ref=e123]
+                    - columnheader "Source" [ref=e124]
+                    - columnheader "Status" [ref=e125]
+                - rowgroup [ref=e126]:
+                  - row "21 Jun 2026 · 04:00 7041624109 B 60745 Rustam Qurbonboev External fines AED 620 Unpaid Dubai Charged to Client" [ref=e127]:
+                    - cell "21 Jun 2026 · 04:00" [ref=e128]
+                    - cell "7041624109" [ref=e129]:
+                      - generic [ref=e131]: "7041624109"
+                    - cell "B 60745" [ref=e132]
+                    - cell "Rustam Qurbonboev" [ref=e133]
+                    - cell "External fines" [ref=e134]
+                    - cell "AED 620" [ref=e135]
+                    - cell "Unpaid" [ref=e136]:
+                      - generic [ref=e137]: Unpaid
+                    - cell "Dubai" [ref=e138]
+                    - cell "Charged to Client" [ref=e139]:
+                      - generic [ref=e141]: Charged to Client
+                  - row "18 Jun 2026 · 04:00 1413006 A 28684 — External fines AED 170 Unpaid Ajman Municipality Charged to Client" [ref=e142]:
+                    - cell "18 Jun 2026 · 04:00" [ref=e143]
+                    - cell "1413006" [ref=e144]:
+                      - generic [ref=e146]: "1413006"
+                    - cell "A 28684" [ref=e147]
+                    - cell "—" [ref=e148]
+                    - cell "External fines" [ref=e149]
+                    - cell "AED 170" [ref=e150]
+                    - cell "Unpaid" [ref=e151]:
+                      - generic [ref=e152]: Unpaid
+                    - cell "Ajman Municipality" [ref=e153]
+                    - cell "Charged to Client" [ref=e154]:
+                      - generic [ref=e156]: Charged to Client
+                  - row "13 Jun 2026 · 04:00 103776596 A 77302 Islam Balaev External fines AED 180 Unpaid Sharjah Municipality Charged to Client" [ref=e157]:
+                    - cell "13 Jun 2026 · 04:00" [ref=e158]
+                    - cell "103776596" [ref=e159]:
+                      - generic [ref=e161]: "103776596"
+                    - cell "A 77302" [ref=e162]
+                    - cell "Islam Balaev" [ref=e163]
+                    - cell "External fines" [ref=e164]
+                    - cell "AED 180" [ref=e165]
+                    - cell "Unpaid" [ref=e166]:
+                      - generic [ref=e167]: Unpaid
+                    - cell "Sharjah Municipality" [ref=e168]
+                    - cell "Charged to Client" [ref=e169]:
+                      - generic [ref=e171]: Charged to Client
+                  - row "13 Jun 2026 · 04:00 7041553648 A 28687 Ikromdzon Umarov External fines AED 820 Unpaid Dubai Charged to Client" [ref=e172]:
+                    - cell "13 Jun 2026 · 04:00" [ref=e173]
+                    - cell "7041553648" [ref=e174]:
+                      - generic [ref=e176]: "7041553648"
+                    - cell "A 28687" [ref=e177]
+                    - cell "Ikromdzon Umarov" [ref=e178]
+                    - cell "External fines" [ref=e179]
+                    - cell "AED 820" [ref=e180]
+                    - cell "Unpaid" [ref=e181]:
+                      - generic [ref=e182]: Unpaid
+                    - cell "Dubai" [ref=e183]
+                    - cell "Charged to Client" [ref=e184]:
+                      - generic [ref=e186]: Charged to Client
+                  - row "12 Jun 2026 · 04:00 6263723042 A 77302 Islam Balaev Exceeding maximum speed limit by no more than 20km/hr AED 215 Unpaid Abu Dhabi Charged to Client" [ref=e187]:
+                    - cell "12 Jun 2026 · 04:00" [ref=e188]
+                    - cell "6263723042" [ref=e189]:
+                      - generic [ref=e191]: "6263723042"
+                    - cell "A 77302" [ref=e192]
+                    - cell "Islam Balaev" [ref=e193]
+                    - cell "Exceeding maximum speed limit by no more than 20km/hr" [ref=e194]
+                    - cell "AED 215" [ref=e195]
+                    - cell "Unpaid" [ref=e196]:
+                      - generic [ref=e197]: Unpaid
+                    - cell "Abu Dhabi" [ref=e198]
+                    - cell "Charged to Client" [ref=e199]:
+                      - generic [ref=e201]: Charged to Client
+                  - row "12 Jun 2026 · 04:00 6261008862 4 BP A 77108 Ibragim Tsitsiev Distracted driving caused by mobile phones AED 820 Unpaid Sharjah Charged to Client" [ref=e202]:
+                    - cell "12 Jun 2026 · 04:00" [ref=e203]
+                    - cell "6261008862 4 BP" [ref=e204]:
+                      - generic [ref=e205]:
+                        - generic [ref=e206]: "6261008862"
+                        - generic [ref=e209]: 4 BP
+                    - cell "A 77108" [ref=e210]
+                    - cell "Ibragim Tsitsiev" [ref=e211]
+                    - cell "Distracted driving caused by mobile phones" [ref=e212]
+                    - cell "AED 820" [ref=e213]
+                    - cell "Unpaid" [ref=e214]:
+                      - generic [ref=e215]: Unpaid
+                    - cell "Sharjah" [ref=e216]
+                    - cell "Charged to Client" [ref=e217]:
+                      - generic [ref=e219]: Charged to Client
+                  - row "12 Jun 2026 · 04:00 6263722058 A 77302 Islam Balaev Exceeding maximum speed limit by no more than 20km/hr AED 215 Unpaid Abu Dhabi Charged to Client" [ref=e220]:
+                    - cell "12 Jun 2026 · 04:00" [ref=e221]
+                    - cell "6263722058" [ref=e222]:
+                      - generic [ref=e224]: "6263722058"
+                    - cell "A 77302" [ref=e225]
+                    - cell "Islam Balaev" [ref=e226]
+                    - cell "Exceeding maximum speed limit by no more than 20km/hr" [ref=e227]
+                    - cell "AED 215" [ref=e228]
+                    - cell "Unpaid" [ref=e229]:
+                      - generic [ref=e230]: Unpaid
+                    - cell "Abu Dhabi" [ref=e231]
+                    - cell "Charged to Client" [ref=e232]:
+                      - generic [ref=e234]: Charged to Client
+                  - row "12 Jun 2026 · 04:00 6263722019 A 77302 Islam Balaev Exceeding maximum speed limit by no more than 20km/hr AED 215 Unpaid Abu Dhabi Charged to Client" [ref=e235]:
+                    - cell "12 Jun 2026 · 04:00" [ref=e236]
+                    - cell "6263722019" [ref=e237]:
+                      - generic [ref=e239]: "6263722019"
+                    - cell "A 77302" [ref=e240]
+                    - cell "Islam Balaev" [ref=e241]
+                    - cell "Exceeding maximum speed limit by no more than 20km/hr" [ref=e242]
+                    - cell "AED 215" [ref=e243]
+                    - cell "Unpaid" [ref=e244]:
+                      - generic [ref=e245]: Unpaid
+                    - cell "Abu Dhabi" [ref=e246]
+                    - cell "Charged to Client" [ref=e247]:
+                      - generic [ref=e249]: Charged to Client
+                  - row "12 Jun 2026 · 04:00 6263714918 A 77302 Islam Balaev Exceeding maximum speed limit by no more than 20km/hr AED 215 Unpaid Abu Dhabi Charged to Client" [ref=e250]:
+                    - cell "12 Jun 2026 · 04:00" [ref=e251]
+                    - cell "6263714918" [ref=e252]:
+                      - generic [ref=e254]: "6263714918"
+                    - cell "A 77302" [ref=e255]
+                    - cell "Islam Balaev" [ref=e256]
+                    - cell "Exceeding maximum speed limit by no more than 20km/hr" [ref=e257]
+                    - cell "AED 215" [ref=e258]
+                    - cell "Unpaid" [ref=e259]:
+                      - generic [ref=e260]: Unpaid
+                    - cell "Abu Dhabi" [ref=e261]
+                    - cell "Charged to Client" [ref=e262]:
+                      - generic [ref=e264]: Charged to Client
+                  - row "12 Jun 2026 · 04:00 112353641 A 73558 Turpal-Ali Kerimov External fines AED 130 Unpaid Sharjah Municipality Charged to Client" [ref=e265]:
+                    - cell "12 Jun 2026 · 04:00" [ref=e266]
+                    - cell "112353641" [ref=e267]:
+                      - generic [ref=e269]: "112353641"
+                    - cell "A 73558" [ref=e270]
+                    - cell "Turpal-Ali Kerimov" [ref=e271]
+                    - cell "External fines" [ref=e272]
+                    - cell "AED 130" [ref=e273]
+                    - cell "Unpaid" [ref=e274]:
+                      - generic [ref=e275]: Unpaid
+                    - cell "Sharjah Municipality" [ref=e276]
+                    - cell "Charged to Client" [ref=e277]:
+                      - generic [ref=e279]: Charged to Client
+                  - row "12 Jun 2026 · 04:00 28819077 A 73230 — External fines AED 170 Unpaid Roads & Trasnport Authority Charge to Client" [ref=e280]:
+                    - cell "12 Jun 2026 · 04:00" [ref=e281]
+                    - cell "28819077" [ref=e282]:
+                      - generic [ref=e284]: "28819077"
+                    - cell "A 73230" [ref=e285]
+                    - cell "—" [ref=e286]
+                    - cell "External fines" [ref=e287]
+                    - cell "AED 170" [ref=e288]
+                    - cell "Unpaid" [ref=e289]:
+                      - generic [ref=e290]: Unpaid
+                    - cell "Roads & Trasnport Authority" [ref=e291]
+                    - cell "Charge to Client" [ref=e292]:
+                      - generic [ref=e294]:
+                        - button "Charge to Client" [disabled]
+                  - row "08 Jun 2026 · 04:00 112345562 A 73558 Turpal-Ali Kerimov External fines AED 180 Unpaid Sharjah Municipality Charged to Client" [ref=e295]:
+                    - cell "08 Jun 2026 · 04:00" [ref=e296]
+                    - cell "112345562" [ref=e297]:
+                      - generic [ref=e299]: "112345562"
+                    - cell "A 73558" [ref=e300]
+                    - cell "Turpal-Ali Kerimov" [ref=e301]
+                    - cell "External fines" [ref=e302]
+                    - cell "AED 180" [ref=e303]
+                    - cell "Unpaid" [ref=e304]:
+                      - generic [ref=e305]: Unpaid
+                    - cell "Sharjah Municipality" [ref=e306]
+                    - cell "Charged to Client" [ref=e307]:
+                      - generic [ref=e309]: Charged to Client
+                  - row "06 Jun 2026 · 04:00 28616431 A 77108 Pavel Rybkin External fines AED 170 Unpaid Roads & Trasnport Authority Charged to Client" [ref=e310]:
+                    - cell "06 Jun 2026 · 04:00" [ref=e311]
+                    - cell "28616431" [ref=e312]:
+                      - generic [ref=e314]: "28616431"
+                    - cell "A 77108" [ref=e315]
+                    - cell "Pavel Rybkin" [ref=e316]
+                    - cell "External fines" [ref=e317]
+                    - cell "AED 170" [ref=e318]
+                    - cell "Unpaid" [ref=e319]:
+                      - generic [ref=e320]: Unpaid
+                    - cell "Roads & Trasnport Authority" [ref=e321]
+                    - cell "Charged to Client" [ref=e322]:
+                      - generic [ref=e324]: Charged to Client
+                  - row "05 Jun 2026 · 04:00 172202153 A 76478 Aisha Al-Qattan External fines AED 180 Unpaid Sharjah Municipality Charged to Client" [ref=e325]:
+                    - cell "05 Jun 2026 · 04:00" [ref=e326]
+                    - cell "172202153" [ref=e327]:
+                      - generic [ref=e329]: "172202153"
+                    - cell "A 76478" [ref=e330]
+                    - cell "Aisha Al-Qattan" [ref=e331]
+                    - cell "External fines" [ref=e332]
+                    - cell "AED 180" [ref=e333]
+                    - cell "Unpaid" [ref=e334]:
+                      - generic [ref=e335]: Unpaid
+                    - cell "Sharjah Municipality" [ref=e336]
+                    - cell "Charged to Client" [ref=e337]:
+                      - generic [ref=e339]: Charged to Client
+                  - row "05 Jun 2026 · 04:00 28557006 A 77108 Pavel Rybkin External fines AED 220 Unpaid Roads & Trasnport Authority Charged to Client" [ref=e340]:
+                    - cell "05 Jun 2026 · 04:00" [ref=e341]
+                    - cell "28557006" [ref=e342]:
+                      - generic [ref=e344]: "28557006"
+                    - cell "A 77108" [ref=e345]
+                    - cell "Pavel Rybkin" [ref=e346]
+                    - cell "External fines" [ref=e347]
+                    - cell "AED 220" [ref=e348]
+                    - cell "Unpaid" [ref=e349]:
+                      - generic [ref=e350]: Unpaid
+                    - cell "Roads & Trasnport Authority" [ref=e351]
+                    - cell "Charged to Client" [ref=e352]:
+                      - generic [ref=e354]: Charged to Client
+                  - row "02 Jun 2026 · 04:00 6260941000 4 BP B 18151 Muradov Yagshygeldi Distracted driving caused by mobile phones AED 820 Unpaid Sharjah Charged to Client" [ref=e355]:
+                    - cell "02 Jun 2026 · 04:00" [ref=e356]
+                    - cell "6260941000 4 BP" [ref=e357]:
+                      - generic [ref=e358]:
+                        - generic [ref=e359]: "6260941000"
+                        - generic [ref=e362]: 4 BP
+                    - cell "B 18151" [ref=e363]
+                    - cell "Muradov Yagshygeldi" [ref=e364]
+                    - cell "Distracted driving caused by mobile phones" [ref=e365]
+                    - cell "AED 820" [ref=e366]
+                    - cell "Unpaid" [ref=e367]:
+                      - generic [ref=e368]: Unpaid
+                    - cell "Sharjah" [ref=e369]
+                    - cell "Charged to Client" [ref=e370]:
+                      - generic [ref=e372]: Charged to Client
+                  - row "01 Jun 2026 · 04:00 28535529 A 77108 Pavel Rybkin External fines AED 170 Unpaid Roads & Trasnport Authority Charged to Client" [ref=e373]:
+                    - cell "01 Jun 2026 · 04:00" [ref=e374]
+                    - cell "28535529" [ref=e375]:
+                      - generic [ref=e377]: "28535529"
+                    - cell "A 77108" [ref=e378]
+                    - cell "Pavel Rybkin" [ref=e379]
+                    - cell "External fines" [ref=e380]
+                    - cell "AED 170" [ref=e381]
+                    - cell "Unpaid" [ref=e382]:
+                      - generic [ref=e383]: Unpaid
+                    - cell "Roads & Trasnport Authority" [ref=e384]
+                    - cell "Charged to Client" [ref=e385]:
+                      - generic [ref=e387]: Charged to Client
+                  - row "27 May 2026 · 04:00 6260892152 B 18151 Muradov Yagshygeldi Exceeding maximum speed limit by no more than 40km/hr AED 475 Unpaid Sharjah Charged to Client" [ref=e388]:
+                    - cell "27 May 2026 · 04:00" [ref=e389]
+                    - cell "6260892152" [ref=e390]:
+                      - generic [ref=e392]: "6260892152"
+                    - cell "B 18151" [ref=e393]
+                    - cell "Muradov Yagshygeldi" [ref=e394]
+                    - cell "Exceeding maximum speed limit by no more than 40km/hr" [ref=e395]
+                    - cell "AED 475" [ref=e396]
+                    - cell "Unpaid" [ref=e397]:
+                      - generic [ref=e398]: Unpaid
+                    - cell "Sharjah" [ref=e399]
+                    - cell "Charged to Client" [ref=e400]:
+                      - generic [ref=e402]: Charged to Client
+                  - row "21 May 2026 · 04:00 6260114185 4 BP A 73556 — Tailgating (no enough Distance to the car in front of you) AED 420 Unpaid Um Al-Quiwain Charged to Client" [ref=e403]:
+                    - cell "21 May 2026 · 04:00" [ref=e404]
+                    - cell "6260114185 4 BP" [ref=e405]:
+                      - generic [ref=e406]:
+                        - generic [ref=e407]: "6260114185"
+                        - generic [ref=e410]: 4 BP
+                    - cell "A 73556" [ref=e411]
+                    - cell "—" [ref=e412]
+                    - cell "Tailgating (no enough Distance to the car in front of you)" [ref=e413]
+                    - cell "AED 420" [ref=e414]
+                    - cell "Unpaid" [ref=e415]:
+                      - generic [ref=e416]: Unpaid
+                    - cell "Um Al-Quiwain" [ref=e417]
+                    - cell "Charged to Client" [ref=e418]:
+                      - generic [ref=e420]: Charged to Client
+                  - row "20 May 2026 · 04:00 239799733 B 47501 — External fines AED 70 Unpaid Salik Dubai Charge to Client" [ref=e421]:
+                    - cell "20 May 2026 · 04:00" [ref=e422]
+                    - cell "239799733" [ref=e423]:
+                      - generic [ref=e425]: "239799733"
+                    - cell "B 47501" [ref=e426]
+                    - cell "—" [ref=e427]
+                    - cell "External fines" [ref=e428]
+                    - cell "AED 70" [ref=e429]
+                    - cell "Unpaid" [ref=e430]:
+                      - generic [ref=e431]: Unpaid
+                    - cell "Salik Dubai" [ref=e432]
+                    - cell "Charge to Client" [ref=e433]:
+                      - generic [ref=e435]:
+                        - button "Charge to Client" [disabled]
+                  - row "20 May 2026 · 04:00 239798149 B 56235 — External fines AED 70 Unpaid Salik Dubai Charge to Client" [ref=e436]:
+                    - cell "20 May 2026 · 04:00" [ref=e437]
+                    - cell "239798149" [ref=e438]:
+                      - generic [ref=e440]: "239798149"
+                    - cell "B 56235" [ref=e441]
+                    - cell "—" [ref=e442]
+                    - cell "External fines" [ref=e443]
+                    - cell "AED 70" [ref=e444]
+                    - cell "Unpaid" [ref=e445]:
+                      - generic [ref=e446]: Unpaid
+                    - cell "Salik Dubai" [ref=e447]
+                    - cell "Charge to Client" [ref=e448]:
+                      - generic [ref=e450]:
+                        - button "Charge to Client" [disabled]
+                  - row "20 May 2026 · 04:00 239785778 A 28687 Ikromdzon Umarov External fines AED 70 Unpaid Salik Dubai Charged to Client" [ref=e451]:
+                    - cell "20 May 2026 · 04:00" [ref=e452]
+                    - cell "239785778" [ref=e453]:
+                      - generic [ref=e455]: "239785778"
+                    - cell "A 28687" [ref=e456]
+                    - cell "Ikromdzon Umarov" [ref=e457]
+                    - cell "External fines" [ref=e458]
+                    - cell "AED 70" [ref=e459]
+                    - cell "Unpaid" [ref=e460]:
+                      - generic [ref=e461]: Unpaid
+                    - cell "Salik Dubai" [ref=e462]
+                    - cell "Charged to Client" [ref=e463]:
+                      - generic [ref=e465]: Charged to Client
+                  - row "20 May 2026 · 04:00 239817722 B 58102 — External fines AED 70 Unpaid Salik Dubai Charge to Client" [ref=e466]:
+                    - cell "20 May 2026 · 04:00" [ref=e467]
+                    - cell "239817722" [ref=e468]:
+                      - generic [ref=e470]: "239817722"
+                    - cell "B 58102" [ref=e471]
+                    - cell "—" [ref=e472]
+                    - cell "External fines" [ref=e473]
+                    - cell "AED 70" [ref=e474]
+                    - cell "Unpaid" [ref=e475]:
+                      - generic [ref=e476]: Unpaid
+                    - cell "Salik Dubai" [ref=e477]
+                    - cell "Charge to Client" [ref=e478]:
+                      - generic [ref=e480]:
+                        - button "Charge to Client" [disabled]
+                  - row "15 May 2026 · 04:00 6260832560 B 18151 Muradov Yagshygeldi Exceeding maximum speed limit by no more than 30km/hr AED 410 Unpaid Sharjah Charged to Client" [ref=e481]:
+                    - cell "15 May 2026 · 04:00" [ref=e482]
+                    - cell "6260832560" [ref=e483]:
+                      - generic [ref=e485]: "6260832560"
+                    - cell "B 18151" [ref=e486]
+                    - cell "Muradov Yagshygeldi" [ref=e487]
+                    - cell "Exceeding maximum speed limit by no more than 30km/hr" [ref=e488]
+                    - cell "AED 410" [ref=e489]
+                    - cell "Unpaid" [ref=e490]:
+                      - generic [ref=e491]: Unpaid
+                    - cell "Sharjah" [ref=e492]
+                    - cell "Charged to Client" [ref=e493]:
+                      - generic [ref=e495]: Charged to Client
+                  - row "13 May 2026 · 04:00 181056184 A 73453 — External fines AED 180 Unpaid Sharjah Municipality Charge to Client" [ref=e496]:
+                    - cell "13 May 2026 · 04:00" [ref=e497]
+                    - cell "181056184" [ref=e498]:
+                      - generic [ref=e500]: "181056184"
+                    - cell "A 73453" [ref=e501]
+                    - cell "—" [ref=e502]
+                    - cell "External fines" [ref=e503]
+                    - cell "AED 180" [ref=e504]
+                    - cell "Unpaid" [ref=e505]:
+                      - generic [ref=e506]: Unpaid
+                    - cell "Sharjah Municipality" [ref=e507]
+                    - cell "Charge to Client" [ref=e508]:
+                      - generic [ref=e510]:
+                        - button "Charge to Client" [disabled]
+              - generic [ref=e511]:
+                - generic [ref=e512]: Showing 1–25 of 189
+                - generic [ref=e513]:
+                  - combobox [ref=e514] [cursor=pointer]:
+                    - generic: 25 rows
+                    - img [ref=e515]
+                  - button "Previous" [disabled]
+                  - generic [ref=e517]:
+                    - button "1" [ref=e519] [cursor=pointer]
+                    - button "2" [ref=e521] [cursor=pointer]
+                    - generic [ref=e522]:
+                      - generic [ref=e523]: ...
+                      - button "8" [ref=e524] [cursor=pointer]
+                  - button "Next" [ref=e525] [cursor=pointer]
+          - tabpanel "Salik Charges"

@@ -170,7 +170,7 @@ function parseFineDateTime(dateValue: unknown, timeValue?: unknown): string | nu
   const dateTimeMatch = typeof dateValue === "string"
     ? /(\d{4}-\d{2}-\d{2})[T\s](\d{1,2}:\d{2}(?::\d{2})?)/.exec(dateValue.trim())
     : null;
-  const timePart = dateTimeMatch?.[2] || parseTimePart(timeValue) || "00:00:00";
+  const timePart = dateTimeMatch ? parseTimePart(dateTimeMatch[0]) || "00:00:00" : parseTimePart(timeValue) || "00:00:00";
   const dubaiDate = new Date(`${datePart}T${timePart}+04:00`);
   return isNaN(dubaiDate.getTime()) ? null : dubaiDate.toISOString();
 }
