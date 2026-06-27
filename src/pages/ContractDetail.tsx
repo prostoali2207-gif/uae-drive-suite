@@ -144,6 +144,12 @@ interface FineRow {
   status: string;
   source: string;
   notes?: string | null;
+  car_id: string | null;
+  cars: {
+    plate: string;
+    make: string;
+    model: string;
+  } | null;
 }
 
 interface SalikRow {
@@ -157,6 +163,12 @@ interface SalikRow {
   amount: number;
   status: string;
   notes?: string | null;
+  car_id: string | null;
+  cars: {
+    plate: string;
+    make: string;
+    model: string;
+  } | null;
 }
 
 interface PaymentRow {
@@ -2439,12 +2451,12 @@ const ContractDetail = () => {
           .order("payment_date", { ascending: false }),
         supabase
           .from("fines")
-          .select("id, fine_date, created_at, fine_number, fine_type, amount, status, source, notes")
+          .select("id, fine_date, fine_number, fine_type, amount, status, source, notes, car_id, cars(plate, make, model)")
           .eq("contract_id", c.id)
           .order("fine_date", { ascending: false }),
         supabase
           .from("salik")
-          .select("id, charge_date, created_at, transaction_id, toll_gate, direction, trips, amount, status, notes")
+          .select("id, charge_date, transaction_id, toll_gate, direction, trips, amount, status, car_id, cars(plate, make, model)")
           .eq("contract_id", c.id)
           .order("charge_date", { ascending: false }),
         supabase

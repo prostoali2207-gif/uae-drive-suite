@@ -44,6 +44,13 @@ interface ContractFine {
   status: FineStatus;
   paid_at: string | null;
   notes: string | null;
+  source: string | null;
+  car_id: string | null;
+  cars: {
+    plate: string | null;
+    make: string | null;
+    model: string | null;
+  } | null;
 }
 
 const statusStyles: Record<string, string> = {
@@ -72,6 +79,13 @@ const formatDate = (dateValue: string) => {
 };
 
 const toAmount = (amount: ContractFine["amount"]) => Number(amount) || 0;
+
+const formatVehicleInfo = (car: ContractFine["cars"]) => {
+  if (!car) return null;
+
+  const modelName = [car.make, car.model].filter(Boolean).join(" ").trim();
+  return [car.plate, modelName].filter(Boolean).join(" · ") || null;
+};
 
 type FinePaymentMethod = "Cash" | "Card" | "Bank Transfer" | "Cheque";
 
@@ -103,7 +117,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
     try {
       const { data, error } = await (supabaseClient as any)
         .from("fines")
-        .select("id, fine_number, fine_type, black_points, amount, fine_date, status, paid_at, notes")
+        .select("id, fine_number, fine_type, black_points, amount, fine_date, status, paid_at, notes, source, car_id, cars(plate, make, model)")
         .eq("contract_id", contractId)
         .order("fine_date", { ascending: false });
 
@@ -351,6 +365,8 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                 const statusClass = statusStyles[fine.status] ?? statusStyles.Unpaid;
                 const isPaid = fine.status === "Paid";
                 const blackPoints = Number(fine.black_points) || 0;
+                const vehicleInfo = formatVehicleInfo(fine.cars);
+                const chargeSource = fine.source || null;
 
                 return (
                   <div
@@ -375,6 +391,11 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                             </Badge>
                           ) : null}
                         </div>
+                        {vehicleInfo || chargeSource ? (
+                          <p className="mt-1 min-w-0 break-words text-xs leading-5 text-[#e8eaf0]/60">
+                            {[vehicleInfo, chargeSource].filter(Boolean).join(" · ")}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">

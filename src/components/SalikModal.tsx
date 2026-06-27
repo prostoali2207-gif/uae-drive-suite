@@ -26,11 +26,18 @@ interface ContractSalikTransaction {
   id: string;
   transaction_id: string | null;
   toll_gate: string | null;
+  direction: string | null;
   amount: number | string | null;
   transaction_date: string;
   status: SalikStatus;
   paid_at: string | null;
   service_fee: number | string | null;
+  car_id: string | null;
+  cars: {
+    plate: string | null;
+    make: string | null;
+    model: string | null;
+  } | null;
 }
 
 const statusStyles: Record<string, string> = {
@@ -60,6 +67,13 @@ const formatDate = (dateValue: string) => {
 
 const toAmount = (amount: ContractSalikTransaction["amount"]) => Number(amount) || 0;
 
+const formatVehicleInfo = (car: ContractSalikTransaction["cars"]) => {
+  if (!car) return null;
+
+  const modelName = [car.make, car.model].filter(Boolean).join(" ").trim();
+  return [car.plate, modelName].filter(Boolean).join(" · ") || null;
+};
+
 export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) {
   const { toast } = useToast();
   const [transactions, setTransactions] = useState<ContractSalikTransaction[]>([]);
@@ -76,7 +90,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
     try {
       const { data, error } = await (supabaseClient as any)
         .from("salik")
-        .select("id, transaction_id, toll_gate, amount, transaction_date:charge_date, status, paid_at, service_fee")
+        .select("id, transaction_id, toll_gate, direction, amount, transaction_date:charge_date, status, paid_at, service_fee, car_id, cars(plate, make, model)")
         .eq("contract_id", contractId)
         .order("charge_date", { ascending: false });
 
@@ -179,6 +193,12 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
                 const statusClass = statusStyles[transaction.status] ?? statusStyles.Unpaid;
                 const isPaid = transaction.status === "Paid";
                 const isPaying = payingTransactionId === transaction.id;
+                const vehicleInfo = formatVehicleInfo(transaction.cars);
+                const transactionMeta = [
+                  formatDate(transaction.transaction_date),
+                  vehicleInfo,
+                  transaction.transaction_id,
+                ].filter(Boolean);
 
                 return (
                   <div
@@ -191,8 +211,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
                           {transaction.toll_gate || "Salik transaction"}
                         </h3>
                         <p className="mt-1 font-ibm-plex-mono text-[11px] text-[#e8eaf0]/55">
-                          {formatDate(transaction.transaction_date)}
-                          {transaction.transaction_id ? ` - ${transaction.transaction_id}` : ""}
+                          {transactionMeta.join(" · ")}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
