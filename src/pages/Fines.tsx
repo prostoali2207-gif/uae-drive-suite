@@ -80,6 +80,7 @@ interface SalikRow {
   id: string;
   transaction_id: string | null;
   charge_date: string;
+  trip_time: string | null;
   trips: number;
   amount: number;
   status: string;
@@ -910,7 +911,12 @@ const Fines = () => {
 
                     return (
                       <TableRow key={s.id}>
-                      <TableCell className="px-5 text-sm text-muted-foreground">{formatDate(s.charge_date)}</TableCell>
+                      <TableCell className="px-5 text-sm text-muted-foreground">
+                        <div>{formatDate(s.charge_date)}</div>
+                        {s.trip_time ? (
+                          <div className="mt-0.5 font-mono text-xs text-muted-foreground">{s.trip_time}</div>
+                        ) : null}
+                      </TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.transaction_id || "—"}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{s.clients?.full_name ?? "—"}</TableCell>
