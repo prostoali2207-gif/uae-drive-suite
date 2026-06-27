@@ -9,6 +9,7 @@ import {
   CornerDownLeft,
   FileText,
   Navigation,
+  Wrench,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatCard } from "@/components/StatCard";
@@ -31,6 +32,7 @@ interface Stats {
   returnsToday: number;
   overdueReturns: number;
   depositsReady: number;
+  maintenanceCount: number;
 }
 
 const Index = () => {
@@ -46,6 +48,7 @@ const Index = () => {
     returnsToday: 0,
     overdueReturns: 0,
     depositsReady: 0,
+    maintenanceCount: 0,
   });
 
   useEffect(() => {
@@ -57,6 +60,9 @@ const Index = () => {
       inAWeek.setDate(today.getDate() + 7);
       const todayStr = today.toISOString().slice(0, 10);
       const weekStr = inAWeek.toISOString().slice(0, 10);
+      const sevenDaysFromNow = new Date();
+      sevenDaysFromNow.setDate(today.getDate() + 7);
+      const sevenDaysStr = sevenDaysFromNow.toISOString().split("T")[0];
       const { data: profileData } = await supabase
         .from("profiles")
         .select("deposit_return_days" as never)
@@ -68,7 +74,7 @@ const Index = () => {
       fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - depositReturnDays);
       const cutoff = fifteenDaysAgo.toISOString().split("T")[0];
 
-      const [contractsRes, carsRes, finesRes, salikRes, renewalsRes, totalCarsRes, returnsTodayRes, overdueReturnsRes, depositsReadyRes] = await Promise.all([
+      const [contractsRes, carsRes, finesRes, salikRes, renewalsRes, totalCarsRes, returnsTodayRes, overdueReturnsRes, depositsReadyRes, maintenanceRes] = await Promise.all([
         supabase.from("contracts").select("id", { count: "exact", head: true }).in("status", ["Active", "Expiring Soon"]),
         supabase.from("cars").select("id", { count: "exact", head: true }).eq("status", "Available"),
         supabase.from("fines").select("amount").eq("status", "Unpaid"),
@@ -84,6 +90,12 @@ const Index = () => {
           .is("deposit_returned" as never, null)
           .gt("deposit_amount", 0)
           .lte("end_date", cutoff),
+        supabase
+          .from("car_maintenance")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_id", user.id)
+          .or(`next_service_date.lte.${sevenDaysStr},oil_change_date.lte.${sevenDaysStr}`)
+          .or(`next_service_date.gte.${todayStr},oil_change_date.gte.${todayStr}`),
       ]);
 
       setStats({
@@ -96,12 +108,13 @@ const Index = () => {
         returnsToday: returnsTodayRes.count ?? 0,
         overdueReturns: overdueReturnsRes.count ?? 0,
         depositsReady: depositsReadyRes.count ?? 0,
+        maintenanceCount: maintenanceRes.count ?? 0,
       });
     };
     load();
   }, [user]);
 
-  const urgentWorkCount = stats.returnsToday + stats.overdueReturns;
+  const urgentWorkCount = stats.returnsToday + stats.overdueReturns + (stats.maintenanceCount > 0 ? stats.maintenanceCount : 0);
   const todayWorkRows = [
     {
       label: "Returns Today",
@@ -151,6 +164,14 @@ const Index = () => {
       value: stats.availableCars.toLocaleString("en-AE"),
       icon: Car,
       color: "text-muted-foreground bg-muted",
+      to: "/fleet",
+    },
+    {
+      label: "Maintenance Due",
+      sublabel: "Vehicles due for service or oil change within 7 days",
+      value: stats.maintenanceCount.toLocaleString("en-AE"),
+      icon: Wrench,
+      color: "text-amber-500 bg-amber-500/10",
       to: "/fleet",
     },
   ];
