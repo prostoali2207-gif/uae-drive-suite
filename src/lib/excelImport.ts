@@ -15,6 +15,8 @@ export interface ImportSummary {
 interface CarRow { id: string; plate: string; tag_number?: string | null; }
 interface ContractRow { id: string; car_id: string; client_id: string; start_date: string; end_date: string; }
 interface ContractVehicleRow { contract_id: string; car_id: string; started_at: string; ended_at: string | null; }
+interface UnlinkedFineRow { id: string; car_id: string | null; fine_date: string; }
+interface UnlinkedSalikRow { id: string; car_id: string | null; charge_date: string; }
 
 interface ExtendedDatabase extends Database {
   public: Database["public"] & {
@@ -152,20 +154,88 @@ function findContract(
   carId: string,
   dateIso: string,
 ): ContractRow | undefined {
-  const directContract = contracts.find(
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const timelineVehicle = contractVehicles
+    .filter((vehicle) => {
+      const startedAt = getDatePart(vehicle.started_at);
+      const endedAt = vehicle.ended_at ? getDatePart(vehicle.ended_at) : todayIso;
+      return vehicle.car_id === carId && startedAt <= dateIso && endedAt >= dateIso;
+    })
+    .sort((a, b) => getDatePart(b.started_at).localeCompare(getDatePart(a.started_at)))[0];
+
+  if (timelineVehicle) {
+    return contracts.find((contract) => contract.id === timelineVehicle.contract_id);
+  }
+
+  return contracts.find(
     (c) => c.car_id === carId && c.start_date <= dateIso && c.end_date >= dateIso,
   );
-  if (directContract) return directContract;
+}
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const swappedVehicle = contractVehicles.find((vehicle) => {
-    const startedAt = getDatePart(vehicle.started_at);
-    const endedAt = vehicle.ended_at ? getDatePart(vehicle.ended_at) : todayIso;
-    return vehicle.car_id === carId && startedAt <= dateIso && endedAt >= dateIso;
-  });
+async function relinkUnlinkedFines(
+  ownerId: string,
+  contracts: ContractRow[],
+  contractVehicles: ContractVehicleRow[],
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("fines")
+    .select("id, car_id, fine_date")
+    .eq("owner_id", ownerId)
+    .is("contract_id", null)
+    .not("car_id", "is", null);
 
-  if (!swappedVehicle) return undefined;
-  return contracts.find((contract) => contract.id === swappedVehicle.contract_id);
+  if (error) return error.message;
+
+  const updates = ((data || []) as UnlinkedFineRow[])
+    .map((fine) => {
+      if (!fine.car_id) return null;
+      const contract = findContract(contracts, contractVehicles, fine.car_id, fine.fine_date);
+      if (!contract) return null;
+      return supabase
+        .from("fines")
+        .update({ contract_id: contract.id, client_id: contract.client_id })
+        .eq("id", fine.id)
+        .eq("owner_id", ownerId)
+        .is("contract_id", null);
+    })
+    .filter(Boolean);
+
+  const results = await Promise.all(updates);
+  const updateError = results.find((result) => result.error)?.error;
+  return updateError?.message ?? null;
+}
+
+async function relinkUnlinkedSalik(
+  ownerId: string,
+  contracts: ContractRow[],
+  contractVehicles: ContractVehicleRow[],
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("salik")
+    .select("id, car_id, charge_date")
+    .eq("owner_id", ownerId)
+    .is("contract_id", null)
+    .not("car_id", "is", null);
+
+  if (error) return error.message;
+
+  const updates = ((data || []) as UnlinkedSalikRow[])
+    .map((charge) => {
+      if (!charge.car_id) return null;
+      const contract = findContract(contracts, contractVehicles, charge.car_id, charge.charge_date);
+      if (!contract) return null;
+      return supabase
+        .from("salik")
+        .update({ contract_id: contract.id, client_id: contract.client_id })
+        .eq("id", charge.id)
+        .eq("owner_id", ownerId)
+        .is("contract_id", null);
+    })
+    .filter(Boolean);
+
+  const results = await Promise.all(updates);
+  const updateError = results.find((result) => result.error)?.error;
+  return updateError?.message ?? null;
 }
 
 export async function importFinesExcel(file: File): Promise<ImportSummary> {
@@ -186,10 +256,15 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     extendedSupabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at"),
     supabase.from("fines").select("fine_number").not("fine_number", "is", null),
   ]);
+  const loadError = carsRes.error || contractsRes.error || contractVehiclesRes.error || existingRes.error;
+  if (loadError) { summary.errors.push(loadError.message); return summary; }
+
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
   const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
   const existingNumbers = new Set(((existingRes.data || []) as { fine_number: string }[]).map((r) => r.fine_number));
+  const relinkError = await relinkUnlinkedFines(user.id, contracts, contractVehicles);
+  if (relinkError) summary.errors.push(`Relink existing fines: ${relinkError}`);
 
   const carByPlate = new Map<string, CarRow>();
   for (const c of cars) carByPlate.set(normPlate(c.plate), c);
@@ -270,10 +345,15 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     extendedSupabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at"),
     supabase.from("salik").select("transaction_id").not("transaction_id", "is", null),
   ]);
+  const loadError = carsRes.error || contractsRes.error || contractVehiclesRes.error || existingRes.error;
+  if (loadError) { summary.errors.push(loadError.message); return summary; }
+
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
   const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
   const existingTx = new Set(((existingRes.data || []) as { transaction_id: string }[]).map((r) => r.transaction_id));
+  const relinkError = await relinkUnlinkedSalik(user.id, contracts, contractVehicles);
+  if (relinkError) summary.errors.push(`Relink existing Salik: ${relinkError}`);
 
   const carByPlate = new Map<string, CarRow>();
   const carByTag = new Map<string, CarRow>();
