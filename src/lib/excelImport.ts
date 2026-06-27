@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ImportSummary {
   totalRows: number;
@@ -12,6 +14,22 @@ export interface ImportSummary {
 
 interface CarRow { id: string; plate: string; tag_number?: string | null; }
 interface ContractRow { id: string; car_id: string; client_id: string; start_date: string; end_date: string; }
+interface ContractVehicleRow { contract_id: string; car_id: string; started_at: string; ended_at: string | null; }
+
+interface ExtendedDatabase extends Database {
+  public: Database["public"] & {
+    Tables: Database["public"]["Tables"] & {
+      contract_vehicles: {
+        Row: ContractVehicleRow;
+        Insert: ContractVehicleRow;
+        Update: Partial<ContractVehicleRow>;
+        Relationships: [];
+      };
+    };
+  };
+}
+
+const extendedSupabase = supabase as SupabaseClient<ExtendedDatabase>;
 
 const norm = (v: unknown) => String(v ?? "").trim();
 // Match plates by digits only: "AJM A 11532" -> "11532" matches TAMM "11532"
@@ -124,10 +142,30 @@ function getField(row: Record<string, unknown>, ...keys: string[]): unknown {
   return "";
 }
 
-function findContract(contracts: ContractRow[], carId: string, dateIso: string): ContractRow | undefined {
-  return contracts.find(
+function getDatePart(value: string): string {
+  return value.slice(0, 10);
+}
+
+function findContract(
+  contracts: ContractRow[],
+  contractVehicles: ContractVehicleRow[],
+  carId: string,
+  dateIso: string,
+): ContractRow | undefined {
+  const directContract = contracts.find(
     (c) => c.car_id === carId && c.start_date <= dateIso && c.end_date >= dateIso,
   );
+  if (directContract) return directContract;
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const swappedVehicle = contractVehicles.find((vehicle) => {
+    const startedAt = getDatePart(vehicle.started_at);
+    const endedAt = vehicle.ended_at ? getDatePart(vehicle.ended_at) : todayIso;
+    return vehicle.car_id === carId && startedAt <= dateIso && endedAt >= dateIso;
+  });
+
+  if (!swappedVehicle) return undefined;
+  return contracts.find((contract) => contract.id === swappedVehicle.contract_id);
 }
 
 export async function importFinesExcel(file: File): Promise<ImportSummary> {
@@ -142,13 +180,15 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
 
-  const [carsRes, contractsRes, existingRes] = await Promise.all([
+  const [carsRes, contractsRes, contractVehiclesRes, existingRes] = await Promise.all([
     supabase.from("cars").select("id, plate"),
     supabase.from("contracts").select("id, car_id, client_id, start_date, end_date"),
+    extendedSupabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at"),
     supabase.from("fines").select("fine_number").not("fine_number", "is", null),
   ]);
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
+  const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
   const existingNumbers = new Set(((existingRes.data || []) as { fine_number: string }[]).map((r) => r.fine_number));
 
   const carByPlate = new Map<string, CarRow>();
@@ -177,7 +217,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
 
     const car = carByPlate.get(normPlate(plate));
     if (!car) { unmatched.add(plate || "(blank)"); continue; }
-    const contract = findContract(contracts, car.id, dateIso);
+    const contract = findContract(contracts, contractVehicles, car.id, dateIso);
 
     const serviceFee = 20;
     toInsert.push({
@@ -224,13 +264,15 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
 
-  const [carsRes, contractsRes, existingRes] = await Promise.all([
+  const [carsRes, contractsRes, contractVehiclesRes, existingRes] = await Promise.all([
     supabase.from("cars").select("id, plate, tag_number"),
     supabase.from("contracts").select("id, car_id, client_id, start_date, end_date"),
+    extendedSupabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at"),
     supabase.from("salik").select("transaction_id").not("transaction_id", "is", null),
   ]);
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
+  const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
   const existingTx = new Set(((existingRes.data || []) as { transaction_id: string }[]).map((r) => r.transaction_id));
 
   const carByPlate = new Map<string, CarRow>();
@@ -264,7 +306,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
 
     const car = (tagNumber && carByTag.get(tagNumber)) || carByPlate.get(normPlate(plate));
     if (!car) { unmatched.add(plate || tagNumber || "(blank)"); continue; }
-    const contract = findContract(contracts, car.id, dateIso);
+    const contract = findContract(contracts, contractVehicles, car.id, dateIso);
 
     const serviceFee = 1;
     toInsert.push({
