@@ -51,6 +51,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -718,9 +719,24 @@ const Fines = () => {
                             </span>
                           )}
                           {displayedStatus === "Unpaid" && (
-                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
-                              Charge to Client
-                            </Button>
+                            f.contract_id === null ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex">
+                                      <Button size="sm" variant="outline" className="h-7 text-xs" disabled>
+                                        Charge to Client
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>No contract linked – cannot charge client</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
+                                Charge to Client
+                              </Button>
+                            )
                           )}
                         </div>
                       </TableCell>
