@@ -599,6 +599,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     const plate = norm(getField(row, "Plate", "Plate Number"));
     const tagNumber = norm(getField(row, "Tag Number", "TagNumber"));
     const dateIso = parseDate(getField(row, "Trip Date", "Date"));
+    const tripTime = parseTimePart(getField(row, "Trip Time"));
     const tollGate = norm(getField(row, "Toll Gate", "TollGate"));
     const direction = norm(getField(row, "Direction"));
     const original = parseAmount(getField(row, "Amount(AED)", "Amount (AED)", "Amount", "AMOUNT"));
@@ -623,6 +624,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
       toll_gate: tollGate || null,
       direction: direction || null,
       charge_date: dateIso,
+      trip_time: tripTime,
       car_id: car.id,
       client_id: contract?.client_id ?? null,
       contract_id: contract?.id ?? null,
