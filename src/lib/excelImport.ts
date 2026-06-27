@@ -79,6 +79,47 @@ function parseDate(v: unknown): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
+function parseFineDateTime(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "number") {
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) {
+      return new Date(d.y, d.m - 1, d.d, d.H || 0, d.M || 0, Math.floor(d.S || 0)).toISOString();
+    }
+  }
+
+  const s = String(v).trim();
+  const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  if (ymd) {
+    return new Date(
+      Number(ymd[1]),
+      Number(ymd[2]) - 1,
+      Number(ymd[3]),
+      Number(ymd[4] || 0),
+      Number(ymd[5] || 0),
+      Number(ymd[6] || 0),
+    ).toISOString();
+  }
+
+  const dmy = /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  if (dmy) {
+    let year = dmy[3];
+    if (year.length === 2) year = "20" + year;
+    return new Date(
+      Number(year),
+      Number(dmy[2]) - 1,
+      Number(dmy[1]),
+      Number(dmy[4] || 0),
+      Number(dmy[5] || 0),
+      Number(dmy[6] || 0),
+    ).toISOString();
+  }
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 async function readSheet(
   file: File,
   opts?: { raw?: boolean; headerMarker?: string },
@@ -371,14 +412,16 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   for (const row of parsedRows) {
     const fineNumber = norm(row.fineNumber);
     const plate = norm(getField(row, "Plate Number", "Plate"));
-    const dateIso = parseDate(getField(row, "Date", "Fine Date"));
+    const fineDateValue = getField(row, "Date", "Fine Date");
+    const dateIso = parseDate(fineDateValue);
+    const fineDateTimeIso = parseFineDateTime(fineDateValue);
     const source = norm(getField(row, "Source"));
     const fineType = norm(getField(row, "Fine Description", "Description")) || "Other";
     const amountRaw = getField(row, "Total Amount after Discount", "Amount", "Total Amount");
     const original = parseAmount(amountRaw);
 
     if (original === 0) { summary.skippedZero++; continue; }
-    if (!dateIso) { summary.errors.push(`Missing date for fine ${fineNumber || plate}`); continue; }
+    if (!dateIso || !fineDateTimeIso) { summary.errors.push(`Missing date for fine ${fineNumber || plate}`); continue; }
 
     if (fineNumber) {
       if (existingNumbers.has(fineNumber) || seenInBatch.has(fineNumber)) { summary.skippedDuplicate++; continue; }
@@ -393,7 +436,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     toInsert.push({
       owner_id: user.id,
       fine_number: fineNumber || null,
-      fine_date: dateIso,
+      fine_date: fineDateTimeIso,
       car_id: car.id,
       client_id: contract?.client_id ?? null,
       contract_id: contract?.id ?? null,

@@ -113,12 +113,20 @@ function formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   }
 
+  const hasTime = /[T\s]\d{2}:\d{2}/.test(iso);
+  if (hasTime) {
+    const date = new Date(iso);
+    if (!isNaN(date.getTime())) {
+      const dateLabel = date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+      const timeLabel = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+      return `${dateLabel} · ${timeLabel}`;
+    }
+  }
+
   const [, year, month, day] = dateMatch;
   const date = new Date(Number(year), Number(month) - 1, Number(day));
   const dateLabel = date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  const timeMatch = iso.match(/[T\s](\d{2}):(\d{2})/);
-
-  return timeMatch ? `${dateLabel} · ${timeMatch[1]}:${timeMatch[2]}` : dateLabel;
+  return dateLabel;
 }
 
 const Fines = () => {
