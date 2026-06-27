@@ -462,19 +462,17 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     return summary;
   }
 
-  const [carsRes, contractsRes, contractVehiclesRes, existingRes] = await Promise.all([
+  const [carsRes, contractsRes, contractVehiclesRes] = await Promise.all([
     supabase.from("cars").select("id, plate"),
     supabase.from("contracts").select("id, car_id, client_id, start_date, end_date"),
     extendedSupabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at"),
-    supabase.from("fines").select("fine_number").not("fine_number", "is", null),
   ]);
-  const loadError = carsRes.error || contractsRes.error || contractVehiclesRes.error || existingRes.error;
+  const loadError = carsRes.error || contractsRes.error || contractVehiclesRes.error;
   if (loadError) { summary.errors.push(loadError.message); return summary; }
 
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
   const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
-  const existingNumbers = new Set(((existingRes.data || []) as { fine_number: string }[]).map((r) => r.fine_number));
   const relinkError = await relinkUnlinkedFines(user.id, contracts, contractVehicles);
   if (relinkError) summary.errors.push(`Relink existing fines: ${relinkError}`);
   const unlinkError = await unlinkInvalidFineTimelineLinks(user.id, contractVehicles);
@@ -503,7 +501,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     if (!dateIso || !fineDateTimeIso) { summary.errors.push(`Missing date for fine ${fineNumber || plate}`); continue; }
 
     if (fineNumber) {
-      if (existingNumbers.has(fineNumber) || seenInBatch.has(fineNumber)) { summary.skippedDuplicate++; continue; }
+      if (seenInBatch.has(fineNumber)) { summary.skippedDuplicate++; continue; }
       seenInBatch.add(fineNumber);
     }
 
@@ -530,7 +528,10 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   }
 
   if (toInsert.length) {
-    const { error, data } = await supabase.from("fines").insert(toInsert as never).select("id");
+    const { error, data } = await supabase
+      .from("fines")
+      .upsert(toInsert as never, { onConflict: "owner_id,fine_number" })
+      .select("id");
     if (error) summary.errors.push(error.message);
     else summary.imported = data?.length ?? toInsert.length;
   }
