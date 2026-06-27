@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { Calendar, Clock, RotateCw } from "lucide-react";
+import { Calendar, Clock, MessageCircle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RenewContractDialog from "@/components/RenewContractDialog";
 
@@ -73,22 +74,26 @@ const ExpiringContracts = () => {
     });
   };
 
-  const getBadge = (rateType: string) => {
-    if (rateType === "Daily") {
+  const getRenewalBadge = (endDate: string) => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (endDate === todayStr) {
       return (
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
-          Expires soon
+        <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+          Today
         </span>
       );
     }
-    if (rateType === "Monthly") {
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
-          Month ending
-        </span>
-      );
-    }
-    return null;
+
+    return (
+      <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        This week
+      </span>
+    );
+  };
+
+  const getWhatsAppUrl = (phone: string) => {
+    const digits = phone.replace(/\D/g, "");
+    return `https://wa.me/${digits}`;
   };
 
   if (loading) {
@@ -112,16 +117,19 @@ const ExpiringContracts = () => {
       {contracts.map((contract) => (
         <div
           key={contract.id}
-          className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3 transition-colors hover:border-foreground/15"
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-medium text-gray-900 truncate">
+              <Link
+                to={`/contracts/${contract.id}`}
+                className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline"
+              >
                 {contract.client.full_name}
-              </span>
-              {getBadge(contract.rate_type)}
+              </Link>
+              {getRenewalBadge(contract.end_date)}
             </div>
-            <div className="flex items-center gap-4 text-xs text-gray-500">
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="w-3 h-3" />
                 <span className="font-mono">{contract.car.plate}</span>
@@ -132,11 +140,22 @@ const ExpiringContracts = () => {
               </div>
             </div>
           </div>
-          <div>
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               size="sm"
               variant="outline"
-              className="h-7 gap-1 text-xs"
+              className="h-8 gap-1 px-2 text-xs"
+              asChild
+            >
+              <a href={getWhatsAppUrl(contract.client.phone)} target="_blank" rel="noreferrer">
+                <MessageCircle className="h-3.5 w-3.5" />
+                WA
+              </a>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1 px-2 text-xs"
               onClick={() => setOpenContractId(contract.id)}
             >
               <RotateCw className="h-3.5 w-3.5" />

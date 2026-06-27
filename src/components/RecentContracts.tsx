@@ -23,9 +23,14 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function getDisplayStatus(contract: ContractRow, todayStr: string): string {
+  return contract.status === "Active" && contract.end_date < todayStr ? "Overdue" : contract.status;
+}
+
 export function RecentContracts() {
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     supabase
@@ -74,8 +79,8 @@ export function RecentContracts() {
                 <TableCell className="text-muted-foreground">{formatDate(c.start_date)}</TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(c.end_date)}</TableCell>
                 <TableCell className="px-5 text-right">
-                  <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[c.status] ?? "bg-muted text-muted-foreground")}>
-                    {c.status}
+                  <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[getDisplayStatus(c, todayStr)] ?? "bg-muted text-muted-foreground")}>
+                    {getDisplayStatus(c, todayStr)}
                   </span>
                 </TableCell>
               </TableRow>

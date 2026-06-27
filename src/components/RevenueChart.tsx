@@ -75,7 +75,7 @@ export function RevenueChart() {
           Total: AED {total.toLocaleString("en-AE")}
         </span>
       </div>
-      <ChartContainer config={config} className="h-[220px] w-full">
+      <ChartContainer config={config} className="h-[120px] w-full">
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" />
           <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} className="text-xs" />
