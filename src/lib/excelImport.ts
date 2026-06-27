@@ -136,45 +136,51 @@ function parseDate(v: unknown): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
-function parseFineDateTime(v: unknown): string | null {
+function formatTimePart(hours: number, minutes: number, seconds = 0): string {
+  return [
+    String(hours).padStart(2, "0"),
+    String(minutes).padStart(2, "0"),
+    String(seconds).padStart(2, "0"),
+  ].join(":");
+}
+
+function parseTimePart(v: unknown): string | null {
   if (v == null || v === "") return null;
-  if (v instanceof Date) return v.toISOString();
+  if (v instanceof Date) return formatTimePart(v.getHours(), v.getMinutes(), v.getSeconds());
   if (typeof v === "number") {
     const d = XLSX.SSF.parse_date_code(v);
-    if (d) {
-      return new Date(d.y, d.m - 1, d.d, d.H || 0, d.M || 0, Math.floor(d.S || 0)).toISOString();
-    }
+    if (d) return formatTimePart(d.H || 0, d.M || 0, Math.floor(d.S || 0));
   }
 
   const s = String(v).trim();
-  const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
-  if (ymd) {
-    return new Date(
-      Number(ymd[1]),
-      Number(ymd[2]) - 1,
-      Number(ymd[3]),
-      Number(ymd[4] || 0),
-      Number(ymd[5] || 0),
-      Number(ymd[6] || 0),
-    ).toISOString();
+  const time = /(?:^|[T\s])(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i.exec(s);
+  if (!time) return null;
+
+  let hours = Number(time[1]);
+  const meridiem = time[4]?.toUpperCase();
+  if (meridiem === "PM" && hours < 12) hours += 12;
+  if (meridiem === "AM" && hours === 12) hours = 0;
+  return formatTimePart(hours, Number(time[2]), Number(time[3] || 0));
+}
+
+function parseFineDateTime(dateValue: unknown, timeValue?: unknown): string | null {
+  const datePart = parseFineDateForContractLookup(dateValue);
+  if (!datePart) return null;
+
+  const timePart = parseTimePart(dateValue) || parseTimePart(timeValue) || "00:00:00";
+  const dubaiDate = new Date(`${datePart}T${timePart}+04:00`);
+  return isNaN(dubaiDate.getTime()) ? null : dubaiDate.toISOString();
+}
+
+function parseFineDateForContractLookup(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) {
+    const mm = String(v.getMonth() + 1).padStart(2, "0");
+    const dd = String(v.getDate()).padStart(2, "0");
+    return `${v.getFullYear()}-${mm}-${dd}`;
   }
 
-  const dmy = /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
-  if (dmy) {
-    let year = dmy[3];
-    if (year.length === 2) year = "20" + year;
-    return new Date(
-      Number(year),
-      Number(dmy[2]) - 1,
-      Number(dmy[1]),
-      Number(dmy[4] || 0),
-      Number(dmy[5] || 0),
-      Number(dmy[6] || 0),
-    ).toISOString();
-  }
-
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d.toISOString();
+  return parseDate(v);
 }
 
 async function readSheet(
@@ -477,8 +483,9 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     const fineNumber = norm(row.fineNumber);
     const plate = norm(getField(row, "Plate Number", "Plate"));
     const fineDateValue = getField(row, "Date", "Fine Date");
-    const dateIso = parseDate(fineDateValue);
-    const fineDateTimeIso = parseFineDateTime(fineDateValue);
+    const ticketTimeValue = getField(row, "Ticket Time", "Time");
+    const dateIso = parseFineDateForContractLookup(fineDateValue);
+    const fineDateTimeIso = parseFineDateTime(fineDateValue, ticketTimeValue);
     const source = norm(getField(row, "Source"));
     const fineType = norm(getField(row, "Fine Description", "Description")) || "Other";
     const amountRaw = getField(row, "__col_R", "Total Amount after Discount");
