@@ -91,16 +91,19 @@ async function fetchImportFeeSettings(ownerId: string): Promise<{ data: ImportFe
     .maybeSingle();
 
   if (error) return { data: null, error: error.message };
+  if (!data || data.fine_fee_value == null || data.salik_fee_value == null) {
+    return { data: null, error: "Import service fee settings are missing from profile" };
+  }
 
   return {
     data: {
       fine: {
         type: normalizeServiceFeeType(data?.fine_fee_type),
-        value: data?.fine_fee_value ?? 20,
+        value: data.fine_fee_value,
       },
       salik: {
         type: normalizeServiceFeeType(data?.salik_fee_type),
-        value: data?.salik_fee_value ?? 1,
+        value: data.salik_fee_value,
       },
     },
     error: null,
