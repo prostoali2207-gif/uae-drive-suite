@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
@@ -30,10 +31,15 @@ interface Profile {
   invoice_prefix?: string | null;
   contract_prefix?: string | null;
   deposit_return_days?: number | null;
+  fine_fee_type?: ServiceFeeType | null;
+  fine_fee_value?: number | null;
+  salik_fee_type?: ServiceFeeType | null;
+  salik_fee_value?: number | null;
   terms_en?: string | null;
   terms_ar?: string | null;
 }
 
+type ServiceFeeType = "fixed" | "percentage";
 type ProfileStoragePathUpdate = Pick<Profile, "logo_url" | "stamp_url">;
 type SupabaseErrorLike = { message: string };
 
@@ -53,6 +59,10 @@ const Settings = () => {
   const [invoicePrefix, setInvoicePrefix] = useState("INV");
   const [contractPrefix, setContractPrefix] = useState("CTR");
   const [depositReturnDays, setDepositReturnDays] = useState(15);
+  const [fineFeeType, setFineFeeType] = useState<ServiceFeeType>("fixed");
+  const [fineFeeValue, setFineFeeValue] = useState(20);
+  const [salikFeeType, setSalikFeeType] = useState<ServiceFeeType>("fixed");
+  const [salikFeeValue, setSalikFeeValue] = useState(1);
   const [termsEn, setTermsEn] = useState("");
   const [termsAr, setTermsAr] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -117,6 +127,10 @@ const Settings = () => {
       setInvoicePrefix(p.invoice_prefix || "INV");
       setContractPrefix(p.contract_prefix || "CTR");
       setDepositReturnDays(p.deposit_return_days ?? 15);
+      setFineFeeType(p.fine_fee_type || "fixed");
+      setFineFeeValue(p.fine_fee_value ?? 20);
+      setSalikFeeType(p.salik_fee_type || "fixed");
+      setSalikFeeValue(p.salik_fee_value ?? 1);
       setTermsEn(p.terms_en || "");
       setTermsAr(p.terms_ar || "");
       setLogoUrl(p.logo_url);
@@ -151,6 +165,10 @@ const Settings = () => {
       invoice_prefix: invoicePrefix.trim() || "INV",
       contract_prefix: contractPrefix.trim() || "CTR",
       deposit_return_days: depositReturnDays,
+      fine_fee_type: fineFeeType,
+      fine_fee_value: fineFeeValue,
+      salik_fee_type: salikFeeType,
+      salik_fee_value: salikFeeValue,
       terms_en: termsEn.trim() || null,
       terms_ar: termsAr.trim() || null,
     };
@@ -347,7 +365,8 @@ const Settings = () => {
               </TabsContent>
 
               <TabsContent value="finance" className="mt-6">
-                <Card>
+                <div className="flex flex-col gap-6">
+                  <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Landmark className="h-4 w-4" />
@@ -450,7 +469,76 @@ const Settings = () => {
                   </p>
                 </div>
               </CardContent>
-                </Card>
+                  </Card>
+
+                  <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Import Service Fees</CardTitle>
+                <CardDescription>Default service fees applied when importing fines and Salik charges.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 md:grid-cols-2">
+                <div className="grid gap-3">
+                  <Label>Fine Service Fee</Label>
+                  <RadioGroup
+                    value={fineFeeType}
+                    onValueChange={(value) => setFineFeeType(value as ServiceFeeType)}
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="fixed" />
+                      Fixed (AED)
+                    </Label>
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="percentage" />
+                      Percentage (%)
+                    </Label>
+                  </RadioGroup>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="fine-fee-value">Value</Label>
+                    <Input
+                      id="fine-fee-value"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={fineFeeValue}
+                      onChange={(e) => setFineFeeValue(Number(e.target.value))}
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  <Label>Salik Service Fee</Label>
+                  <RadioGroup
+                    value={salikFeeType}
+                    onValueChange={(value) => setSalikFeeType(value as ServiceFeeType)}
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="fixed" />
+                      Fixed (AED)
+                    </Label>
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="percentage" />
+                      Percentage (%)
+                    </Label>
+                  </RadioGroup>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="salik-fee-value">Value</Label>
+                    <Input
+                      id="salik-fee-value"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={salikFeeValue}
+                      onChange={(e) => setSalikFeeValue(Number(e.target.value))}
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+                  </Card>
+                </div>
               </TabsContent>
 
               <TabsContent value="documents" className="mt-6">

@@ -165,11 +165,13 @@ async function readSheet(
     if (row.every((c) => c === "" || c == null)) continue;
     const obj: Record<string, unknown> = {};
     headers.forEach((h, idx) => {
+      const strVal = String(row[idx] ?? "");
+      const value = strVal.includes("E+") || strVal.includes("e+")
+        ? getRawCellValue(ws, idx, i)
+        : strVal;
+      obj[`__col_${XLSX.utils.encode_col(idx)}`] = value;
       if (h) {
-        const strVal = String(row[idx] ?? "");
-        obj[h] = strVal.includes("E+") || strVal.includes("e+")
-          ? getRawCellValue(ws, idx, i)
-          : strVal;
+        obj[h] = value;
       }
     });
     out.push(obj);
@@ -417,7 +419,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     const fineDateTimeIso = parseFineDateTime(fineDateValue);
     const source = norm(getField(row, "Source"));
     const fineType = norm(getField(row, "Fine Description", "Description")) || "Other";
-    const amountRaw = getField(row, "Total Amount after Discount", "Amount", "Total Amount");
+    const amountRaw = getField(row, "__col_R", "Total Amount after Discount");
     const original = parseAmount(amountRaw);
 
     if (original === 0) { summary.skippedZero++; continue; }
