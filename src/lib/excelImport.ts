@@ -19,6 +19,17 @@ interface UnlinkedFineRow { id: string; car_id: string | null; fine_date: string
 interface UnlinkedSalikRow { id: string; car_id: string | null; charge_date: string; }
 interface LinkedFineRow { id: string; car_id: string | null; fine_date: string; contract_id: string | null; }
 interface LinkedSalikRow { id: string; car_id: string | null; charge_date: string; contract_id: string | null; }
+type ServiceFeeType = "fixed" | "percentage";
+interface ProfileFeeSettings {
+  fine_fee_type: ServiceFeeType | null;
+  fine_fee_value: number | null;
+  salik_fee_type: ServiceFeeType | null;
+  salik_fee_value: number | null;
+}
+interface ImportFeeSettings {
+  fine: { type: ServiceFeeType; value: number };
+  salik: { type: ServiceFeeType; value: number };
+}
 
 interface ExtendedDatabase extends Database {
   public: Database["public"] & {
@@ -51,6 +62,49 @@ function parseAmount(v: unknown): number {
   if (!s) return 0;
   const n = parseFloat(s);
   return isFinite(n) ? n : 0;
+}
+
+function normalizeServiceFeeType(value: string | null | undefined): ServiceFeeType {
+  return value === "percentage" ? "percentage" : "fixed";
+}
+
+function calculateServiceFee(baseAmount: number, type: ServiceFeeType, value: number): number {
+  if (type === "percentage") {
+    return Math.round((baseAmount * value / 100) * 100) / 100;
+  }
+
+  return value;
+}
+
+async function fetchImportFeeSettings(ownerId: string): Promise<{ data: ImportFeeSettings | null; error: string | null }> {
+  const profiles = supabase.from("profiles") as unknown as {
+    select: (columns: string) => {
+      eq: (column: "id", value: string) => {
+        maybeSingle: () => Promise<{ data: ProfileFeeSettings | null; error: { message: string } | null }>;
+      };
+    };
+  };
+
+  const { data, error } = await profiles
+    .select("fine_fee_type, fine_fee_value, salik_fee_type, salik_fee_value")
+    .eq("id", ownerId)
+    .maybeSingle();
+
+  if (error) return { data: null, error: error.message };
+
+  return {
+    data: {
+      fine: {
+        type: normalizeServiceFeeType(data?.fine_fee_type),
+        value: data?.fine_fee_value ?? 20,
+      },
+      salik: {
+        type: normalizeServiceFeeType(data?.salik_fee_type),
+        value: data?.salik_fee_value ?? 1,
+      },
+    },
+    error: null,
+  };
 }
 
 function parseDate(v: unknown): string | null {
@@ -385,6 +439,11 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
+  const { data: feeSettings, error: feeSettingsError } = await fetchImportFeeSettings(user.id);
+  if (feeSettingsError || !feeSettings) {
+    summary.errors.push(`Failed to load import service fees: ${feeSettingsError || "Unknown error"}`);
+    return summary;
+  }
 
   const [carsRes, contractsRes, contractVehiclesRes, existingRes] = await Promise.all([
     supabase.from("cars").select("id, plate"),
@@ -434,7 +493,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     if (!car) { unmatched.add(plate || "(blank)"); continue; }
     const contract = findContract(contracts, contractVehicles, car.id, dateIso);
 
-    const serviceFee = 20;
+    const serviceFee = calculateServiceFee(original, feeSettings.fine.type, feeSettings.fine.value);
     toInsert.push({
       owner_id: user.id,
       fine_number: fineNumber || null,
@@ -478,6 +537,11 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { summary.errors.push("Not authenticated"); return summary; }
+  const { data: feeSettings, error: feeSettingsError } = await fetchImportFeeSettings(user.id);
+  if (feeSettingsError || !feeSettings) {
+    summary.errors.push(`Failed to load import service fees: ${feeSettingsError || "Unknown error"}`);
+    return summary;
+  }
 
   const [carsRes, contractsRes, contractVehiclesRes, existingRes] = await Promise.all([
     supabase.from("cars").select("id, plate, tag_number"),
@@ -530,7 +594,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     if (!car) { unmatched.add(plate || tagNumber || "(blank)"); continue; }
     const contract = findContract(contracts, contractVehicles, car.id, dateIso);
 
-    const serviceFee = 1;
+    const serviceFee = calculateServiceFee(original, feeSettings.salik.type, feeSettings.salik.value);
     toInsert.push({
       owner_id: user.id,
       transaction_id: txId || null,
