@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -28,6 +29,7 @@ interface Profile {
   swift_code?: string | null;
   invoice_prefix?: string | null;
   contract_prefix?: string | null;
+  deposit_return_days?: number | null;
   terms_en?: string | null;
   terms_ar?: string | null;
 }
@@ -50,6 +52,7 @@ const Settings = () => {
   const [swiftCode, setSwiftCode] = useState("");
   const [invoicePrefix, setInvoicePrefix] = useState("INV");
   const [contractPrefix, setContractPrefix] = useState("CTR");
+  const [depositReturnDays, setDepositReturnDays] = useState(15);
   const [termsEn, setTermsEn] = useState("");
   const [termsAr, setTermsAr] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -113,6 +116,7 @@ const Settings = () => {
       setSwiftCode(p.swift_code || "");
       setInvoicePrefix(p.invoice_prefix || "INV");
       setContractPrefix(p.contract_prefix || "CTR");
+      setDepositReturnDays(p.deposit_return_days ?? 15);
       setTermsEn(p.terms_en || "");
       setTermsAr(p.terms_ar || "");
       setLogoUrl(p.logo_url);
@@ -146,6 +150,7 @@ const Settings = () => {
       swift_code: swiftCode.trim() || null,
       invoice_prefix: invoicePrefix.trim() || "INV",
       contract_prefix: contractPrefix.trim() || "CTR",
+      deposit_return_days: depositReturnDays,
       terms_en: termsEn.trim() || null,
       terms_ar: termsAr.trim() || null,
     };
@@ -238,7 +243,15 @@ const Settings = () => {
           </Card>
         ) : (
           <div className="flex flex-col gap-6">
-            <Card>
+            <Tabs defaultValue="company" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="company">Company</TabsTrigger>
+                <TabsTrigger value="finance">Finance</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="company" className="mt-6">
+                <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Building2 className="h-4 w-4" />
@@ -317,17 +330,6 @@ const Settings = () => {
                     />
                   </div>
 
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="trn">TRN</Label>
-                    <Input
-                      id="trn"
-                      value={trn}
-                      onChange={(e) => setTrn(e.target.value)}
-                      placeholder="e.g. 100123456700003"
-                      className="font-mono"
-                    />
-                  </div>
-
                   <div className="grid gap-1.5 md:col-span-2">
                     <Label htmlFor="address">Address / Location</Label>
                     <Textarea
@@ -341,9 +343,11 @@ const Settings = () => {
                   </div>
                 </div>
               </CardContent>
-            </Card>
+                </Card>
+              </TabsContent>
 
-            <Card>
+              <TabsContent value="finance" className="mt-6">
+                <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Landmark className="h-4 w-4" />
@@ -418,10 +422,40 @@ const Settings = () => {
                     className="font-mono uppercase"
                   />
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="trn">TRN</Label>
+                  <Input
+                    id="trn"
+                    value={trn}
+                    onChange={(e) => setTrn(e.target.value)}
+                    placeholder="e.g. 100123456700003"
+                    className="font-mono"
+                  />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="deposit-return-days">Deposit Return Window</Label>
+                  <Input
+                    id="deposit-return-days"
+                    type="number"
+                    min={0}
+                    max={90}
+                    value={depositReturnDays}
+                    onChange={(e) => setDepositReturnDays(Number(e.target.value))}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Days after contract closure before deposit is returned
+                  </p>
+                </div>
+              </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="documents" className="mt-6">
+                <div className="flex flex-col gap-6">
+                  <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Stamp className="h-4 w-4" />
@@ -461,9 +495,9 @@ const Settings = () => {
                   </div>
                 </div>
               </CardContent>
-            </Card>
+                  </Card>
 
-            <Card>
+                  <Card>
               <CardHeader>
                 <CardTitle className="text-base">Terms &amp; Conditions</CardTitle>
                 <CardDescription>Rental terms shown on company documents.</CardDescription>
@@ -494,7 +528,10 @@ const Settings = () => {
                   />
                 </div>
               </CardContent>
-            </Card>
+                  </Card>
+                </div>
+              </TabsContent>
+            </Tabs>
 
             <div className="flex justify-end pb-2">
               <Button onClick={handleSave} disabled={saving || uploadingLogo || uploadingStamp}>
