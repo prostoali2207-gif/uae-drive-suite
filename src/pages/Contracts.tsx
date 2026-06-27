@@ -62,7 +62,8 @@ import {
 
 const supabaseClient = supabase;
 
-type ContractFilter = "All" | "Active" | "Expiring Soon" | "Overdue" | "Closed";
+type ContractFilter = "All" | "Active" | "Overdue" | "Closed";
+type DepositFilter = "All" | "Held" | "Returned" | "No deposit";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
 type RateType = "Daily" | "Monthly" | "Annual";
@@ -87,6 +88,7 @@ interface ContractRow {
   total_amount: number;
   deposit_amount: number;
   deposit_returned: string | null;
+  deposit_status?: string | null;
   initial_mileage: number;
   fuel_level: string;
   status: string;
@@ -114,7 +116,7 @@ function toSupabaseMessage(error: { code?: string; message?: string } | null): s
 }
 
 const statusClasses: Record<string, string> = {
-  Active: "bg-tint-blue text-tint-blue-foreground",
+  Active: "bg-tint-green text-tint-green-foreground",
   "Expiring Soon": "bg-tint-amber text-tint-amber-foreground",
   Overdue: "bg-tint-rose text-tint-rose-foreground",
   Completed: "bg-muted text-muted-foreground",
@@ -130,8 +132,9 @@ const paymentClasses: Record<string, string> = {
   Unpaid: "bg-tint-rose text-tint-rose-foreground",
 };
 
-const desktopFilters: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue"];
-const mobileFilterOrder: ContractFilter[] = ["All", "Active", "Expiring Soon", "Overdue", "Closed"];
+const desktopFilters: ContractFilter[] = ["All", "Active", "Overdue", "Closed"];
+const mobileFilterOrder: ContractFilter[] = ["All", "Active", "Overdue", "Closed"];
+const depositFilters: DepositFilter[] = ["All", "Held", "Returned", "No deposit"];
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
 const rateTypes: RateType[] = ["Daily", "Monthly", "Annual"];
 const additionalChargeLabels: AdditionalChargeLabel[] = ["Delivery", "Pickup", "Full Tank", "Baby Seat", "Other"];
@@ -163,17 +166,47 @@ function getDaysUntilExpiry(iso: string): number {
   return Math.ceil((end.getTime() - today.getTime()) / 86_400_000);
 }
 
+function getContractEndDateTime(contract: ContractRow): Date | null {
+  const time = formatTimeDisplay(contract.end_time) || "23:59";
+  return parseDateTimeInput(contract.end_date, time);
+}
+
+function isOverdueContract(contract: ContractRow): boolean {
+  if (contract.status.trim().toLowerCase() !== "active") return false;
+  const end = getContractEndDateTime(contract);
+  return Boolean(end && end.getTime() < Date.now());
+}
+
+function getContractStatusLabel(contract: ContractRow): "Active" | "Overdue" | "Closed" | string {
+  if (isClosedContract(contract.status)) return "Closed";
+  if (isOverdueContract(contract)) return "Overdue";
+  return contract.status.trim().toLowerCase() === "active" ? "Active" : contract.status;
+}
+
+function getDepositState(contract: ContractRow): DepositFilter {
+  const depositAmount = Number(contract.deposit_amount || 0);
+  if (depositAmount <= 0) return "No deposit";
+  const status = String(contract.deposit_status ?? "").trim().toLowerCase();
+  if (contract.deposit_returned !== null || status === "returned") return "Returned";
+  return "Held";
+}
+
 function matchesContractFilter(contract: ContractRow, selectedFilter: ContractFilter): boolean {
   if (selectedFilter === "All") return true;
   if (selectedFilter === "Closed") {
-    const status = contract.status.toLowerCase();
-    return status === "closed" || status === "completed" || status === "returned";
+    return isClosedContract(contract.status);
   }
-  return contract.status === selectedFilter;
+  if (selectedFilter === "Overdue") return isOverdueContract(contract);
+  return getContractStatusLabel(contract) === selectedFilter;
+}
+
+function matchesDepositFilter(contract: ContractRow, selectedFilter: DepositFilter): boolean {
+  if (selectedFilter === "All") return true;
+  return getDepositState(contract) === selectedFilter;
 }
 
 function isClosedContract(status: string): boolean {
-  const normalized = status.toLowerCase();
+  const normalized = status.trim().toLowerCase();
   return normalized === "closed" || normalized === "completed" || normalized === "returned";
 }
 
@@ -182,10 +215,10 @@ function getMobileCardStatus(contract: ContractRow): { label: string; className:
     return { label: "Closed", className: "bg-muted text-muted-foreground", isClosed: true };
   }
 
-  const daysUntilExpiry = getDaysUntilExpiry(contract.end_date);
-  if (contract.status === "Overdue" || daysUntilExpiry < 0) {
+  if (isOverdueContract(contract)) {
     return { label: "Overdue", className: "bg-tint-rose text-tint-rose-foreground", isClosed: false };
   }
+  const daysUntilExpiry = getDaysUntilExpiry(contract.end_date);
   if (daysUntilExpiry === 0) {
     return { label: "Today", className: "bg-tint-amber text-tint-amber-foreground", isClosed: false };
   }
@@ -611,6 +644,7 @@ const Contracts = () => {
   const [cars, setCars] = useState<CarOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ContractFilter>("All");
+  const [depositFilter, setDepositFilter] = useState<DepositFilter>("All");
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [search, setSearch] = useState("");
@@ -812,7 +846,9 @@ const Contracts = () => {
   }, [availableCars, form.car_id]);
 
   const filtered = useMemo(() => {
-    const byStatus = contracts.filter((contract) => matchesContractFilter(contract, filter));
+    const byStatus = contracts.filter((contract) => (
+      matchesContractFilter(contract, filter) && matchesDepositFilter(contract, depositFilter)
+    ));
     const q = search.trim().toLowerCase();
     const bySearch = !q
       ? byStatus
@@ -847,11 +883,11 @@ const Contracts = () => {
       }
       return factor * (new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
     });
-  }, [contracts, filter, search, sortBy, sortDir]);
+  }, [contracts, filter, depositFilter, search, sortBy, sortDir]);
 
   useEffect(() => {
     setPage(1);
-  }, [filter, search, sortBy, sortDir, pageSize]);
+  }, [filter, depositFilter, search, sortBy, sortDir, pageSize]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -887,11 +923,10 @@ const Contracts = () => {
   };
 
   const counts = useMemo(() => {
-    const base: Record<ContractFilter, number> = { All: contracts.length, Active: 0, "Expiring Soon": 0, Overdue: 0, Closed: 0 };
+    const base: Record<ContractFilter, number> = { All: contracts.length, Active: 0, Overdue: 0, Closed: 0 };
     contracts.forEach((contract) => {
-      if (contract.status === "Active") base.Active++;
-      if (contract.status === "Expiring Soon") base["Expiring Soon"]++;
-      if (contract.status === "Overdue") base.Overdue++;
+      if (getContractStatusLabel(contract) === "Active") base.Active++;
+      if (isOverdueContract(contract)) base.Overdue++;
       if (matchesContractFilter(contract, "Closed")) base.Closed++;
     });
     return base;
@@ -1162,7 +1197,7 @@ const Contracts = () => {
           </div>
           <div className="-mx-4 overflow-x-auto px-4">
             <div className="flex w-max gap-1.5 pb-1">
-              {mobileFilterOrder.filter((item) => counts[item] > 0).map((item) => (
+              {mobileFilterOrder.map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -1182,22 +1217,34 @@ const Contracts = () => {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="hidden flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1 md:flex">
-            {desktopFilters.filter((item) => counts[item] > 0).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  filter === f
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f}
-                <span className="ml-1.5 opacity-60">{counts[f] ?? 0}</span>
-              </button>
-            ))}
+          <div className="hidden flex-wrap items-center gap-2 md:flex">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
+              {desktopFilters.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    filter === f
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {f}
+                  <span className="ml-1.5 opacity-60">{counts[f] ?? 0}</span>
+                </button>
+              ))}
+            </div>
+            <Select value={depositFilter} onValueChange={(value) => setDepositFilter(value as DepositFilter)}>
+              <SelectTrigger className="h-9 w-[150px] text-xs">
+                <SelectValue placeholder="Deposit" />
+              </SelectTrigger>
+              <SelectContent>
+                {depositFilters.map((item) => (
+                  <SelectItem key={item} value={item}>{item === "All" ? "All deposits" : item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <Dialog open={open} onOpenChange={handleContractDialogOpenChange}>
@@ -1596,7 +1643,8 @@ const Contracts = () => {
                 const balance = Number(c.balance_due || 0);
                 const depositAmount = Number(c.deposit_amount || 0);
                 const hasDeposit = depositAmount > 0;
-                const isDepositReturned = c.deposit_returned !== null;
+                const depositState = getDepositState(c);
+                const isDepositReturned = depositState === "Returned";
                 return (
                   <div key={c.id} className="px-1.5">
                     <div
@@ -1660,18 +1708,18 @@ const Contracts = () => {
                               <div className="mt-1 font-mono text-sm leading-5 text-[#2d3f5c]">—</div>
                             ) : (
                               <div className="mt-1 flex items-center justify-end gap-2">
-                                <span className={cn("font-mono text-sm leading-5", isDepositReturned ? "text-[#475569]" : "text-[#cbd5e1]")}>
+                                <span className={cn("font-mono text-sm leading-5", isDepositReturned ? "text-muted-foreground" : "text-foreground")}>
                                   AED {depositAmount.toLocaleString()}
                                 </span>
                                 <span
                                   className={cn(
                                     "rounded border px-[7px] py-0.5 text-[10px] font-bold leading-3",
                                     isDepositReturned
-                                      ? "border-[#1a3520] bg-[#0f1f12] text-[#4ade80]"
+                                      ? "border-border bg-muted text-muted-foreground"
                                       : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
                                   )}
                                 >
-                                  {isDepositReturned ? "RETURNED" : "HELD"}
+                                  {depositState.toUpperCase()}
                                 </span>
                               </div>
                             )}
@@ -1735,7 +1783,9 @@ const Contracts = () => {
                   const balance = Number(c.balance_due || 0);
                   const depositAmount = Number(c.deposit_amount || 0);
                   const hasDeposit = depositAmount > 0;
-                  const isDepositReturned = c.deposit_returned !== null;
+                  const depositState = getDepositState(c);
+                  const isDepositReturned = depositState === "Returned";
+                  const statusLabel = getContractStatusLabel(c);
                   return (
                     <TableRow key={c.id}>
                       <TableCell className="px-5 font-medium text-foreground">
@@ -1756,8 +1806,8 @@ const Contracts = () => {
                       <TableCell className="text-sm text-muted-foreground">{d}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(c.total_amount).toLocaleString()}</TableCell>
                       <TableCell>
-                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[c.status] ?? "bg-muted text-muted-foreground")}>
-                          {c.status}
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusClasses[statusLabel] ?? "bg-muted text-muted-foreground")}>
+                          {statusLabel}
                         </span>
                       </TableCell>
                       <TableCell
@@ -1784,11 +1834,11 @@ const Contracts = () => {
                               className={cn(
                                 "rounded border px-[7px] py-0.5 text-[10px] font-bold uppercase leading-3",
                                 isDepositReturned
-                                  ? "border-[#1a3520] bg-[#0f1f12] text-[#4ade80]"
+                                  ? "border-border bg-muted text-muted-foreground"
                                   : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
                               )}
                             >
-                              {isDepositReturned ? "RETURNED" : "HELD"}
+                              {depositState.toUpperCase()}
                             </span>
                           </div>
                         )}
