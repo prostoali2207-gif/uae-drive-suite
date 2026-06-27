@@ -17,6 +17,8 @@ interface ContractRow { id: string; car_id: string; client_id: string; start_dat
 interface ContractVehicleRow { contract_id: string; car_id: string; started_at: string; ended_at: string | null; }
 interface UnlinkedFineRow { id: string; car_id: string | null; fine_date: string; }
 interface UnlinkedSalikRow { id: string; car_id: string | null; charge_date: string; }
+interface LinkedFineRow { id: string; car_id: string | null; fine_date: string; contract_id: string | null; }
+interface LinkedSalikRow { id: string; car_id: string | null; charge_date: string; contract_id: string | null; }
 
 interface ExtendedDatabase extends Database {
   public: Database["public"] & {
@@ -148,6 +150,29 @@ function getDatePart(value: string): string {
   return value.slice(0, 10);
 }
 
+function matchesVehiclePeriod(
+  vehicle: ContractVehicleRow,
+  carId: string,
+  dateIso: string,
+  todayIso: string,
+): boolean {
+  const startedAt = getDatePart(vehicle.started_at);
+  const endedAt = vehicle.ended_at ? getDatePart(vehicle.ended_at) : todayIso;
+  return vehicle.car_id === carId && startedAt <= dateIso && endedAt >= dateIso;
+}
+
+function matchesContractVehicle(
+  contractVehicles: ContractVehicleRow[],
+  contractId: string,
+  carId: string,
+  dateIso: string,
+): boolean {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  return contractVehicles.some(
+    (vehicle) => vehicle.contract_id === contractId && matchesVehiclePeriod(vehicle, carId, dateIso, todayIso),
+  );
+}
+
 function findContract(
   contracts: ContractRow[],
   contractVehicles: ContractVehicleRow[],
@@ -156,20 +181,88 @@ function findContract(
 ): ContractRow | undefined {
   const todayIso = new Date().toISOString().slice(0, 10);
   const timelineVehicle = contractVehicles
-    .filter((vehicle) => {
-      const startedAt = getDatePart(vehicle.started_at);
-      const endedAt = vehicle.ended_at ? getDatePart(vehicle.ended_at) : todayIso;
-      return vehicle.car_id === carId && startedAt <= dateIso && endedAt >= dateIso;
-    })
+    .filter((vehicle) => matchesVehiclePeriod(vehicle, carId, dateIso, todayIso))
     .sort((a, b) => getDatePart(b.started_at).localeCompare(getDatePart(a.started_at)))[0];
 
   if (timelineVehicle) {
     return contracts.find((contract) => contract.id === timelineVehicle.contract_id);
   }
 
+  const contractsWithVehicleHistory = new Set(contractVehicles.map((vehicle) => vehicle.contract_id));
   return contracts.find(
-    (c) => c.car_id === carId && c.start_date <= dateIso && c.end_date >= dateIso,
+    (c) => !contractsWithVehicleHistory.has(c.id)
+      && c.car_id === carId
+      && c.start_date <= dateIso
+      && c.end_date >= dateIso,
   );
+}
+
+async function unlinkInvalidFineTimelineLinks(
+  ownerId: string,
+  contractVehicles: ContractVehicleRow[],
+): Promise<string | null> {
+  const contractsWithVehicleHistory = new Set(contractVehicles.map((vehicle) => vehicle.contract_id));
+  if (!contractsWithVehicleHistory.size) return null;
+
+  const { data, error } = await supabase
+    .from("fines")
+    .select("id, car_id, fine_date, contract_id")
+    .eq("owner_id", ownerId)
+    .not("contract_id", "is", null)
+    .not("car_id", "is", null);
+
+  if (error) return error.message;
+
+  const updates = ((data || []) as LinkedFineRow[])
+    .map((fine) => {
+      if (!fine.car_id || !fine.contract_id || !contractsWithVehicleHistory.has(fine.contract_id)) return null;
+      if (matchesContractVehicle(contractVehicles, fine.contract_id, fine.car_id, fine.fine_date)) return null;
+      return supabase
+        .from("fines")
+        .update({ contract_id: null, client_id: null })
+        .eq("id", fine.id)
+        .eq("owner_id", ownerId)
+        .eq("contract_id", fine.contract_id);
+    })
+    .filter(Boolean);
+
+  const results = await Promise.all(updates);
+  const updateError = results.find((result) => result.error)?.error;
+  return updateError?.message ?? null;
+}
+
+async function unlinkInvalidSalikTimelineLinks(
+  ownerId: string,
+  contractVehicles: ContractVehicleRow[],
+): Promise<string | null> {
+  const contractsWithVehicleHistory = new Set(contractVehicles.map((vehicle) => vehicle.contract_id));
+  if (!contractsWithVehicleHistory.size) return null;
+
+  const { data, error } = await supabase
+    .from("salik")
+    .select("id, car_id, charge_date, contract_id")
+    .eq("owner_id", ownerId)
+    .not("contract_id", "is", null)
+    .not("car_id", "is", null);
+
+  if (error) return error.message;
+
+  const updates = ((data || []) as LinkedSalikRow[])
+    .map((charge) => {
+      if (!charge.car_id || !charge.contract_id || !contractsWithVehicleHistory.has(charge.contract_id)) return null;
+      if (matchesContractVehicle(contractVehicles, charge.contract_id, charge.car_id, charge.charge_date)) return null;
+      return supabase
+        .from("salik")
+        .update({ contract_id: null, client_id: null })
+        .eq("id", charge.id)
+        .eq("owner_id", ownerId)
+        .eq("contract_id", charge.contract_id);
+    })
+    .filter(Boolean);
+
+  const results = await Promise.all(updates);
+  const updateError = results.find((result) => result.error)?.error;
+  return updateError?.message ?? null;
 }
 
 async function relinkUnlinkedFines(
@@ -265,6 +358,8 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   const existingNumbers = new Set(((existingRes.data || []) as { fine_number: string }[]).map((r) => r.fine_number));
   const relinkError = await relinkUnlinkedFines(user.id, contracts, contractVehicles);
   if (relinkError) summary.errors.push(`Relink existing fines: ${relinkError}`);
+  const unlinkError = await unlinkInvalidFineTimelineLinks(user.id, contractVehicles);
+  if (unlinkError) summary.errors.push(`Unlink invalid fine timeline links: ${unlinkError}`);
 
   const carByPlate = new Map<string, CarRow>();
   for (const c of cars) carByPlate.set(normPlate(c.plate), c);
@@ -354,6 +449,8 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   const existingTx = new Set(((existingRes.data || []) as { transaction_id: string }[]).map((r) => r.transaction_id));
   const relinkError = await relinkUnlinkedSalik(user.id, contracts, contractVehicles);
   if (relinkError) summary.errors.push(`Relink existing Salik: ${relinkError}`);
+  const unlinkError = await unlinkInvalidSalikTimelineLinks(user.id, contractVehicles);
+  if (unlinkError) summary.errors.push(`Unlink invalid Salik timeline links: ${unlinkError}`);
 
   const carByPlate = new Map<string, CarRow>();
   const carByTag = new Map<string, CarRow>();
