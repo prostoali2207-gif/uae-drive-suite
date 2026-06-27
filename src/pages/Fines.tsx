@@ -108,7 +108,17 @@ const matchesSearch = (value: string | null | undefined, query: string) =>
   (value ?? "").toLowerCase().includes(query);
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const dateMatch = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!dateMatch) {
+    return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  const [, year, month, day] = dateMatch;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  const dateLabel = date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const timeMatch = iso.match(/[T\s](\d{2}):(\d{2})/);
+
+  return timeMatch ? `${dateLabel} · ${timeMatch[1]}:${timeMatch[2]}` : dateLabel;
 }
 
 const Fines = () => {
