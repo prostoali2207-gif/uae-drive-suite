@@ -483,6 +483,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
 
   const unmatched = new Set<string>();
   const toInsert: Record<string, unknown>[] = [];
+  const toUpdate: Array<{ fineNumber: string; values: Record<string, unknown> }> = [];
   const seenInBatch = new Set<string>();
 
   for (const row of parsedRows) {
@@ -510,10 +511,9 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     const contract = findContract(contracts, contractVehicles, car.id, dateIso);
 
     const serviceFee = calculateServiceFee(original, feeSettings.fine.type, feeSettings.fine.value);
-    toInsert.push({
+    const finePayload: Record<string, unknown> = {
       owner_id: user.id,
       fine_number: fineNumber || null,
-      fine_date: fineDateTimeIso,
       car_id: car.id,
       client_id: contract?.client_id ?? null,
       contract_id: contract?.id ?? null,
@@ -524,16 +524,37 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
       service_fee: serviceFee,
       amount: original + serviceFee,
       status: "Unpaid",
-    });
+    };
+    if (fineDateTimeIso) finePayload.fine_date = fineDateTimeIso;
+
+    toInsert.push(finePayload);
+    if (fineNumber) {
+      const { status, fine_type, owner_id, fine_number, ...updateValues } = finePayload;
+      toUpdate.push({ fineNumber, values: updateValues });
+    }
   }
 
   if (toInsert.length) {
     const { error, data } = await supabase
       .from("fines")
-      .upsert(toInsert as never, { onConflict: "owner_id,fine_number" })
+      .upsert(toInsert as never, { onConflict: "owner_id,fine_number", ignoreDuplicates: true })
       .select("id");
     if (error) summary.errors.push(error.message);
-    else summary.imported = data?.length ?? toInsert.length;
+    else summary.imported = data?.length ?? 0;
+  }
+
+  if (toUpdate.length) {
+    const results = await Promise.all(
+      toUpdate.map(({ fineNumber, values }) =>
+        supabase
+          .from("fines")
+          .update(values as never)
+          .eq("owner_id", user.id)
+          .eq("fine_number", fineNumber),
+      ),
+    );
+    const updateError = results.find((result) => result.error)?.error;
+    if (updateError) summary.errors.push(updateError.message);
   }
   summary.unmatchedPlates = Array.from(unmatched);
   return summary;
