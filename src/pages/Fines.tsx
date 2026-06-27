@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronsUpDown, Plus, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Search, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
 import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -103,6 +103,9 @@ const statusClasses: Record<string, string> = {
   Paid: "bg-tint-green text-tint-green-foreground",
 };
 
+const matchesSearch = (value: string | null | undefined, query: string) =>
+  (value ?? "").toLowerCase().includes(query);
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
@@ -126,6 +129,9 @@ const Fines = () => {
   const [salikPageSize, setSalikPageSize] = useState(25);
   const [chargingAllFines, setChargingAllFines] = useState(false);
   const [chargingAllSalik, setChargingAllSalik] = useState(false);
+  const [activeTab, setActiveTab] = useState("fines");
+  const [finesSearch, setFinesSearch] = useState("");
+  const [salikSearch, setSalikSearch] = useState("");
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: "Fines" | "Salik") => {
     const file = e.target.files?.[0];
@@ -188,31 +194,59 @@ const Fines = () => {
 
   useEffect(() => {
     setFinesPage(1);
-  }, [finesPageSize]);
+  }, [finesPageSize, finesSearch]);
 
   useEffect(() => {
     setSalikPage(1);
-  }, [salikPageSize]);
+  }, [salikPageSize, salikSearch]);
+
+  const filteredFines = useMemo(() => {
+    const query = finesSearch.trim().toLowerCase();
+    if (!query) return fines;
+
+    return fines.filter((fine) =>
+      matchesSearch(fine.fine_number, query) ||
+      matchesSearch(fine.clients?.full_name, query) ||
+      matchesSearch(fine.cars?.plate, query),
+    );
+  }, [fines, finesSearch]);
+
+  const filteredSalik = useMemo(() => {
+    const query = salikSearch.trim().toLowerCase();
+    if (!query) return salik;
+
+    return salik.filter((charge) =>
+      matchesSearch(charge.transaction_id, query) ||
+      matchesSearch(charge.clients?.full_name, query) ||
+      matchesSearch(charge.cars?.plate, query),
+    );
+  }, [salik, salikSearch]);
 
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(fines.length / finesPageSize));
+    const totalPages = Math.max(1, Math.ceil(filteredFines.length / finesPageSize));
     if (finesPage > totalPages) setFinesPage(totalPages);
-  }, [fines.length, finesPage, finesPageSize]);
+  }, [filteredFines.length, finesPage, finesPageSize]);
 
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(salik.length / salikPageSize));
+    const totalPages = Math.max(1, Math.ceil(filteredSalik.length / salikPageSize));
     if (salikPage > totalPages) setSalikPage(totalPages);
-  }, [salik.length, salikPage, salikPageSize]);
+  }, [filteredSalik.length, salikPage, salikPageSize]);
 
   const paginatedFines = useMemo(
-    () => getPaginatedRows(fines, finesPage, finesPageSize),
-    [fines, finesPage, finesPageSize],
+    () => getPaginatedRows(filteredFines, finesPage, finesPageSize),
+    [filteredFines, finesPage, finesPageSize],
   );
 
   const paginatedSalik = useMemo(
-    () => getPaginatedRows(salik, salikPage, salikPageSize),
-    [salik, salikPage, salikPageSize],
+    () => getPaginatedRows(filteredSalik, salikPage, salikPageSize),
+    [filteredSalik, salikPage, salikPageSize],
   );
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setFinesSearch("");
+    setSalikSearch("");
+  };
 
   const totalUnpaidFines = useMemo(
     () => fines.filter((f) => f.status === "Unpaid").reduce((s, f) => s + Number(f.amount), 0),
@@ -429,11 +463,20 @@ const Fines = () => {
 
   return (
     <DashboardLayout title="Fines & Salik" subtitle="Traffic fines and toll charges">
-      <Tabs defaultValue="fines" className="flex flex-col gap-5">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col gap-5">
         <TabsList className="w-fit">
           <TabsTrigger value="fines">Traffic Fines</TabsTrigger>
           <TabsTrigger value="salik">Salik Charges</TabsTrigger>
         </TabsList>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+          <Input
+            value={activeTab === "fines" ? finesSearch : salikSearch}
+            onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : setSalikSearch(e.target.value)}
+            placeholder={activeTab === "fines" ? "Search fine number, client, or plate..." : "Search transaction ID, client, or plate..."}
+            className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"
+          />
+        </div>
 
         <TabsContent value="fines" className="m-0 flex flex-col gap-4">
           {totalUnpaidFines > 0 && (
@@ -630,6 +673,10 @@ const Fines = () => {
                   <TableRow>
                     <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No fines recorded.</TableCell>
                   </TableRow>
+                ) : filteredFines.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No results found</TableCell>
+                  </TableRow>
                 ) : (
                   paginatedFines.map((f) => {
                     const paidAt = (f as FineRow & { paid_at?: string | null }).paid_at;
@@ -686,7 +733,7 @@ const Fines = () => {
             <ListPagination
               page={finesPage}
               pageSize={finesPageSize}
-              total={fines.length}
+              total={filteredFines.length}
               onPageChange={setFinesPage}
               onPageSizeChange={setFinesPageSize}
             />
@@ -814,6 +861,10 @@ const Fines = () => {
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
                   </TableRow>
+                ) : filteredSalik.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No results found</TableCell>
+                  </TableRow>
                 ) : (
                   paginatedSalik.map((s) => {
                     const paidAt = (s as SalikRow & { paid_at?: string | null }).paid_at;
@@ -853,7 +904,7 @@ const Fines = () => {
             <ListPagination
               page={salikPage}
               pageSize={salikPageSize}
-              total={salik.length}
+              total={filteredSalik.length}
               onPageChange={setSalikPage}
               onPageSizeChange={setSalikPageSize}
             />
