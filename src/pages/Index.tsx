@@ -53,6 +53,9 @@ const Index = () => {
       inAWeek.setDate(today.getDate() + 7);
       const todayStr = today.toISOString().slice(0, 10);
       const weekStr = inAWeek.toISOString().slice(0, 10);
+      const fifteenDaysAgo = new Date();
+      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+      const cutoff = fifteenDaysAgo.toISOString().split("T")[0];
 
       const [contractsRes, carsRes, finesRes, salikRes, renewalsRes, totalCarsRes, returnsTodayRes, overdueReturnsRes, depositsReadyRes] = await Promise.all([
         supabase.from("contracts").select("id", { count: "exact", head: true }).in("status", ["Active", "Expiring Soon"]),
@@ -63,7 +66,13 @@ const Index = () => {
         supabase.from("cars").select("id", { count: "exact", head: true }),
         supabase.from("contracts").select("id", { count: "exact", head: true }).eq("status", "Active").eq("end_date", todayStr),
         supabase.from("contracts").select("id", { count: "exact", head: true }).eq("status", "Active").lt("end_date", todayStr),
-        supabase.from("contracts").select("id", { count: "exact", head: true }).eq("status", "Active").is("deposit_returned" as never, null),
+        supabase
+          .from("contracts")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "Closed")
+          .is("deposit_returned" as never, null)
+          .gt("deposit_amount", 0)
+          .lte("end_date", cutoff),
       ]);
 
       setStats({
@@ -119,7 +128,7 @@ const Index = () => {
     },
     {
       label: "Deposits Ready to Return",
-      sublabel: "Active contracts with held deposits",
+      sublabel: "Closed contracts held 15+ days",
       value: stats.depositsReady.toLocaleString("en-AE"),
       icon: Banknote,
       color: "text-green-500 bg-green-500/10",
