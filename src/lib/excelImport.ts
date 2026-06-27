@@ -525,6 +525,7 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
     };
     if (fineDateTimeIso) finePayload.fine_date = fineDateTimeIso;
 
+    if (!fineNumber) continue;
     toInsert.push(finePayload);
   }
 
