@@ -1331,6 +1331,20 @@ const FineStatusBadge = ({ status }: { status: string | null | undefined }) => {
   );
 };
 
+const getFineVehicleSourceLine = (fine: FineRow) => {
+  const directFine = fine as FineRow & {
+    plate?: string | null;
+    make?: string | null;
+    model?: string | null;
+  };
+  const plate = fine.cars?.plate ?? directFine.plate;
+  const make = fine.cars?.make ?? directFine.make;
+  const model = fine.cars?.model ?? directFine.model;
+  const carName = [make, model].filter(Boolean).join(" ").trim();
+
+  return [plate, carName, fine.source].filter(Boolean).join(" · ");
+};
+
 const ContractFinesSheet = ({
   contract,
   fines,
@@ -1567,7 +1581,10 @@ const ContractFinesSheet = ({
                         {fine.fine_type || "Traffic violation"}
                       </div>
                       <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
-                        {formatDate(fine.fine_date)} / {fine.fine_number || "No fine number"}
+                        {formatDubaiDateTime(fine.fine_date)} / {fine.fine_number || "No fine number"}
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-[#e8eaf0]/50">
+                        {getFineVehicleSourceLine(fine) || "No vehicle details"}
                       </div>
                       <div className="mt-2">
                         <FineStatusBadge status={fine.status} />
@@ -1659,9 +1676,8 @@ const ContractFinesDetailModal = ({
               />
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1.6fr)_82px_86px_76px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
+            <div className="grid grid-cols-[minmax(0,1fr)_86px_76px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
               <span>Violation</span>
-              <span>Date</span>
               <span className="text-right">Amount</span>
               <span className="text-right">Status</span>
             </div>
@@ -1675,17 +1691,19 @@ const ContractFinesDetailModal = ({
                 {filteredFines.map((fine) => (
                   <div
                     key={fine.id}
-                    className="grid min-h-11 grid-cols-[minmax(0,1.6fr)_82px_86px_76px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
+                    className="grid min-h-11 grid-cols-[minmax(0,1fr)_86px_76px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-white">
                         {fine.fine_type || "Traffic violation"}
                       </p>
-                      <p className="mt-1 truncate font-mono text-[11px] text-white/45">
-                        {fine.fine_number || "No fine number"}
+                      <p className="mt-1 truncate font-mono text-[11px] tabular-nums text-white/45">
+                        {formatDubaiDateTime(fine.fine_date)} / {fine.fine_number || "No fine number"}
+                      </p>
+                      <p className="mt-0.5 truncate text-[11px] text-white/45">
+                        {getFineVehicleSourceLine(fine) || "No vehicle details"}
                       </p>
                     </div>
-                    <p className="font-mono text-[11px] text-white/65">{formatDate(fine.fine_date)}</p>
                     <p className="text-right font-mono text-xs font-semibold tabular-nums text-white">
                       {fmtAed(Number(fine.amount))}
                     </p>
