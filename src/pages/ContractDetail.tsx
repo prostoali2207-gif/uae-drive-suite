@@ -60,6 +60,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -79,6 +80,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -1286,6 +1294,239 @@ const FinancialBadge = ({ status }: { status: string }) => {
   );
 };
 
+const ContractSalikBulkSheet = ({
+  contractId,
+  open,
+  onOpenChange,
+  transactions,
+  onRefresh,
+}: {
+  contractId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  transactions: SalikRow[];
+  onRefresh: () => void;
+}) => {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [markingPaid, setMarkingPaid] = useState(false);
+
+  useEffect(() => {
+    if (!open) setSelectedIds(new Set());
+  }, [open]);
+
+  const monthGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; ids: string[] }>();
+
+    transactions.forEach((transaction) => {
+      const date = new Date(`${transaction.charge_date}T00:00:00`);
+      const key = Number.isNaN(date.getTime()) ? transaction.charge_date.slice(0, 7) : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const label = Number.isNaN(date.getTime())
+        ? transaction.charge_date.slice(0, 7)
+        : date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+
+      const group = groups.get(key) ?? { key, label, ids: [] };
+      group.ids.push(transaction.id);
+      groups.set(key, group);
+    });
+
+    return Array.from(groups.values());
+  }, [transactions]);
+
+  const visibleIds = useMemo(() => transactions.map((transaction) => transaction.id), [transactions]);
+  const selectedTransactions = useMemo(
+    () => transactions.filter((transaction) => selectedIds.has(transaction.id)),
+    [selectedIds, transactions],
+  );
+  const selectedTotal = selectedTransactions.reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+
+  const toggleTransaction = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleVisibleTransactions = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const selectMonthTransactions = (ids: string[]) => {
+    setSelectedIds(new Set(ids));
+  };
+
+  const markSelectedPaid = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    setMarkingPaid(true);
+    try {
+      const { error } = await (supabase as any)
+        .from("salik")
+        .update({ status: "paid", paid_at: new Date().toISOString() })
+        .eq("contract_id", contractId)
+        .in("id", ids);
+
+      if (error) throw error;
+
+      toast.success(`${ids.length} Salik ${ids.length === 1 ? "transaction" : "transactions"} marked paid`);
+      setSelectedIds(new Set());
+      onRefresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update Salik transactions";
+      toast.error(message);
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[520px]">
+        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+          <div className="flex items-center gap-2">
+            <Route className="h-5 w-5 text-[#e8eaf0]/70" />
+            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Salik</SheetTitle>
+          </div>
+          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+            {transactions.length} {transactions.length === 1 ? "transaction" : "transactions"} found
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
+          {transactions.length === 0 ? (
+            <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
+              No Salik linked to this contract.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {monthGroups.map((month) => {
+                  const isSelected = month.ids.every((id) => selectedIds.has(id));
+
+                  return (
+                    <button
+                      key={month.key}
+                      type="button"
+                      className={cn(
+                        "h-8 shrink-0 rounded-full border px-3 font-mono text-[11px] font-medium tabular-nums transition-colors",
+                        isSelected
+                          ? "border-[#1d4ed8] bg-[#0c1f3a] text-[#e8eaf0]"
+                          : "border-[#232d4a] bg-white/[0.03] text-[#e8eaf0]/70 hover:bg-white/[0.06]",
+                      )}
+                      onClick={() => selectMonthTransactions(month.ids)}
+                    >
+                      {month.label} · {month.ids.length}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                className="flex min-h-10 w-full items-center gap-3 rounded-md border border-[#232d4a] bg-white/[0.02] px-3 py-2 text-left text-xs font-medium text-[#e8eaf0]/80 transition-colors hover:bg-white/[0.05]"
+                onClick={toggleVisibleTransactions}
+              >
+                <Checkbox
+                  checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+                  onCheckedChange={toggleVisibleTransactions}
+                  onClick={(event) => event.stopPropagation()}
+                  className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                />
+                <span>Select all</span>
+                <span className="ml-auto font-mono text-[11px] tabular-nums text-[#e8eaf0]/45">
+                  {visibleIds.length}
+                </span>
+              </button>
+
+              <div className="space-y-1.5">
+                {transactions.map((transaction) => {
+                  const isSelected = selectedIds.has(transaction.id);
+
+                  return (
+                    <div
+                      key={transaction.id}
+                      role="button"
+                      tabIndex={0}
+                      className={cn(
+                        "grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 py-2 transition-colors",
+                        isSelected
+                          ? "border-[#1d4ed8] bg-[#0c1f3a]"
+                          : "border-[#232d4a] bg-white/[0.015] hover:bg-white/[0.04]",
+                      )}
+                      onClick={() => toggleTransaction(transaction.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          toggleTransaction(transaction.id);
+                        }
+                      }}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleTransaction(transaction.id)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-[#e8eaf0]">
+                          {transaction.toll_gate || "Salik transaction"}
+                        </div>
+                        <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
+                          {formatDate(transaction.charge_date)} · {transaction.transaction_id || "No transaction ID"}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                        {fmtAed(Number(transaction.amount))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div
+          className={cn(
+            "absolute inset-x-0 bottom-0 border-t border-[#1d4ed8]/30 bg-[#0d1526] px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
+            selectedIds.size > 0 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0",
+          )}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+              {selectedIds.size} {selectedIds.size === 1 ? "transaction" : "transactions"} · {fmtAed(selectedTotal)}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 shrink-0 bg-[#1d4ed8] px-4 text-xs font-semibold text-white hover:bg-[#2563eb]"
+              onClick={markSelectedPaid}
+              disabled={markingPaid}
+            >
+              {markingPaid ? "Marking..." : "Mark as Paid"}
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
+
 const FinancialSection = ({
   title,
   meta,
@@ -2333,7 +2574,13 @@ const FinancialsPanel = ({
         onOpenChange={setShowFinesModal}
         onPaymentRecorded={onInlinePaymentRecorded}
       />
-      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
+      <ContractSalikBulkSheet
+        contractId={contract.id}
+        open={showSalikModal}
+        onOpenChange={setShowSalikModal}
+        transactions={salik}
+        onRefresh={onInlinePaymentRecorded}
+      />
       <FinesDetailModal contractId={contract.id} open={finesModalOpen} onClose={() => setFinesModalOpen(false)} />
       <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />
     </>
