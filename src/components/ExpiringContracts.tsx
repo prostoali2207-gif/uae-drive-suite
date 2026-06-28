@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { Calendar, Clock, MessageCircle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RenewContractDialog from "@/components/RenewContractDialog";
+import { cn } from "@/lib/utils";
 
 interface ContractWithDetails {
   id: string;
@@ -11,6 +12,7 @@ interface ContractWithDetails {
   rate_type: string;
   rate_amount: number;
   status: string;
+  balance_due?: number;
   client: {
     full_name: string;
     phone: string;
@@ -19,6 +21,8 @@ interface ContractWithDetails {
     plate: string;
   };
 }
+
+const formatAED = (amount: number) => `AED ${amount.toLocaleString("en-AE")}`;
 
 const ExpiringContracts = () => {
   const [openContractId, setOpenContractId] = useState<string | null>(null);
@@ -57,7 +61,32 @@ const ExpiringContracts = () => {
         .order("end_date", { ascending: true });
 
       if (error) throw error;
-      setContracts(data || []);
+
+      const contractIds = (data || []).map((contract) => contract.id);
+      let balanceByContract: Record<string, number> = {};
+
+      if (contractIds.length > 0) {
+        const { data: balancesData, error: balancesError } = await (supabase as any)
+          .from("contract_balances")
+          .select("contract_id, balance_due")
+          .in("contract_id", contractIds);
+
+        if (balancesError) throw balancesError;
+
+        balanceByContract = Object.fromEntries(
+          (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
+            balance.contract_id,
+            Number(balance.balance_due || 0),
+          ]),
+        );
+      }
+
+      setContracts(
+        (data || []).map((contract) => ({
+          ...contract,
+          balance_due: balanceByContract[contract.id] ?? 0,
+        })),
+      );
     } catch (error) {
       console.error("Error fetching expiring contracts:", error);
     } finally {
@@ -91,6 +120,30 @@ const ExpiringContracts = () => {
     );
   };
 
+  const getFinancialBadge = (contract: ContractWithDetails) => {
+    const balanceDue = Math.max(0, Number(contract.balance_due || 0));
+    const isOverdue = contract.end_date < new Date().toISOString().split("T")[0];
+
+    if (balanceDue <= 0) {
+      return {
+        label: "Paid",
+        className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
+      };
+    }
+
+    if (isOverdue) {
+      return {
+        label: `Overdue ${formatAED(balanceDue)}`,
+        className: "border-red-500/25 bg-red-500/10 text-red-500",
+      };
+    }
+
+    return {
+      label: `${formatAED(balanceDue)} due`,
+      className: "border-amber-500/25 bg-amber-500/10 text-amber-500",
+    };
+  };
+
   const getWhatsAppUrl = (phone: string) => {
     const digits = phone.replace(/\D/g, "");
     return `https://wa.me/${digits}`;
@@ -114,69 +167,81 @@ const ExpiringContracts = () => {
 
   return (
     <div className="space-y-2">
-      {contracts.map((contract) => (
-        <div
-          key={contract.id}
-          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3 transition-colors hover:border-foreground/15"
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <Link
-                to={`/contracts/${contract.id}`}
-                className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline"
+      {contracts.map((contract) => {
+        const financialBadge = getFinancialBadge(contract);
+
+        return (
+          <div
+            key={contract.id}
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3 transition-colors hover:border-foreground/15"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex min-w-0 flex-wrap items-center gap-1.5">
+                <Link
+                  to={`/contracts/${contract.id}`}
+                  className="min-w-0 truncate text-sm font-medium text-foreground hover:text-primary hover:underline"
+                >
+                  {contract.client.full_name}
+                </Link>
+                {getRenewalBadge(contract.end_date)}
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+                    financialBadge.className,
+                  )}
+                >
+                  {financialBadge.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  <span className="font-mono">{contract.car.plate}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  <span>{formatDate(contract.end_date)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 px-2 text-xs"
+                asChild
               >
-                {contract.client.full_name}
-              </Link>
-              {getRenewalBadge(contract.end_date)}
-            </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                <span className="font-mono">{contract.car.plate}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                <span>{formatDate(contract.end_date)}</span>
-              </div>
+                <a href={getWhatsAppUrl(contract.client.phone)} target="_blank" rel="noreferrer">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  WA
+                </a>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 px-2 text-xs"
+                onClick={() => setOpenContractId(contract.id)}
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                Renew
+              </Button>
+              <RenewContractDialog
+                contractId={contract.id}
+                clientName={contract.client.full_name}
+                clientPhone={contract.client.phone}
+                carPlate={contract.car.plate}
+                currentEndDate={contract.end_date}
+                rateType={contract.rate_type}
+                rateAmount={contract.rate_amount}
+                open={openContractId === contract.id}
+                onOpenChange={(open) => {
+                  if (!open) setOpenContractId(null);
+                }}
+              />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1 px-2 text-xs"
-              asChild
-            >
-              <a href={getWhatsAppUrl(contract.client.phone)} target="_blank" rel="noreferrer">
-                <MessageCircle className="h-3.5 w-3.5" />
-                WA
-              </a>
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1 px-2 text-xs"
-              onClick={() => setOpenContractId(contract.id)}
-            >
-              <RotateCw className="h-3.5 w-3.5" />
-              Renew
-            </Button>
-            <RenewContractDialog
-              contractId={contract.id}
-              clientName={contract.client.full_name}
-              clientPhone={contract.client.phone}
-              carPlate={contract.car.plate}
-              currentEndDate={contract.end_date}
-              rateType={contract.rate_type}
-              rateAmount={contract.rate_amount}
-              open={openContractId === contract.id}
-              onOpenChange={(open) => {
-                if (!open) setOpenContractId(null);
-              }}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
