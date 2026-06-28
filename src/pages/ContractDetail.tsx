@@ -1722,29 +1722,40 @@ const ContractFinesDetailModal = ({
 };
 
 const ContractSalikBulkSheet = ({
-  contractId,
+  contract,
   open,
   onOpenChange,
   transactions,
   onRefresh,
 }: {
-  contractId: string;
+  contract: ContractRecord;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transactions: SalikRow[];
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [markingPaid, setMarkingPaid] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Bank Transfer">("Cash");
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
 
   useEffect(() => {
-    if (!open) setSelectedIds(new Set());
+    if (!open) {
+      setSelectedIds(new Set());
+      setPaymentDialogOpen(false);
+      setPaymentMethod("Cash");
+    }
   }, [open]);
+
+  const unpaidTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.status !== "Paid"),
+    [transactions],
+  );
 
   const monthGroups = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; ids: string[] }>();
 
-    transactions.forEach((transaction) => {
+    unpaidTransactions.forEach((transaction) => {
       const date = new Date(`${transaction.charge_date}T00:00:00`);
       const key = Number.isNaN(date.getTime()) ? transaction.charge_date.slice(0, 7) : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
       const label = Number.isNaN(date.getTime())
@@ -1757,12 +1768,12 @@ const ContractSalikBulkSheet = ({
     });
 
     return Array.from(groups.values());
-  }, [transactions]);
+  }, [unpaidTransactions]);
 
-  const visibleIds = useMemo(() => transactions.map((transaction) => transaction.id), [transactions]);
+  const visibleIds = useMemo(() => unpaidTransactions.map((transaction) => transaction.id), [unpaidTransactions]);
   const selectedTransactions = useMemo(
-    () => transactions.filter((transaction) => selectedIds.has(transaction.id)),
-    [selectedIds, transactions],
+    () => unpaidTransactions.filter((transaction) => selectedIds.has(transaction.id)),
+    [selectedIds, unpaidTransactions],
   );
   const selectedTotal = selectedTransactions.reduce((sum, transaction) => sum + Number(transaction.amount), 0);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
@@ -1796,33 +1807,69 @@ const ContractSalikBulkSheet = ({
     setSelectedIds(new Set(ids));
   };
 
-  const markSelectedPaid = async () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
+  const openPaymentDialog = () => {
+    if (selectedTransactions.length === 0) return;
+    setPaymentDialogOpen(true);
+  };
 
-    setMarkingPaid(true);
+  const confirmSalikPayment = async () => {
+    if (selectedTransactions.length === 0 || selectedTotal <= 0) return;
+
+    const ids = selectedTransactions.map((transaction) => transaction.id);
+    const lines = selectedTransactions.reduce<Record<string, number>>((allocations, transaction) => {
+      allocations[`salik-${transaction.id}`] = Number(transaction.amount);
+      return allocations;
+    }, {});
+
+    setConfirmingPayment(true);
     try {
-      const { error } = await (supabase as any)
+      const { error: paymentError } = await (supabase as any)
+        .from("payments")
+        .insert({
+          contract_id: contract.id,
+          client_id: contract.client_id,
+          amount: selectedTotal,
+          payment_date: getTodayDateInput(),
+          method: paymentMethod,
+          status: "completed",
+          owner_id: contract.owner_id,
+          tax_rate: 0,
+          tax_amount: 0,
+          allocations: {
+            fees: 0,
+            fines: 0,
+            salik: selectedTotal,
+            rental: 0,
+            lines,
+          },
+        });
+
+      if (paymentError) throw paymentError;
+
+      const { error: salikError } = await (supabase as any)
         .from("salik")
-        .update({ status: "paid", paid_at: new Date().toISOString() })
-        .eq("contract_id", contractId)
+        .update({ status: "Paid", paid_at: new Date().toISOString() })
+        .eq("contract_id", contract.id)
         .in("id", ids);
 
-      if (error) throw error;
+      if (salikError) throw salikError;
 
-      toast.success(`${ids.length} Salik ${ids.length === 1 ? "transaction" : "transactions"} marked paid`);
+      toast.success("Salik payment recorded");
       setSelectedIds(new Set());
-      onRefresh();
+      setPaymentDialogOpen(false);
+      setPaymentMethod("Cash");
+      await onRefresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to update Salik transactions";
+      const message = error instanceof Error ? error.message : "Failed to record Salik payment";
       toast.error(message);
     } finally {
-      setMarkingPaid(false);
+      setConfirmingPayment(false);
     }
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[520px]">
         <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
           <div className="flex items-center gap-2">
@@ -1830,14 +1877,14 @@ const ContractSalikBulkSheet = ({
             <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Salik</SheetTitle>
           </div>
           <SheetDescription className="text-xs text-[#e8eaf0]/55">
-            {transactions.length} {transactions.length === 1 ? "transaction" : "transactions"} found
+            {unpaidTransactions.length} unpaid {unpaidTransactions.length === 1 ? "transaction" : "transactions"} found
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
-          {transactions.length === 0 ? (
+          {unpaidTransactions.length === 0 ? (
             <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
-              No Salik linked to this contract.
+              No unpaid Salik linked to this contract.
             </div>
           ) : (
             <div className="space-y-3">
@@ -1881,7 +1928,7 @@ const ContractSalikBulkSheet = ({
               </button>
 
               <div className="space-y-1.5">
-                {transactions.map((transaction) => {
+                {unpaidTransactions.map((transaction) => {
                   const isSelected = selectedIds.has(transaction.id);
 
                   return (
@@ -1942,15 +1989,60 @@ const ContractSalikBulkSheet = ({
               type="button"
               size="sm"
               className="h-9 shrink-0 bg-[#1d4ed8] px-4 text-xs font-semibold text-white hover:bg-[#2563eb]"
-              onClick={markSelectedPaid}
-              disabled={markingPaid}
+              onClick={openPaymentDialog}
+              disabled={confirmingPayment}
             >
-              {markingPaid ? "Marking..." : "Mark as Paid"}
+              Pay
             </Button>
           </div>
         </div>
       </SheetContent>
-    </Sheet>
+      </Sheet>
+
+      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+        <DialogContent className="sm:max-w-[380px]">
+          <DialogHeader>
+            <DialogTitle>Salik Payment</DialogTitle>
+            <DialogDescription className="text-xs">
+              Record payment for the selected Salik transactions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</div>
+              <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">
+                {fmtAed(selectedTotal)}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Payment method</Label>
+              <Select
+                value={paymentMethod}
+                onValueChange={(value) => setPaymentMethod(value as "Cash" | "Bank Transfer")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Cash">Cash</SelectItem>
+                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setPaymentDialogOpen(false)} disabled={confirmingPayment}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmSalikPayment} disabled={confirmingPayment || selectedTransactions.length === 0}>
+              {confirmingPayment ? "Recording..." : "Confirm Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
@@ -3046,7 +3138,7 @@ const FinancialsPanel = ({
         onPaymentRecorded={onInlinePaymentRecorded}
       />
       <ContractSalikBulkSheet
-        contractId={contract.id}
+        contract={contract}
         open={showSalikModal}
         onOpenChange={setShowSalikModal}
         transactions={salik}
