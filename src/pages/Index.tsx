@@ -7,13 +7,11 @@ import {
   Car,
   ChevronRight,
   CornerDownLeft,
-  FileText,
   Navigation,
+  Wallet,
   Wrench,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { StatCard } from "@/components/StatCard";
-import { RevenueChart } from "@/components/RevenueChart";
 import ExpiringContracts from "@/components/ExpiringContracts";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -32,6 +30,9 @@ interface Stats {
   overdueReturns: number;
   depositsReady: number;
   maintenanceCount: number;
+  unpaidBalanceTotal: number;
+  unpaidBalanceContracts: number;
+  revenueThisMonth: number;
 }
 
 const Index = () => {
@@ -48,6 +49,9 @@ const Index = () => {
     overdueReturns: 0,
     depositsReady: 0,
     maintenanceCount: 0,
+    unpaidBalanceTotal: 0,
+    unpaidBalanceContracts: 0,
+    revenueThisMonth: 0,
   });
 
   useEffect(() => {
@@ -59,9 +63,11 @@ const Index = () => {
       inAWeek.setDate(today.getDate() + 7);
       const todayStr = today.toISOString().slice(0, 10);
       const weekStr = inAWeek.toISOString().slice(0, 10);
+      const monthStartStr = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
       const sevenDaysFromNow = new Date();
       sevenDaysFromNow.setDate(today.getDate() + 7);
       const sevenDaysStr = sevenDaysFromNow.toISOString().split("T")[0];
+      const activeStatuses = ["Active", "Expiring Soon"];
       const { data: profileData } = await supabase
         .from("profiles")
         .select("deposit_return_days" as never)
@@ -73,8 +79,20 @@ const Index = () => {
       fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - depositReturnDays);
       const cutoff = fifteenDaysAgo.toISOString().split("T")[0];
 
-      const [contractsRes, carsRes, finesRes, salikRes, renewalsRes, totalCarsRes, returnsTodayRes, overdueReturnsRes, depositsReadyRes, maintenanceRes] = await Promise.all([
-        supabase.from("contracts").select("id", { count: "exact", head: true }).in("status", ["Active", "Expiring Soon"]),
+      const [
+        contractsRes,
+        carsRes,
+        finesRes,
+        salikRes,
+        renewalsRes,
+        totalCarsRes,
+        returnsTodayRes,
+        overdueReturnsRes,
+        depositsReadyRes,
+        maintenanceRes,
+        revenueThisMonthRes,
+      ] = await Promise.all([
+        supabase.from("contracts").select("id", { count: "exact" }).in("status", activeStatuses),
         supabase.from("cars").select("id", { count: "exact", head: true }).eq("status", "Available"),
         supabase.from("fines").select("amount").eq("status", "Unpaid"),
         supabase.from("salik").select("amount").eq("status", "Unpaid"),
@@ -95,7 +113,31 @@ const Index = () => {
           .eq("owner_id", user.id)
           .or(`next_service_date.lte.${sevenDaysStr},oil_change_date.lte.${sevenDaysStr}`)
           .or(`next_service_date.gte.${todayStr},oil_change_date.gte.${todayStr}`),
+        supabase
+          .from("payments")
+          .select("amount")
+          .eq("status", "Paid")
+          .gte("payment_date", monthStartStr)
+          .lte("payment_date", todayStr),
       ]);
+
+      const activeContractIds = (contractsRes.data || []).map((contract) => contract.id);
+      let unpaidBalanceTotal = 0;
+      let unpaidBalanceContracts = 0;
+
+      if (activeContractIds.length > 0) {
+        const { data: balancesData } = await (supabase as any)
+          .from("contract_balances")
+          .select("contract_id, balance_due")
+          .in("contract_id", activeContractIds);
+
+        const positiveBalances = (balancesData || [])
+          .map((balance: { contract_id: string; balance_due: number | string | null }) => Number(balance.balance_due || 0))
+          .filter((balance: number) => balance > 0);
+
+        unpaidBalanceTotal = positiveBalances.reduce((sum: number, balance: number) => sum + balance, 0);
+        unpaidBalanceContracts = positiveBalances.length;
+      }
 
       setStats({
         activeContracts: contractsRes.count ?? 0,
@@ -108,12 +150,15 @@ const Index = () => {
         overdueReturns: overdueReturnsRes.count ?? 0,
         depositsReady: depositsReadyRes.count ?? 0,
         maintenanceCount: maintenanceRes.count ?? 0,
+        unpaidBalanceTotal,
+        unpaidBalanceContracts,
+        revenueThisMonth: (revenueThisMonthRes.data || []).reduce((s, p) => s + Number(p.amount), 0),
       });
     };
     load();
   }, [user]);
 
-  const urgentWorkCount = stats.returnsToday + stats.overdueReturns + (stats.maintenanceCount > 0 ? stats.maintenanceCount : 0);
+  const taskCount = stats.returnsToday + stats.overdueReturns + (stats.maintenanceCount > 0 ? stats.maintenanceCount : 0);
   const todayWorkRows = [
     {
       label: "Returns Today",
@@ -150,6 +195,15 @@ const Index = () => {
       amount: true,
     },
     {
+      label: "Unpaid Balances",
+      sublabel: "Active customer balances to collect",
+      value: `${formatAED(stats.unpaidBalanceTotal)} · ${stats.unpaidBalanceContracts.toLocaleString("en-AE")} contracts`,
+      icon: Wallet,
+      color: "text-amber-500 bg-amber-500/10",
+      to: "/contracts",
+      amount: true,
+    },
+    {
       label: "Deposits Ready to Return",
       sublabel: "Closed contracts held 15+ days",
       value: stats.depositsReady.toLocaleString("en-AE"),
@@ -165,15 +219,15 @@ const Index = () => {
       color: "text-muted-foreground bg-muted",
       to: "/fleet",
     },
-    {
+    stats.maintenanceCount > 0 ? {
       label: "Maintenance Due",
       sublabel: "Vehicles due for service or oil change within 7 days",
       value: stats.maintenanceCount.toLocaleString("en-AE"),
       icon: Wrench,
       color: "text-amber-500 bg-amber-500/10",
       to: "/fleet",
-    },
-  ];
+    } : null,
+  ].filter(Boolean);
 
   return (
     <DashboardLayout title="Dashboard" subtitle="Overview of your fleet operations">
@@ -185,8 +239,8 @@ const Index = () => {
                 <h3 className="text-sm font-semibold text-foreground">Today's Work</h3>
                 <p className="text-xs text-muted-foreground">Priority operations for returns and collections</p>
               </div>
-              <span className="shrink-0 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-500">
-                {urgentWorkCount.toLocaleString("en-AE")} urgent
+              <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                {taskCount.toLocaleString("en-AE")} tasks
               </span>
             </div>
             <div className="divide-y divide-border">
@@ -227,18 +281,13 @@ const Index = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <StatCard label="Active Contracts" value={String(stats.activeContracts)} icon={FileText} tint="blue" />
-          <StatCard
-            label="Fleet Available"
-            value={`${stats.availableCars.toLocaleString("en-AE")} of ${stats.totalCars.toLocaleString("en-AE")} total`}
-            icon={Car}
-            tint="green"
-            valueClassName="font-mono tabular-nums"
-          />
+        <div className="rounded-xl border border-border bg-card px-5 py-3 text-sm text-muted-foreground">
+          Active contracts <span className="font-medium text-foreground">{stats.activeContracts.toLocaleString("en-AE")}</span>
+          <span className="mx-2 text-border">·</span>
+          Available cars <span className="font-medium text-foreground">{stats.availableCars.toLocaleString("en-AE")}/{stats.totalCars.toLocaleString("en-AE")}</span>
+          <span className="mx-2 text-border">·</span>
+          Revenue this month <span className="font-mono font-medium tabular-nums text-foreground">{formatAED(stats.revenueThisMonth)}</span>
         </div>
-
-        <RevenueChart />
       </div>
     </DashboardLayout>
   );
