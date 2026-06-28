@@ -14,7 +14,6 @@ import {
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatCard } from "@/components/StatCard";
 import { RevenueChart } from "@/components/RevenueChart";
-import { RecentContracts } from "@/components/RecentContracts";
 import ExpiringContracts from "@/components/ExpiringContracts";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -240,8 +239,6 @@ const Index = () => {
         </div>
 
         <RevenueChart />
-
-        <RecentContracts />
       </div>
     </DashboardLayout>
   );
