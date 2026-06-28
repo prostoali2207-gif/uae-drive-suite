@@ -4,7 +4,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Banknote,
-  Car,
   ChevronRight,
   CornerDownLeft,
   Navigation,
@@ -210,14 +209,6 @@ const Index = () => {
       icon: Banknote,
       color: "text-green-500 bg-green-500/10",
       to: "/contracts",
-    },
-    {
-      label: "Cars Available",
-      sublabel: "Ready fleet inventory",
-      value: stats.availableCars.toLocaleString("en-AE"),
-      icon: Car,
-      color: "text-muted-foreground bg-muted",
-      to: "/fleet",
     },
     stats.maintenanceCount > 0 ? {
       label: "Maintenance Due",
