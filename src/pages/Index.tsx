@@ -17,6 +17,13 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
 const formatAED = (n: number) => `AED ${n.toLocaleString("en-AE")}`;
+type RenewalFilter = "today" | "tomorrow" | "week";
+
+const renewalFilters: { value: RenewalFilter; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "tomorrow", label: "Tomorrow" },
+  { value: "week", label: "This Week" },
+];
 
 interface Stats {
   activeContracts: number;
@@ -37,6 +44,7 @@ interface Stats {
 const Index = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [renewalFilter, setRenewalFilter] = useState<RenewalFilter>("today");
   const [stats, setStats] = useState<Stats>({
     activeContracts: 0,
     availableCars: 0,
@@ -267,7 +275,24 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Contracts ending soon</p>
             </div>
             <div className="p-4">
-              <ExpiringContracts />
+              <div className="mb-3 flex gap-2">
+                {renewalFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setRenewalFilter(filter.value)}
+                    className={cn(
+                      "min-h-10 rounded-md px-3 text-sm font-medium transition-colors",
+                      renewalFilter === filter.value
+                        ? "bg-white text-slate-950 shadow-sm"
+                        : "bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    )}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+              <ExpiringContracts filter={renewalFilter} />
             </div>
           </div>
         </div>

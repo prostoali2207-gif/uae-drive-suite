@@ -22,9 +22,30 @@ interface ContractWithDetails {
   };
 }
 
+type RenewalFilter = "today" | "tomorrow" | "week";
+
+interface ExpiringContractsProps {
+  filter?: RenewalFilter;
+}
+
 const formatAED = (amount: number) => `AED ${amount.toLocaleString("en-AE")}`;
 
-const ExpiringContracts = () => {
+const toDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const addDays = (date: Date, days: number) => {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+
+  return nextDate;
+};
+
+const ExpiringContracts = ({ filter = "today" }: ExpiringContractsProps) => {
   const [openContractId, setOpenContractId] = useState<string | null>(null);
   const [contracts, setContracts] = useState<ContractWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,6 +170,16 @@ const ExpiringContracts = () => {
     return `https://wa.me/${digits}`;
   };
 
+  const todayStr = toDateString(new Date());
+  const tomorrowStr = toDateString(addDays(new Date(), 1));
+  const weekStr = toDateString(addDays(new Date(), 7));
+  const filteredContracts = contracts.filter((contract) => {
+    if (filter === "today") return contract.end_date === todayStr;
+    if (filter === "tomorrow") return contract.end_date === tomorrowStr;
+
+    return contract.end_date >= todayStr && contract.end_date <= weekStr;
+  });
+
   if (loading) {
     return (
       <div className="p-4">
@@ -157,17 +188,17 @@ const ExpiringContracts = () => {
     );
   }
 
-  if (contracts.length === 0) {
+  if (filteredContracts.length === 0) {
     return (
       <div className="p-4">
-        <div className="text-sm text-gray-500">No expiring contracts in the next 3 days</div>
+        <div className="text-sm text-gray-500">No renewals for this period</div>
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
-      {contracts.map((contract) => {
+      {filteredContracts.map((contract) => {
         const financialBadge = getFinancialBadge(contract);
 
         return (
