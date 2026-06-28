@@ -18,6 +18,18 @@ import { useAuth } from "@/hooks/useAuth";
 
 const formatAED = (n: number) => `AED ${n.toLocaleString("en-AE")}`;
 type RenewalFilter = "today" | "tomorrow" | "week";
+type CarsNotReadyReason = {
+  label: "Insurance Expired" | "Insurance Soon" | "Mulkiya Expired" | "Mulkiya Soon";
+  tone: "red" | "yellow";
+};
+
+interface CarsNotReadyRow {
+  id: string;
+  make: string;
+  model: string;
+  plate: string;
+  reasons: CarsNotReadyReason[];
+}
 
 const renewalFilters: { value: RenewalFilter; label: string }[] = [
   { value: "today", label: "Today" },
@@ -45,6 +57,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [renewalFilter, setRenewalFilter] = useState<RenewalFilter>("today");
+  const [carsNotReady, setCarsNotReady] = useState<CarsNotReadyRow[]>([]);
   const [stats, setStats] = useState<Stats>({
     activeContracts: 0,
     availableCars: 0,
@@ -70,6 +83,9 @@ const Index = () => {
       inAWeek.setDate(today.getDate() + 7);
       const todayStr = today.toISOString().slice(0, 10);
       const weekStr = inAWeek.toISOString().slice(0, 10);
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+      const thirtyDaysStr = thirtyDaysFromNow.toISOString().slice(0, 10);
       const monthStartStr = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
       const sevenDaysFromNow = new Date();
       sevenDaysFromNow.setDate(today.getDate() + 7);
@@ -98,6 +114,7 @@ const Index = () => {
         depositsReadyRes,
         maintenanceRes,
         revenueThisMonthRes,
+        carsNotReadyRes,
       ] = await Promise.all([
         supabase.from("contracts").select("id", { count: "exact" }).in("status", activeStatuses),
         supabase.from("cars").select("id", { count: "exact", head: true }).eq("status", "Available"),
@@ -126,6 +143,11 @@ const Index = () => {
           .eq("status", "Paid")
           .gte("payment_date", monthStartStr)
           .lte("payment_date", todayStr),
+        supabase
+          .from("cars")
+          .select("id, make, model, plate, insurance_expiry, mulkiya_expiry")
+          .or("insurance_expiry.not.is.null,mulkiya_expiry.not.is.null")
+          .order("plate", { ascending: true }),
       ]);
 
       const activeContractIds = (contractsRes.data || []).map((contract) => contract.id);
@@ -145,6 +167,38 @@ const Index = () => {
         unpaidBalanceTotal = positiveBalances.reduce((sum: number, balance: number) => sum + balance, 0);
         unpaidBalanceContracts = positiveBalances.length;
       }
+
+      const carsNotReadyRows = (carsNotReadyRes.data || [])
+        .map((car) => {
+          const reasons: CarsNotReadyReason[] = [];
+
+          if (car.insurance_expiry) {
+            if (car.insurance_expiry < todayStr) {
+              reasons.push({ label: "Insurance Expired", tone: "red" });
+            } else if (car.insurance_expiry <= thirtyDaysStr) {
+              reasons.push({ label: "Insurance Soon", tone: "yellow" });
+            }
+          }
+
+          if (car.mulkiya_expiry) {
+            if (car.mulkiya_expiry < todayStr) {
+              reasons.push({ label: "Mulkiya Expired", tone: "red" });
+            } else if (car.mulkiya_expiry <= thirtyDaysStr) {
+              reasons.push({ label: "Mulkiya Soon", tone: "yellow" });
+            }
+          }
+
+          return {
+            id: car.id,
+            make: car.make,
+            model: car.model,
+            plate: car.plate,
+            reasons,
+          };
+        })
+        .filter((car) => car.reasons.length > 0);
+
+      setCarsNotReady(carsNotReadyRows);
 
       setStats({
         activeContracts: contractsRes.count ?? 0,
@@ -296,6 +350,52 @@ const Index = () => {
             </div>
           </div>
         </div>
+
+        {carsNotReady.length > 0 && (
+          <div className="rounded-xl border border-border bg-card">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">
+                  Cars Not Ready <span className="font-mono tabular-nums">— {carsNotReady.length.toLocaleString("en-AE")}</span>
+                </h3>
+                <p className="text-xs text-muted-foreground">Vehicle documents expired or due within 30 days</p>
+              </div>
+            </div>
+            <div className="divide-y divide-border">
+              {carsNotReady.map((car) => (
+                <button
+                  key={car.id}
+                  type="button"
+                  onClick={() => navigate("/fleet")}
+                  className="flex w-full flex-col gap-2 px-5 py-3 text-left transition-colors hover:bg-muted/50 sm:flex-row sm:items-center"
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-foreground">{car.plate}</span>
+                    <span className="truncate text-sm text-muted-foreground">
+                      {car.make} {car.model}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap gap-2">
+                    {car.reasons.map((reason) => (
+                      <span
+                        key={reason.label}
+                        className={cn(
+                          "rounded-full px-2.5 py-1 text-xs font-semibold",
+                          reason.tone === "red"
+                            ? "bg-red-500/10 text-red-600"
+                            : "bg-yellow-500/15 text-yellow-700",
+                        )}
+                      >
+                        {reason.label}
+                      </span>
+                    ))}
+                  </span>
+                  <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-xl border border-border bg-card px-5 py-3 text-sm text-muted-foreground">
           Active contracts <span className="font-medium text-foreground">{stats.activeContracts.toLocaleString("en-AE")}</span>
