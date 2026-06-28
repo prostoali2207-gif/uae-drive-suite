@@ -564,19 +564,17 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     return summary;
   }
 
-  const [carsRes, contractsRes, contractVehiclesRes, existingRes] = await Promise.all([
+  const [carsRes, contractsRes, contractVehiclesRes] = await Promise.all([
     supabase.from("cars").select("id, plate, tag_number"),
     supabase.from("contracts").select("id, car_id, client_id, start_date, end_date"),
     extendedSupabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at"),
-    supabase.from("salik").select("transaction_id").not("transaction_id", "is", null),
   ]);
-  const loadError = carsRes.error || contractsRes.error || contractVehiclesRes.error || existingRes.error;
+  const loadError = carsRes.error || contractsRes.error || contractVehiclesRes.error;
   if (loadError) { summary.errors.push(loadError.message); return summary; }
 
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
   const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
-  const existingTx = new Set(((existingRes.data || []) as { transaction_id: string }[]).map((r) => r.transaction_id));
   const relinkError = await relinkUnlinkedSalik(user.id, contracts, contractVehicles);
   if (relinkError) summary.errors.push(`Relink existing Salik: ${relinkError}`);
   const unlinkError = await unlinkInvalidSalikTimelineLinks(user.id, contractVehicles);
@@ -599,7 +597,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     const plate = norm(getField(row, "Plate", "Plate Number"));
     const tagNumber = norm(getField(row, "Tag Number", "TagNumber"));
     const dateIso = parseDate(getField(row, "Trip Date", "Date"));
-    const tripTime = parseTimePart(getField(row, "Trip Time"));
+    const tripTime = parseTimePart(getField(row, "Trip Time"))?.slice(0, 5) ?? null;
     const tollGate = norm(getField(row, "Toll Gate", "TollGate"));
     const direction = norm(getField(row, "Direction"));
     const original = parseAmount(getField(row, "Amount(AED)", "Amount (AED)", "Amount", "AMOUNT"));
@@ -608,7 +606,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     if (!dateIso) { summary.errors.push(`Missing date for txn ${txId || plate}`); continue; }
 
     if (txId) {
-      if (existingTx.has(txId) || seenInBatch.has(txId)) { summary.skippedDuplicate++; continue; }
+      if (seenInBatch.has(txId)) { summary.skippedDuplicate++; continue; }
       seenInBatch.add(txId);
     }
 
@@ -637,7 +635,10 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   }
 
   if (toInsert.length) {
-    const { error, data } = await supabase.from("salik").insert(toInsert as never).select("id");
+    const { error, data } = await supabase
+      .from("salik")
+      .upsert(toInsert as never, { onConflict: "transaction_id,owner_id" })
+      .select("id");
     if (error) summary.errors.push(error.message);
     else summary.imported = data?.length ?? toInsert.length;
   }
