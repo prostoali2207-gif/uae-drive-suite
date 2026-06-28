@@ -329,6 +329,20 @@ function formatDate(iso: string | null): string {
   });
 }
 
+function formatDubaiDateTime(isoString: string): string {
+  if (!isoString) return "—";
+  const date = new Date(isoString);
+  return date.toLocaleString("en-GB", {
+    timeZone: "Asia/Dubai",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", " ·");
+}
+
 function getChargeVerificationLabel(recordCount: number, lastImportAt: string | null): string {
   if (recordCount > 0) return `${recordCount} records`;
   if (lastImportAt) return `0 records - Last import: ${formatDate(lastImportAt)}`;
@@ -2157,8 +2171,10 @@ const FinancialsPanel = ({
                         </>
                       ) : null}
                     </div>
-                    {showsTransactionDate ? (
-                      <div className="text-xs text-right text-muted-foreground">{formatDate(transaction.date)}</div>
+                    {showsTransactionDate || transaction.type === "Fine" ? (
+                      <div className="text-xs text-right text-muted-foreground">
+                        {transaction.type === "Fine" ? formatDubaiDateTime(transaction.date) : formatDate(transaction.date)}
+                      </div>
                     ) : null}
                   </div>
                 </div>
