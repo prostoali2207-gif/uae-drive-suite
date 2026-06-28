@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ChevronDown,
   CloudUpload,
+  MessageCircle,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -1246,7 +1247,10 @@ export default function ClientRegisterV2() {
 
               <div className="grid gap-5 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
                 <div className="grid min-w-0 gap-2">
-                  <Label htmlFor="phone" className={labelClassName}>Phone <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="phone" className={labelClassName}>
+                    <MessageCircle aria-hidden="true" className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-green-600" />
+                    WhatsApp Number <span className="text-red-500">*</span>
+                  </Label>
                   <PhoneInput
                     dialCode={dialCode}
                     isoCountry={isoCountry}
