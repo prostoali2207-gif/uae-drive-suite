@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Check, ChevronsUpDown, Plus, Search, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
 import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -131,6 +132,10 @@ function formatDate(iso: string): string {
 }
 
 const Fines = () => {
+  const [searchParams] = useSearchParams();
+  const queryType = searchParams.get("type");
+  const queryStatus = searchParams.get("status");
+  const activeStatusFilter = queryStatus === "unpaid" ? "Unpaid" : null;
   const [fines, setFines] = useState<FineRow[]>([]);
   const [salik, setSalik] = useState<SalikRow[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
@@ -152,6 +157,12 @@ const Fines = () => {
   const [activeTab, setActiveTab] = useState("fines");
   const [finesSearch, setFinesSearch] = useState("");
   const [salikSearch, setSalikSearch] = useState("");
+
+  useEffect(() => {
+    if (queryType === "fines" || queryType === "salik") {
+      setActiveTab(queryType);
+    }
+  }, [queryType]);
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: "Fines" | "Salik") => {
     const file = e.target.files?.[0];
@@ -222,25 +233,27 @@ const Fines = () => {
 
   const filteredFines = useMemo(() => {
     const query = finesSearch.trim().toLowerCase();
-    if (!query) return fines;
+    const byStatus = activeStatusFilter ? fines.filter((fine) => fine.status === activeStatusFilter) : fines;
+    if (!query) return byStatus;
 
-    return fines.filter((fine) =>
+    return byStatus.filter((fine) =>
       matchesSearch(fine.fine_number, query) ||
       matchesSearch(fine.clients?.full_name, query) ||
       matchesSearch(fine.cars?.plate, query),
     );
-  }, [fines, finesSearch]);
+  }, [activeStatusFilter, fines, finesSearch]);
 
   const filteredSalik = useMemo(() => {
     const query = salikSearch.trim().toLowerCase();
-    if (!query) return salik;
+    const byStatus = activeStatusFilter ? salik.filter((charge) => charge.status === activeStatusFilter) : salik;
+    if (!query) return byStatus;
 
-    return salik.filter((charge) =>
+    return byStatus.filter((charge) =>
       matchesSearch(charge.transaction_id, query) ||
       matchesSearch(charge.clients?.full_name, query) ||
       matchesSearch(charge.cars?.plate, query),
     );
-  }, [salik, salikSearch]);
+  }, [activeStatusFilter, salik, salikSearch]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filteredFines.length / finesPageSize));
@@ -302,6 +315,12 @@ const Fines = () => {
     () => salik.reduce((sum, s) => sum + Number(s.amount), 0),
     [salik],
   );
+  const finesEmptyMessage = activeStatusFilter === "Unpaid"
+    ? "No unpaid fines found."
+    : "No results found";
+  const salikEmptyMessage = activeStatusFilter === "Unpaid"
+    ? "No unpaid Salik charges found."
+    : "No results found";
 
   const refetchFines = async () => {
     const { data, error } = await supabase
@@ -695,7 +714,7 @@ const Fines = () => {
                   </TableRow>
                 ) : filteredFines.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No results found</TableCell>
+                    <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">{finesEmptyMessage}</TableCell>
                   </TableRow>
                 ) : (
                   paginatedFines.map((f) => {
@@ -898,7 +917,7 @@ const Fines = () => {
                   </TableRow>
                 ) : filteredSalik.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No results found</TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">{salikEmptyMessage}</TableCell>
                   </TableRow>
                 ) : (
                   paginatedSalik.map((s) => {

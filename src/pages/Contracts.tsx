@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, FileText, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -64,6 +64,7 @@ const supabaseClient = supabase;
 
 type ContractFilter = "All" | "Active" | "Overdue" | "Closed";
 type DepositFilter = "All" | "Held" | "Returned" | "No deposit";
+type DashboardContractFilter = "returns-today" | "overdue" | "unpaid" | "deposits-ready";
 type PaymentStatus = "Paid" | "Partial" | "Unpaid";
 type FuelLevel = "Empty" | "Quarter" | "Half" | "Three Quarters" | "Full";
 type RateType = "Daily" | "Monthly" | "Annual";
@@ -135,6 +136,12 @@ const paymentClasses: Record<string, string> = {
 const desktopFilters: ContractFilter[] = ["All", "Active", "Overdue", "Closed"];
 const mobileFilterOrder: ContractFilter[] = ["All", "Active", "Overdue", "Closed"];
 const depositFilters: DepositFilter[] = ["All", "Held", "Returned", "No deposit"];
+const dashboardContractFilterLabels: Record<DashboardContractFilter, string> = {
+  "returns-today": "returns today",
+  overdue: "overdue returns",
+  unpaid: "unpaid balances",
+  "deposits-ready": "deposits ready to return",
+};
 const fuelLevels: FuelLevel[] = ["Empty", "Quarter", "Half", "Three Quarters", "Full"];
 const rateTypes: RateType[] = ["Daily", "Monthly", "Annual"];
 const additionalChargeLabels: AdditionalChargeLabel[] = ["Delivery", "Pickup", "Full Tank", "Baby Seat", "Other"];
@@ -210,6 +217,35 @@ function isClosedContract(status: string): boolean {
   return normalized === "closed" || normalized === "completed" || normalized === "returned";
 }
 
+function isOngoingContract(contract: ContractRow): boolean {
+  const status = contract.status.trim().toLowerCase();
+  return status === "active" || status === "expiring soon";
+}
+
+function matchesDashboardContractFilter(
+  contract: ContractRow,
+  selectedFilter: DashboardContractFilter | null,
+  depositReadyCutoff: string,
+): boolean {
+  if (!selectedFilter) return true;
+  if (selectedFilter === "returns-today") {
+    return contract.status.trim().toLowerCase() === "active" && contract.end_date === getTodayDateInput();
+  }
+  if (selectedFilter === "overdue") {
+    return isOverdueContract(contract);
+  }
+  if (selectedFilter === "unpaid") {
+    return isOngoingContract(contract) && Number(contract.balance_due || 0) > 0;
+  }
+  return (
+    isClosedContract(contract.status) &&
+    Number(contract.deposit_amount || 0) > 0 &&
+    contract.deposit_returned === null &&
+    getDepositState(contract) !== "Returned" &&
+    contract.end_date <= depositReadyCutoff
+  );
+}
+
 function getMobileCardStatus(contract: ContractRow): { label: string; className: string; isClosed: boolean } {
   if (isClosedContract(contract.status)) {
     return { label: "Closed", className: "bg-muted text-muted-foreground", isClosed: true };
@@ -239,6 +275,24 @@ function getRoundedCurrentTimeInput(): string {
 function getTodayDateInput(): string {
   const today = new Date();
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
+function getDepositReadyCutoff(days: number): string {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  return cutoff.toISOString().split("T")[0];
+}
+
+function getDashboardContractFilter(value: string | null): DashboardContractFilter | null {
+  if (
+    value === "returns-today" ||
+    value === "overdue" ||
+    value === "unpaid" ||
+    value === "deposits-ready"
+  ) {
+    return value;
+  }
+  return null;
 }
 
 function formatTimeForDb(time: string | undefined): string {
@@ -639,6 +693,9 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
 
 const Contracts = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const dashboardFilter = getDashboardContractFilter(searchParams.get("filter"));
+  const activeDashboardFilterLabel = dashboardFilter ? dashboardContractFilterLabels[dashboardFilter] : null;
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
@@ -669,6 +726,7 @@ const Contracts = () => {
   const [vehicleAvailability, setVehicleAvailability] = useState<VehicleAvailability | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [depositReadyCutoff, setDepositReadyCutoff] = useState(() => getDepositReadyCutoff(15));
 
   const fetchData = async () => {
     try {
@@ -685,7 +743,7 @@ const Contracts = () => {
       return;
     }
 
-    const [contractsRes, clientsRes, carsRes] = await Promise.all([
+    const [contractsRes, clientsRes, carsRes, profileRes] = await Promise.all([
       supabase
         .from("contracts")
         .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)")
@@ -693,7 +751,10 @@ const Contracts = () => {
         .order("created_at", { ascending: false }),
       supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
       supabase.from("cars").select("id, plate, make, model, status").eq("owner_id", userId).order("plate"),
+      supabase.from("profiles").select("deposit_return_days" as never).eq("id", userId).single(),
     ]);
+    const depositReturnDays = (profileRes.data as { deposit_return_days?: number | null } | null)?.deposit_return_days ?? 15;
+    setDepositReadyCutoff(getDepositReadyCutoff(depositReturnDays));
     if (contractsRes.error) toast.error(`Failed to load contracts: ${toSupabaseMessage(contractsRes.error)}`);
     else {
       const contractRows = (contractsRes.data as ContractRow[]) || [];
@@ -733,6 +794,23 @@ const Contracts = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (dashboardFilter === "overdue") {
+      setFilter("Overdue");
+      setDepositFilter("All");
+      return;
+    }
+    if (dashboardFilter === "deposits-ready") {
+      setFilter("Closed");
+      setDepositFilter("Held");
+      return;
+    }
+    if (dashboardFilter === "returns-today" || dashboardFilter === "unpaid") {
+      setFilter("All");
+      setDepositFilter("All");
+    }
+  }, [dashboardFilter]);
 
   useEffect(() => {
     if (!form.client_id) {
@@ -846,7 +924,10 @@ const Contracts = () => {
   }, [availableCars, form.car_id]);
 
   const filtered = useMemo(() => {
-    const byStatus = contracts.filter((contract) => (
+    const byDashboardFilter = contracts.filter((contract) =>
+      matchesDashboardContractFilter(contract, dashboardFilter, depositReadyCutoff)
+    );
+    const byStatus = byDashboardFilter.filter((contract) => (
       matchesContractFilter(contract, filter) && matchesDepositFilter(contract, depositFilter)
     ));
     const q = search.trim().toLowerCase();
@@ -883,11 +964,11 @@ const Contracts = () => {
       }
       return factor * (new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
     });
-  }, [contracts, filter, depositFilter, search, sortBy, sortDir]);
+  }, [contracts, dashboardFilter, depositReadyCutoff, filter, depositFilter, search, sortBy, sortDir]);
 
   useEffect(() => {
     setPage(1);
-  }, [filter, depositFilter, search, sortBy, sortDir, pageSize]);
+  }, [dashboardFilter, filter, depositFilter, search, sortBy, sortDir, pageSize]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -898,6 +979,9 @@ const Contracts = () => {
     () => getPaginatedRows(filtered, page, pageSize),
     [filtered, page, pageSize],
   );
+  const contractsEmptyMessage = activeDashboardFilterLabel
+    ? `No contracts found for ${activeDashboardFilterLabel}.`
+    : "No contracts match this filter.";
 
   const toggleSort = (column: "client" | "car" | "start" | "balance") => {
     if (sortBy === column) {
@@ -1634,7 +1718,7 @@ const Contracts = () => {
             {loading ? (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">Loading contracts...</div>
             ) : filtered.length === 0 ? (
-              <div className="px-3 py-8 text-center text-sm text-muted-foreground">No contracts match this filter.</div>
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">{contractsEmptyMessage}</div>
             ) : (
               paginatedContracts.map((c) => {
                 const clientName = c.clients?.full_name ?? "-";
@@ -1775,7 +1859,7 @@ const Contracts = () => {
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">No contracts match this filter.</TableCell>
+                  <TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">{contractsEmptyMessage}</TableCell>
                 </TableRow>
               ) : (
                 paginatedContracts.map((c) => {

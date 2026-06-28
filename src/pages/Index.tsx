@@ -165,7 +165,7 @@ const Index = () => {
       value: stats.returnsToday.toLocaleString("en-AE"),
       icon: CornerDownLeft,
       color: "text-red-500 bg-red-500/10",
-      to: "/contracts",
+      to: "/contracts?filter=returns-today",
     },
     {
       label: "Overdue Returns",
@@ -173,7 +173,7 @@ const Index = () => {
       value: stats.overdueReturns.toLocaleString("en-AE"),
       icon: AlertCircle,
       color: "text-red-500 bg-red-500/10",
-      to: "/contracts",
+      to: "/contracts?filter=overdue",
     },
     {
       label: "Fines Unpaid",
@@ -181,7 +181,7 @@ const Index = () => {
       value: formatAED(stats.finesUnpaid),
       icon: AlertTriangle,
       color: "text-amber-500 bg-amber-500/10",
-      to: "/fines",
+      to: "/fines?type=fines&status=unpaid",
       amount: true,
     },
     {
@@ -190,7 +190,7 @@ const Index = () => {
       value: formatAED(stats.salikUnpaid),
       icon: Navigation,
       color: "text-amber-500 bg-amber-500/10",
-      to: "/fines",
+      to: "/fines?type=salik&status=unpaid",
       amount: true,
     },
     {
@@ -199,7 +199,7 @@ const Index = () => {
       value: `${formatAED(stats.unpaidBalanceTotal)} · ${stats.unpaidBalanceContracts.toLocaleString("en-AE")} contracts`,
       icon: Wallet,
       color: "text-amber-500 bg-amber-500/10",
-      to: "/contracts",
+      to: "/contracts?filter=unpaid",
       amount: true,
     },
     {
@@ -208,7 +208,7 @@ const Index = () => {
       value: stats.depositsReady.toLocaleString("en-AE"),
       icon: Banknote,
       color: "text-green-500 bg-green-500/10",
-      to: "/contracts",
+      to: "/contracts?filter=deposits-ready",
     },
     stats.maintenanceCount > 0 ? {
       label: "Maintenance Due",
