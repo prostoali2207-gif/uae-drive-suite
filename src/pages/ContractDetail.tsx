@@ -595,6 +595,19 @@ const readSavedPaymentAllocations = (value: unknown): SavedPaymentAllocations | 
   };
 };
 
+const getPaymentLineAllocationAmount = (payment: PaymentRow, lineId: string): number => {
+  const rawAllocations = isRecord(payment.allocations) ? payment.allocations : null;
+  const savedAllocations = readSavedPaymentAllocations(payment.allocations);
+  const lineAmount = Number(savedAllocations?.lines?.[lineId] ?? 0);
+  const directAmount = rawAllocations ? Number(rawAllocations[lineId] ?? 0) : 0;
+  const amount = lineAmount > 0 ? lineAmount : directAmount;
+
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+};
+
+const sumPaymentLineAllocations = (payments: PaymentRow[], lineId: string): number =>
+  payments.reduce((sum, payment) => sum + getPaymentLineAllocationAmount(payment, lineId), 0);
+
 const PAYMENT_ALLOCATION_CATEGORY_LABELS: Record<PaymentAllocationDisplayLine["category"], string> = {
   rental: "Rental",
   fees: "Other Fees",
@@ -1689,6 +1702,24 @@ const FinancialsPanel = ({
     method: "Cash",
   });
   const [savingInlinePayment, setSavingInlinePayment] = useState(false);
+  const finePaymentTotals = useMemo(() => {
+    const totalsByFineId = new Map<string, number>();
+
+    fines.forEach((fine) => {
+      totalsByFineId.set(fine.id, sumPaymentLineAllocations(payments, `fine-${fine.id}`));
+    });
+
+    return totalsByFineId;
+  }, [fines, payments]);
+  const fineOriginalTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
+  const finePaidTotal = fines.reduce((sum, fine) => sum + Number(finePaymentTotals.get(fine.id) ?? 0), 0);
+  const fineRemainingTotal = Math.max(0, fineOriginalTotal - finePaidTotal);
+  const fineHistoryStatus =
+    fines.length > 0 && fines.every((fine) => fine.status === "Paid" || Number(finePaymentTotals.get(fine.id) ?? 0) >= Number(fine.amount))
+      ? "Paid"
+      : fines.some((fine) => fine.status === "Partial" || Number(finePaymentTotals.get(fine.id) ?? 0) > 0)
+        ? "Partial"
+        : "Unpaid";
 
   const openItemGroups = useMemo(() => {
     const groups = new Map<string, OpenItemGroup>();
@@ -1726,7 +1757,7 @@ const FinancialsPanel = ({
         groups.set("fines", {
           id: "fines",
           title: "Traffic Fines",
-          detail: `${fines.filter((fine) => fine.status.toLowerCase() !== "paid").length} fines`,
+          detail: `${fines.filter((fine) => fine.status !== "Paid").length} fines`,
           meta: finesVerificationLabel,
           due: nextDue,
           icon: CarFront,
@@ -1941,6 +1972,43 @@ const FinancialsPanel = ({
     return unpaidAllocationLines.filter((line) => line.category === item.id);
   };
 
+  const updatePaidFineStatuses = async (currentFineAllocations: Record<string, number> = {}) => {
+    const updates = fines
+      .map((fine) => {
+        const lineId = `fine-${fine.id}`;
+        const totalPaid =
+          sumPaymentLineAllocations(payments, lineId) + Number(currentFineAllocations[lineId] ?? 0);
+
+        if (totalPaid >= Number(fine.amount)) {
+          return {
+            id: fine.id,
+            status: "Paid",
+            paid_at: new Date().toISOString(),
+          };
+        }
+
+        if (totalPaid > 0) {
+          return {
+            id: fine.id,
+            status: "Partial",
+            paid_at: null,
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+    for (const update of updates) {
+      const { error } = await (supabase as any)
+        .from("fines")
+        .update({ status: update.status, paid_at: update.paid_at })
+        .eq("id", update.id);
+
+      if (error) throw error;
+    }
+  };
+
   const toggleInlinePayment = (item: OpenItemGroup) => {
     if (openInlinePaymentId === item.id) {
       setOpenInlinePaymentId(null);
@@ -2007,6 +2075,13 @@ const FinancialsPanel = ({
     if (error) {
       toast.error("Failed to record payment");
       return;
+    }
+
+    try {
+      await updatePaidFineStatuses(lineAllocations);
+    } catch (statusError) {
+      console.error("Failed to update fine payment status:", statusError);
+      toast.error("Payment recorded, but fine status could not update");
     }
 
     toast.success("Payment recorded");
@@ -2299,6 +2374,7 @@ const FinancialsPanel = ({
               const isPaymentTransaction = transaction.type === "Payment" && Boolean(payment);
               const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
               const isFeeTransaction = transaction.type === "Charge" && Boolean(transaction.contractFee);
+              const isFineTransaction = transaction.type === "Fine";
               const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
               const showsTransactionDetails =
                 transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik";
@@ -2350,6 +2426,18 @@ const FinancialsPanel = ({
                         {transaction.amountTone === "credit" ? "+" : ""}
                         {fmtAed(transaction.amount)}
                       </span>
+                      {isFineTransaction ? (
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            fineHistoryStatus === "Paid" && "bg-tint-green text-tint-green-foreground",
+                            fineHistoryStatus === "Partial" && "bg-tint-amber text-tint-amber-foreground",
+                            fineHistoryStatus === "Unpaid" && "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {fineHistoryStatus}
+                        </span>
+                      ) : null}
                       {transaction.type === "Fine" ? (
                         <Button
                           type="button"
@@ -2415,6 +2503,11 @@ const FinancialsPanel = ({
                     {showsTransactionDate || transaction.type === "Fine" ? (
                       <div className="text-xs text-right text-muted-foreground">
                         {transaction.type === "Fine" ? formatDubaiDateTime(transaction.date) : formatDate(transaction.date)}
+                      </div>
+                    ) : null}
+                    {isFineTransaction && fineHistoryStatus === "Partial" ? (
+                      <div className="text-xs text-right text-muted-foreground">
+                        {fmtAed(fineRemainingTotal)} remaining
                       </div>
                     ) : null}
                   </div>
@@ -2774,6 +2867,54 @@ const ContractDetail = () => {
   useEffect(() => {
     fetchContractFees();
   }, [fetchContractFees, feeRefreshKey]);
+
+  const reconcileFinePaymentStatuses = useCallback(async () => {
+    if (!contract) return;
+
+    const { data: contractPayments, error } = await supabase
+      .from("payments")
+      .select("id, payment_date, amount, method, status, allocations")
+      .eq("contract_id", contract.id);
+
+    if (error) {
+      toast.error("Failed to verify fine payment status");
+      return;
+    }
+
+    const loadedPayments = (contractPayments ?? []) as PaymentRow[];
+    const updates = fines
+      .map((fine) => {
+        const totalPaid = sumPaymentLineAllocations(loadedPayments, `fine-${fine.id}`);
+
+        if (totalPaid >= Number(fine.amount)) {
+          return { id: fine.id, status: "Paid", paid_at: new Date().toISOString() };
+        }
+
+        if (totalPaid > 0) {
+          return { id: fine.id, status: "Partial", paid_at: null };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+    for (const update of updates) {
+      const { error: updateError } = await (supabase as any)
+        .from("fines")
+        .update({ status: update.status, paid_at: update.paid_at })
+        .eq("id", update.id);
+
+      if (updateError) {
+        toast.error("Failed to update fine payment status");
+        return;
+      }
+    }
+  }, [contract, fines]);
+
+  const handlePaymentRecorded = useCallback(async () => {
+    await reconcileFinePaymentStatuses();
+    await fetchData();
+  }, [fetchData, reconcileFinePaymentStatuses]);
 
   const days = useMemo(
     () => (contract ? diffDays(contract.start_date, contract.end_date) : 0),
@@ -4373,7 +4514,7 @@ const ContractDetail = () => {
       overdueImmediately: true,
     })),
     ...fines
-      .filter((fine) => fine.status.toLowerCase() !== "paid")
+      .filter((fine) => fine.status !== "Paid")
       .map((fine) => ({
         id: `fine-${fine.id}`,
         category: "fines" as const,
@@ -4862,12 +5003,12 @@ const ContractDetail = () => {
               onDeleteFee={setFeeToDelete}
               onMarkDepositReturned={handleMarkDepositReturned}
               markingDepositReturned={markingDepositReturned}
-              onInlinePaymentRecorded={fetchData}
+              onInlinePaymentRecorded={handlePaymentRecorded}
             />
             <RecordPaymentModal
               open={showPaymentModal}
               onClose={() => setShowPaymentModal(false)}
-              onSuccess={fetchData}
+              onSuccess={handlePaymentRecorded}
               contractId={contract.id}
               balanceDue={financialTotals.outstanding}
               clientId={contract.client_id}
