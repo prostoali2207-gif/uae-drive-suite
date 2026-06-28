@@ -34,9 +34,7 @@ import {
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
-import FinesModal from "@/components/FinesModal";
 import SalikModal from "@/components/SalikModal";
-import FinesDetailModal from "@/components/FinesDetailModal";
 import SalikDetailModal from "@/components/SalikDetailModal";
 import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -1250,12 +1248,13 @@ const FinancialsAccordion = ({
 
     </div>
 
-      <FinesModal
-        contractId={contract.id}
-        clientId={contract.client_id}
-        ownerId={contract.owner_id}
+      <ContractFinesSheet
+        contract={contract}
+        fines={fines}
+        payments={payments}
         open={showFinesModal}
         onOpenChange={setShowFinesModal}
+        onPaymentRecorded={() => undefined}
       />
       <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
 
@@ -1304,6 +1303,403 @@ const FinancialBadge = ({ status }: { status: string }) => {
     >
       {status}
     </span>
+  );
+};
+
+type FinePaymentMethod = "Cash" | "Card" | "Bank Transfer" | "Cheque";
+
+type FinePaymentDraft = {
+  amount: string;
+  taxRate: string;
+  method: FinePaymentMethod;
+};
+
+const FineStatusBadge = ({ status }: { status: string | null | undefined }) => {
+  const normalized = status === "Paid" ? "Paid" : status === "Partial" ? "Partial" : "Unpaid";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        normalized === "Paid" && "border-[#22c55e]/25 bg-[#22c55e]/15 text-[#22c55e]",
+        normalized === "Partial" && "border-[#f59e0b]/25 bg-[#f59e0b]/15 text-[#f59e0b]",
+        normalized === "Unpaid" && "border-[#ef4444]/25 bg-[#ef4444]/15 text-[#ef4444]",
+      )}
+    >
+      {normalized}
+    </span>
+  );
+};
+
+const ContractFinesSheet = ({
+  contract,
+  fines,
+  payments,
+  open,
+  onOpenChange,
+  onPaymentRecorded,
+}: {
+  contract: ContractRecord;
+  fines: FineRow[];
+  payments: PaymentRow[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPaymentRecorded: () => void | Promise<void>;
+}) => {
+  const [payingFineId, setPayingFineId] = useState<string | null>(null);
+  const [openPaymentFineId, setOpenPaymentFineId] = useState<string | null>(null);
+  const [paymentDraft, setPaymentDraft] = useState<FinePaymentDraft>({
+    amount: "",
+    taxRate: "0",
+    method: "Cash",
+  });
+
+  useEffect(() => {
+    if (!open) {
+      setOpenPaymentFineId(null);
+      setPaymentDraft({ amount: "", taxRate: "0", method: "Cash" });
+    }
+  }, [open]);
+
+  const visibleFines = useMemo(
+    () =>
+      fines
+        .filter((fine) => fine.status !== "Paid")
+        .map((fine) => {
+          const totalPaid = sumPaymentLineAllocations(payments, `fine-${fine.id}`);
+          const remainingAmount = Math.max(0, Number(fine.amount) - totalPaid);
+          return {
+            fine,
+            totalPaid,
+            displayAmount: fine.status === "Partial" ? remainingAmount : Number(fine.amount),
+          };
+        }),
+    [fines, payments],
+  );
+  const outstandingTotal = visibleFines.reduce((sum, item) => sum + Number(item.displayAmount), 0);
+
+  const toggleFinePayment = (fine: FineRow, amount: number) => {
+    if (openPaymentFineId === fine.id) {
+      setOpenPaymentFineId(null);
+      return;
+    }
+
+    setPaymentDraft({
+      amount: amount.toFixed(2),
+      taxRate: "0",
+      method: "Cash",
+    });
+    setOpenPaymentFineId(fine.id);
+  };
+
+  const recordFinePayment = async (fine: FineRow) => {
+    const amount = Number(paymentDraft.amount);
+    const taxRate = Number(paymentDraft.taxRate);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a payment amount greater than zero");
+      return;
+    }
+
+    if (!Number.isFinite(taxRate) || taxRate < 0) {
+      toast.error("Enter a valid tax percentage");
+      return;
+    }
+
+    const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
+    const lineId = `fine-${fine.id}`;
+    const totalPaid = sumPaymentLineAllocations(payments, lineId) + amount;
+    const nextStatus = totalPaid >= Number(fine.amount) ? "Paid" : "Partial";
+
+    setPayingFineId(fine.id);
+    try {
+      const { error: paymentError } = await (supabase as any)
+        .from("payments")
+        .insert({
+          amount,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
+          method: paymentDraft.method,
+          contract_id: contract.id,
+          client_id: contract.client_id,
+          owner_id: contract.owner_id,
+          payment_date: getTodayDateInput(),
+          status: "Paid",
+          allocations: {
+            rental: 0,
+            fines: amount,
+            salik: 0,
+            fees: 0,
+            lines: {
+              [lineId]: amount,
+            },
+          },
+        });
+
+      if (paymentError) throw paymentError;
+
+      const { error: fineError } = await (supabase as any)
+        .from("fines")
+        .update({
+          status: nextStatus,
+          paid_at: nextStatus === "Paid" ? new Date().toISOString() : null,
+        })
+        .eq("id", fine.id);
+
+      if (fineError) throw fineError;
+
+      toast.success("Fine payment recorded");
+      setOpenPaymentFineId(null);
+      await onPaymentRecorded();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to record fine payment";
+      toast.error(message);
+    } finally {
+      setPayingFineId(null);
+    }
+  };
+
+  const renderPaymentForm = (fine: FineRow) => {
+    const amount = Number(paymentDraft.amount) || 0;
+    const taxRate = Number(paymentDraft.taxRate) || 0;
+    const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
+    const total = Math.round((amount + taxAmount) * 100) / 100;
+    const isSaving = payingFineId === fine.id;
+
+    return (
+      <div className="mt-3 rounded-lg border border-[#24304f] bg-[#0f1729] p-3">
+        <div className="grid gap-3 sm:grid-cols-[1fr_96px_150px]">
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentDraft.amount}
+              onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
+              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-[#e8eaf0]"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentDraft.taxRate}
+              onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
+              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-[#e8eaf0]"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Method</Label>
+            <Select
+              value={paymentDraft.method}
+              onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
+            >
+              <SelectTrigger className="h-9 border-[#2a3a55] bg-[#1a2338] text-sm text-[#e8eaf0]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Cash">Cash</SelectItem>
+                <SelectItem value="Card">Card</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Cheque">Cheque</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-[#e8eaf0]/60">
+            Tax {fmtAed(taxAmount)} / Total <span className="font-mono font-semibold text-[#e8eaf0]">{fmtAed(total)}</span>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 border-[#2a3a55] bg-transparent text-xs text-[#e8eaf0]"
+              disabled={isSaving}
+              onClick={() => setOpenPaymentFineId(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 bg-[#1d4ed8] text-xs font-semibold text-white hover:bg-[#2563eb]"
+              disabled={isSaving}
+              onClick={() => void recordFinePayment(fine)}
+            >
+              {isSaving ? "Recording..." : "Record Payment"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[560px]">
+        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+          <div className="flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-[#e8eaf0]/70" />
+            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Fines</SheetTitle>
+          </div>
+          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+            {visibleFines.length} unpaid or partial fines / {fmtAed(outstandingTotal)}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {visibleFines.length === 0 ? (
+            <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
+              No unpaid fines linked to this contract.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {visibleFines.map(({ fine, displayAmount }) => (
+                <div key={fine.id} className="rounded-md border border-[#232d4a] bg-white/[0.015] px-3 py-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-[#e8eaf0]">
+                        {fine.fine_type || "Traffic violation"}
+                      </div>
+                      <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
+                        {formatDate(fine.fine_date)} / {fine.fine_number || "No fine number"}
+                      </div>
+                      <div className="mt-2">
+                        <FineStatusBadge status={fine.status} />
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                        {fmtAed(displayAmount)}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-2 h-8 bg-[#1d4ed8] px-3 text-xs font-semibold text-white hover:bg-[#2563eb]"
+                        onClick={() => toggleFinePayment(fine, displayAmount)}
+                      >
+                        Pay
+                      </Button>
+                    </div>
+                  </div>
+                  {openPaymentFineId === fine.id ? renderPaymentForm(fine) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
+
+const ContractFinesDetailModal = ({
+  contractId,
+  fines,
+  open,
+  onClose,
+}: {
+  contractId: string;
+  fines: FineRow[];
+  open: boolean;
+  onClose: () => void;
+}) => {
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!open) setSearch("");
+  }, [open]);
+
+  const filteredFines = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return fines;
+
+    return fines.filter((fine) =>
+      [fine.fine_number, fine.fine_type].some((value) => value?.toLowerCase().includes(query)),
+    );
+  }, [fines, search]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/65 font-dm-sans" onClick={onClose}>
+      <div
+        className="max-h-[88vh] w-full animate-in slide-in-from-bottom duration-200 overflow-hidden rounded-t-2xl border border-[#22222e] bg-[#12121a] text-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-[#22222e] px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold leading-6 text-white">Traffic Fines</h2>
+            <p className="mt-1 truncate font-mono text-xs text-white/50">{contractId}</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close traffic fines"
+            onClick={onClose}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-[#22222e] text-white/70 transition hover:bg-white/5 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="max-h-[calc(88vh-76px)] overflow-y-auto">
+          <section className="space-y-3 px-4 py-4 sm:px-6">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search fine number or type"
+                className="h-11 border-[#22222e] bg-white/[0.03] pl-9 font-dm-sans text-white placeholder:text-white/35 focus-visible:ring-white/20"
+              />
+            </div>
+
+            <div className="grid grid-cols-[minmax(0,1.6fr)_82px_86px_76px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
+              <span>Violation</span>
+              <span>Date</span>
+              <span className="text-right">Amount</span>
+              <span className="text-right">Status</span>
+            </div>
+
+            {filteredFines.length === 0 ? (
+              <p className="rounded-md border border-[#22222e] bg-white/[0.02] px-3 py-8 text-center text-sm text-white/50">
+                No traffic fines found.
+              </p>
+            ) : (
+              <div className="space-y-2 pb-2">
+                {filteredFines.map((fine) => (
+                  <div
+                    key={fine.id}
+                    className="grid min-h-11 grid-cols-[minmax(0,1.6fr)_82px_86px_76px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">
+                        {fine.fine_type || "Traffic violation"}
+                      </p>
+                      <p className="mt-1 truncate font-mono text-[11px] text-white/45">
+                        {fine.fine_number || "No fine number"}
+                      </p>
+                    </div>
+                    <p className="font-mono text-[11px] text-white/65">{formatDate(fine.fine_date)}</p>
+                    <p className="text-right font-mono text-xs font-semibold tabular-nums text-white">
+                      {fmtAed(Number(fine.amount))}
+                    </p>
+                    <div className="flex justify-end">
+                      <FineStatusBadge status={fine.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -1702,24 +2098,6 @@ const FinancialsPanel = ({
     method: "Cash",
   });
   const [savingInlinePayment, setSavingInlinePayment] = useState(false);
-  const finePaymentTotals = useMemo(() => {
-    const totalsByFineId = new Map<string, number>();
-
-    fines.forEach((fine) => {
-      totalsByFineId.set(fine.id, sumPaymentLineAllocations(payments, `fine-${fine.id}`));
-    });
-
-    return totalsByFineId;
-  }, [fines, payments]);
-  const fineOriginalTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
-  const finePaidTotal = fines.reduce((sum, fine) => sum + Number(finePaymentTotals.get(fine.id) ?? 0), 0);
-  const fineRemainingTotal = Math.max(0, fineOriginalTotal - finePaidTotal);
-  const fineHistoryStatus =
-    fines.length > 0 && fines.every((fine) => fine.status === "Paid" || Number(finePaymentTotals.get(fine.id) ?? 0) >= Number(fine.amount))
-      ? "Paid"
-      : fines.some((fine) => fine.status === "Partial" || Number(finePaymentTotals.get(fine.id) ?? 0) > 0)
-        ? "Partial"
-        : "Unpaid";
 
   const openItemGroups = useMemo(() => {
     const groups = new Map<string, OpenItemGroup>();
@@ -2374,7 +2752,6 @@ const FinancialsPanel = ({
               const isPaymentTransaction = transaction.type === "Payment" && Boolean(payment);
               const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
               const isFeeTransaction = transaction.type === "Charge" && Boolean(transaction.contractFee);
-              const isFineTransaction = transaction.type === "Fine";
               const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
               const showsTransactionDetails =
                 transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik";
@@ -2426,18 +2803,6 @@ const FinancialsPanel = ({
                         {transaction.amountTone === "credit" ? "+" : ""}
                         {fmtAed(transaction.amount)}
                       </span>
-                      {isFineTransaction ? (
-                        <span
-                          className={cn(
-                            "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                            fineHistoryStatus === "Paid" && "bg-tint-green text-tint-green-foreground",
-                            fineHistoryStatus === "Partial" && "bg-tint-amber text-tint-amber-foreground",
-                            fineHistoryStatus === "Unpaid" && "bg-muted text-muted-foreground",
-                          )}
-                        >
-                          {fineHistoryStatus}
-                        </span>
-                      ) : null}
                       {transaction.type === "Fine" ? (
                         <Button
                           type="button"
@@ -2500,14 +2865,9 @@ const FinancialsPanel = ({
                         </>
                       ) : null}
                     </div>
-                    {showsTransactionDate || transaction.type === "Fine" ? (
+                    {showsTransactionDate ? (
                       <div className="text-xs text-right text-muted-foreground">
-                        {transaction.type === "Fine" ? formatDubaiDateTime(transaction.date) : formatDate(transaction.date)}
-                      </div>
-                    ) : null}
-                    {isFineTransaction && fineHistoryStatus === "Partial" ? (
-                      <div className="text-xs text-right text-muted-foreground">
-                        {fmtAed(fineRemainingTotal)} remaining
+                        {formatDate(transaction.date)}
                       </div>
                     ) : null}
                   </div>
@@ -2659,10 +3019,10 @@ const FinancialsPanel = ({
         </div>
       </div>
 
-      <FinesModal
-        contractId={contract.id}
-        clientId={contract.client_id}
-        ownerId={contract.owner_id}
+      <ContractFinesSheet
+        contract={contract}
+        fines={fines}
+        payments={payments}
         open={showFinesModal}
         onOpenChange={setShowFinesModal}
         onPaymentRecorded={onInlinePaymentRecorded}
@@ -2674,7 +3034,12 @@ const FinancialsPanel = ({
         transactions={salik}
         onRefresh={onInlinePaymentRecorded}
       />
-      <FinesDetailModal contractId={contract.id} open={finesModalOpen} onClose={() => setFinesModalOpen(false)} />
+      <ContractFinesDetailModal
+        contractId={contract.id}
+        fines={fines}
+        open={finesModalOpen}
+        onClose={() => setFinesModalOpen(false)}
+      />
       <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />
     </>
   );
