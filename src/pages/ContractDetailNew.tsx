@@ -43,6 +43,20 @@ const StatusBadge = ({ status }: { status: "active" | "completed" | "overdue" })
 // Financials Components and Constants
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
+  const date = new Date(iso);
+  return date.toLocaleString("en-GB", {
+    timeZone: "Asia/Dubai",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", " ·");
+}
+
+function formatDateOnly(iso: string | null): string {
+  if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
@@ -243,7 +257,7 @@ const FinancialsAccordion = () => {
         <EntryRow>
           <div className="flex flex-1 min-w-0 flex-col gap-0.5">
             <span className="text-[11px] text-[#6b7a99]">
-              {formatDate(mockContract.start_date)} – {formatDate(mockContract.end_date)} · {days} days
+              {formatDateOnly(mockContract.start_date)} – {formatDateOnly(mockContract.end_date)} · {days} days
             </span>
             <span className="text-xs text-[#e8edf5]/80">
               {mockContract.rate_type} @ {fmtAed(mockContract.rate_amount)}
@@ -283,7 +297,7 @@ const FinancialsAccordion = () => {
         {mockSalik.map((s) => (
           <EntryRow key={s.id}>
             <span className="w-24 shrink-0 text-[11px] tabular-nums text-[#6b7a99]">
-              {formatDate(s.charge_date)}
+              {formatDateOnly(s.charge_date)}
             </span>
             <span className="inline-flex items-center rounded-full bg-[#3b82f6] px-2 py-0.5 text-[10px] font-medium text-[#60a5fa]">
               {s.trips} trips
@@ -312,7 +326,7 @@ const FinancialsAccordion = () => {
           return (
             <EntryRow key={o.id}>
               <span className="w-24 shrink-0 text-[11px] tabular-nums text-[#6b7a99]">
-                {formatDate(o.date)}
+                {formatDateOnly(o.date)}
               </span>
               <span
                 className={cn(

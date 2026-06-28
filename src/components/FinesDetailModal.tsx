@@ -28,18 +28,19 @@ const formatAed = (value: number) =>
     maximumFractionDigits: 2,
   })}`;
 
-const formatDate = (value: string | null) => {
-  if (!value) return "No date";
-
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleDateString("en-GB", {
+function formatDate(isoString: string | null): string {
+  if (!isoString) return "—";
+  const date = new Date(isoString);
+  return date.toLocaleString("en-GB", {
+    timeZone: "Asia/Dubai",
     day: "2-digit",
     month: "short",
     year: "numeric",
-  });
-};
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", " ·");
+}
 
 const toNumber = (value: number | string | null) => Number(value) || 0;
 

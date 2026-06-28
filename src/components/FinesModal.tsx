@@ -65,18 +65,19 @@ const formatAed = (amount: number) =>
     maximumFractionDigits: 2,
   })}`;
 
-const formatDate = (dateValue: string) => {
-  if (!dateValue) return "No date";
-
-  const date = new Date(`${dateValue}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return dateValue;
-
-  return date.toLocaleDateString("en-GB", {
+function formatDate(isoString: string): string {
+  if (!isoString) return "—";
+  const date = new Date(isoString);
+  return date.toLocaleString("en-GB", {
+    timeZone: "Asia/Dubai",
     day: "2-digit",
     month: "short",
     year: "numeric",
-  });
-};
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", " ·");
+}
 
 const toAmount = (amount: ContractFine["amount"]) => Number(amount) || 0;
 

@@ -110,6 +110,20 @@ const matchesSearch = (value: string | null | undefined, query: string) =>
   (value ?? "").toLowerCase().includes(query);
 
 function formatDate(iso: string): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  return date.toLocaleString("en-GB", {
+    timeZone: "Asia/Dubai",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", " ·");
+}
+
+function formatDateOnly(iso: string): string {
   const dateMatch = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!dateMatch) {
     return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -931,7 +945,7 @@ const Fines = () => {
                     return (
                       <TableRow key={s.id}>
                       <TableCell className="px-5 text-sm text-muted-foreground">
-                        <div>{formatDate(s.charge_date)}</div>
+                        <div>{formatDateOnly(s.charge_date)}</div>
                         {s.trip_time ? (
                           <div className="mt-0.5 font-mono text-xs text-muted-foreground">{s.trip_time}</div>
                         ) : null}
