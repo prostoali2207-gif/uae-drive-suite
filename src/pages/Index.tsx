@@ -199,7 +199,7 @@ const Index = () => {
       value: `${formatAED(stats.unpaidBalanceTotal)} · ${stats.unpaidBalanceContracts.toLocaleString("en-AE")} contracts`,
       icon: Wallet,
       color: "text-amber-500 bg-amber-500/10",
-      to: "/contracts?filter=unpaid",
+      to: "/contracts?sort=balance_desc",
       amount: true,
     },
     {

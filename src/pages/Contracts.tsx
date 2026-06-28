@@ -796,6 +796,13 @@ const Contracts = () => {
   }, []);
 
   useEffect(() => {
+    if (searchParams.get("sort") === "balance_desc") {
+      setSortBy("balance");
+      setSortDir("desc");
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (dashboardFilter === "overdue") {
       setFilter("Overdue");
       setDepositFilter("All");
