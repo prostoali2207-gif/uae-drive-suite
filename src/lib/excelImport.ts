@@ -594,6 +594,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   // Group by plate+date for trip counting
   for (const row of rows) {
     const txId = norm(getField(row, "Transaction ID", "TransactionId", "Transaction Id"));
+    if (!txId || isNaN(Number(txId))) continue;
     const plate = norm(getField(row, "Plate", "Plate Number"));
     const tagNumber = norm(getField(row, "Tag Number", "TagNumber"));
     const dateIso = parseDate(getField(row, "Trip Date", "Date"));
