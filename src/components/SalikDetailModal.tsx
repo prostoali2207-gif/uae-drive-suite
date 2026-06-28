@@ -16,6 +16,7 @@ type SalikRow = {
   toll_gate: string | null;
   charge_date: string | null;
   trip_time: string | null;
+  status: string | null;
   trips: number | string | null;
   amount: number | string | null;
   original_amount: number | string | null;
@@ -65,7 +66,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
 
       const { data, error: salikError } = await (supabase as any)
         .from("salik")
-        .select("id, transaction_id, toll_gate, charge_date, trip_time, trips, amount, original_amount, service_fee, cars(plate, make, model)")
+        .select("id, transaction_id, toll_gate, charge_date, trip_time, status, trips, amount, original_amount, service_fee, cars(plate, make, model)")
         .eq("contract_id", contractId)
         .order("charge_date", { ascending: false });
 
@@ -155,8 +156,9 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
               />
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1fr)_86px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
+            <div className="grid grid-cols-[minmax(0,1fr)_74px_86px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
               <span>Transaction</span>
+              <span>Status</span>
               <span className="text-right">Amount</span>
             </div>
 
@@ -175,11 +177,12 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
                 {filteredTransactions.map((transaction) => {
                   const carName = [transaction.cars?.make, transaction.cars?.model].filter(Boolean).join(" ");
                   const carLabel = [transaction.cars?.plate, carName].filter(Boolean).join(" · ");
+                  const statusLabel = transaction.status === "Paid" ? "Paid" : "Unpaid";
 
                   return (
                     <div
                       key={transaction.id}
-                      className="grid min-h-11 grid-cols-[minmax(0,1fr)_86px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
+                      className="grid min-h-11 grid-cols-[minmax(0,1fr)_74px_86px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-white">
@@ -192,6 +195,15 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
                           {carLabel || "No car"}
                         </p>
                       </div>
+                      <span
+                        className={`inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                          statusLabel === "Paid"
+                            ? "border-[#22c55e]/25 bg-[#22c55e]/15 text-[#22c55e]"
+                            : "border-[#ef4444]/25 bg-[#ef4444]/15 text-[#ef4444]"
+                        }`}
+                      >
+                        {statusLabel}
+                      </span>
                       <p className="font-ibm-plex-mono text-xs font-semibold tabular-nums text-white text-right">
                         {formatAed(toNumber(transaction.amount))}
                       </p>
