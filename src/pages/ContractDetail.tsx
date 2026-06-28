@@ -161,6 +161,7 @@ interface FineRow {
 interface SalikRow {
   id: string;
   charge_date: string;
+  trip_time?: string | null;
   created_at?: string | null;
   transaction_id?: string | null;
   toll_gate?: string | null;
@@ -1961,7 +1962,10 @@ const ContractSalikBulkSheet = ({
                           {transaction.toll_gate || "Salik transaction"}
                         </div>
                         <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
-                          {formatDate(transaction.charge_date)} · {transaction.transaction_id || "No transaction ID"}
+                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
+                        </div>
+                        <div className="mt-0.5 truncate text-[11px] text-[#e8eaf0]/45">
+                          {[transaction.cars?.plate, [transaction.cars?.make, transaction.cars?.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "No car"}
                         </div>
                       </div>
                       <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
@@ -3287,7 +3291,7 @@ const ContractDetail = () => {
           .order("fine_date", { ascending: false }),
         supabase
           .from("salik")
-          .select("id, charge_date, transaction_id, toll_gate, direction, trips, amount, status, car_id, cars(plate, make, model)")
+          .select("id, charge_date, trip_time, transaction_id, toll_gate, direction, trips, amount, status, car_id, cars(plate, make, model)")
           .eq("contract_id", c.id)
           .order("charge_date", { ascending: false }),
         supabase

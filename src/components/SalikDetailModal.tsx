@@ -15,10 +15,16 @@ type SalikRow = {
   transaction_id: string | null;
   toll_gate: string | null;
   charge_date: string | null;
+  trip_time: string | null;
   trips: number | string | null;
   amount: number | string | null;
   original_amount: number | string | null;
   service_fee: number | string | null;
+  cars: {
+    plate: string | null;
+    make: string | null;
+    model: string | null;
+  } | null;
 };
 
 const formatAed = (value: number) =>
@@ -59,7 +65,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
 
       const { data, error: salikError } = await (supabase as any)
         .from("salik")
-        .select("id, transaction_id, toll_gate, charge_date, trips, amount, original_amount, service_fee")
+        .select("id, transaction_id, toll_gate, charge_date, trip_time, trips, amount, original_amount, service_fee, cars(plate, make, model)")
         .eq("contract_id", contractId)
         .order("charge_date", { ascending: false });
 
@@ -149,10 +155,8 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
               />
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1.4fr)_82px_76px_86px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
-              <span>Transaction ID</span>
-              <span>Date</span>
-              <span>Gate</span>
+            <div className="grid grid-cols-[minmax(0,1fr)_86px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
+              <span>Transaction</span>
               <span className="text-right">Amount</span>
             </div>
 
@@ -168,28 +172,32 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
               </p>
             ) : (
               <div className="space-y-2 pb-2">
-                {filteredTransactions.map((transaction) => (
-                  <div
-                    key={transaction.id}
-                    className="grid min-h-11 grid-cols-[minmax(0,1.4fr)_82px_76px_86px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-ibm-plex-mono text-xs font-semibold text-white">
-                        {transaction.transaction_id || "No transaction ID"}
-                      </p>
-                      <p className="mt-1 truncate text-[11px] text-white/45">
-                        {transaction.toll_gate || "No gate"}
+                {filteredTransactions.map((transaction) => {
+                  const carName = [transaction.cars?.make, transaction.cars?.model].filter(Boolean).join(" ");
+                  const carLabel = [transaction.cars?.plate, carName].filter(Boolean).join(" · ");
+
+                  return (
+                    <div
+                      key={transaction.id}
+                      className="grid min-h-11 grid-cols-[minmax(0,1fr)_86px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-white">
+                          {transaction.toll_gate || "Salik transaction"}
+                        </p>
+                        <p className="mt-1 truncate font-ibm-plex-mono text-[11px] tabular-nums text-white/50">
+                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
+                        </p>
+                        <p className="mt-1 truncate text-[11px] text-white/45">
+                          {carLabel || "No car"}
+                        </p>
+                      </div>
+                      <p className="font-ibm-plex-mono text-xs font-semibold tabular-nums text-white text-right">
+                        {formatAed(toNumber(transaction.amount))}
                       </p>
                     </div>
-                    <p className="font-ibm-plex-mono text-[11px] text-white/65">
-                      {formatDate(transaction.charge_date)}
-                    </p>
-                    <p className="truncate text-xs text-white/75">{transaction.toll_gate || "No gate"}</p>
-                    <p className="font-ibm-plex-mono text-xs font-semibold tabular-nums text-white text-right">
-                      {formatAed(toNumber(transaction.amount))}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
