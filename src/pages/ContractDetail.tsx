@@ -6324,195 +6324,232 @@ const ContractDetail = () => {
             </div>
 
             {closeDepositAmount > 0 && (
-              <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Security Deposit
-                    </Label>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Refundable amounts are scheduled for return after the hold period.
-                    </p>
+              <div className="overflow-hidden rounded-[10px] border border-[#1e2535] bg-[#1a2030]">
+                <div className="flex items-center justify-between border-b border-[#1e2535] px-[14px] py-[12px]">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-[#4a5568]">
+                    SECURITY DEPOSIT
                   </div>
-                  <div className="text-right font-mono text-sm font-semibold tabular-nums">
+                  <div className="font-['IBM_Plex_Mono'] text-[14px] font-semibold text-[#f0f4ff]">
                     {fmtAed(closeDepositAmount)}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-md border border-border bg-background px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      Deposit held
-                    </div>
-                    <div className="mt-0.5 font-mono font-semibold tabular-nums">
+                <div className="flex items-center justify-between border-b border-[#1e2535] px-[14px] py-[10px] text-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#6b7a99]">Held</span>
+                    <span className="font-['IBM_Plex_Mono'] font-medium text-[#c8d3e8]">
                       {fmtAed(closeDepositAmount)}
-                    </div>
+                    </span>
                   </div>
-                  <div className="rounded-md border border-border bg-background px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      Outstanding
-                    </div>
-                    <div className="mt-0.5 font-mono font-semibold tabular-nums">
+                  <span className="text-[#1e2535]">│</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#6b7a99]">Outstanding balance</span>
+                    <span className="font-['IBM_Plex_Mono'] font-medium text-[#f97316]">
                       {fmtAed(closeOutstandingBalance)}
-                    </div>
+                    </span>
                   </div>
                 </div>
 
-                <RadioGroup
-                  value={depositCloseAction}
-                  onValueChange={(value) => setDepositCloseAction(value as DepositCloseAction)}
-                  className="gap-2"
-                >
-                  <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm">
-                    <RadioGroupItem value="return_full" />
-                    <span className="flex-1">Schedule full deposit return</span>
-                    <span className="font-mono text-xs font-semibold tabular-nums">
-                      {fmtAed(closeDepositAmount)}
-                    </span>
-                  </label>
-                  <label
+                <div className="flex flex-col gap-[8px] px-[14px] pb-[8px] pt-[12px]">
+                  <div className="mb-[4px] text-[10px] font-semibold tracking-widest text-[#4a5568]">
+                    WHAT TO DO WITH DEPOSIT?
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDepositCloseAction("return_full")}
                     className={cn(
-                      "flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm",
-                      closeOutstandingBalance <= 0 && "cursor-not-allowed opacity-60",
+                      "flex cursor-pointer items-center justify-between rounded-[8px] border-[1.5px] p-[11px]",
+                      depositCloseAction === "return_full"
+                        ? "border-[#3b6fff] bg-[rgba(59,111,255,0.08)]"
+                        : "border-[#1e2535] bg-[#161b27]",
                     )}
                   >
-                    <RadioGroupItem value="apply_to_balance" disabled={closeOutstandingBalance <= 0} />
-                    <span className="flex-1">Apply to outstanding balance</span>
-                    <span className="font-mono text-xs font-semibold tabular-nums">
-                      {fmtAed(Math.min(closeDepositAmount, closeOutstandingBalance))}
-                    </span>
-                  </label>
-                  <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm">
-                    <RadioGroupItem value="retain_partial" />
-                    <span className="flex-1">Retain partial amount</span>
-                  </label>
-                  <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm">
-                    <RadioGroupItem value="retain_full" />
-                    <span className="flex-1">Retain full deposit</span>
-                    <span className="font-mono text-xs font-semibold tabular-nums">
+                    <div className="flex items-center gap-3 text-left">
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                          depositCloseAction === "return_full" ? "border-[#3b6fff]" : "border-[#1e2535]",
+                        )}
+                      >
+                        {depositCloseAction === "return_full" && (
+                          <span className="h-[7px] w-[7px] rounded-full bg-[#3b6fff]" />
+                        )}
+                      </span>
+                      <span className="flex flex-col">
+                        <span className="text-[13px] font-medium text-[#c8d3e8]">
+                          Return to client
+                        </span>
+                        <span className="text-[11px] text-[#4a5568]">Schedule full refund</span>
+                      </span>
+                    </div>
+                    <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#3b6fff]">
                       {fmtAed(closeDepositAmount)}
                     </span>
-                  </label>
-                </RadioGroup>
-
-                {depositCloseAction === "retain_partial" && (
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Retained Amount
-                    </Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        AED
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDepositCloseAction("apply_to_balance")}
+                    className={cn(
+                      "flex cursor-pointer items-center justify-between rounded-[8px] border-[1.5px] p-[11px]",
+                      depositCloseAction === "apply_to_balance"
+                        ? "border-[#22c55e] bg-[rgba(34,197,94,0.07)]"
+                        : "border-[#1e2535] bg-[#161b27]",
+                    )}
+                  >
+                    <div className="flex items-center gap-3 text-left">
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                          depositCloseAction === "apply_to_balance" ? "border-[#22c55e]" : "border-[#1e2535]",
+                        )}
+                      >
+                        {depositCloseAction === "apply_to_balance" && (
+                          <span className="h-[7px] w-[7px] rounded-full bg-[#22c55e]" />
+                        )}
                       </span>
+                      <span className="flex flex-col">
+                        <span className="text-[13px] font-medium text-[#c8d3e8]">
+                          Apply to outstanding balance
+                        </span>
+                        <span className="text-[11px] text-[#4a5568]">
+                          Covers {fmtAed(closeOutstandingBalance)} debt, return{" "}
+                          {fmtAed(Math.max(0, closeDepositAmount - closeOutstandingBalance))}
+                        </span>
+                      </span>
+                    </div>
+                    <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#22c55e]">
+                      {fmtAed(Math.min(closeDepositAmount, closeOutstandingBalance))}
+                    </span>
+                  </button>
+                </div>
+
+                {depositCloseAction === "return_full" && (
+                  <div className="flex items-center justify-between gap-[10px] px-[14px] pb-[12px]">
+                    <Label className="text-[12px] text-[#6b7a99]">Return due date</Label>
+                    <div className="rounded-[6px] border border-[#1e2535] bg-[#1a2030] px-[10px] py-[7px]">
                       <Input
-                        type="number"
-                        min={0}
-                        max={closeDepositAmount}
-                        value={depositRetainedAmount}
-                        onChange={(e) => setDepositRetainedAmount(e.target.value)}
-                        className="pl-12"
-                        placeholder="0.00"
+                        type="date"
+                        value={depositReturnDueDate}
+                        onChange={(e) => {
+                          setDepositReturnDueDate(e.target.value);
+                          setDepositReturnDueDateEdited(true);
+                        }}
+                        className="h-auto border-0 bg-transparent p-0 font-['IBM_Plex_Mono'] text-[12px] text-[#c8d3e8] shadow-none ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                       />
                     </div>
                   </div>
                 )}
 
-                {(depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Retention Reason
-                    </Label>
-                    <Textarea
-                      value={depositRetainReason}
-                      onChange={(e) => setDepositRetainReason(e.target.value)}
-                      placeholder="Damage, fuel, late return, fines pending..."
-                      className="min-h-[72px]"
-                    />
-                  </div>
-                )}
+                <details
+                  className="group px-[14px] pb-[12px]"
+                  defaultOpen={depositCloseAction === "retain_partial" || depositCloseAction === "retain_full"}
+                >
+                  <summary className="cursor-pointer list-none text-[11px] text-[#4a5568] underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                    ⋯ Retain partial or full deposit
+                  </summary>
+                  <div className="mt-3 grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDepositCloseAction("retain_partial")}
+                      className={cn(
+                        "flex min-h-10 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm",
+                        depositCloseAction === "retain_partial"
+                          ? "border-[#3b6fff] bg-[rgba(59,111,255,0.08)]"
+                          : "border-[#1e2535] bg-[#161b27]",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                          depositCloseAction === "retain_partial" ? "border-[#3b6fff]" : "border-[#1e2535]",
+                        )}
+                      >
+                        {depositCloseAction === "retain_partial" && (
+                          <span className="h-[7px] w-[7px] rounded-full bg-[#3b6fff]" />
+                        )}
+                      </span>
+                      <span className="flex-1 text-left text-[#c8d3e8]">Retain partial amount</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDepositCloseAction("retain_full")}
+                      className={cn(
+                        "flex min-h-10 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm",
+                        depositCloseAction === "retain_full"
+                          ? "border-[#3b6fff] bg-[rgba(59,111,255,0.08)]"
+                          : "border-[#1e2535] bg-[#161b27]",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                          depositCloseAction === "retain_full" ? "border-[#3b6fff]" : "border-[#1e2535]",
+                        )}
+                      >
+                        {depositCloseAction === "retain_full" && (
+                          <span className="h-[7px] w-[7px] rounded-full bg-[#3b6fff]" />
+                        )}
+                      </span>
+                      <span className="flex-1 text-left text-[#c8d3e8]">Retain full deposit</span>
+                      <span className="font-['IBM_Plex_Mono'] text-xs font-semibold text-[#c8d3e8]">
+                        {fmtAed(closeDepositAmount)}
+                      </span>
+                    </button>
 
-                {closeDepositReturnAmount > 0 && (
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Return Due Date
-                    </Label>
-                    <input
-                      type="date"
-                      value={depositReturnDueDate}
-                      onChange={(e) => {
-                        setDepositReturnDueDate(e.target.value);
-                        setDepositReturnDueDateEdited(true);
-                      }}
-                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-base tabular-nums ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Default is 15 days after close. Same-day return is allowed.
-                    </p>
-                  </div>
-                )}
+                    {depositCloseAction === "retain_partial" && (
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs uppercase tracking-wide text-[#4a5568]">
+                          Retained Amount
+                        </Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#6b7a99]">
+                            AED
+                          </span>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={closeDepositAmount}
+                            value={depositRetainedAmount}
+                            onChange={(e) => setDepositRetainedAmount(e.target.value)}
+                            className="border-[#1e2535] bg-[#161b27] pl-12 text-[#c8d3e8]"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                    )}
 
-                <div className="grid gap-1 rounded-md bg-background px-3 py-2 text-xs">
-                  {depositCloseAction === "apply_to_balance" && (
-                    <>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Applied to balance</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {fmtAed(closeDepositApplyAmount)}
-                        </span>
+                    {(depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs uppercase tracking-wide text-[#4a5568]">
+                          Retention Reason
+                        </Label>
+                        <Textarea
+                          value={depositRetainReason}
+                          onChange={(e) => setDepositRetainReason(e.target.value)}
+                          placeholder="Damage, fuel, late return, fines pending..."
+                          className="min-h-[72px] border-[#1e2535] bg-[#161b27] text-[#c8d3e8]"
+                        />
                       </div>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Pending return</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {fmtAed(closeDepositReturnAmount)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Return due</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {closeDepositReturnDueLabel}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                  {depositCloseAction === "return_full" && (
-                    <>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Pending return</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {fmtAed(closeDepositReturnAmount)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Return due</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {closeDepositReturnDueLabel}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                  {(depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
-                    <>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Retained</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {fmtAed(closeDepositRetainedAmount)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Pending return</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {fmtAed(closeDepositReturnAmount)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Return due</span>
-                        <span className="font-mono font-semibold tabular-nums">
-                          {closeDepositReturnDueLabel}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
+                    )}
+                    {closeDepositReturnAmount > 0 &&
+                      (depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs uppercase tracking-wide text-[#4a5568]">
+                            Return Due Date
+                          </Label>
+                          <input
+                            type="date"
+                            value={depositReturnDueDate}
+                            onChange={(e) => {
+                              setDepositReturnDueDate(e.target.value);
+                              setDepositReturnDueDateEdited(true);
+                            }}
+                            className="flex h-11 w-full rounded-md border border-[#1e2535] bg-[#161b27] px-3 py-2 font-['IBM_Plex_Mono'] text-base text-[#c8d3e8] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
+                          />
+                        </div>
+                      )}
+                  </div>
+                </details>
               </div>
             )}
 
