@@ -6323,7 +6323,19 @@ const ContractDetail = () => {
               </Select>
             </div>
 
-            {closeDepositAmount > 0 && (
+            {closeDepositAmount > 0 && (() => {
+              const profileDepositReturnDays = Number(
+                (contract as any).profiles?.deposit_return_days ??
+                  (contract as any).profile?.deposit_return_days ??
+                  (contract as any).deposit_return_days,
+              );
+              const depositReturnDays = Number.isFinite(profileDepositReturnDays)
+                ? Math.max(0, profileDepositReturnDays)
+                : 15;
+              const calculatedDepositReturnDueDate = addDaysToDateInput(closeReturnDate, depositReturnDays);
+              const calculatedDepositReturnDueLabel = formatDate(calculatedDepositReturnDueDate);
+
+              return (
               <div className="overflow-hidden rounded-[10px] border border-[#1e2535] bg-[#1a2030]">
                 <div className="flex items-center justify-between border-b border-[#1e2535] px-[14px] py-[12px]">
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-[#4a5568]">
@@ -6377,9 +6389,11 @@ const ContractDetail = () => {
                       </span>
                       <span className="flex flex-col">
                         <span className="text-[13px] font-medium text-[#c8d3e8]">
-                          Return to client
+                          Hold deposit
                         </span>
-                        <span className="text-[11px] text-[#4a5568]">Schedule full refund</span>
+                        <span className="text-[11px] text-[#4a5568]">
+                          Return due in {depositReturnDays} days — {calculatedDepositReturnDueLabel}
+                        </span>
                       </span>
                     </div>
                     <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#3b6fff]">
@@ -6412,33 +6426,23 @@ const ContractDetail = () => {
                           Apply to outstanding balance
                         </span>
                         <span className="text-[11px] text-[#4a5568]">
-                          Covers {fmtAed(closeOutstandingBalance)} debt, return{" "}
+                          Covers {fmtAed(closeOutstandingBalance)} debt, hold remaining{" "}
                           {fmtAed(Math.max(0, closeDepositAmount - closeOutstandingBalance))}
                         </span>
                       </span>
                     </div>
                     <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#22c55e]">
-                      {fmtAed(Math.min(closeDepositAmount, closeOutstandingBalance))}
+                      {fmtAed(closeOutstandingBalance)}
                     </span>
                   </button>
                 </div>
 
-                {depositCloseAction === "return_full" && (
-                  <div className="flex items-center justify-between gap-[10px] px-[14px] pb-[12px]">
-                    <Label className="text-[12px] text-[#6b7a99]">Return due date</Label>
-                    <div className="rounded-[6px] border border-[#1e2535] bg-[#1a2030] px-[10px] py-[7px]">
-                      <Input
-                        type="date"
-                        value={depositReturnDueDate}
-                        onChange={(e) => {
-                          setDepositReturnDueDate(e.target.value);
-                          setDepositReturnDueDateEdited(true);
-                        }}
-                        className="h-auto border-0 bg-transparent p-0 font-['IBM_Plex_Mono'] text-[12px] text-[#c8d3e8] shadow-none ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                      />
-                    </div>
+                <div className="flex items-center justify-between gap-[10px] px-[14px] pb-[12px]">
+                  <Label className="text-[12px] text-[#6b7a99]">Return due date</Label>
+                  <div className="rounded-[6px] border border-[#1e2535] bg-[#1a2030] px-[10px] py-[7px] font-['IBM_Plex_Mono'] text-[12px] text-[#c8d3e8]">
+                    {calculatedDepositReturnDueLabel}
                   </div>
-                )}
+                </div>
 
                 <details
                   className="group px-[14px] pb-[12px]"
@@ -6551,7 +6555,8 @@ const ContractDetail = () => {
                   </div>
                 </details>
               </div>
-            )}
+              );
+            })()}
 
             <div className="grid gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
