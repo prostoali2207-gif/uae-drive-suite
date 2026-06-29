@@ -1281,6 +1281,8 @@ type FinancialsPanelProps = {
   onDeletePayment: (payment: PaymentRow) => void;
   onDeleteFee: (fee: ContractFeeRow) => void;
   onMarkDepositReturned: (amount: number) => void;
+  onMarkDepositPartiallyReturned: (amount: number) => void;
+  onMarkDepositForfeited: () => void;
   markingDepositReturned: boolean;
   onInlinePaymentRecorded: () => void;
 };
@@ -1291,15 +1293,28 @@ const FinancialBadge = ({ status }: { status: string }) => {
     <span
       className={cn(
         "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+        key === "pending return" && "bg-yellow-500/10 px-[8px] py-[1px] text-[11px] font-medium text-yellow-400",
+        key === "returned" && "bg-green-500/10 px-[8px] py-[1px] text-[11px] font-medium text-green-400",
+        key === "partial return" && "bg-blue-500/10 px-[8px] py-[1px] text-[11px] font-medium text-blue-400",
+        key === "forfeited" && "bg-red-500/10 px-[8px] py-[1px] text-[11px] font-medium text-red-400",
         key === "paid" && "bg-tint-green text-tint-green-foreground",
-        key === "returned" && "bg-tint-green text-tint-green-foreground",
         key === "active" && "bg-tint-blue text-tint-blue-foreground",
-        key === "pending return" && "bg-tint-amber text-tint-amber-foreground",
         key === "retained" && "bg-tint-rose text-tint-rose-foreground",
         key === "held" && "bg-muted text-muted-foreground",
         key === "closed" && "bg-muted text-muted-foreground",
         key === "applied / used" && "bg-muted text-muted-foreground",
-        !["paid", "returned", "active", "pending return", "retained", "held", "closed", "applied / used"].includes(key) && "bg-muted text-muted-foreground",
+        ![
+          "paid",
+          "returned",
+          "active",
+          "pending return",
+          "partial return",
+          "forfeited",
+          "retained",
+          "held",
+          "closed",
+          "applied / used",
+        ].includes(key) && "bg-muted text-muted-foreground",
       )}
     >
       {status}
@@ -2145,6 +2160,8 @@ const FinancialsPanel = ({
   onDeletePayment,
   onDeleteFee,
   onMarkDepositReturned,
+  onMarkDepositPartiallyReturned,
+  onMarkDepositForfeited,
   markingDepositReturned,
   onInlinePaymentRecorded,
 }: FinancialsPanelProps) => {
@@ -2182,7 +2199,19 @@ const FinancialsPanel = ({
   }, [contract.id, contractFees, fines, rentalExtensions, salik]);
   const depositInfo = getDepositReconciliationInfo(contract);
   const rawDepositStatus = (contract as any).deposit_status;
-  const depositStatus = rawDepositStatus === "Returned" ? "Returned" : depositInfo.status;
+  const normalizedDepositStatus =
+    typeof rawDepositStatus === "string" ? rawDepositStatus.trim().toLowerCase() : "";
+  const depositStatus =
+    normalizedDepositStatus === "returned"
+      ? "Returned"
+      : normalizedDepositStatus === "partial"
+        ? "Partial return"
+        : normalizedDepositStatus === "forfeited"
+          ? "Forfeited"
+          : normalizedDepositStatus === "pending"
+            ? "Pending return"
+            : depositInfo.status;
+  const isDepositFinalized = ["Returned", "Partial return", "Forfeited"].includes(depositStatus);
   const depositMethod =
     (contract as any).deposit_collection_method ||
     (contract as any).deposit_method ||
@@ -2195,7 +2224,7 @@ const FinancialsPanel = ({
   const showDepositVerificationWarning =
     Number(contract.deposit_amount) > 0 &&
     contract.status.toLowerCase() === "closed" &&
-    depositStatus !== "Returned" &&
+    !isDepositFinalized &&
     depositInfo.pendingReturn > 0 &&
     hasUnverifiedAdditionalCharges;
   const [showFinesModal, setShowFinesModal] = useState(false);
@@ -2212,6 +2241,14 @@ const FinancialsPanel = ({
     method: "Cash",
   });
   const [savingInlinePayment, setSavingInlinePayment] = useState(false);
+  const [depositPartialReturnOpen, setDepositPartialReturnOpen] = useState(false);
+  const [depositPartialReturnAmount, setDepositPartialReturnAmount] = useState("");
+  const [depositForfeitConfirmOpen, setDepositForfeitConfirmOpen] = useState(false);
+  const depositAmount = Math.max(0, Number(contract.deposit_amount) || 0);
+  const depositPartialReturnValue = Math.max(0, Number(depositPartialReturnAmount) || 0);
+  const depositPartialRetainedAmount = Math.max(0, depositAmount - depositPartialReturnValue);
+  const canConfirmDepositPartialReturn =
+    depositPartialReturnValue > 0 && depositPartialReturnValue <= depositAmount;
 
   const openItemGroups = useMemo(() => {
     const groups = new Map<string, OpenItemGroup>();
@@ -3036,19 +3073,57 @@ const FinancialsPanel = ({
 
           {Number(contract.deposit_amount) > 0 && contract.status.toLowerCase() === "closed" ? (
             <div className="mt-3 grid gap-2 border-t border-border pt-3 text-xs">
-              {depositStatus === "Returned" ? (
+              {isDepositFinalized ? (
                 <>
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">Returned amount</span>
-                    <span className="font-mono font-semibold tabular-nums">
-                      {fmtAed(depositInfo.returnedAmount || depositInfo.pendingReturn || Number(contract.deposit_amount))}
-                    </span>
-                  </div>
+                  {depositStatus !== "Forfeited" ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Returned amount</span>
+                      <span className="font-mono font-semibold tabular-nums">
+                        {fmtAed(Number((contract as any).deposit_returned) || depositInfo.returnedAmount || Number(contract.deposit_amount))}
+                      </span>
+                    </div>
+                  ) : null}
+                  {depositStatus === "Partial return" || depositStatus === "Forfeited" ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Forfeited</span>
+                      <span className="font-mono font-semibold tabular-nums">
+                        {fmtAed(Number((contract as any).deposit_forfeited) || (depositStatus === "Forfeited" ? depositAmount : 0))}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">Returned date</span>
                     <span className="font-mono font-semibold tabular-nums">
-                      {depositInfo.returnedDate ?? "Recorded"}
+                      {(contract as any).deposit_return_date ? formatDate((contract as any).deposit_return_date) : depositInfo.returnedDate ?? "Recorded"}
                     </span>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2 pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 cursor-not-allowed gap-1.5 text-xs opacity-50"
+                      disabled
+                    >
+                      Return Full
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 cursor-not-allowed text-xs opacity-50"
+                      disabled
+                    >
+                      Partial Return
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 cursor-not-allowed border-tint-rose-foreground/40 text-xs text-tint-rose-foreground opacity-50"
+                      disabled
+                    >
+                      Forfeit
+                    </Button>
                   </div>
                 </>
               ) : (
@@ -3088,22 +3163,118 @@ const FinancialsPanel = ({
                     </div>
                   ) : null}
                   {depositInfo.pendingReturn > 0 ? (
-                    <div className="flex flex-wrap justify-end gap-2 pt-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-8 gap-1.5 text-xs"
-                        disabled={markingDepositReturned}
-                        onClick={() => onMarkDepositReturned(depositInfo.pendingReturn)}
-                      >
-                        {markingDepositReturned ? "Saving..." : "Return Full"}
-                      </Button>
-                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled>
-                        Partial Return
-                      </Button>
-                      <Button type="button" size="sm" variant="outline" className="h-8 border-tint-rose-foreground/40 text-xs text-tint-rose-foreground" disabled>
-                        Forfeit
-                      </Button>
+                    <div className="grid gap-2 pt-1">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className={cn("h-8 gap-1.5 text-xs", isDepositFinalized && "cursor-not-allowed opacity-50")}
+                          disabled={markingDepositReturned || isDepositFinalized}
+                          onClick={() => onMarkDepositReturned(depositAmount)}
+                        >
+                          {markingDepositReturned ? "Saving..." : "Return Full"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={cn("h-8 text-xs", isDepositFinalized && "cursor-not-allowed opacity-50")}
+                          disabled={markingDepositReturned || isDepositFinalized}
+                          onClick={() => {
+                            setDepositForfeitConfirmOpen(false);
+                            setDepositPartialReturnOpen((open) => !open);
+                          }}
+                        >
+                          Partial Return
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={cn(
+                            "h-8 border-tint-rose-foreground/40 text-xs text-tint-rose-foreground",
+                            isDepositFinalized && "cursor-not-allowed opacity-50",
+                          )}
+                          disabled={markingDepositReturned || isDepositFinalized}
+                          onClick={() => {
+                            setDepositPartialReturnOpen(false);
+                            setDepositForfeitConfirmOpen((open) => !open);
+                          }}
+                        >
+                          Forfeit
+                        </Button>
+                      </div>
+
+                      {depositPartialReturnOpen && !isDepositFinalized ? (
+                        <div className="grid gap-2 rounded-md border border-border bg-background p-3">
+                          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Amount to return (AED)
+                          </Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={depositAmount}
+                            value={depositPartialReturnAmount}
+                            onChange={(event) => setDepositPartialReturnAmount(event.target.value)}
+                            className="font-['IBM_Plex_Mono']"
+                            placeholder="0.00"
+                          />
+                          <div className="flex justify-between gap-3 text-xs">
+                            <span className="text-muted-foreground">Retained</span>
+                            <span className="font-mono font-semibold tabular-nums">
+                              {fmtAed(depositPartialRetainedAmount)}
+                            </span>
+                          </div>
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={markingDepositReturned || !canConfirmDepositPartialReturn}
+                              onClick={() => {
+                                onMarkDepositPartiallyReturned(depositPartialReturnValue);
+                                setDepositPartialReturnOpen(false);
+                                setDepositPartialReturnAmount("");
+                              }}
+                            >
+                              {markingDepositReturned ? "Saving..." : "Confirm Partial Return"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {depositForfeitConfirmOpen && !isDepositFinalized ? (
+                        <div className="grid gap-2 rounded-md border border-tint-rose-foreground/30 bg-tint-rose/10 p-3">
+                          <div className="text-xs font-medium text-tint-rose-foreground">
+                            Forfeit full deposit of {fmtAed(depositAmount)}? This means the client receives nothing.
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={markingDepositReturned}
+                              onClick={() => setDepositForfeitConfirmOpen(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="h-8 text-xs"
+                              disabled={markingDepositReturned}
+                              onClick={() => {
+                                onMarkDepositForfeited();
+                                setDepositForfeitConfirmOpen(false);
+                              }}
+                            >
+                              {markingDepositReturned ? "Saving..." : "Confirm Forfeit"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </>
@@ -3973,9 +4144,15 @@ const ContractDetail = () => {
     const updatedNotes = [contract.notes?.trim(), returnNote].filter(Boolean).join("\n");
 
     setMarkingDepositReturned(true);
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("contracts")
-      .update({ notes: updatedNotes } as never)
+      .update({
+        notes: updatedNotes,
+        deposit_returned: amount,
+        deposit_status: "returned",
+        deposit_return_date: returnedDate,
+        deposit_forfeited: 0,
+      })
       .eq("id", contract.id);
 
     if (error) {
@@ -3984,28 +4161,90 @@ const ContractDetail = () => {
       return;
     }
 
-    const { error: statusError } = await (supabase as any)
+    setContract({ ...contract, notes: updatedNotes });
+    setNotesDraft(updatedNotes);
+    setMarkingDepositReturned(false);
+    toast.success("Deposit marked as returned");
+    await fetchData();
+  };
+
+  const handleMarkDepositPartiallyReturned = async (amount: number) => {
+    if (!contract) return;
+
+    const depositAmount = Math.max(0, Number(contract.deposit_amount) || 0);
+    const returnedAmount = Math.min(depositAmount, Math.max(0, Number(amount) || 0));
+    const forfeitedAmount = Math.max(0, depositAmount - returnedAmount);
+    const returnedDate = getTodayDateInput();
+    const returnNote = [
+      DEPOSIT_RETURN_PREFIX,
+      "Status: Partial return",
+      `Returned amount: ${fmtAed(returnedAmount)}`,
+      `Forfeited amount: ${fmtAed(forfeitedAmount)}`,
+      `Returned date: ${formatDate(returnedDate)}`,
+    ].join(" | ");
+    const updatedNotes = [contract.notes?.trim(), returnNote].filter(Boolean).join("\n");
+
+    setMarkingDepositReturned(true);
+    const { error } = await (supabase as any)
       .from("contracts")
-      .update({ deposit_status: "Returned" })
+      .update({
+        notes: updatedNotes,
+        deposit_returned: returnedAmount,
+        deposit_status: "partial",
+        deposit_return_date: returnedDate,
+        deposit_forfeited: forfeitedAmount,
+      })
       .eq("id", contract.id);
 
-    if (statusError) {
-      console.info("Deposit status column is not available; returned state was saved in contract notes.");
-    }
-
-    const { error: returnedDateError } = await (supabase as any)
-      .from("contracts")
-      .update({ deposit_returned_date: returnedDate })
-      .eq("id", contract.id);
-
-    if (returnedDateError) {
-      console.info("Deposit returned date column is not available; returned date was saved in contract notes.");
+    if (error) {
+      setMarkingDepositReturned(false);
+      toast.error("Failed to record partial deposit return");
+      return;
     }
 
     setContract({ ...contract, notes: updatedNotes });
     setNotesDraft(updatedNotes);
     setMarkingDepositReturned(false);
-    toast.success("Deposit marked as returned");
+    toast.success("Partial deposit return recorded");
+    await fetchData();
+  };
+
+  const handleMarkDepositForfeited = async () => {
+    if (!contract) return;
+
+    const depositAmount = Math.max(0, Number(contract.deposit_amount) || 0);
+    const returnedDate = getTodayDateInput();
+    const returnNote = [
+      DEPOSIT_RETURN_PREFIX,
+      "Status: Forfeited",
+      `Returned amount: ${fmtAed(0)}`,
+      `Forfeited amount: ${fmtAed(depositAmount)}`,
+      `Returned date: ${formatDate(returnedDate)}`,
+    ].join(" | ");
+    const updatedNotes = [contract.notes?.trim(), returnNote].filter(Boolean).join("\n");
+
+    setMarkingDepositReturned(true);
+    const { error } = await (supabase as any)
+      .from("contracts")
+      .update({
+        notes: updatedNotes,
+        deposit_returned: 0,
+        deposit_status: "forfeited",
+        deposit_return_date: returnedDate,
+        deposit_forfeited: depositAmount,
+      })
+      .eq("id", contract.id);
+
+    if (error) {
+      setMarkingDepositReturned(false);
+      toast.error("Failed to forfeit deposit");
+      return;
+    }
+
+    setContract({ ...contract, notes: updatedNotes });
+    setNotesDraft(updatedNotes);
+    setMarkingDepositReturned(false);
+    toast.success("Deposit forfeited");
     await fetchData();
   };
 
@@ -5481,6 +5720,8 @@ const ContractDetail = () => {
               onDeletePayment={setPaymentToDelete}
               onDeleteFee={setFeeToDelete}
               onMarkDepositReturned={handleMarkDepositReturned}
+              onMarkDepositPartiallyReturned={handleMarkDepositPartiallyReturned}
+              onMarkDepositForfeited={handleMarkDepositForfeited}
               markingDepositReturned={markingDepositReturned}
               onInlinePaymentRecorded={handlePaymentRecorded}
             />
