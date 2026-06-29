@@ -430,13 +430,12 @@ const Fines = () => {
       .eq("car_id", fineForm.car_id)
       .lte("start_date", fineForm.fine_date)
       .gte("end_date", fineForm.fine_date)
-      .in("status", ["Active", "active"])
       .order("start_date", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (contractError) {
-      toast.error("Failed to find active contract: " + contractError.message);
+      toast.error("Failed to find contract: " + contractError.message);
       return;
     }
 
