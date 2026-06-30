@@ -544,6 +544,63 @@ const sortRentalExtensionFees = (fees: ContractFeeRow[]) =>
     return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
   });
 
+type RentalHistoryPeriod = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  amount: number;
+  fee?: ContractFeeRow;
+};
+
+const buildRentalPeriods = (
+  contract: Pick<ContractRecord, "id" | "start_date" | "end_date" | "total_amount">,
+  extensionFees: ContractFeeRow[],
+): RentalHistoryPeriod[] => {
+  const sortedExtensions = [...extensionFees]
+    .filter((fee) => fee.extension_start || fee.extension_end)
+    .sort((a, b) => {
+      const aStart = a.extension_start ?? a.extension_end ?? "";
+      const bStart = b.extension_start ?? b.extension_end ?? "";
+      const startCompare = aStart.localeCompare(bStart);
+      if (startCompare !== 0) return startCompare;
+
+      const endCompare = String(a.extension_end ?? "").localeCompare(String(b.extension_end ?? ""));
+      if (endCompare !== 0) return endCompare;
+
+      return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+    });
+
+  const originalEndDate = sortedExtensions[0]?.extension_start ?? contract.end_date;
+  const periods: RentalHistoryPeriod[] = [
+    {
+      id: "base-rental",
+      name: "Original Contract",
+      startDate: contract.start_date,
+      endDate: originalEndDate,
+      amount: Number(contract.total_amount),
+    },
+  ];
+
+  sortedExtensions.forEach((fee, index) => {
+    const previousPeriod = periods[periods.length - 1];
+    const nextExtension = sortedExtensions[index + 1];
+    const startDate = fee.extension_start ?? previousPeriod.endDate;
+    const endDate = fee.extension_end ?? nextExtension?.extension_start ?? contract.end_date;
+
+    periods.push({
+      id: fee.id,
+      name: `Extension #${index + 1}`,
+      startDate,
+      endDate,
+      amount: Number(fee.amount),
+      fee,
+    });
+  });
+
+  return periods;
+};
+
 const getLatestRentalPeriodEnd = (contract: Pick<ContractRecord, "end_date">, fees: ContractFeeRow[]) => {
   const sortedExtensionEnds = [...fees]
     .filter((fee) => fee.extension_end)
@@ -2472,26 +2529,10 @@ const FinancialsPanel = ({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
   });
-  const rentalPeriods = [
-    {
-      id: "base-rental",
-      name: "Original Contract",
-      startDate: contract.start_date,
-      endDate: contract.end_date,
-      amount: Number(contract.total_amount),
-      onEdit: () => onEditRentalPeriod(),
-    },
-    ...rentalExtensions.map((fee, index) => {
-      return {
-        id: fee.id,
-        name: `Extension #${index + 1}`,
-        startDate: fee.extension_start ?? contract.end_date,
-        endDate: fee.extension_end ?? contract.end_date,
-        amount: Number(fee.amount),
-        onEdit: () => onEditRentalPeriod(fee),
-      };
-    }),
-  ].sort((a, b) => {
+  const rentalPeriods = buildRentalPeriods(contract, rentalExtensions).map((period) => ({
+    ...period,
+    onEdit: () => onEditRentalPeriod(period.fee),
+  })).sort((a, b) => {
     const aTime = new Date(a.startDate).getTime() || 0;
     const bTime = new Date(b.startDate).getTime() || 0;
     return bTime - aTime;
