@@ -724,71 +724,79 @@ const Contracts = () => {
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [docExpiredWarnings, setDocExpiredWarnings] = useState<string[]>([]);
   const [vehicleAvailability, setVehicleAvailability] = useState<VehicleAvailability | null>(null);
+  const availabilityRequestIdRef = useRef(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [depositReadyCutoff, setDepositReadyCutoff] = useState(() => getDepositReadyCutoff(15));
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      await syncVehicleStatusesWithContracts();
-    } catch (error) {
-      console.error("Vehicle status sync failed:", error);
-    }
-
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    const userId = authData.user?.id;
-    if (authError || !userId) {
-      toast.error("Could not load contracts: please sign in again.");
-      setLoading(false);
-      return;
-    }
-
-    const [contractsRes, clientsRes, carsRes, profileRes] = await Promise.all([
-      supabase
-        .from("contracts")
-        .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)")
-        .eq("owner_id", userId)
-        .order("created_at", { ascending: false }),
-      supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
-      supabase.from("cars").select("id, plate, make, model, status").eq("owner_id", userId).order("plate"),
-      supabase.from("profiles").select("deposit_return_days" as never).eq("id", userId).single(),
-    ]);
-    const depositReturnDays = (profileRes.data as { deposit_return_days?: number | null } | null)?.deposit_return_days ?? 15;
-    setDepositReadyCutoff(getDepositReadyCutoff(depositReturnDays));
-    if (contractsRes.error) toast.error(`Failed to load contracts: ${toSupabaseMessage(contractsRes.error)}`);
-    else {
-      const contractRows = (contractsRes.data as ContractRow[]) || [];
-      const contractIds = contractRows.map((contract) => contract.id);
-      let balanceByContract: Record<string, number> = {};
-      if (contractIds.length > 0) {
-        // contract_balances is not present in the generated database types.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: balancesData, error: balancesErr } = await (supabase as any)
-          .from("contract_balances")
-          .select("contract_id, balance_due")
-          .in("contract_id", contractIds);
-        if (balancesErr) {
-          toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesErr)}`);
-        } else {
-          balanceByContract = Object.fromEntries(
-            (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
-              balance.contract_id,
-              Number(balance.balance_due || 0),
-            ]),
-          );
-        }
+      try {
+        await syncVehicleStatusesWithContracts();
+      } catch (error) {
+        console.error("Vehicle status sync failed:", error);
       }
 
-      setContracts(
-        contractRows.map((contract) => ({
-          ...contract,
-          balance_due: balanceByContract[contract.id] ?? Number(contract.total_amount),
-        })),
-      );
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      if (authError || !userId) {
+        toast.error("Could not load contracts: please sign in again.");
+        return;
+      }
+
+      const [contractsRes, clientsRes, carsRes, profileRes] = await Promise.all([
+        supabase
+          .from("contracts")
+          .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)")
+          .eq("owner_id", userId)
+          .order("created_at", { ascending: false }),
+        supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
+        supabase.from("cars").select("id, plate, make, model, status").eq("owner_id", userId).order("plate"),
+        supabase.from("profiles").select("deposit_return_days" as never).eq("id", userId).single(),
+      ]);
+      const depositReturnDays = (profileRes.data as { deposit_return_days?: number | null } | null)?.deposit_return_days ?? 15;
+      setDepositReadyCutoff(getDepositReadyCutoff(depositReturnDays));
+      if (contractsRes.error) toast.error(`Failed to load contracts: ${toSupabaseMessage(contractsRes.error)}`);
+      else {
+        const contractRows = (contractsRes.data as ContractRow[]) || [];
+        const contractIds = contractRows.map((contract) => contract.id);
+        let balanceByContract: Record<string, number> = {};
+        if (contractIds.length > 0) {
+          // contract_balances is not present in the generated database types.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: balancesData, error: balancesErr } = await (supabase as any)
+            .from("contract_balances")
+            .select("contract_id, balance_due")
+            .in("contract_id", contractIds);
+          if (balancesErr) {
+            toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesErr)}`);
+          } else {
+            balanceByContract = Object.fromEntries(
+              (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
+                balance.contract_id,
+                Number(balance.balance_due || 0),
+              ]),
+            );
+          }
+        }
+
+        setContracts(
+          contractRows.map((contract) => ({
+            ...contract,
+            balance_due: balanceByContract[contract.id] ?? Number(contract.total_amount),
+          })),
+        );
+      }
+      if (!clientsRes.error) setClients(clientsRes.data || []);
+      if (!carsRes.error) setCars(carsRes.data || []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load contracts.";
+      toast.error(message);
+      console.error("Contracts load failed:", error);
+    } finally {
+      setLoading(false);
     }
-    if (!clientsRes.error) setClients(clientsRes.data || []);
-    if (!carsRes.error) setCars(carsRes.data || []);
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -849,11 +857,14 @@ const Contracts = () => {
 
   useEffect(() => {
     if (!form.car_id || !form.start_date || !form.end_date || !form.start_time || !form.end_time) {
+      availabilityRequestIdRef.current += 1;
       setVehicleAvailability(null);
       return;
     }
 
     let cancelled = false;
+    const requestId = availabilityRequestIdRef.current + 1;
+    availabilityRequestIdRef.current = requestId;
     setVehicleAvailability({ status: "checking" });
 
     const checkVehicleAvailability = async () => {
@@ -866,10 +877,10 @@ const Contracts = () => {
           endTime: form.end_time,
           operation: "contract-create-availability-preview",
         });
-        if (cancelled) return;
+        if (cancelled || availabilityRequestIdRef.current !== requestId) return;
         setVehicleAvailability(conflict ? { status: "conflict", conflict } : { status: "available" });
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || availabilityRequestIdRef.current !== requestId) return;
         const message = error instanceof Error ? error.message : "Could not check vehicle availability.";
         setVehicleAvailability({ status: "error", message });
       }
@@ -1037,7 +1048,11 @@ const Contracts = () => {
       setEndTimeManuallyEdited(false);
       return;
     }
+    availabilityRequestIdRef.current += 1;
     setDocExpiredWarnings([]);
+    setClientSelectOpen(false);
+    setCarSelectOpen(false);
+    setVehicleAvailability(null);
   };
 
   const prefillInitialMileage = async (carId: string) => {
@@ -1065,6 +1080,7 @@ const Contracts = () => {
     setIsSubmitting(true);
     console.log("Submitting contract form...", { form });
 
+    try {
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const userId = authData.user?.id;
     if (authError || !userId) {
@@ -1251,9 +1267,14 @@ const Contracts = () => {
         fetchData();
       }
     } catch (err) {
-      setIsSubmitting(false);
       toast.error("An unexpected error occurred while creating contract");
       console.error(err);
+    }
+    } catch (err) {
+      toast.error("An unexpected error occurred while creating contract");
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1476,7 +1497,12 @@ const Contracts = () => {
                           </span>
                         </>
                       )}
-                      {vehicleAvailability.status === "error" && vehicleAvailability.message}
+                      {vehicleAvailability.status === "error" && (
+                        <>
+                          {vehicleAvailability.message}
+                          <span className="block">Tap Create Contract to retry availability.</span>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1693,7 +1719,7 @@ const Contracts = () => {
                   <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setOpen(false)}>Cancel</Button>
                   <Button
                     type="submit"
-                    disabled={isSubmitting || docExpiredWarnings.length > 0 || vehicleAvailability?.status === "conflict" || vehicleAvailability?.status === "checking"}
+                    disabled={isSubmitting || docExpiredWarnings.length > 0 || vehicleAvailability?.status === "conflict"}
                   >
                     {isSubmitting ? "Creating..." : "Create Contract"}
                   </Button>
