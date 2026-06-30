@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, Pencil, Plus, Search, Upload, Wrench } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, Plus, Search, Upload } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { MaintenancePanel } from "@/components/MaintenancePanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,44 +89,12 @@ const emptyForm = {
   tag_number: "",
 };
 
-function daysUntil(iso: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(iso);
-  target.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function expiryDotClass(iso: string | null): string {
-  if (!iso) return "bg-muted-foreground/40";
-  const days = daysUntil(iso);
-  if (days < 0) return "bg-red-500";
-  if (days <= 30) return "bg-amber-500";
-  return "bg-green-500";
-}
-
-function expiryWarning(label: string, iso: string | null): string | null {
-  if (!iso) return null;
-  const days = daysUntil(iso);
-  if (days > 30) return null;
-  if (days < 0) return `⚠️ ${label} expired ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} ago`;
-  return `⚠️ ${label} expires in ${days} day${days === 1 ? "" : "s"}`;
-}
-
 function displayStatus(status: string): string {
   return status === "Service" ? "Maintenance" : status;
 }
 
 const Fleet = () => {
+  const navigate = useNavigate();
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"All" | Status>("All");
@@ -138,7 +106,6 @@ const Fleet = () => {
   const [plateError, setPlateError] = useState("");
   const [tagError, setTagError] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [selectedMaintenanceCarId, setSelectedMaintenanceCarId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<LegacyFleetImportPreview | null>(null);
   const [importLoading, setImportLoading] = useState(false);
@@ -146,7 +113,6 @@ const Fleet = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedCarId, setExpandedCarId] = useState<string | null>(null);
 
   const fetchCars = async () => {
     try {
@@ -210,24 +176,6 @@ const Fleet = () => {
   const openAdd = () => {
     setEditingId(null);
     setForm(emptyForm);
-    setPlateError("");
-    setTagError("");
-    setOpen(true);
-  };
-
-  const openEdit = (car: Car) => {
-    setEditingId(car.id);
-    setForm({
-      plate: car.plate,
-      make: car.make,
-      model: car.model,
-      year: car.year,
-      color: car.color ?? "",
-      status: car.status,
-      insurance_expiry: car.insurance_expiry ?? "",
-      mulkiya_expiry: car.mulkiya_expiry ?? "",
-      tag_number: car.tag_number ?? "",
-    });
     setPlateError("");
     setTagError("");
     setOpen(true);
@@ -711,7 +659,7 @@ const Fleet = () => {
                 <TableHead className="text-xs">Vehicle</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="w-11 px-1">
-                  <span className="sr-only">Expand vehicle details</span>
+                  <span className="sr-only">View vehicle details</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -729,110 +677,40 @@ const Fleet = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedCars.map((car) => {
-                  const isExpanded = expandedCarId === car.id;
-                  const warnings = [
-                    expiryWarning("Mulkiya", car.mulkiya_expiry),
-                    expiryWarning("Insurance", car.insurance_expiry),
-                  ].filter((warning): warning is string => Boolean(warning));
-
-                  return (
-                    <Fragment key={car.id}>
-                      <TableRow>
-                        <TableCell className="w-[90px] px-3 font-mono text-xs text-foreground sm:px-5">
-                          {car.plate}
-                        </TableCell>
-                        <TableCell className="min-w-0">
-                          <div className="truncate text-sm font-medium text-foreground">
-                            {car.make} {car.model}
-                          </div>
-                          <div className="font-mono text-xs text-muted-foreground">{car.year}</div>
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={cn(
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-                              statusClasses[car.status as Status] ?? (
-                                car.status === "Overdue"
-                                  ? "bg-tint-rose text-tint-rose-foreground"
-                                  : "bg-muted text-muted-foreground"
-                              ),
-                            )}
-                          >
-                            {displayStatus(car.status)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="w-11 px-1 text-right">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-10 w-10"
-                            aria-label={`${isExpanded ? "Collapse" : "Expand"} details for ${car.plate}`}
-                            aria-expanded={isExpanded}
-                            onClick={() => setExpandedCarId(isExpanded ? null : car.id)}
-                          >
-                            <ChevronDown
-                              className={cn(
-                                "h-4 w-4 transition-transform duration-200",
-                                isExpanded && "rotate-180",
-                              )}
-                            />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                      {isExpanded && (
-                        <TableRow className="bg-muted/30 hover:bg-muted/30">
-                          <TableCell colSpan={4} className="px-3 py-4 sm:px-5">
-                            <div className="grid gap-4">
-                              {warnings.length > 0 && (
-                                <div className="space-y-1 text-xs font-medium text-amber-700">
-                                  {warnings.map((warning) => <p key={warning}>{warning}</p>)}
-                                </div>
-                              )}
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                {[
-                                  ["Mulkiya Expiry", car.mulkiya_expiry],
-                                  ["Insurance Expiry", car.insurance_expiry],
-                                ].map(([label, expiry]) => (
-                                  <div key={label} className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", expiryDotClass(expiry))} />
-                                      {label}
-                                    </div>
-                                    <span className="font-mono text-xs text-foreground">{formatDate(expiry)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="min-h-10 flex-1 gap-1.5"
-                                  onClick={() => setSelectedMaintenanceCarId(car.id)}
-                                >
-                                  <Wrench className="h-4 w-4" />
-                                  Maintenance
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="min-h-10 flex-1 gap-1.5"
-                                  onClick={() => openEdit(car)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                  Edit
-                                </Button>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  );
-                })
+                paginatedCars.map((car) => (
+                  <TableRow
+                    key={car.id}
+                    className="cursor-pointer hover:bg-white/5"
+                    onClick={() => navigate(`/fleet/${car.id}`)}
+                  >
+                    <TableCell className="w-[90px] px-3 font-mono text-xs text-foreground sm:px-5">
+                      {car.plate}
+                    </TableCell>
+                    <TableCell className="min-w-0">
+                      <div className="truncate text-sm font-medium text-foreground">
+                        {car.make} {car.model}
+                      </div>
+                      <div className="font-mono text-xs text-muted-foreground">{car.year}</div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+                          statusClasses[car.status as Status] ?? (
+                            car.status === "Overdue"
+                              ? "bg-tint-rose text-tint-rose-foreground"
+                              : "bg-muted text-muted-foreground"
+                          ),
+                        )}
+                      >
+                        {displayStatus(car.status)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="w-11 px-3 text-right sm:px-5">
+                      <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
@@ -845,11 +723,6 @@ const Fleet = () => {
           />
         </div>
       </div>
-      <MaintenancePanel
-        carId={selectedMaintenanceCarId ?? ""}
-        open={!!selectedMaintenanceCarId}
-        onClose={() => setSelectedMaintenanceCarId(null)}
-      />
     </DashboardLayout>
   );
 };
