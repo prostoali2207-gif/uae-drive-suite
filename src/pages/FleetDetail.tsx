@@ -228,12 +228,12 @@ const FleetDetail = () => {
         .maybeSingle(),
       db
         .from("contracts")
-        .select("id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(full_name)")
+        .select("id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(first_name, last_name)")
         .eq("car_id", id)
         .eq("owner_id", user.id),
       db
         .from("contract_vehicles")
-        .select("car_id, contract_id, started_at, ended_at, daily_rate, owner_id, contracts(id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(full_name))")
+        .select("car_id, contract_id, started_at, ended_at, daily_rate, owner_id, contracts(id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(first_name, last_name))")
         .eq("car_id", id)
         .eq("owner_id", user.id),
     ]);

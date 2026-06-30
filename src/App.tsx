@@ -11,6 +11,7 @@ import Auth from "./pages/Auth.tsx";
 import AuthConfirm from "./pages/AuthConfirm.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import Fleet from "./pages/Fleet.tsx";
+import FleetDetail from "./pages/FleetDetail";
 import Contracts from "./pages/Contracts.tsx";
 import ContractDetail from "./pages/ContractDetail.tsx";
 import Clients from "./pages/Clients.tsx";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/inspection/:contractId" element={<InspectionView />} />
               <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
               <Route path="/fleet" element={<ProtectedRoute><Fleet /></ProtectedRoute>} />
+              <Route path="/fleet/:id" element={<FleetDetail />} />
               <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
               <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetail /></ProtectedRoute>} />
               <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
