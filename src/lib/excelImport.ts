@@ -132,6 +132,25 @@ function parseDate(v: unknown): string | null {
     if (y.length === 2) y = "20" + y;
     return `${y}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
   }
+  const dMonY = /^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/.exec(s);
+  if (dMonY) {
+    const months: Record<string, string> = {
+      jan: "01",
+      feb: "02",
+      mar: "03",
+      apr: "04",
+      may: "05",
+      jun: "06",
+      jul: "07",
+      aug: "08",
+      sep: "09",
+      oct: "10",
+      nov: "11",
+      dec: "12",
+    };
+    const mm = months[dMonY[2].toLowerCase()];
+    if (mm) return `${dMonY[3]}-${mm}-${dMonY[1].padStart(2, "0")}`;
+  }
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
