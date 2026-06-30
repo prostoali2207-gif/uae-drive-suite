@@ -95,6 +95,7 @@ interface ContractRow {
   status: string;
   payment_status: string;
   balance_due?: number;
+  effective_end_date?: string;
   client_signature?: string | null;
   manager_signature?: string | null;
   clients: { full_name: string; phone: string; nationality: string; client_type: string; emirates_id: string | null; passport_number: string | null; license_number: string | null } | null;
@@ -175,7 +176,11 @@ function getDaysUntilExpiry(iso: string): number {
 
 function getContractEndDateTime(contract: ContractRow): Date | null {
   const time = formatTimeDisplay(contract.end_time) || "23:59";
-  return parseDateTimeInput(contract.end_date, time);
+  return parseDateTimeInput(getEffectiveContractEndDate(contract), time);
+}
+
+function getEffectiveContractEndDate(contract: Pick<ContractRow, "end_date" | "effective_end_date">): string {
+  return contract.effective_end_date || contract.end_date;
 }
 
 function isOverdueContract(contract: ContractRow): boolean {
@@ -229,7 +234,7 @@ function matchesDashboardContractFilter(
 ): boolean {
   if (!selectedFilter) return true;
   if (selectedFilter === "returns-today") {
-    return contract.status.trim().toLowerCase() === "active" && contract.end_date === getTodayDateInput();
+    return contract.status.trim().toLowerCase() === "active" && getEffectiveContractEndDate(contract) === getTodayDateInput();
   }
   if (selectedFilter === "overdue") {
     return isOverdueContract(contract);
@@ -242,7 +247,7 @@ function matchesDashboardContractFilter(
     Number(contract.deposit_amount || 0) > 0 &&
     contract.deposit_returned === null &&
     getDepositState(contract) !== "Returned" &&
-    contract.end_date <= depositReadyCutoff
+    getEffectiveContractEndDate(contract) <= depositReadyCutoff
   );
 }
 
@@ -254,7 +259,7 @@ function getMobileCardStatus(contract: ContractRow): { label: string; className:
   if (isOverdueContract(contract)) {
     return { label: "Overdue", className: "bg-tint-rose text-tint-rose-foreground", isClosed: false };
   }
-  const daysUntilExpiry = getDaysUntilExpiry(contract.end_date);
+  const daysUntilExpiry = getDaysUntilExpiry(getEffectiveContractEndDate(contract));
   if (daysUntilExpiry === 0) {
     return { label: "Today", className: "bg-tint-amber text-tint-amber-foreground", isClosed: false };
   }
@@ -762,13 +767,24 @@ const Contracts = () => {
         const contractRows = (contractsRes.data as ContractRow[]) || [];
         const contractIds = contractRows.map((contract) => contract.id);
         let balanceByContract: Record<string, number> = {};
+        let effectiveEndDateByContract: Record<string, string> = {};
         if (contractIds.length > 0) {
           // contract_balances is not present in the generated database types.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: balancesData, error: balancesErr } = await (supabase as any)
-            .from("contract_balances")
-            .select("contract_id, balance_due")
-            .in("contract_id", contractIds);
+          const [balancesResult, extensionsResult] = await Promise.all([
+            (supabase as any)
+              .from("contract_balances")
+              .select("contract_id, balance_due")
+              .in("contract_id", contractIds),
+            // contract_fees is not present in the generated database types.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any)
+              .from("contract_fees")
+              .select("contract_id, extension_end")
+              .in("contract_id", contractIds)
+              .not("extension_end", "is", null),
+          ]);
+          const { data: balancesData, error: balancesErr } = balancesResult;
           if (balancesErr) {
             toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesErr)}`);
           } else {
@@ -779,12 +795,29 @@ const Contracts = () => {
               ]),
             );
           }
+          const { data: extensionData, error: extensionsErr } = extensionsResult;
+          if (extensionsErr) {
+            toast.error(`Failed to load contract extensions: ${toSupabaseMessage(extensionsErr)}`);
+          } else {
+            effectiveEndDateByContract = (extensionData || []).reduce(
+              (latestByContract: Record<string, string>, row: { contract_id: string; extension_end: string | null }) => {
+                if (!row.contract_id || !row.extension_end) return latestByContract;
+                const current = latestByContract[row.contract_id];
+                if (!current || row.extension_end > current) {
+                  latestByContract[row.contract_id] = row.extension_end;
+                }
+                return latestByContract;
+              },
+              {},
+            );
+          }
         }
 
         setContracts(
           contractRows.map((contract) => ({
             ...contract,
             balance_due: balanceByContract[contract.id] ?? Number(contract.total_amount),
+            effective_end_date: effectiveEndDateByContract[contract.id] ?? contract.end_date,
           })),
         );
       }
@@ -1801,7 +1834,7 @@ const Contracts = () => {
                       )}
 
                       <div className="col-span-2 pb-1 font-mono text-xs leading-4 text-muted-foreground">
-                        {formatMobileDate(c.start_date)} → {formatMobileDate(c.end_date)}
+                        {formatMobileDate(c.start_date)} → {formatMobileDate(getEffectiveContractEndDate(c))}
                       </div>
 
                       <span className="min-w-0 truncate text-xs leading-5 text-muted-foreground">
@@ -1896,7 +1929,8 @@ const Contracts = () => {
                 </TableRow>
               ) : (
                 paginatedContracts.map((c) => {
-                  const d = diffDays(c.start_date, c.end_date);
+                  const effectiveEndDate = getEffectiveContractEndDate(c);
+                  const d = diffDays(c.start_date, effectiveEndDate);
                   const balance = Number(c.balance_due || 0);
                   const depositAmount = Number(c.deposit_amount || 0);
                   const hasDeposit = depositAmount > 0;
@@ -1919,7 +1953,7 @@ const Contracts = () => {
                         <div className="text-xs text-muted-foreground">{c.cars ? `${c.cars.make} ${c.cars.model}` : ""}</div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{formatDateWithTime(c.start_date, c.start_time)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDateWithTime(c.end_date, c.end_time)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDateWithTime(effectiveEndDate, c.end_time)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{d}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(c.total_amount).toLocaleString()}</TableCell>
                       <TableCell>

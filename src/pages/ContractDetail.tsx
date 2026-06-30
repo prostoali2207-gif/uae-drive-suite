@@ -397,6 +397,16 @@ function getTodayDateInput(): string {
   return `${year}-${month}-${day}`;
 }
 
+function getCurrentDateTimeInput(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 function addDaysToDateInput(value: string, daysToAdd: number): string {
   return addDaysToDateInputValue(value, daysToAdd, getTodayDateInput());
 }
@@ -535,8 +545,10 @@ const sortRentalExtensionFees = (fees: ContractFeeRow[]) =>
   });
 
 const getLatestRentalPeriodEnd = (contract: Pick<ContractRecord, "end_date">, fees: ContractFeeRow[]) => {
-  const sortedExtensions = sortRentalExtensionFees(fees);
-  return sortedExtensions[sortedExtensions.length - 1]?.extension_end ?? contract.end_date;
+  const sortedExtensionEnds = [...fees]
+    .filter((fee) => fee.extension_end)
+    .sort((a, b) => String(a.extension_end).localeCompare(String(b.extension_end)));
+  return sortedExtensionEnds[sortedExtensionEnds.length - 1]?.extension_end ?? contract.end_date;
 };
 
 const formatRentalExtensionPeriod = (fee: ContractFeeRow) => {
@@ -3566,9 +3578,11 @@ const ContractDetail = () => {
     await fetchData();
   }, [fetchData, reconcileFinePaymentStatuses]);
 
+  const effectiveContractEndDate = contract ? getLatestRentalPeriodEnd(contract, contractFees) : "";
+
   const days = useMemo(
-    () => (contract ? diffDays(contract.start_date, contract.end_date) : 0),
-    [contract],
+    () => (contract ? diffDays(contract.start_date, effectiveContractEndDate) : 0),
+    [contract, effectiveContractEndDate],
   );
 
   const ledger: LedgerEntry[] = useMemo(() => {
@@ -4713,6 +4727,26 @@ const ContractDetail = () => {
     setFeeToDelete(null);
   };
 
+  const syncContractEndDateWithFees = async (nextFees: ContractFeeRow[]) => {
+    if (!contract) return;
+
+    const nextEffectiveEndDate = getLatestRentalPeriodEnd(contract, nextFees);
+    if (nextEffectiveEndDate === contract.end_date) return;
+
+    const { error } = await supabase
+      .from("contracts")
+      .update({ end_date: nextEffectiveEndDate } as never)
+      .eq("id", contract.id);
+
+    if (error) {
+      throw error;
+    }
+
+    setContract((current) =>
+      current ? { ...current, end_date: nextEffectiveEndDate } : current,
+    );
+  };
+
   const openAmountEditDialog = (target: AmountEditTarget) => {
     const targetPaymentMethod =
       target.type === "payment" && target.payment.method === "Bank Transfer"
@@ -4885,18 +4919,26 @@ const ContractDetail = () => {
         return;
       }
 
-      setContractFees((prev) =>
-        prev.map((fee) =>
-          fee.id === amountEditTarget.fee.id
-            ? {
-                ...fee,
-                amount: nextAmount,
-                extension_end: amountEditExtensionEndDate,
-                label: nextLabel,
-              }
-            : fee,
-        ),
+      const nextFees = contractFees.map((fee) =>
+        fee.id === amountEditTarget.fee.id
+          ? {
+              ...fee,
+              amount: nextAmount,
+              extension_end: amountEditExtensionEndDate,
+              label: nextLabel,
+            }
+          : fee,
       );
+
+      try {
+        await syncContractEndDateWithFees(nextFees);
+      } catch {
+        setSavingAmountEdit(false);
+        toast.error("Extension saved, but contract end date did not sync");
+        return;
+      }
+
+      setContractFees(nextFees);
       await fetchContractFees();
       setSavingAmountEdit(false);
       setAmountEditTarget(null);
@@ -5050,6 +5092,25 @@ const ContractDetail = () => {
       if (error) {
         setSavingRentalPeriod(false);
         setRentalPeriodEditError("Failed to update rental period.");
+        return;
+      }
+
+      const nextFees = contractFees.map((fee) =>
+        fee.id === rentalPeriodEditTarget.fee.id
+          ? {
+              ...fee,
+              extension_end: rentalPeriodEndDate,
+              amount: nextAmount,
+              label: nextLabel,
+            }
+          : fee,
+      );
+
+      try {
+        await syncContractEndDateWithFees(nextFees);
+      } catch {
+        setSavingRentalPeriod(false);
+        setRentalPeriodEditError("Rental period saved, but contract end date did not sync.");
         return;
       }
 
@@ -5207,6 +5268,7 @@ const ContractDetail = () => {
   );
   const rentalFeeLines = sortRentalExtensionFees(contractFees);
   const manualFeeLines = contractFees.filter((fee) => !isRentalExtensionFee(fee));
+  const contractDueDateLabel = formatDate(effectiveContractEndDate);
   const grossPaymentAllocationLines: ContractPaymentAllocationLine[] = [
     {
       id: `rental-${contract.id}`,
@@ -5468,8 +5530,7 @@ const ContractDetail = () => {
                     size="sm"
                     className="h-8 gap-1.5"
                     onClick={() => {
-                      const d = contract.end_date;
-                      const defaultCloseDate = d.includes("T") ? d.slice(0, 16) : `${d}T00:00`;
+                      const defaultCloseDate = getCurrentDateTimeInput();
                       setCloseReturnDate(defaultCloseDate);
                       setCloseReceivedBy("");
                       setCloseFinalMileage("");
@@ -5621,7 +5682,7 @@ const ContractDetail = () => {
               <Panel title="Rental Period">
                 <div className="grid grid-cols-2 gap-x-4">
                   <Field label="Start Date" value={formatDateWithOptionalTime(contract.start_date, contract.start_time)} />
-                  <Field label="End Date" value={formatDateWithOptionalTime(contract.end_date, contract.end_time)} />
+                  <Field label="End Date" value={formatDateWithOptionalTime(effectiveContractEndDate, contract.end_time)} />
                   <Field label="Total Days" value={days} />
                   <Field label="Rate Type" value={contract.rate_type} />
                   <Field label={`${contract.rate_type} Rate`} value={fmtAed(contract.rate_amount)} />
@@ -5931,14 +5992,14 @@ const ContractDetail = () => {
                   <span
                     className={cn(
                       "absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 border-background",
-                      new Date(contract.end_date) < new Date()
+                      new Date(effectiveContractEndDate) < new Date()
                         ? "bg-muted-foreground"
                         : "bg-tint-amber-foreground",
                     )}
                   />
-                  <div className="text-xs text-muted-foreground">{formatDate(contract.end_date)}</div>
+                  <div className="text-xs text-muted-foreground">{formatDate(effectiveContractEndDate)}</div>
                   <div className="text-sm font-medium text-foreground">
-                    {new Date(contract.end_date) < new Date() ? "Rental ended" : "Scheduled end date"}
+                    {new Date(effectiveContractEndDate) < new Date() ? "Rental ended" : "Scheduled end date"}
                   </div>
                 </li>
                 {isOverdue && (
@@ -6522,6 +6583,9 @@ const ContractDetail = () => {
                 }}
                 className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
               />
+              <p className="text-xs text-muted-foreground">
+                Contract due date: {contractDueDateLabel}
+              </p>
             </div>
 
             <div className="grid gap-1.5">
