@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Plus, Search, Upload } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -658,33 +658,32 @@ const Fleet = () => {
                 <TableHead className="w-[90px] px-3 text-xs sm:px-5">Plate</TableHead>
                 <TableHead className="text-xs">Vehicle</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
-                <TableHead className="w-11 px-1">
-                  <span className="sr-only">View vehicle details</span>
-                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={3} className="h-24 text-center text-sm text-muted-foreground">
                     Loading fleet...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={3} className="h-24 text-center text-sm text-muted-foreground">
                     No cars match the current search and filter.
                   </TableCell>
                 </TableRow>
               ) : (
                 paginatedCars.map((car) => (
-                  <TableRow
-                    key={car.id}
-                    className="cursor-pointer hover:bg-white/5"
-                    onClick={() => navigate(`/fleet/${car.id}`)}
-                  >
+                  <TableRow key={car.id}>
                     <TableCell className="w-[90px] px-3 font-mono text-xs text-foreground sm:px-5">
-                      {car.plate}
+                      <button
+                        type="button"
+                        className="font-mono text-xs text-foreground underline-offset-4 hover:text-primary hover:underline"
+                        onClick={() => navigate(`/fleet/${car.id}`)}
+                      >
+                        {car.plate}
+                      </button>
                     </TableCell>
                     <TableCell className="min-w-0">
                       <div className="truncate text-sm font-medium text-foreground">
@@ -705,9 +704,6 @@ const Fleet = () => {
                       >
                         {displayStatus(car.status)}
                       </span>
-                    </TableCell>
-                    <TableCell className="w-11 px-3 text-right sm:px-5">
-                      <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
                     </TableCell>
                   </TableRow>
                 ))
