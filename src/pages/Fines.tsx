@@ -97,6 +97,47 @@ interface ClientOption { id: string; full_name: string; }
 
 const fineTypes = ["Speeding", "Parking", "Signal", "Phone Use", "Other"];
 const fineSources = ["Dubai Police", "Abu Dhabi Police", "Sharjah Police", "RTA"];
+const batchSize = 1000;
+
+const fetchAllFines = async () => {
+  const rows: FineRow[] = [];
+
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1;
+    const { data, error } = await supabase
+      .from("fines")
+      .select("*, cars(plate), clients(full_name)")
+      .order("fine_date", { ascending: false })
+      .range(from, to);
+
+    if (error) return { data: null, error };
+
+    const batch = (data as FineRow[]) || [];
+    rows.push(...batch);
+
+    if (batch.length < batchSize) return { data: rows, error: null };
+  }
+};
+
+const fetchAllSalik = async () => {
+  const rows: SalikRow[] = [];
+
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1;
+    const { data, error } = await supabase
+      .from("salik")
+      .select("*, cars(plate), clients(full_name)")
+      .order("charge_date", { ascending: false })
+      .range(from, to);
+
+    if (error) return { data: null, error };
+
+    const batch = (data as SalikRow[]) || [];
+    rows.push(...batch);
+
+    if (batch.length < batchSize) return { data: rows, error: null };
+  }
+};
 
 const statusClasses: Record<string, string> = {
   Unpaid: "bg-tint-rose text-tint-rose-foreground",
@@ -217,14 +258,8 @@ const Fines = () => {
 
   const fetchData = async () => {
     const [finesRes, salikRes, carsRes, clientsRes] = await Promise.all([
-      supabase
-        .from("fines")
-        .select("*, cars(plate), clients(full_name)")
-        .order("fine_date", { ascending: false }),
-      supabase
-        .from("salik")
-        .select("*, cars(plate), clients(full_name)")
-        .order("charge_date", { ascending: false }),
+      fetchAllFines(),
+      fetchAllSalik(),
       supabase.from("cars").select("id, plate, make, model").order("plate"),
       supabase.from("clients").select("id, full_name").order("full_name"),
     ]);
@@ -337,20 +372,14 @@ const Fines = () => {
     : "No results found";
 
   const refetchFines = async () => {
-    const { data, error } = await supabase
-      .from("fines")
-      .select("*, cars(plate), clients(full_name)")
-      .order("fine_date", { ascending: false });
+    const { data, error } = await fetchAllFines();
 
     if (error) throw error;
     setFines((data as FineRow[]) || []);
   };
 
   const refetchSalik = async () => {
-    const { data, error } = await supabase
-      .from("salik")
-      .select("*, cars(plate), clients(full_name)")
-      .order("charge_date", { ascending: false });
+    const { data, error } = await fetchAllSalik();
 
     if (error) throw error;
     setSalik((data as SalikRow[]) || []);
