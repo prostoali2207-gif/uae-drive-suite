@@ -131,12 +131,7 @@ function formatAed(value: number | null | undefined): string {
 function getClientName(client: any): string {
   if (!client) return "Unknown client";
 
-  const fullName = [client.first_name, client.last_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  return fullName || client.full_name || "Unknown client";
+  return client.full_name?.trim() || "Unknown client";
 }
 
 function getStatusBadgeClass(status: string): string {
@@ -228,12 +223,12 @@ const FleetDetail = () => {
         .maybeSingle(),
       db
         .from("contracts")
-        .select("id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(first_name, last_name)")
+        .select("id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(full_name)")
         .eq("car_id", id)
         .eq("owner_id", user.id),
       db
         .from("contract_vehicles")
-        .select("car_id, contract_id, started_at, ended_at, daily_rate, owner_id, contracts(id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(first_name, last_name))")
+        .select("car_id, contract_id, started_at, ended_at, daily_rate, owner_id, contracts(id, client_id, start_date, end_date, status, rate_amount, owner_id, clients(full_name))")
         .eq("car_id", id)
         .eq("owner_id", user.id),
     ]);
