@@ -58,15 +58,13 @@ export function AddFeeInline({ onSave, onCancel, className }: AddFeeInlineProps)
     <form
       onSubmit={handleSubmit}
       className={cn(
-        "fixed inset-x-0 z-40 mx-auto max-w-screen-sm rounded-t-xl border border-border bg-background p-4 shadow-lg",
-        "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]",
-        "md:static md:mx-0 md:max-w-none md:rounded-lg md:p-3 md:shadow-sm",
-        "md:flex md:items-end md:gap-3",
+        "mx-auto flex w-full max-w-screen-sm flex-col rounded-xl border border-border bg-background p-4 shadow-lg",
+        "md:mx-0 md:max-w-none md:flex-row md:items-end md:gap-3 md:rounded-lg md:p-3 md:shadow-sm",
         className,
       )}
     >
-      <div className="min-w-0 md:w-auto md:shrink-0">
-        <div className="flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+      <div className="min-w-0 md:max-w-[40%] md:shrink">
+        <div className="flex flex-nowrap gap-2 overflow-x-auto pb-1">
           {FEE_CATEGORIES.map((item) => {
             const isSelected = item === category;
 
@@ -122,7 +120,7 @@ export function AddFeeInline({ onSave, onCancel, className }: AddFeeInlineProps)
         className="mt-3 h-11 md:mt-0 md:h-10 md:min-w-40 md:flex-1"
       />
 
-      <div className="mt-4 grid grid-cols-2 gap-2 md:mt-0 md:flex md:shrink-0">
+      <div className="mt-4 grid shrink-0 grid-cols-2 gap-2 md:mt-0 md:flex md:shrink-0">
         <Button type="button" variant="outline" onClick={onCancel} className="h-11 md:h-10">
           <X className="h-4 w-4" />
           Cancel
