@@ -32,6 +32,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
+import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFeeInline";
 import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import SalikModal from "@/components/SalikModal";
@@ -220,6 +221,7 @@ interface ContractFeeRow {
   category: FeeCategory;
   label: string;
   amount: number;
+  note?: string | null;
   extension_start?: string | null;
   extension_end?: string | null;
   created_at?: string | null;
@@ -807,6 +809,16 @@ const FEE_CATEGORIES: { value: FeeCategory; label: string; defaultLabel: string 
   { value: "other", label: "Other", defaultLabel: "" },
 ];
 
+const ADD_FEE_CATEGORY_TO_DB: Record<AddFeeInlineFee["category"], FeeCategory> = {
+  Delivery: "delivery",
+  Pickup: "pickup",
+  Fuel: "fuel",
+  "Extra Mileage": "extra_mileage",
+  Damage: "damage",
+  Detailing: "detailing",
+  Other: "other",
+};
+
 const Field = ({ label, value }: { label: string; value?: string | number | null }) => (
   <div className="flex flex-col gap-0.5 py-1.5">
     <span className="text-[11px] uppercase tracking-wide text-muted-foreground/80">{label}</span>
@@ -1342,7 +1354,11 @@ type FinancialsPanelProps = {
   contractFees: ContractFeeRow[];
   unpaidAllocationLines: ContractPaymentAllocationLine[];
   totals: ContractFinancialTotals;
+  addFeeInlineOpen: boolean;
+  savingFee: boolean;
   onAddFee: () => void;
+  onCancelAddFee: () => void;
+  onSaveFee: (fee: AddFeeInlineFee) => void;
   onAddPayment: () => void;
   onEditRentalPeriod: (fee?: ContractFeeRow) => void;
   onEditPaymentAmount: (payment: PaymentRow) => void;
@@ -2206,6 +2222,7 @@ type OpenItemGroup = {
   title: string;
   detail: string;
   meta: string;
+  note?: string;
   due: number;
   icon: React.ComponentType<{ className?: string }>;
   iconTone: "blue" | "green" | "amber" | "violet";
@@ -2221,7 +2238,11 @@ const FinancialsPanel = ({
   contractFees,
   unpaidAllocationLines,
   totals,
+  addFeeInlineOpen,
+  savingFee,
   onAddFee,
+  onCancelAddFee,
+  onSaveFee,
   onAddPayment,
   onEditRentalPeriod,
   onEditPaymentAmount,
@@ -2384,6 +2405,7 @@ const FinancialsPanel = ({
           title: line.label || "Other unpaid charges",
           detail: feeCategory?.label ?? "Other",
           meta: "Unpaid fee",
+          note: fee?.note?.trim() || undefined,
           due: Number(line.due),
           icon: feeIcon,
           iconTone: "violet",
@@ -2775,6 +2797,16 @@ const FinancialsPanel = ({
           </div>
         </section>
 
+        {addFeeInlineOpen ? (
+          <AddFeeInline
+            onSave={(fee) => {
+              if (!savingFee) onSaveFee(fee);
+            }}
+            onCancel={onCancelAddFee}
+            className={cn(savingFee && "pointer-events-none opacity-70")}
+          />
+        ) : null}
+
         <FinancialSection
           title="Open Items"
           meta={`What the customer owes - ${openItemGroups.length} items`}
@@ -2807,6 +2839,9 @@ const FinancialsPanel = ({
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="whitespace-normal text-xs font-semibold text-foreground">{item.title}</span>
                     <span className="whitespace-normal text-[11px] text-muted-foreground">{item.detail}</span>
+                    {item.note ? (
+                      <span className="whitespace-normal text-[11px] text-muted-foreground">{item.note}</span>
+                    ) : null}
                   </div>
                   <div className="hidden min-w-[170px] text-xs text-muted-foreground md:block">{item.meta}</div>
                   <span className="ml-auto w-28 shrink-0 text-right font-mono text-sm font-bold tabular-nums text-tint-rose-foreground">
@@ -2956,6 +2991,7 @@ const FinancialsPanel = ({
               const isPaymentTransaction = transaction.type === "Payment" && Boolean(payment);
               const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
               const isFeeTransaction = transaction.type === "Charge" && Boolean(transaction.contractFee);
+              const feeTransactionNote = isFeeTransaction ? transaction.contractFee?.note?.trim() : "";
               const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
               const showsTransactionDetails =
                 transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik";
@@ -2994,6 +3030,9 @@ const FinancialsPanel = ({
                     ) : null}
                     {showsTransactionDetails && transaction.details ? (
                       <div className="mt-0.5 truncate text-xs text-muted-foreground">{transaction.details}</div>
+                    ) : null}
+                    {feeTransactionNote ? (
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">{feeTransactionNote}</div>
                     ) : null}
                   </div>
                   <div className="ml-auto flex flex-shrink-0 flex-col items-end">
@@ -3400,10 +3439,7 @@ const ContractDetail = () => {
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showFeeModal, setShowFeeModal] = useState(false);
-  const [feeCategory, setFeeCategory] = useState<FeeCategory>("delivery");
-  const [feeLabel, setFeeLabel] = useState("Delivery");
-  const [feeAmount, setFeeAmount] = useState("");
+  const [showAddFeeInline, setShowAddFeeInline] = useState(false);
   const [savingFee, setSavingFee] = useState(false);
   const [feeRefreshKey, setFeeRefreshKey] = useState(0);
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -3464,7 +3500,7 @@ const ContractDetail = () => {
     }
     const { data, error } = await (supabase as any)
       .from("contract_fees")
-      .select("id, category, label, amount, extension_start, extension_end, created_at")
+      .select("id, category, label, amount, note, extension_start, extension_end, created_at")
       .eq("contract_id", contract.id)
       .order("created_at", { ascending: false });
 
@@ -5225,23 +5261,12 @@ const ContractDetail = () => {
     fetchData();
   };
 
-  const resetFeeForm = () => {
-    setFeeCategory("delivery");
-    setFeeLabel("Delivery");
-    setFeeAmount("");
-  };
-
-  const selectFeeCategory = (category: FeeCategory) => {
-    const selected = FEE_CATEGORIES.find((item) => item.value === category);
-    setFeeCategory(category);
-    setFeeLabel(selected?.defaultLabel ?? "");
-  };
-
-  const handleAddFee = async () => {
+  const handleAddFee = async (fee: AddFeeInlineFee) => {
     if (!contract || !user) return;
 
-    const amount = Number(feeAmount);
-    const label = feeLabel.trim();
+    const amount = Number(fee.amount);
+    const label = fee.label.trim();
+    const note = fee.note.trim();
 
     if (!label || !Number.isFinite(amount) || amount <= 0) {
       toast.error("Enter a fee label and amount");
@@ -5253,9 +5278,10 @@ const ContractDetail = () => {
       .from("contract_fees")
       .insert({
         contract_id: contract.id,
-        category: feeCategory,
+        category: ADD_FEE_CATEGORY_TO_DB[fee.category],
         label,
         amount,
+        note: note || null,
         owner_id: user.id,
       });
     setSavingFee(false);
@@ -5266,8 +5292,7 @@ const ContractDetail = () => {
     }
 
     toast.success("Fee added");
-    setShowFeeModal(false);
-    resetFeeForm();
+    setShowAddFeeInline(false);
     setFeeRefreshKey((key) => key + 1);
   };
 
@@ -5800,7 +5825,11 @@ const ContractDetail = () => {
               contractFees={contractFees}
               unpaidAllocationLines={paymentAllocationLines}
               totals={financialTotals}
-              onAddFee={() => setShowFeeModal(true)}
+              addFeeInlineOpen={showAddFeeInline}
+              savingFee={savingFee}
+              onAddFee={() => setShowAddFeeInline((open) => !open)}
+              onCancelAddFee={() => setShowAddFeeInline(false)}
+              onSaveFee={(fee) => void handleAddFee(fee)}
               onAddPayment={() => setShowPaymentModal(true)}
               onEditRentalPeriod={openRentalPeriodEditDialog}
               onEditPaymentAmount={(payment) =>
@@ -5843,85 +5872,6 @@ const ContractDetail = () => {
                 type: e.type
               }))}
             />
-            <Dialog
-              open={showFeeModal}
-              onOpenChange={(open) => {
-                setShowFeeModal(open);
-                if (!open) resetFeeForm();
-              }}
-            >
-              <DialogContent className="sm:max-w-[440px]">
-                <DialogHeader>
-                  <DialogTitle>Add Fee</DialogTitle>
-                  <DialogDescription className="text-xs">
-                    Add a contract fee without changing deposits, payments, fines, or Salik.
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Category</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {FEE_CATEGORIES.map((category) => (
-                        <Button
-                          key={category.value}
-                          type="button"
-                          variant={feeCategory === category.value ? "default" : "outline"}
-                          size="sm"
-                          className="h-8 rounded-full px-3 text-xs"
-                          onClick={() => selectFeeCategory(category.value)}
-                        >
-                          {category.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="fee-label" className="text-xs">
-                      Label
-                    </Label>
-                    <Input
-                      id="fee-label"
-                      value={feeLabel}
-                      onChange={(e) => setFeeLabel(e.target.value)}
-                      placeholder="Fee label"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="fee-amount" className="text-xs">
-                      Amount (AED)
-                    </Label>
-                    <Input
-                      id="fee-amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={feeAmount}
-                      onChange={(e) => setFeeAmount(e.target.value)}
-                      className="font-mono tabular-nums"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowFeeModal(false)}
-                    disabled={savingFee}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="button" onClick={handleAddFee} disabled={savingFee}>
-                    {savingFee ? "Adding..." : "Add Fee"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </TabsContent>
 
           {/* DOCUMENTS */}
