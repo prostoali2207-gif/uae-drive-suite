@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const FEE_CATEGORIES = ["Delivery", "Pickup", "Fuel", "Extra Mileage", "Damage", "Detailing", "Other"] as const;
@@ -63,29 +64,19 @@ export function AddFeeInline({ onSave, onCancel, className }: AddFeeInlineProps)
         className,
       )}
     >
-      <div className="min-w-0 md:max-w-[40%] md:shrink">
-        <div className="flex flex-nowrap gap-2 overflow-x-auto pb-1">
-          {FEE_CATEGORIES.map((item) => {
-            const isSelected = item === category;
-
-            return (
-              <button
-                key={item}
-                type="button"
-                onClick={() => handleCategoryChange(item)}
-                className={cn(
-                  "h-10 shrink-0 rounded-full border px-3 text-sm font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  isSelected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-              >
+      <div className="min-w-0 md:w-44 md:shrink-0">
+        <Select value={category} onValueChange={(value) => handleCategoryChange(value as FeeCategory)}>
+          <SelectTrigger className="h-11 md:h-10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FEE_CATEGORIES.map((item) => (
+              <SelectItem key={item} value={item}>
                 {item}
-              </button>
-            );
-          })}
-        </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {category === "Other" && (
