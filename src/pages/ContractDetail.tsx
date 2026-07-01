@@ -2780,7 +2780,7 @@ const FinancialsPanel = ({
 
   return (
     <>
-      <div className="w-full max-w-full min-w-0 space-y-4 pb-20 md:pb-0">
+      <div className="w-full max-w-full min-w-0 space-y-4 pb-20">
         <section>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -2797,31 +2797,9 @@ const FinancialsPanel = ({
           </div>
         </section>
 
-        {addFeeInlineOpen ? (
-          <AddFeeInline
-            onSave={(fee) => {
-              if (!savingFee) onSaveFee(fee);
-            }}
-            onCancel={onCancelAddFee}
-            className={cn(savingFee && "pointer-events-none opacity-70")}
-          />
-        ) : null}
-
         <FinancialSection
           title="Open Items"
           meta={`What the customer owes - ${openItemGroups.length} items`}
-          action={
-            <div className="hidden items-center gap-2 md:flex">
-              <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onAddFee}>
-                <Plus className="h-3.5 w-3.5" />
-                Add Fee
-              </Button>
-              <Button type="button" size="sm" className="h-8 gap-1.5" onClick={onAddPayment}>
-                <Plus className="h-3.5 w-3.5" />
-                Add Payment
-              </Button>
-            </div>
-          }
         >
           {showDepositVerificationWarning ? (
             <div className="flex items-start gap-2 rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs text-tint-amber-foreground">
@@ -2867,6 +2845,37 @@ const FinancialsPanel = ({
               </div>
             ))
           )}
+          <div className="border-t border-border p-3">
+            {addFeeInlineOpen ? (
+              <AddFeeInline
+                onSave={(fee) => {
+                  if (!savingFee) onSaveFee(fee);
+                }}
+                onCancel={onCancelAddFee}
+                className={cn(savingFee && "pointer-events-none opacity-70")}
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-3 md:block">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full min-w-0 gap-2 border-border bg-transparent text-foreground hover:bg-white/10 hover:text-foreground"
+                  onClick={onAddFee}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Fee
+                </Button>
+                <Button
+                  type="button"
+                  className="h-11 min-w-0 gap-2 bg-primary text-primary-foreground hover:bg-primary/90 md:hidden"
+                  onClick={onAddPayment}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Payment
+                </Button>
+              </div>
+            )}
+          </div>
         </FinancialSection>
 
         <FinancialSection title="Rental History" meta={`${rentalPeriods.length} periods`}>
@@ -3375,19 +3384,10 @@ const FinancialsPanel = ({
           ) : null}
         </div>
 
-        <div className="fixed inset-x-0 bottom-16 z-40 flex w-full max-w-[100vw] min-w-0 gap-3 bg-[#121830] p-3 md:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-40 hidden w-full max-w-[100vw] min-w-0 justify-end bg-[#121830] p-3 md:flex">
           <Button
             type="button"
-            variant="outline"
-            className="h-11 min-w-0 flex-1 gap-2 border-border bg-transparent text-foreground hover:bg-white/10 hover:text-foreground"
-            onClick={onAddFee}
-          >
-            <Plus className="h-4 w-4" />
-            Add Fee
-          </Button>
-          <Button
-            type="button"
-            className="h-11 min-w-0 flex-1 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="h-11 min-w-[180px] gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={onAddPayment}
           >
             <Plus className="h-4 w-4" />
