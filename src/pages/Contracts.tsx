@@ -164,7 +164,7 @@ function formatDate(iso: string): string {
 }
 
 function formatMobileDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function getDaysUntilExpiry(iso: string): number {
@@ -1792,6 +1792,7 @@ const Contracts = () => {
                 const vehicleLabel = c.cars ? `${c.cars.plate} • ${c.cars.make} ${c.cars.model}` : "-";
                 const balance = Number(c.balance_due || 0);
                 const depositAmount = Number(c.deposit_amount || 0);
+                const hasBalanceDue = balance > 0;
                 const hasDeposit = depositAmount > 0;
                 const depositState = getDepositState(c);
                 const isDepositReturned = depositState === "Returned";
@@ -1844,38 +1845,40 @@ const Contracts = () => {
                         AED {Number(c.total_amount).toLocaleString()}
                       </span>
 
-                      <div className="col-span-2 mt-1 border-t border-border/70 pt-2">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DUE</div>
-                            <div className={cn("mt-1 font-mono text-base leading-5", balance > 0 ? "text-[#f87171]" : "text-[#3d5478]")}>
-                              {balance > 0 ? `AED ${balance.toLocaleString()}` : "—"}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DEPOSIT</div>
-                            {!hasDeposit ? (
-                              <div className="mt-1 font-mono text-sm leading-5 text-[#2d3f5c]">—</div>
-                            ) : (
-                              <div className="mt-1 flex items-center justify-end gap-2">
-                                <span className={cn("font-mono text-sm leading-5", isDepositReturned ? "text-muted-foreground" : "text-foreground")}>
-                                  AED {depositAmount.toLocaleString()}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "rounded border px-[7px] py-0.5 text-[10px] font-bold leading-3",
-                                    isDepositReturned
-                                      ? "border-border bg-muted text-muted-foreground"
-                                      : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
-                                  )}
-                                >
-                                  {depositState.toUpperCase()}
-                                </span>
+                      {(hasBalanceDue || hasDeposit) && (
+                        <div className="col-span-2 mt-1 border-t border-border/70 pt-2">
+                          <div className="grid grid-cols-2 gap-3">
+                            {hasBalanceDue && (
+                              <div>
+                                <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DUE</div>
+                                <div className="mt-1 font-mono text-base leading-5 text-[#f87171]">
+                                  AED {balance.toLocaleString()}
+                                </div>
+                              </div>
+                            )}
+                            {hasDeposit && (
+                              <div className={cn("text-right", !hasBalanceDue && "col-start-2")}>
+                                <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DEPOSIT</div>
+                                <div className="mt-1 flex items-center justify-end gap-2">
+                                  <span className={cn("font-mono text-sm leading-5", isDepositReturned ? "text-muted-foreground" : "text-foreground")}>
+                                    AED {depositAmount.toLocaleString()}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "rounded border px-[7px] py-0.5 text-[10px] font-bold leading-3",
+                                      isDepositReturned
+                                        ? "border-border bg-muted text-muted-foreground"
+                                        : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
+                                    )}
+                                  >
+                                    {depositState.toUpperCase()}
+                                  </span>
+                                </div>
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 );
