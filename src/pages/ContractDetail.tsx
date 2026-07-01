@@ -2357,19 +2357,21 @@ const FinancialsPanel = ({
 
   const openItemGroups = useMemo(() => {
     const groups = new Map<string, OpenItemGroup>();
+    const unpaidRentalLines = unpaidAllocationLines.filter((line) => line.category === "rental");
+    const unpaidRentalDue = unpaidRentalLines.reduce((sum, line) => sum + Number(line.due), 0);
 
     unpaidAllocationLines.forEach((line) => {
       const existing = groups.get(line.category);
       const nextDue = (existing?.due ?? 0) + Number(line.due);
       const count = (unpaidAllocationLines.filter((item) => item.category === line.category).length);
 
-      if (line.category === "rental") {
+      if (line.category === "rental" && !groups.has("rental")) {
         groups.set("rental", {
           id: "rental",
           title: "Rent Outstanding",
-          detail: `${count} unpaid ${count === 1 ? "period" : "periods"}`,
+          detail: `${unpaidRentalLines.length} unpaid ${unpaidRentalLines.length === 1 ? "period" : "periods"}`,
           meta: `${formatDate(contract.start_date)} - ${formatDate(getLatestRentalPeriodEnd(contract, rentalExtensions))}`,
-          due: nextDue,
+          due: unpaidRentalDue,
           icon: CalendarDays,
           iconTone: "blue",
         });
@@ -3513,11 +3515,21 @@ const ContractDetail = () => {
       setContractFees([]);
       return;
     }
-    const { data, error } = await (supabase as any)
+    let { data, error } = await (supabase as any)
       .from("contract_fees")
       .select("id, category, label, amount, note, extension_start, extension_end, created_at")
       .eq("contract_id", contract.id)
       .order("created_at", { ascending: false });
+
+    if (error && /note/i.test(error.message ?? "")) {
+      const fallback = await (supabase as any)
+        .from("contract_fees")
+        .select("id, category, label, amount, extension_start, extension_end, created_at")
+        .eq("contract_id", contract.id)
+        .order("created_at", { ascending: false });
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) {
       toast.error("Failed to load fees");
