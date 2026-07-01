@@ -533,15 +533,29 @@ const getDepositReconciliationInfo = (
   };
 };
 
-const isRentalExtensionFee = (fee: ContractFeeRow) => Boolean(fee.extension_start && fee.extension_end);
+const getRentalExtensionPeriodFromFee = (fee: ContractFeeRow) => {
+  const parsedPeriod = parseRentalExtensionPeriod(fee.label);
+
+  return {
+    periodStart: fee.extension_start ?? parsedPeriod?.periodStart ?? null,
+    periodEnd: fee.extension_end ?? parsedPeriod?.periodEnd ?? null,
+  };
+};
+
+const isRentalExtensionFee = (fee: ContractFeeRow) => {
+  const period = getRentalExtensionPeriodFromFee(fee);
+  return Boolean(period.periodStart && period.periodEnd);
+};
 
 const isStructuredRentalExtensionFee = (fee: ContractFeeRow) => Boolean(fee.extension_start);
 
 const sortRentalExtensionFees = (fees: ContractFeeRow[]) =>
   [...fees].filter(isRentalExtensionFee).sort((a, b) => {
-    const startCompare = String(a.extension_start).localeCompare(String(b.extension_start));
+    const aPeriod = getRentalExtensionPeriodFromFee(a);
+    const bPeriod = getRentalExtensionPeriodFromFee(b);
+    const startCompare = String(aPeriod.periodStart).localeCompare(String(bPeriod.periodStart));
     if (startCompare !== 0) return startCompare;
-    const endCompare = String(a.extension_end).localeCompare(String(b.extension_end));
+    const endCompare = String(aPeriod.periodEnd).localeCompare(String(bPeriod.periodEnd));
     if (endCompare !== 0) return endCompare;
     return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
   });
@@ -605,9 +619,10 @@ const buildRentalPeriods = (
 
 const getLatestRentalPeriodEnd = (contract: Pick<ContractRecord, "end_date">, fees: ContractFeeRow[]) => {
   const sortedExtensionEnds = [...fees]
-    .filter((fee) => fee.extension_end)
-    .sort((a, b) => String(a.extension_end).localeCompare(String(b.extension_end)));
-  return sortedExtensionEnds[sortedExtensionEnds.length - 1]?.extension_end ?? contract.end_date;
+    .map((fee) => getRentalExtensionPeriodFromFee(fee).periodEnd)
+    .filter((endDate): endDate is string => Boolean(endDate))
+    .sort((a, b) => a.localeCompare(b));
+  return sortedExtensionEnds[sortedExtensionEnds.length - 1] ?? contract.end_date;
 };
 
 const formatRentalExtensionPeriod = (fee: ContractFeeRow) => {
@@ -5466,9 +5481,11 @@ const ContractDetail = () => {
     const isImmediateCharge = line.category !== "rental" && line.overdueImmediately;
     return isPastRentalPeriod || isImmediateCharge ? sum + Number(line.due) : sum;
   }, 0);
+  const allocationOutstandingBalance = paymentAllocationLines.reduce((sum, line) => sum + Number(line.due), 0);
   const financialTotals: ContractFinancialTotals = {
     ...totals,
-    overdue: Math.min(totals.outstanding, Math.max(0, overdueBalance)),
+    outstanding: Math.max(0, allocationOutstandingBalance),
+    overdue: Math.min(allocationOutstandingBalance, Math.max(0, overdueBalance)),
   };
   const isOverdue = financialTotals.overdue > 0 && contract.status !== "Cancelled";
   const closeDepositAmount = Math.max(0, Number(contract.deposit_amount) || 0);
