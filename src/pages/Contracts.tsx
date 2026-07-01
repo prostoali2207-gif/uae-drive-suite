@@ -199,7 +199,7 @@ function getDepositState(contract: ContractRow): DepositFilter {
   const depositAmount = Number(contract.deposit_amount || 0);
   if (depositAmount <= 0) return "No deposit";
   const status = String(contract.deposit_status ?? "").trim().toLowerCase();
-  if (contract.deposit_returned !== null || status === "returned") return "Returned";
+  if (status === "returned") return "Returned";
   return "Held";
 }
 
