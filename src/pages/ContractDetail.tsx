@@ -2862,7 +2862,7 @@ const FinancialsPanel = ({
               </div>
             ))
           )}
-          <div className="border-t border-border p-3">
+          <div className="border-t border-border px-4 py-2">
             {addFeeInlineOpen ? (
               <AddFeeInline
                 onSave={(fee) => {
@@ -2872,14 +2872,15 @@ const FinancialsPanel = ({
                 className={cn(savingFee && "pointer-events-none opacity-70")}
               />
             ) : (
-              <div className="grid grid-cols-2 gap-3 md:block">
+              <div className="grid grid-cols-[auto_1fr] items-center gap-3 md:block">
                 <Button
                   type="button"
-                  variant="outline"
-                  className="h-11 w-full min-w-0 gap-2 border-border bg-transparent text-foreground hover:bg-white/10 hover:text-foreground"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-auto justify-start gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   onClick={onAddFee}
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-3.5 w-3.5" />
                   Add Fee
                 </Button>
                 <Button
