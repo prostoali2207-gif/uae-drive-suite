@@ -49,6 +49,13 @@ const extendedSupabase = supabase as SupabaseClient<ExtendedDatabase>;
 const norm = (v: unknown) => String(v ?? "").trim();
 // Match plates by digits only: "AJM A 11532" -> "11532" matches TAMM "11532"
 const normPlate = (v: unknown) => norm(v).replace(/\D+/g, "");
+const emiratePlatePrefixes = new Set(["AUH", "AD", "DXB", "SHJ", "AJM", "UAQ", "RAK", "FUJ"]);
+
+function normSalikPlate(v: unknown): string {
+  const tokens = norm(v).toUpperCase().match(/[A-Z0-9]+/g) ?? [];
+  if (tokens.length > 1 && emiratePlatePrefixes.has(tokens[0])) tokens.shift();
+  return tokens.join("");
+}
 
 function parseAmount(v: unknown): number {
   if (v == null || v === "") return 0;
@@ -602,7 +609,8 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   const carByPlate = new Map<string, CarRow>();
   const carByTag = new Map<string, CarRow>();
   for (const c of cars) {
-    carByPlate.set(normPlate(c.plate), c);
+    const plateKey = normSalikPlate(c.plate);
+    if (plateKey) carByPlate.set(plateKey, c);
     if (c.tag_number) carByTag.set(norm(c.tag_number), c);
   }
 
@@ -630,7 +638,7 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
       seenInBatch.add(txId);
     }
 
-    const car = (tagNumber && carByTag.get(tagNumber)) || carByPlate.get(normPlate(plate));
+    const car = (tagNumber ? carByTag.get(tagNumber) : undefined) || carByPlate.get(normSalikPlate(plate));
     if (!car) { unmatched.add(plate || tagNumber || "(blank)"); continue; }
     const contract = findContract(contracts, contractVehicles, car.id, dateIso);
 
