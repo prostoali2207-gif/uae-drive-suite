@@ -1946,7 +1946,7 @@ const ContractSalikBulkSheet = ({
         paidIds.forEach((id) => next.delete(id));
         return next;
       });
-      toast.warning("Some selected trips were already paid and have been removed from this payment");
+      toast.warning("Some selected trips were already paid and have been removed.");
       await onRefresh();
       if (selectedTransactions.every((transaction) => paidIds.has(transaction.id))) return;
     }
@@ -1976,7 +1976,7 @@ const ContractSalikBulkSheet = ({
 
       if (paidIds.size > 0) {
         setSelectedIds(new Set(validTransactions.map((transaction) => transaction.id)));
-        toast.warning("Some selected trips were already paid and have been removed from this payment");
+        toast.warning("Some selected trips were already paid and have been removed.");
         await onRefresh();
       }
 
@@ -2000,7 +2000,7 @@ const ContractSalikBulkSheet = ({
           amount: validSelectedTotal,
           payment_date: getTodayDateInput(),
           method: paymentMethod,
-          status: "completed",
+          status: "Paid",
           owner_id: contract.owner_id,
           tax_rate: 0,
           tax_amount: 0,
