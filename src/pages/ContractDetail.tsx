@@ -1923,8 +1923,34 @@ const ContractSalikBulkSheet = ({
     setSelectedIds(new Set(ids));
   };
 
-  const openPaymentDialog = () => {
+  const openPaymentDialog = async () => {
     if (selectedTransactions.length === 0) return;
+    const ids = Array.from(selectedIds);
+    const { data, error } = await (supabase as any)
+      .from("salik")
+      .select("id, status")
+      .in("id", ids);
+
+    if (error) {
+      toast.error("Failed to verify Salik payment status");
+      return;
+    }
+
+    const paidIds = new Set(
+      ((data ?? []) as Array<{ id: string; status: string }>).filter((transaction) => transaction.status === "Paid").map((transaction) => transaction.id),
+    );
+
+    if (paidIds.size > 0) {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        paidIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      toast.warning("Some selected trips were already paid and have been removed from this payment");
+      await onRefresh();
+      if (selectedTransactions.every((transaction) => paidIds.has(transaction.id))) return;
+    }
+
     setPaymentDialogOpen(true);
   };
 
@@ -1932,19 +1958,46 @@ const ContractSalikBulkSheet = ({
     if (selectedTransactions.length === 0 || selectedTotal <= 0) return;
 
     const ids = selectedTransactions.map((transaction) => transaction.id);
-    const lines = selectedTransactions.reduce<Record<string, number>>((allocations, transaction) => {
-      allocations[`salik-${transaction.id}`] = Number(transaction.amount);
-      return allocations;
-    }, {});
 
     setConfirmingPayment(true);
     try {
+      const { data: statusRows, error: statusError } = await (supabase as any)
+        .from("salik")
+        .select("id, status")
+        .in("id", ids);
+
+      if (statusError) throw statusError;
+
+      const paidIds = new Set(
+        ((statusRows ?? []) as Array<{ id: string; status: string }>).filter((transaction) => transaction.status === "Paid").map((transaction) => transaction.id),
+      );
+      const validTransactions = selectedTransactions.filter((transaction) => !paidIds.has(transaction.id));
+      const validSelectedTotal = validTransactions.reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+
+      if (paidIds.size > 0) {
+        setSelectedIds(new Set(validTransactions.map((transaction) => transaction.id)));
+        toast.warning("Some selected trips were already paid and have been removed from this payment");
+        await onRefresh();
+      }
+
+      if (validTransactions.length === 0 || validSelectedTotal <= 0) {
+        toast.warning("No unpaid Salik trips remain for this payment");
+        setPaymentDialogOpen(false);
+        return;
+      }
+
+      const validIds = validTransactions.map((transaction) => transaction.id);
+      const lines = validTransactions.reduce<Record<string, number>>((allocations, transaction) => {
+        allocations[`salik-${transaction.id}`] = Number(transaction.amount);
+        return allocations;
+      }, {});
+
       const { error: paymentError } = await (supabase as any)
         .from("payments")
         .insert({
           contract_id: contract.id,
           client_id: contract.client_id,
-          amount: selectedTotal,
+          amount: validSelectedTotal,
           payment_date: getTodayDateInput(),
           method: paymentMethod,
           status: "completed",
@@ -1954,7 +2007,7 @@ const ContractSalikBulkSheet = ({
           allocations: {
             fees: 0,
             fines: 0,
-            salik: selectedTotal,
+            salik: validSelectedTotal,
             rental: 0,
             lines,
           },
@@ -1966,7 +2019,7 @@ const ContractSalikBulkSheet = ({
         .from("salik")
         .update({ status: "Paid", paid_at: new Date().toISOString() })
         .eq("contract_id", contract.id)
-        .in("id", ids);
+        .in("id", validIds);
 
       if (salikError) throw salikError;
 
