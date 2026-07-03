@@ -3796,15 +3796,14 @@ const ContractDetail = () => {
         (supabase as any)
           .from("fines")
           .select("id, amount")
-          .eq("contract_id", contract.id)
-          .eq("status", "Charged to Client"),
+          .eq("contract_id", contract.id),
         (supabase as any)
           .from("salik")
           .select("id, trips, amount")
           .eq("contract_id", contract.id),
         (supabase as any)
           .from("payments")
-          .select("id, amount")
+          .select("id, amount, tax_amount")
           .eq("contract_id", contract.id),
       ]);
 
@@ -3883,7 +3882,10 @@ const ContractDetail = () => {
       const aed = (value: number) => `AED ${money(value)}`;
       const rentalDays = Math.max(1, diffDays(contract.start_date, contract.end_date));
       const rentalAmount = Number(contract.total_amount) || 0;
-      const rentalVat = rentalAmount * 0.05;
+      const taxTotal = ((paymentsRes.data ?? []) as Array<{ tax_amount: number }>).reduce(
+        (sum, payment) => sum + (Number(payment.tax_amount) || 0),
+        0,
+      );
       const chargedFines = ((finesRes.data ?? []) as Array<{ id: string; amount: number }>).map((fine) => ({
         ...fine,
         amount: Number(fine.amount) || 0,
@@ -3906,7 +3908,7 @@ const ContractDetail = () => {
       const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
       const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
       const subtotal = rentalAmount + finesTotal + salikTotal + feeTotal;
-      const invoiceAmount = subtotal + rentalVat;
+      const invoiceAmount = subtotal + taxTotal;
       const remainingBalance = Math.max(0, invoiceAmount - paidAmount);
       const invoiceStatus =
         remainingBalance <= 0.01 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid";
@@ -3923,8 +3925,8 @@ const ContractDetail = () => {
           `Car Rental\n${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`,
           `${rentalDays} days`,
           money(rentalAmount),
-          money(rentalVat),
-          money(rentalAmount + rentalVat),
+          "-",
+          money(rentalAmount),
         ],
       ];
       if (chargedFines.length > 0) {
@@ -4147,7 +4149,7 @@ const ContractDetail = () => {
       const totalsX = pageW - margin - 250;
       const totalsRows: Array<[string, string, "normal" | "total" | "deposit" | "paid" | "remaining"]> = [
         ["Subtotal", aed(subtotal), "normal"],
-        ["VAT (5%)", aed(rentalVat), "normal"],
+        ["Tax", aed(taxTotal), "normal"],
         ["Invoice Amount", aed(invoiceAmount), "total"],
         ["Security Deposit (tracked separately)", aed(Number(contract.deposit_amount) || 0), "deposit"],
         ["Paid Amount", `- ${aed(paidAmount)}`, "paid"],
