@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import { formatMonthlyBillingPeriod, getRateUnits } from "@/lib/contractPricing";
 import { diffCalendarDays, parseDateInput, parseDateTimeInput } from "@/lib/dateUtils";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { toast } from "sonner";
@@ -329,33 +330,29 @@ function diffDays(start: string, end: string): number {
   return diffCalendarDays(start, end);
 }
 
-function getRateUnits(days: number, rateType: RateType): number {
-  if (rateType === "Monthly") return days / 30;
-  if (rateType === "Annual") return days / 365;
-  return days;
-}
-
-function formatMonthlyUnits(months: number): string {
-  return Number.isInteger(months) ? String(months) : months.toFixed(1);
-}
-
 function formatRateSummary(
   days: number,
   rateAmount: string,
   rateType: RateType,
   rentalTotal: number,
   extrasTotal: number,
+  startDate: string,
+  endDate: string,
 ): string {
   const rate = Number(rateAmount);
   const safeRate = Number.isFinite(rate) ? rate : 0;
   const grandTotal = rentalTotal + extrasTotal;
 
   if (rateType === "Monthly") {
-    return `${formatMonthlyUnits(getRateUnits(days, rateType))} months × ${safeRate.toLocaleString()} AED + ${extrasTotal.toLocaleString()} AED extras = AED ${grandTotal.toLocaleString()}`;
+    const period = formatMonthlyBillingPeriod(startDate, endDate);
+    if (extrasTotal > 0) {
+      return `${period} · Monthly total + AED ${extrasTotal.toLocaleString()} extras = AED ${grandTotal.toLocaleString()}`;
+    }
+    return `${period} · Monthly total`;
   }
 
   if (rateType === "Annual") {
-    return `${getRateUnits(days, rateType).toFixed(2)} years × ${safeRate.toLocaleString()} AED + ${extrasTotal.toLocaleString()} AED extras = AED ${grandTotal.toLocaleString()}`;
+    return `${getRateUnits(days, rateType, startDate, endDate).toFixed(2)} years × ${safeRate.toLocaleString()} AED + ${extrasTotal.toLocaleString()} AED extras = AED ${grandTotal.toLocaleString()}`;
   }
 
   return `${days} days × ${safeRate.toLocaleString()} AED + ${extrasTotal.toLocaleString()} AED extras = AED ${grandTotal.toLocaleString()}`;
@@ -937,8 +934,10 @@ const Contracts = () => {
   );
   const total = useMemo(() => {
     const rate = Number(form.rate_amount);
-    return Number.isFinite(rate) && rate > 0 ? Math.round(getRateUnits(days, form.rate_type) * rate) : 0;
-  }, [days, form.rate_amount, form.rate_type]);
+    return Number.isFinite(rate) && rate > 0
+      ? Math.round(getRateUnits(days, form.rate_type, form.start_date, form.end_date) * rate)
+      : 0;
+  }, [days, form.end_date, form.rate_amount, form.rate_type, form.start_date]);
 
   const additionalChargesTotal = useMemo(
     () => additionalCharges.reduce((sum, charge) => {
@@ -950,8 +949,21 @@ const Contracts = () => {
   const totalWithExtras = total + additionalChargesTotal;
 
   const rateSummary = useMemo(
-    () => formatRateSummary(days, form.rate_amount, form.rate_type, total, additionalChargesTotal),
-    [days, form.rate_amount, form.rate_type, total, additionalChargesTotal],
+    () => formatRateSummary(
+      days,
+      form.rate_amount,
+      form.rate_type,
+      total,
+      additionalChargesTotal,
+      form.start_date,
+      form.end_date,
+    ),
+    [days, form.end_date, form.rate_amount, form.rate_type, form.start_date, total, additionalChargesTotal],
+  );
+
+  const billingPeriodLabel = useMemo(
+    () => form.rate_type === "Monthly" ? formatMonthlyBillingPeriod(form.start_date, form.end_date) : `${days} days`,
+    [days, form.end_date, form.rate_type, form.start_date],
   );
 
   const filteredClients = useMemo(() => {
@@ -1744,7 +1756,7 @@ const Contracts = () => {
                     <div className="mt-1 font-mono text-xs text-muted-foreground">{rateSummary}</div>
                   </div>
                   <div className="text-right font-mono text-xs text-muted-foreground">
-                    <div>{days} days</div>
+                    <div>{billingPeriodLabel}</div>
                     <div>{form.rate_type} total</div>
                   </div>
                 </div>
