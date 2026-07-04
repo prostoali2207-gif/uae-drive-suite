@@ -783,6 +783,7 @@ const PaymentAllocationDetails = ({
 const buildExpandedPaymentAllocationRows = (
   payment: PaymentRow,
   contractFees: ContractFeeRow[],
+  fines: FineRow[],
 ): ExpandedPaymentAllocationRow[] => {
   const savedAllocations = readSavedPaymentAllocations(payment.allocations);
   const entries = savedAllocations?.lines
@@ -803,15 +804,36 @@ const buildExpandedPaymentAllocationRows = (
     feeLabels.set(`fee-${fee.id}`, `Extension #${index + 1}`);
   });
 
-  return entries.map((line) => {
+  const rows: ExpandedPaymentAllocationRow[] = [];
+  let salikRowIndex = -1;
+
+  entries.forEach((line) => {
     let label = "General payment";
     if (line.id.startsWith("fee-")) label = feeLabels.get(line.id) || "Fee";
     if (line.id.startsWith("rental-")) label = "Original Contract";
-    if (line.id.startsWith("salik-")) label = "Salik";
-    if (line.id.startsWith("fine-")) label = "Traffic Fine";
+    if (line.id.startsWith("fine-")) {
+      const fineId = line.id.slice("fine-".length);
+      const fine = fines.find((item) => item.id === fineId);
+      label = `Traffic Fine ${fine?.fine_number || "No number"}`;
+    }
 
-    return { ...line, label };
+    if (line.id.startsWith("salik-")) {
+      if (salikRowIndex === -1) {
+        salikRowIndex = rows.length;
+        rows.push({ id: `salik-${payment.id}`, label: "Salik", amount: line.amount });
+      } else {
+        rows[salikRowIndex] = {
+          ...rows[salikRowIndex],
+          amount: rows[salikRowIndex].amount + line.amount,
+        };
+      }
+      return;
+    }
+
+    rows.push({ ...line, label });
   });
+
+  return rows;
 };
 
 const FEE_CATEGORIES: { value: FeeCategory; label: string; defaultLabel: string }[] = [
@@ -2391,8 +2413,8 @@ const FinancialsPanel = ({
   const [salikModalOpen, setSalikModalOpen] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
-  const [expandedPaymentTransactionIds, setExpandedPaymentTransactionIds] = useState<Set<string>>(new Set());
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [allocationDialogPayment, setAllocationDialogPayment] = useState<PaymentRow | null>(null);
   const [openInlinePaymentId, setOpenInlinePaymentId] = useState<string | null>(null);
   const [inlinePaymentDraft, setInlinePaymentDraft] = useState<InlinePaymentDraft>({
     amount: "",
@@ -3071,14 +3093,11 @@ const FinancialsPanel = ({
               const renderTransactionRow = (transaction: FinancialTransaction) => {
               const payment = transaction.allocationPayment;
               const isPaymentTransaction = transaction.type === "Payment" && Boolean(payment);
-              const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
               const isFeeTransaction = transaction.type === "Charge" && Boolean(transaction.contractFee);
               const feeTransactionNote = isFeeTransaction ? transaction.contractFee?.note?.trim() : "";
               const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
               const showsTransactionDetails =
                 transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik";
-              const expandedAllocationRows =
-                isPaymentTransaction && payment ? buildExpandedPaymentAllocationRows(payment, contractFees) : [];
 
               return (
               <div key={transaction.id}>
@@ -3095,19 +3114,9 @@ const FinancialsPanel = ({
                       <button
                         type="button"
                         className="mt-0.5 block truncate text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() =>
-                          setExpandedPaymentTransactionIds((current) => {
-                            const next = new Set(current);
-                            if (next.has(transaction.id)) {
-                              next.delete(transaction.id);
-                            } else {
-                              next.add(transaction.id);
-                            }
-                            return next;
-                          })
-                        }
+                        onClick={() => setAllocationDialogPayment(payment!)}
                       >
-                        {isPaymentExpanded ? "↑ Applied to" : "↓ Applied to"}
+                        Applied to
                       </button>
                     ) : null}
                     {showsTransactionDetails && transaction.details ? (
@@ -3197,20 +3206,6 @@ const FinancialsPanel = ({
                     ) : null}
                   </div>
                 </div>
-                {isPaymentTransaction && isPaymentExpanded ? (
-                  <div className="ml-11 mt-3 rounded-b-md bg-white/5 p-3 text-sm text-gray-400">
-                    <div className="grid gap-2">
-                      {expandedAllocationRows.map((line) => (
-                        <div key={line.id} className="flex items-center justify-between gap-3">
-                          <span className="min-w-0 truncate">{line.label}</span>
-                          <span className="shrink-0 font-mono tabular-nums text-foreground">
-                            {fmtAed(line.amount)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </div>
               );
               };
@@ -3260,6 +3255,64 @@ const FinancialsPanel = ({
               );
             })()
           )}
+
+          <Dialog
+            open={Boolean(allocationDialogPayment)}
+            onOpenChange={(open) => {
+              if (!open) setAllocationDialogPayment(null);
+            }}
+          >
+            <DialogContent className="sm:max-w-[420px]">
+              {allocationDialogPayment ? (
+                (() => {
+                  const allocationRows = buildExpandedPaymentAllocationRows(
+                    allocationDialogPayment,
+                    contractFees,
+                    fines,
+                  );
+
+                  return (
+                    <>
+                      <DialogHeader>
+                        <DialogTitle>Payment Allocation</DialogTitle>
+                        <DialogDescription className="text-xs">
+                          {allocationDialogPayment.method} Payment {"\u00B7"} {formatDate(allocationDialogPayment.payment_date)}
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-4">
+                        <div className="rounded-md border border-border bg-background/40 px-3 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Total amount
+                          </div>
+                          <div className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">
+                            {fmtAed(Number(allocationDialogPayment.amount) || 0)}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2">
+                          {allocationRows.map((line) => (
+                            <div key={line.id} className="flex items-center justify-between gap-3 rounded-md bg-background/30 px-3 py-2">
+                              <span className="min-w-0 truncate text-sm text-foreground">{line.label}</span>
+                              <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-foreground">
+                                {fmtAed(line.amount)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setAllocationDialogPayment(null)}>
+                          Close
+                        </Button>
+                      </DialogFooter>
+                    </>
+                  );
+                })()
+              ) : null}
+            </DialogContent>
+          </Dialog>
         </FinancialSection>
 
         <div className="rounded-md border border-border bg-card p-4">
