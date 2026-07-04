@@ -2392,6 +2392,7 @@ const FinancialsPanel = ({
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
   const [expandedPaymentTransactionIds, setExpandedPaymentTransactionIds] = useState<Set<string>>(new Set());
+  const [showAllPayments, setShowAllPayments] = useState(false);
   const [openInlinePaymentId, setOpenInlinePaymentId] = useState<string | null>(null);
   const [inlinePaymentDraft, setInlinePaymentDraft] = useState<InlinePaymentDraft>({
     amount: "",
@@ -3066,7 +3067,8 @@ const FinancialsPanel = ({
           {visibleTransactions.length === 0 ? (
             <FinancialLine className="text-xs text-muted-foreground">No transactions match the current view.</FinancialLine>
           ) : (
-            visibleTransactions.map((transaction) => {
+            (() => {
+              const renderTransactionRow = (transaction: FinancialTransaction) => {
               const payment = transaction.allocationPayment;
               const isPaymentTransaction = transaction.type === "Payment" && Boolean(payment);
               const isPaymentExpanded = expandedPaymentTransactionIds.has(transaction.id);
@@ -3211,7 +3213,52 @@ const FinancialsPanel = ({
                 ) : null}
               </div>
               );
-            })
+              };
+
+              if (transactionFilter !== "all") {
+                return visibleTransactions.map(renderTransactionRow);
+              }
+
+              const chargeTransactions = visibleTransactions.filter((transaction) => transaction.group === "charges");
+              const paymentTransactions = visibleTransactions.filter((transaction) => transaction.group === "payments");
+              const visiblePaymentTransactions = showAllPayments ? paymentTransactions : paymentTransactions.slice(0, 5);
+              const hasHiddenPayments = paymentTransactions.length > visiblePaymentTransactions.length;
+
+              return (
+                <>
+                  {chargeTransactions.length > 0 ? (
+                    <div>
+                      <div className="border-b border-border px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Charges
+                      </div>
+                      {chargeTransactions.map(renderTransactionRow)}
+                    </div>
+                  ) : null}
+
+                  {paymentTransactions.length > 0 ? (
+                    <div className={cn(chargeTransactions.length > 0 && "border-t border-border")}>
+                      <div className="border-b border-border px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Payments
+                      </div>
+                      {visiblePaymentTransactions.map(renderTransactionRow)}
+                      {hasHiddenPayments ? (
+                        <div className="px-4 pb-3">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                            onClick={() => setShowAllPayments(true)}
+                          >
+                            Show all payments ({paymentTransactions.length})
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              );
+            })()
           )}
         </FinancialSection>
 
