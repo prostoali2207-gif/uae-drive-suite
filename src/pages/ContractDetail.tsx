@@ -2307,6 +2307,13 @@ type FinancialTransaction = {
   contractFee?: ContractFeeRow;
 };
 
+type PaymentAllocationDialogState = {
+  payments: PaymentRow[];
+  methodLabel: string;
+  date: string;
+  amount: number;
+};
+
 type OpenItemGroup = {
   id: string;
   title: string;
@@ -2414,7 +2421,7 @@ const FinancialsPanel = ({
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
   const [showAllPayments, setShowAllPayments] = useState(false);
-  const [allocationDialogPayment, setAllocationDialogPayment] = useState<PaymentRow | null>(null);
+  const [allocationDialog, setAllocationDialog] = useState<PaymentAllocationDialogState | null>(null);
   const [openInlinePaymentId, setOpenInlinePaymentId] = useState<string | null>(null);
   const [inlinePaymentDraft, setInlinePaymentDraft] = useState<InlinePaymentDraft>({
     amount: "",
@@ -3114,7 +3121,14 @@ const FinancialsPanel = ({
                       <button
                         type="button"
                         className="mt-0.5 block truncate text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => setAllocationDialogPayment(payment!)}
+                        onClick={() =>
+                          setAllocationDialog({
+                            payments: [payment!],
+                            methodLabel: `${payment!.method} Payment`,
+                            date: payment!.payment_date,
+                            amount: Number(payment!.amount) || 0,
+                          })
+                        }
                       >
                         Applied to
                       </button>
@@ -3216,8 +3230,76 @@ const FinancialsPanel = ({
 
               const chargeTransactions = visibleTransactions.filter((transaction) => transaction.group === "charges");
               const paymentTransactions = visibleTransactions.filter((transaction) => transaction.group === "payments");
-              const visiblePaymentTransactions = showAllPayments ? paymentTransactions : paymentTransactions.slice(0, 5);
-              const hasHiddenPayments = paymentTransactions.length > visiblePaymentTransactions.length;
+              const paymentGroups = Array.from(
+                paymentTransactions.reduce((groups, transaction) => {
+                  const dateKey = transaction.date.slice(0, 10);
+                  const group = groups.get(dateKey);
+                  if (group) {
+                    group.push(transaction);
+                  } else {
+                    groups.set(dateKey, [transaction]);
+                  }
+                  return groups;
+                }, new Map<string, FinancialTransaction[]>()),
+              ).map(([, group]) => group);
+              const visiblePaymentGroups = showAllPayments ? paymentGroups : paymentGroups.slice(0, 5);
+              const hasHiddenPayments = paymentGroups.length > visiblePaymentGroups.length;
+
+              const renderMergedPaymentRow = (group: FinancialTransaction[]) => {
+                const paymentRows = group
+                  .map((transaction) => transaction.allocationPayment)
+                  .filter((payment): payment is PaymentRow => Boolean(payment));
+                const methods = Array.from(new Set(paymentRows.map((payment) => payment.method).filter(Boolean)));
+                const amount = group.reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+                const date = group[0]?.date ?? "";
+                const description = methods.length === 1 ? `${methods[0]} Payment` : `${group.length} payments`;
+
+                return (
+                  <div
+                    key={`merged-payments-${date}`}
+                    role="button"
+                    tabIndex={0}
+                    className="cursor-pointer"
+                    onClick={() =>
+                      setAllocationDialog({
+                        payments: paymentRows,
+                        methodLabel: description,
+                        date,
+                        amount,
+                      })
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setAllocationDialog({
+                          payments: paymentRows,
+                          methodLabel: description,
+                          date,
+                          amount,
+                        });
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex h-8 w-8 shrink-0 self-start items-center justify-center rounded-lg bg-green-950 text-green-300">
+                        <Receipt className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-foreground">{description}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">Applied to</div>
+                      </div>
+                      <div className="ml-auto flex flex-shrink-0 flex-col items-end">
+                        <span className="font-mono text-sm font-bold tabular-nums text-green-400">
+                          +{fmtAed(amount)}
+                        </span>
+                        <div className="text-right text-xs text-muted-foreground">
+                          {formatDate(date)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
 
               return (
                 <>
@@ -3235,7 +3317,9 @@ const FinancialsPanel = ({
                       <div className="border-b border-border px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Payments
                       </div>
-                      {visiblePaymentTransactions.map(renderTransactionRow)}
+                      {visiblePaymentGroups.map((group) =>
+                        group.length === 1 ? renderTransactionRow(group[0]) : renderMergedPaymentRow(group)
+                      )}
                       {hasHiddenPayments ? (
                         <div className="px-4 pb-3">
                           <Button
@@ -3257,18 +3341,24 @@ const FinancialsPanel = ({
           )}
 
           <Dialog
-            open={Boolean(allocationDialogPayment)}
+            open={Boolean(allocationDialog)}
             onOpenChange={(open) => {
-              if (!open) setAllocationDialogPayment(null);
+              if (!open) setAllocationDialog(null);
             }}
           >
             <DialogContent className="sm:max-w-[420px]">
-              {allocationDialogPayment ? (
+              {allocationDialog ? (
                 (() => {
-                  const allocationRows = buildExpandedPaymentAllocationRows(
-                    allocationDialogPayment,
-                    contractFees,
-                    fines,
+                  const allocationRows = Array.from(
+                    allocationDialog.payments
+                      .flatMap((payment) => buildExpandedPaymentAllocationRows(payment, contractFees, fines))
+                      .reduce((rows, line) => {
+                        const key = line.label === "Salik" ? "salik" : line.id;
+                        const existing = rows.get(key);
+                        rows.set(key, existing ? { ...existing, amount: existing.amount + line.amount } : line);
+                        return rows;
+                      }, new Map<string, ExpandedPaymentAllocationRow>())
+                      .values(),
                   );
 
                   return (
@@ -3276,7 +3366,7 @@ const FinancialsPanel = ({
                       <DialogHeader>
                         <DialogTitle>Payment Allocation</DialogTitle>
                         <DialogDescription className="text-xs">
-                          {allocationDialogPayment.method} Payment {"\u00B7"} {formatDate(allocationDialogPayment.payment_date)}
+                          {allocationDialog.methodLabel} {"\u00B7"} {formatDate(allocationDialog.date)}
                         </DialogDescription>
                       </DialogHeader>
 
@@ -3286,7 +3376,7 @@ const FinancialsPanel = ({
                             Total amount
                           </div>
                           <div className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">
-                            {fmtAed(Number(allocationDialogPayment.amount) || 0)}
+                            {fmtAed(allocationDialog.amount)}
                           </div>
                         </div>
 
@@ -3303,7 +3393,7 @@ const FinancialsPanel = ({
                       </div>
 
                       <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setAllocationDialogPayment(null)}>
+                        <Button type="button" variant="outline" onClick={() => setAllocationDialog(null)}>
                           Close
                         </Button>
                       </DialogFooter>
