@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
@@ -30,6 +31,8 @@ interface Profile {
   swift_code?: string | null;
   invoice_prefix?: string | null;
   contract_prefix?: string | null;
+  vat_enabled?: boolean | null;
+  vat_rate?: number | null;
   deposit_return_days?: number | null;
   fine_fee_type?: ServiceFeeType | null;
   fine_fee_value?: number | null;
@@ -58,6 +61,8 @@ const Settings = () => {
   const [swiftCode, setSwiftCode] = useState("");
   const [invoicePrefix, setInvoicePrefix] = useState("INV");
   const [contractPrefix, setContractPrefix] = useState("CTR");
+  const [vatEnabled, setVatEnabled] = useState(false);
+  const [vatRate, setVatRate] = useState(5);
   const [depositReturnDays, setDepositReturnDays] = useState(15);
   const [fineFeeType, setFineFeeType] = useState<ServiceFeeType>("fixed");
   const [fineFeeValue, setFineFeeValue] = useState(20);
@@ -126,6 +131,8 @@ const Settings = () => {
       setSwiftCode(p.swift_code || "");
       setInvoicePrefix(p.invoice_prefix || "INV");
       setContractPrefix(p.contract_prefix || "CTR");
+      setVatEnabled(Boolean(p.vat_enabled));
+      setVatRate(p.vat_rate ?? 5);
       setDepositReturnDays(p.deposit_return_days ?? 15);
       setFineFeeType(p.fine_fee_type || "fixed");
       setFineFeeValue(p.fine_fee_value ?? 20);
@@ -164,6 +171,8 @@ const Settings = () => {
       swift_code: swiftCode.trim() || null,
       invoice_prefix: invoicePrefix.trim() || "INV",
       contract_prefix: contractPrefix.trim() || "CTR",
+      vat_enabled: vatEnabled,
+      vat_rate: Math.min(100, Math.max(0, Number(vatRate) || 0)),
       deposit_return_days: depositReturnDays,
       fine_fee_type: fineFeeType,
       fine_fee_value: fineFeeValue,
@@ -468,6 +477,42 @@ const Settings = () => {
                     Days after contract closure before deposit is returned
                   </p>
                 </div>
+              </CardContent>
+                  </Card>
+
+                  <Card>
+              <CardHeader>
+                <CardTitle className="text-base">VAT Settings</CardTitle>
+                <CardDescription>Controls whether generated invoices are VAT tax invoices.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="flex min-h-10 items-center justify-between gap-4 rounded-md border border-border px-3 py-2 md:col-span-2">
+                  <div className="grid gap-0.5">
+                    <Label htmlFor="vat-enabled">Enable VAT Invoice</Label>
+                    <p className="text-xs text-muted-foreground">
+                      When enabled, invoices show TAX INVOICE and calculate VAT.
+                    </p>
+                  </div>
+                  <Switch id="vat-enabled" checked={vatEnabled} onCheckedChange={setVatEnabled} />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="vat-rate">VAT Rate (%)</Label>
+                  <Input
+                    id="vat-rate"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    className="font-mono"
+                  />
+                </div>
+
+                <p className="self-end text-xs text-muted-foreground md:pb-2">
+                  When disabled, invoices show INVOICE and hide VAT/tax rows.
+                </p>
               </CardContent>
                   </Card>
 

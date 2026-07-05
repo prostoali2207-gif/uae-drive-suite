@@ -4027,7 +4027,7 @@ const ContractDetail = () => {
         (supabase as any)
           .from("profiles")
           .select(
-            "company_name, company_name_ar, phone_number, trn, address, logo_url, stamp_url, bank_name, beneficiary_name, iban, account_number, swift_code, invoice_prefix, contract_prefix",
+            "company_name, company_name_ar, phone_number, trn, address, logo_url, stamp_url, bank_name, beneficiary_name, iban, account_number, swift_code, invoice_prefix, contract_prefix, vat_enabled, vat_rate",
           )
           .eq("id", user.id)
           .maybeSingle(),
@@ -4046,7 +4046,7 @@ const ContractDetail = () => {
           .eq("contract_id", contract.id),
         (supabase as any)
           .from("payments")
-          .select("id, amount, tax_amount")
+          .select("id, amount")
           .eq("contract_id", contract.id),
       ]);
 
@@ -4097,12 +4097,17 @@ const ContractDetail = () => {
         swift_code?: string | null;
         invoice_prefix?: string | null;
         contract_prefix?: string | null;
+        vat_enabled?: boolean | null;
+        vat_rate?: number | null;
       };
       const companyName = cleanPdfValue(profile.company_name) || "Company Name";
       const companyPhone = cleanPdfValue(profile.phone_number);
       const companyTrn = cleanPdfValue(profile.trn);
       const companyAddress = cleanPdfValue(profile.address);
       const invoicePrefix = cleanPdfValue(profile.invoice_prefix) || "INV";
+      const vatEnabled = Boolean(profile.vat_enabled);
+      const vatRate = Math.min(100, Math.max(0, Number(profile.vat_rate ?? 5) || 0));
+      const vatLabel = `VAT ${vatRate.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
       const bankRows: Array<[string, string]> = [
         ["Bank Name", cleanPdfValue(profile.bank_name)],
         ["Beneficiary Name", cleanPdfValue(profile.beneficiary_name)],
@@ -4125,10 +4130,6 @@ const ContractDetail = () => {
       const aed = (value: number) => `AED ${money(value)}`;
       const rentalDays = Math.max(1, diffDays(contract.start_date, contract.end_date));
       const rentalAmount = Number(contract.total_amount) || 0;
-      const taxTotal = ((paymentsRes.data ?? []) as Array<{ tax_amount: number }>).reduce(
-        (sum, payment) => sum + (Number(payment.tax_amount) || 0),
-        0,
-      );
       const chargedFines = ((finesRes.data ?? []) as Array<{ id: string; amount: number }>).map((fine) => ({
         ...fine,
         amount: Number(fine.amount) || 0,
@@ -4151,6 +4152,7 @@ const ContractDetail = () => {
       const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
       const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
       const subtotal = rentalAmount + finesTotal + salikTotal + feeTotal;
+      const taxTotal = vatEnabled ? (subtotal * vatRate) / 100 : 0;
       const invoiceAmount = subtotal + taxTotal;
       const remainingBalance = Math.max(0, invoiceAmount - paidAmount);
       const invoiceStatus =
@@ -4162,45 +4164,44 @@ const ContractDetail = () => {
             ? { fill: [255, 251, 235], text: [217, 119, 6] }
             : { fill: [254, 242, 242], text: [220, 38, 38] };
 
-      const rows: Array<[string, string, string, string, string, string]> = [
-        [
-          "01",
+      const makeInvoiceRow = (description: string, quantity: string, amount: number) => {
+        const vatAmount = vatEnabled ? (amount * vatRate) / 100 : 0;
+        const row = [
+          String(rows.length + 1).padStart(2, "0"),
+          description,
+          quantity,
+          money(amount),
+        ];
+        return vatEnabled ? [...row, money(vatAmount), money(amount + vatAmount)] : [...row, money(amount)];
+      };
+      const rows: string[][] = [];
+      rows.push(
+        makeInvoiceRow(
           `Car Rental\n${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`,
           `${rentalDays} days`,
-          money(rentalAmount),
-          "-",
-          money(rentalAmount),
-        ],
-      ];
+          rentalAmount,
+        ),
+      );
       if (chargedFines.length > 0) {
-        rows.push([
-          String(rows.length + 1).padStart(2, "0"),
-          `Traffic Fines\n${chargedFines.length} ${chargedFines.length === 1 ? "fine" : "fines"} - incl. AED 20 service fee`,
-          String(chargedFines.length),
-          money(finesTotal),
-          "-",
-          money(finesTotal),
-        ]);
+        rows.push(
+          makeInvoiceRow(
+            `Traffic Fines\n${chargedFines.length} ${chargedFines.length === 1 ? "fine" : "fines"} - incl. AED 20 service fee`,
+            String(chargedFines.length),
+            finesTotal,
+          ),
+        );
       }
       if (salikCharges.length > 0) {
-        rows.push([
-          String(rows.length + 1).padStart(2, "0"),
-          `Salik Charges\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
-          String(salikTrips),
-          money(salikTotal),
-          "-",
-          money(salikTotal),
-        ]);
+        rows.push(
+          makeInvoiceRow(
+            `Salik Charges\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
+            String(salikTrips),
+            salikTotal,
+          ),
+        );
       }
       fees.forEach((fee) => {
-        rows.push([
-          String(rows.length + 1).padStart(2, "0"),
-          fee.label || "Contract Fee",
-          "1",
-          money(fee.amount),
-          "-",
-          money(fee.amount),
-        ]);
+        rows.push(makeInvoiceRow(fee.label || "Contract Fee", "1", fee.amount));
       });
 
       const loadCompanyImage = async (path: string | null | undefined) => {
@@ -4274,14 +4275,14 @@ const ContractDetail = () => {
       companyContactLines.forEach((line, index) => {
         text(line, headerTextX, contactStartY + index * 9, { size: 7.5, color: grey });
       });
-      if (companyTrn) {
+      if (vatEnabled && companyTrn) {
         const trnY = contactStartY + companyContactLines.length * 9 + 5;
         doc.setFillColor(243, 244, 246);
         doc.roundedRect(headerTextX, trnY - 11, 146, 16, 3, 3, "F");
         text(`TRN: ${companyTrn}`, headerTextX + 6, trnY, { size: 7.5, font: "courier", color: [55, 65, 81] });
       }
 
-      text("TAX INVOICE", pageW - margin, 52, { size: 19, style: "bold", color: navy, align: "right" });
+      text(vatEnabled ? "TAX INVOICE" : "INVOICE", pageW - margin, 52, { size: 19, style: "bold", color: navy, align: "right" });
       text("Original Document", pageW - margin, 67, { size: 8, color: grey, align: "right" });
       const metaX = pageW - margin - 150;
       [
@@ -4350,7 +4351,7 @@ const ContractDetail = () => {
 
       autoTable(doc, {
         startY: 286,
-        head: [["#", "Description", "Qty", "Amount", "VAT 5%", "Total"]],
+        head: [vatEnabled ? ["#", "Description", "Qty", "Amount", vatLabel, "Total"] : ["#", "Description", "Qty", "Amount", "Total"]],
         body: rows,
         theme: "plain",
         margin: { left: margin, right: margin },
@@ -4370,18 +4371,15 @@ const ContractDetail = () => {
         },
         columnStyles: {
           0: { cellWidth: 30, textColor: [156, 163, 175], font: "courier" },
-          1: { cellWidth: 205 },
+          1: { cellWidth: vatEnabled ? 205 : 275 },
           2: { cellWidth: 70, halign: "right", font: "courier" },
           3: { cellWidth: 80, halign: "right", font: "courier" },
-          4: { cellWidth: 70, halign: "right", font: "courier" },
+          4: { cellWidth: vatEnabled ? 70 : 85, halign: "right", font: "courier" },
           5: { cellWidth: 85, halign: "right", font: "courier" },
         },
         didParseCell: (data) => {
           if (data.section === "body" && data.row.index % 2 === 1) {
             data.cell.styles.fillColor = lightGrey;
-          }
-          if (data.section === "body" && data.column.index === 4 && data.cell.raw === "-") {
-            data.cell.styles.textColor = [156, 163, 175];
           }
         },
       });
@@ -4392,7 +4390,7 @@ const ContractDetail = () => {
       const totalsX = pageW - margin - 250;
       const totalsRows: Array<[string, string, "normal" | "total" | "deposit" | "paid" | "remaining"]> = [
         ["Subtotal", aed(subtotal), "normal"],
-        ["Tax", aed(taxTotal), "normal"],
+        ...(vatEnabled ? [["Tax", aed(taxTotal), "normal"] as [string, string, "normal"]] : []),
         ["Invoice Amount", aed(invoiceAmount), "total"],
         ["Security Deposit (tracked separately)", aed(Number(contract.deposit_amount) || 0), "deposit"],
         ["Paid Amount", `- ${aed(paidAmount)}`, "paid"],

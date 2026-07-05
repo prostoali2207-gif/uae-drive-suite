@@ -312,6 +312,8 @@ export type Database = {
           email: string
           id: string
           logo_url: string | null
+          vat_enabled: boolean
+          vat_rate: number
         }
         Insert: {
           company_name?: string
@@ -319,6 +321,8 @@ export type Database = {
           email?: string
           id: string
           logo_url?: string | null
+          vat_enabled?: boolean
+          vat_rate?: number
         }
         Update: {
           company_name?: string
@@ -326,6 +330,8 @@ export type Database = {
           email?: string
           id?: string
           logo_url?: string | null
+          vat_enabled?: boolean
+          vat_rate?: number
         }
         Relationships: []
       }
