@@ -278,9 +278,16 @@ async function readSheet(
 
 function getField(row: Record<string, unknown>, ...keys: string[]): unknown {
   const lower: Record<string, unknown> = {};
-  for (const k of Object.keys(row)) lower[k.toLowerCase().trim()] = row[k];
+  const compact: Record<string, unknown> = {};
+  const normalizeHeader = (v: string) => v.toLowerCase().replace(/\s+/g, " ").trim();
+  const compactHeader = (v: string) => normalizeHeader(v).replace(/[^a-z0-9]/g, "");
+
+  for (const k of Object.keys(row)) {
+    lower[normalizeHeader(k)] = row[k];
+    compact[compactHeader(k)] = row[k];
+  }
   for (const k of keys) {
-    const v = lower[k.toLowerCase().trim()];
+    const v = lower[normalizeHeader(k)] ?? compact[compactHeader(k)];
     if (v !== undefined && v !== "") return v;
   }
   return "";
@@ -628,7 +635,19 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
     const tripTime = parseTimePart(getField(row, "Trip Time"))?.slice(0, 5) ?? null;
     const tollGate = norm(getField(row, "Toll Gate", "TollGate"));
     const direction = norm(getField(row, "Direction"));
-    const original = parseAmount(getField(row, "Amount(AED)", "Amount (AED)", "Amount", "AMOUNT"));
+    // New Salik exports include VAT and may leave the old "Amount (AED)" column blank.
+    // Always charge from the final VAT-inclusive total when it is present.
+    const original = parseAmount(getField(
+      row,
+      "Total Amount (AED) (Incl. VAT)",
+      "Total Amount (AED)\n(Incl. VAT)",
+      "Total Amount Incl VAT",
+      "Total Amount Including VAT",
+      "Amount(AED)",
+      "Amount (AED)",
+      "Amount",
+      "AMOUNT",
+    ));
 
     if (original === 0) { summary.skippedZero++; continue; }
     if (!dateIso) { summary.errors.push(`Missing date for txn ${txId || plate}`); continue; }
