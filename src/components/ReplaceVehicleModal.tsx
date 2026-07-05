@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Command,
   CommandEmpty,
@@ -19,6 +20,13 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -45,6 +53,13 @@ interface ExtendedDatabase extends Database {
           owner_id: string;
           created_at: string;
           daily_rate: number | null;
+          end_mileage: number | null;
+          end_fuel_level: number | null;
+          condition_note: string | null;
+          sent_to_status: string | null;
+          start_mileage: number | null;
+          start_fuel_level: number | null;
+          replacement_reason: string | null;
         };
         Insert: {
           id?: string;
@@ -55,6 +70,13 @@ interface ExtendedDatabase extends Database {
           owner_id: string;
           created_at?: string;
           daily_rate: number;
+          end_mileage?: number | string | null;
+          end_fuel_level?: number | string | null;
+          condition_note?: string | null;
+          sent_to_status?: string | null;
+          start_mileage?: number | string | null;
+          start_fuel_level?: number | string | null;
+          replacement_reason?: string | null;
         };
         Update: {
           id?: string;
@@ -65,6 +87,13 @@ interface ExtendedDatabase extends Database {
           owner_id?: string;
           created_at?: string;
           daily_rate?: number | null;
+          end_mileage?: number | string | null;
+          end_fuel_level?: number | string | null;
+          condition_note?: string | null;
+          sent_to_status?: string | null;
+          start_mileage?: number | string | null;
+          start_fuel_level?: number | string | null;
+          replacement_reason?: string | null;
         };
         Relationships: [];
       };
@@ -263,6 +292,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [newVehicleSearch, setNewVehicleSearch] = useState("");
   
   const [replacementTime, setReplacementTime] = useState<string>("");
+  const [endMileage, setEndMileage] = useState("");
+  const [endFuelLevel, setEndFuelLevel] = useState("");
+  const [conditionNote, setConditionNote] = useState("");
+  const [sentToStatus, setSentToStatus] = useState("Available");
+  const [startMileage, setStartMileage] = useState("");
+  const [startFuelLevel, setStartFuelLevel] = useState("");
+  const [replacementReason, setReplacementReason] = useState("");
   const [currentMonthlyPrice, setCurrentMonthlyPrice] = useState<string>("");
   const [monthlyPrice, setMonthlyPrice] = useState<string>("");
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -341,6 +377,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setSelectedNewCarId("");
       setNewVehicleComboboxOpen(false);
       setNewVehicleSearch("");
+      setEndMileage("");
+      setEndFuelLevel("");
+      setConditionNote("");
+      setSentToStatus("Available");
+      setStartMileage("");
+      setStartFuelLevel("");
+      setReplacementReason("");
       setCurrentCar(null);
       setCurrentMonthlyPrice("");
       setMonthlyPrice("");
@@ -606,6 +649,10 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         .from("contract_vehicles")
         .update({
           ended_at: replacementTimestamp,
+          end_mileage: endMileage || null,
+          end_fuel_level: endFuelLevel || null,
+          condition_note: conditionNote || null,
+          sent_to_status: sentToStatus,
         })
         .eq("contract_id", contractId)
         .eq("car_id", currentCarId)
@@ -623,6 +670,10 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             ended_at: replacementTimestamp,
             owner_id: userId,
             daily_rate: currentVehicleDailyRate,
+            end_mileage: endMileage || null,
+            end_fuel_level: endFuelLevel || null,
+            condition_note: conditionNote || null,
+            sent_to_status: sentToStatus,
           });
         if (errOldVehicleInsert) throw errOldVehicleInsert;
       }
@@ -637,7 +688,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       // c. Update old car in cars table: set status = 'Available' where id = currentCarId
       const { error: errOldCar } = await extendedDb
         .from("cars")
-        .update({ status: "Available" })
+        .update({ status: sentToStatus })
         .eq("id", currentCarId);
       if (errOldCar) throw errOldCar;
 
@@ -658,6 +709,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
           ended_at: null,
           owner_id: userId,
           daily_rate: dailyRate,
+          start_mileage: startMileage || null,
+          start_fuel_level: startFuelLevel || null,
+          replacement_reason: replacementReason,
         });
       if (errNewVehicle) throw errNewVehicle;
 
@@ -771,6 +825,69 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="end-mileage" className="text-xs text-white/50 uppercase tracking-wider">
+                End Mileage
+              </Label>
+              <Input
+                id="end-mileage"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={endMileage}
+                onChange={(e) => setEndMileage(e.target.value)}
+                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-white/50 uppercase tracking-wider">
+                Fuel Level
+              </Label>
+              <Select value={endFuelLevel} onValueChange={setEndFuelLevel}>
+                <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                  <SelectValue placeholder="Select fuel level" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#111111] border-white/10 text-white">
+                  <SelectItem value="0" className="focus:bg-[#1a1a1a] focus:text-white">Empty</SelectItem>
+                  <SelectItem value="25" className="focus:bg-[#1a1a1a] focus:text-white">1/4</SelectItem>
+                  <SelectItem value="50" className="focus:bg-[#1a1a1a] focus:text-white">1/2</SelectItem>
+                  <SelectItem value="75" className="focus:bg-[#1a1a1a] focus:text-white">3/4</SelectItem>
+                  <SelectItem value="100" className="focus:bg-[#1a1a1a] focus:text-white">Full</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="condition-note" className="text-xs text-white/50 uppercase tracking-wider">
+                Condition Note
+              </Label>
+              <Textarea
+                id="condition-note"
+                value={conditionNote}
+                onChange={(e) => setConditionNote(e.target.value)}
+                placeholder="e.g. minor scratch on rear bumper"
+                className="min-h-20 bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-white/50 uppercase tracking-wider">
+                Send Vehicle To
+              </Label>
+              <Select value={sentToStatus} onValueChange={setSentToStatus}>
+                <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#111111] border-white/10 text-white">
+                  <SelectItem value="Available" className="focus:bg-[#1a1a1a] focus:text-white">Available</SelectItem>
+                  <SelectItem value="Maintenance" className="focus:bg-[#1a1a1a] focus:text-white">Maintenance</SelectItem>
+                  <SelectItem value="Blocked" className="focus:bg-[#1a1a1a] focus:text-white">Blocked</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="replacement-time" className="text-xs text-white/50 uppercase tracking-wider">
                 Replacement date & time
               </Label>
@@ -864,6 +981,59 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="start-mileage" className="text-xs text-white/50 uppercase tracking-wider">
+                Start Mileage
+              </Label>
+              <Input
+                id="start-mileage"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={startMileage}
+                onChange={(e) => setStartMileage(e.target.value)}
+                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-white/50 uppercase tracking-wider">
+                Fuel Level
+              </Label>
+              <Select value={startFuelLevel} onValueChange={setStartFuelLevel}>
+                <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                  <SelectValue placeholder="Select fuel level" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#111111] border-white/10 text-white">
+                  <SelectItem value="0" className="focus:bg-[#1a1a1a] focus:text-white">Empty</SelectItem>
+                  <SelectItem value="25" className="focus:bg-[#1a1a1a] focus:text-white">1/4</SelectItem>
+                  <SelectItem value="50" className="focus:bg-[#1a1a1a] focus:text-white">1/2</SelectItem>
+                  <SelectItem value="75" className="focus:bg-[#1a1a1a] focus:text-white">3/4</SelectItem>
+                  <SelectItem value="100" className="focus:bg-[#1a1a1a] focus:text-white">Full</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-white/50 uppercase tracking-wider">
+                Reason for Replacement
+              </Label>
+              <Select value={replacementReason} onValueChange={setReplacementReason}>
+                <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                  <SelectValue placeholder="Select reason" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#111111] border-white/10 text-white">
+                  <SelectItem value="Accident" className="focus:bg-[#1a1a1a] focus:text-white">Accident</SelectItem>
+                  <SelectItem value="Breakdown" className="focus:bg-[#1a1a1a] focus:text-white">Breakdown</SelectItem>
+                  <SelectItem value="Customer request" className="focus:bg-[#1a1a1a] focus:text-white">Customer request</SelectItem>
+                  <SelectItem value="Upgrade" className="focus:bg-[#1a1a1a] focus:text-white">Upgrade</SelectItem>
+                  <SelectItem value="Company decision" className="focus:bg-[#1a1a1a] focus:text-white">Company decision</SelectItem>
+                  <SelectItem value="Other" className="focus:bg-[#1a1a1a] focus:text-white">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="replacement-monthly-price" className="text-xs text-white/50 uppercase tracking-wider">
                 Monthly price
               </Label>
@@ -928,7 +1098,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             Cancel
           </Button>
           <Button
-            disabled={!selectedNewCarId || previewDailyRate <= 0 || confirmLoading}
+            disabled={!selectedNewCarId || !replacementReason || previewDailyRate <= 0 || confirmLoading}
             onClick={handleConfirm}
             className="bg-[#4f6ef7] hover:bg-[#4f6ef7]/90 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
