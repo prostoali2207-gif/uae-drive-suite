@@ -11,17 +11,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Calculator } from "lucide-react";
+import { Calculator, Check, ChevronsUpDown } from "lucide-react";
 import {
   findVehicleContractOverlap,
   formatContractOverlapMessage,
@@ -256,6 +259,8 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [loadingRentalPeriods, setLoadingRentalPeriods] = useState(false);
   const [rentalPeriods, setRentalPeriods] = useState<RentalPeriod[]>([]);
   const [selectedNewCarId, setSelectedNewCarId] = useState<string>("");
+  const [newVehicleComboboxOpen, setNewVehicleComboboxOpen] = useState(false);
+  const [newVehicleSearch, setNewVehicleSearch] = useState("");
   
   const [replacementTime, setReplacementTime] = useState<string>("");
   const [currentMonthlyPrice, setCurrentMonthlyPrice] = useState<string>("");
@@ -305,6 +310,17 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     };
   }, [currentPreviewDailyRate, previewDailyRate, replacementTime, rentalPeriods]);
 
+  const selectedNewCar = availableCars.find((car) => car.id === selectedNewCarId);
+  const filteredAvailableCars = useMemo(() => {
+    const query = newVehicleSearch.trim().toLowerCase();
+    if (!query) return availableCars;
+
+    return availableCars.filter((car) => {
+      const vehicleText = `${car.plate} ${car.make} ${car.model}`.toLowerCase();
+      return vehicleText.includes(query);
+    });
+  }, [availableCars, newVehicleSearch]);
+
   // Helper to format a Date object into local datetime-local string (YYYY-MM-DDTHH:MM)
   const formatDatetimeLocal = (date: Date) => {
     const pad = (num: number) => String(num).padStart(2, "0");
@@ -323,6 +339,8 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       const formatted = formatDatetimeLocal(now);
       setReplacementTime(formatted);
       setSelectedNewCarId("");
+      setNewVehicleComboboxOpen(false);
+      setNewVehicleSearch("");
       setCurrentCar(null);
       setCurrentMonthlyPrice("");
       setMonthlyPrice("");
@@ -781,22 +799,67 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               ) : availableCars.length === 0 ? (
                 <div className="text-xs text-destructive italic py-2">No available cars found in fleet.</div>
               ) : (
-                <Select value={selectedNewCarId} onValueChange={setSelectedNewCarId}>
-                  <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
-                    <SelectValue placeholder="Select new vehicle" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#111111] border-white/10 text-white max-h-56">
-                    {availableCars.map((car) => (
-                      <SelectItem 
-                        key={car.id} 
-                        value={car.id}
-                        className="focus:bg-[#1a1a1a] focus:text-white"
-                      >
-                        <span className="font-ibm-plex-mono mr-2">{car.plate}</span> — {car.make} {car.model} ({car.year})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={newVehicleComboboxOpen} onOpenChange={setNewVehicleComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={newVehicleComboboxOpen}
+                      className="h-10 w-full justify-between bg-[#1a1a1a] border-white/10 text-white hover:bg-[#1a1a1a] hover:text-white focus:ring-0 focus:ring-offset-0"
+                    >
+                      {selectedNewCar ? (
+                        <span className="truncate text-left">
+                          <span className="font-ibm-plex-mono mr-2">{selectedNewCar.plate}</span> —{" "}
+                          {selectedNewCar.make} {selectedNewCar.model} ({selectedNewCar.year})
+                        </span>
+                      ) : (
+                        <span className="text-white/50">Select new vehicle</span>
+                      )}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-[var(--radix-popover-trigger-width)] p-0 bg-[#111111] border-white/10 text-white"
+                    align="start"
+                  >
+                    <Command shouldFilter={false} className="bg-[#111111] text-white">
+                      <CommandInput
+                        placeholder="Select new vehicle"
+                        value={newVehicleSearch}
+                        onValueChange={setNewVehicleSearch}
+                        className="text-white placeholder:text-white/25"
+                      />
+                      <CommandList className="max-h-56">
+                        <CommandEmpty>No available cars found in fleet.</CommandEmpty>
+                        <CommandGroup>
+                          {filteredAvailableCars.map((car) => (
+                            <CommandItem
+                              key={car.id}
+                              value={`${car.plate} ${car.make} ${car.model}`}
+                              onSelect={() => {
+                                setSelectedNewCarId(car.id);
+                                setNewVehicleComboboxOpen(false);
+                                setNewVehicleSearch("");
+                              }}
+                              className="focus:bg-[#1a1a1a] focus:text-white"
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedNewCarId === car.id ? "opacity-100" : "opacity-0",
+                                )}
+                              />
+                              <span className="truncate">
+                                <span className="font-ibm-plex-mono mr-2">{car.plate}</span> — {car.make} {car.model} ({car.year})
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               )}
             </div>
 
