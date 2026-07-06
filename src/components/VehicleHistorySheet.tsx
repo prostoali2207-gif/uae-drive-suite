@@ -344,13 +344,20 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
 
       const carMap = new Map(carsData?.map((car) => [car.id, car]));
       const contractPeriod = contractData as ContractPeriod | null;
+      const extensionPeriods = ((feePeriodsData ?? []) as RentalPeriod[])
+        .filter((period) => period.extension_start && period.extension_end)
+        .sort((a, b) =>
+          String(a.extension_start).localeCompare(String(b.extension_start)),
+        );
+      const firstExtension = extensionPeriods[0];
       const originalPeriod =
         contractPeriod
           ? [
               {
                 id: contractPeriod.id,
                 extension_start: contractPeriod.start_date,
-                extension_end: contractPeriod.end_date,
+                extension_end:
+                  firstExtension?.extension_start ?? contractPeriod.end_date,
                 start_time: contractPeriod.start_time,
                 end_time: contractPeriod.end_time,
               },
@@ -358,13 +365,11 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
           : [];
       const rentalPeriods = [
         ...originalPeriod,
-        ...((feePeriodsData ?? []) as RentalPeriod[])
-          .filter((period) => period.extension_start && period.extension_end)
-          .map((period) => ({
-            ...period,
-            start_time: contractPeriod?.end_time ?? null,
-            end_time: contractPeriod?.end_time ?? null,
-          })),
+        ...extensionPeriods.map((period) => ({
+          ...period,
+          start_time: contractPeriod?.end_time ?? null,
+          end_time: contractPeriod?.end_time ?? null,
+        })),
       ];
       const activePeriod = findCurrentActivePeriod(rentalPeriods);
       const displayPeriods = buildVehicleDisplayPeriods(
