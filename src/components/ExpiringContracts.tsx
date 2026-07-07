@@ -87,17 +87,44 @@ const ExpiringContracts = ({ filter = "today" }: ExpiringContractsProps) => {
       let balanceByContract: Record<string, number> = {};
 
       if (contractIds.length > 0) {
-        const { data: balancesData, error: balancesError } = await (supabase as any)
-          .from("contract_balances")
-          .select("contract_id, balance_due")
-          .in("contract_id", contractIds);
+        const [balancesResult, extensionFeesResult] = await Promise.all([
+          // contract_balances is not present in the generated database types.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any)
+            .from("contract_balances")
+            .select("contract_id, balance_due")
+            .in("contract_id", contractIds),
+          // contract_fees is not present in the generated database types.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any)
+            .from("contract_fees")
+            .select("contract_id, label, amount, extension_start, extension_end")
+            .in("contract_id", contractIds),
+        ]);
 
-        if (balancesError) throw balancesError;
+        if (balancesResult.error) throw balancesResult.error;
+        if (extensionFeesResult.error) throw extensionFeesResult.error;
+
+        const extensionFeesByContract = ((extensionFeesResult.data || []) as Array<{
+          contract_id: string;
+          label: string | null;
+          amount: number | string | null;
+          extension_start: string | null;
+          extension_end: string | null;
+        }>).reduce((totals, fee) => {
+          const isRentalExtension =
+            fee.label?.trim().toLowerCase().startsWith("rental extension:") ||
+            Boolean(fee.extension_start && fee.extension_end);
+          if (isRentalExtension) {
+            totals[fee.contract_id] = (totals[fee.contract_id] || 0) + Number(fee.amount || 0);
+          }
+          return totals;
+        }, {} as Record<string, number>);
 
         balanceByContract = Object.fromEntries(
-          (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
+          (balancesResult.data || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
             balance.contract_id,
-            Number(balance.balance_due || 0),
+            Math.max(0, Number(balance.balance_due || 0) - (extensionFeesByContract[balance.contract_id] || 0)),
           ]),
         );
       }

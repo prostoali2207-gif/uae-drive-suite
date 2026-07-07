@@ -543,6 +543,10 @@ const getRentalExtensionPeriodFromFee = (fee: ContractFeeRow) => {
 };
 
 const isRentalExtensionFee = (fee: ContractFeeRow) => {
+  if (fee.label.trim().toLowerCase().startsWith(`${RENTAL_EXTENSION_LABEL.toLowerCase()}:`)) {
+    return true;
+  }
+
   const period = getRentalExtensionPeriodFromFee(fee);
   return Boolean(period.periodStart && period.periodEnd);
 };
@@ -1072,7 +1076,7 @@ const FinancialsAccordion = ({
   const rentalFees = sortRentalExtensionFees(contractFees);
   const latestRentalFeeId = rentalFees.at(-1)?.id;
   const originalRentalLabel = `${formatDate(contract.start_date)} -> ${formatDate(contract.end_date)}`;
-  const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
+  const rentalTotal = Number(contract.total_amount);
   const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
@@ -2561,12 +2565,12 @@ const FinancialsPanel = ({
         return {
           id: `rent-extension-${fee.id}`,
           date: fee.extension_start ?? fee.created_at ?? contract.start_date,
-          group: "charges" as const,
+          group: "adjustments" as const,
           type: "Rent",
           description: `Extension #${index + 1}`,
-          details: `${formatDate(fee.extension_start)} -> ${formatDate(fee.extension_end)}`,
+          details: `${formatDate(fee.extension_start)} -> ${formatDate(fee.extension_end)} (included in rent total)`,
           amount: Number(fee.amount),
-          amountTone: "debit" as const,
+          amountTone: "credit" as const,
           reference: contractNumberLabel(contract.id),
           icon: CalendarDays,
           iconTone: "blue" as const,
@@ -3993,7 +3997,9 @@ const ContractDetail = () => {
   }, [contract, fines, salik, payments, days]);
 
   const totals = useMemo(() => {
-    const feeCharges = contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0);
+    const feeCharges = contractFees
+      .filter((fee) => !isRentalExtensionFee(fee))
+      .reduce((sum, fee) => sum + Number(fee.amount), 0);
     const charges = ledger.reduce((s, e) => e.type === "Deposit" ? s : s + e.debit, 0) + feeCharges;
     const credits = ledger.reduce((s, e) => s + e.credit, 0);
     // Security deposit is reconciled separately and must not reduce the customer balance.
@@ -4702,32 +4708,10 @@ const ContractDetail = () => {
       return;
     }
 
-    const { error: feeError } = await (supabase as any)
-      .from("contract_fees")
-      .insert({
-        contract_id: contract.id,
-        category: RENTAL_EXTENSION_CATEGORY,
-        label: buildRentalExtensionLabel(extensionStart, extensionEnd),
-        amount: Number(extensionAmount),
-        extension_start: extensionStart,
-        extension_end: extensionEnd,
-        owner_id: userId,
-      })
-      .select("id")
-      .single();
-
-    if (feeError) {
-      setIsExtending(false);
-      console.error("Failed to insert extension contract fee", feeError);
-      const message = "Could not add the extension fee. The contract was not changed.";
-      setExtendError(message);
-      toast.error(message);
-      return;
-    }
-
+    const nextTotalAmount = Math.round((Number(contract.total_amount) + extensionAmount) * 100) / 100;
     const { error: contractEndDateError } = await supabase
       .from("contracts")
-      .update({ end_date: extensionEnd } as never)
+      .update({ end_date: extensionEnd, total_amount: nextTotalAmount } as never)
       .eq("id", contract.id);
 
     if (contractEndDateError) {
@@ -4736,6 +4720,23 @@ const ContractDetail = () => {
       setExtendError(message);
       toast.error(message);
       return;
+    }
+
+    const { error: feeError } = await (supabase as any)
+      .from("contract_fees")
+      .insert({
+        contract_id: contract.id,
+        category: RENTAL_EXTENSION_CATEGORY,
+        label: buildRentalExtensionLabel(extensionStart, extensionEnd),
+        amount: extensionAmount,
+        extension_start: extensionStart,
+        extension_end: extensionEnd,
+        owner_id: userId,
+      });
+
+    if (feeError) {
+      console.error("Failed to insert extension history", feeError);
+      toast.warning("Contract extended, but extension history was not saved");
     }
 
     setIsExtending(false);
@@ -5252,6 +5253,19 @@ const ContractDetail = () => {
       }
 
       const nextLabel = buildRentalExtensionLabel(extensionStart, amountEditExtensionEndDate);
+      const amountDelta = Math.round((nextAmount - Number(amountEditTarget.fee.amount)) * 100) / 100;
+      const nextContractTotal = Math.round((Number(contract.total_amount) + amountDelta) * 100) / 100;
+      const { error: contractAmountError } = await supabase
+        .from("contracts")
+        .update({ total_amount: nextContractTotal } as never)
+        .eq("id", contract.id);
+
+      if (contractAmountError) {
+        setSavingAmountEdit(false);
+        toast.error("Failed to update rental amount");
+        return;
+      }
+
       const { error } = await (supabase as any)
         .from("contract_fees")
         .update({
@@ -5286,6 +5300,9 @@ const ContractDetail = () => {
         return;
       }
 
+      setContract((current) =>
+        current ? { ...current, total_amount: nextContractTotal } : current,
+      );
       setContractFees(nextFees);
       await fetchContractFees();
       setSavingAmountEdit(false);
@@ -5428,6 +5445,19 @@ const ContractDetail = () => {
         rentalPeriodEditTarget.startDate,
         rentalPeriodEndDate,
       );
+      const amountDelta = Math.round((nextAmount - Number(rentalPeriodEditTarget.amount)) * 100) / 100;
+      const nextContractTotal = Math.round((Number(contract.total_amount) + amountDelta) * 100) / 100;
+      const { error: contractAmountError } = await supabase
+        .from("contracts")
+        .update({ total_amount: nextContractTotal } as never)
+        .eq("id", contract.id);
+
+      if (contractAmountError) {
+        setSavingRentalPeriod(false);
+        setRentalPeriodEditError("Failed to update rental amount.");
+        return;
+      }
+
       const { error } = await (supabase as any)
         .from("contract_fees")
         .update({
@@ -5462,6 +5492,9 @@ const ContractDetail = () => {
         return;
       }
 
+      setContract((current) =>
+        current ? { ...current, total_amount: nextContractTotal } : current,
+      );
       await fetchContractFees();
     }
 
@@ -5614,15 +5647,6 @@ const ContractDetail = () => {
       due: Number(contract.total_amount),
       dueDate: contract.end_date,
     },
-    ...rentalFeeLines.map((fee, index) => {
-      return {
-        id: `fee-${fee.id}`,
-        category: "rental" as const,
-        label: `Extension #${index + 1}`,
-        due: Number(fee.amount),
-        dueDate: fee.extension_end ?? null,
-      };
-    }),
     ...manualFeeLines.map((fee) => ({
       id: `fee-${fee.id}`,
       category: "fees" as const,
@@ -5678,8 +5702,7 @@ const ContractDetail = () => {
       if (savedAllocations?.lines && Object.keys(savedAllocations.lines).length > 0) {
         Object.entries(savedAllocations.lines).forEach(([lineId, value]) => {
           const numericValue = Number(value);
-          addLinePayment(lineId, numericValue);
-          applied += numericValue;
+          applied += addLinePayment(lineId, numericValue);
         });
       } else if (savedAllocations) {
         (["rental", "fees", "fines", "salik"] as const).forEach((category) => {

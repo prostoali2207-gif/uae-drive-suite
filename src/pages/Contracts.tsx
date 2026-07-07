@@ -766,9 +766,9 @@ const Contracts = () => {
         let balanceByContract: Record<string, number> = {};
         let effectiveEndDateByContract: Record<string, string> = {};
         if (contractIds.length > 0) {
-          // contract_balances is not present in the generated database types.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const [balancesResult, extensionsResult] = await Promise.all([
+            // contract_balances is not present in the generated database types.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (supabase as any)
               .from("contract_balances")
               .select("contract_id, balance_due")
@@ -777,18 +777,38 @@ const Contracts = () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (supabase as any)
               .from("contract_fees")
-              .select("contract_id, extension_end")
-              .in("contract_id", contractIds)
-              .not("extension_end", "is", null),
+              .select("contract_id, label, amount, extension_start, extension_end")
+              .in("contract_id", contractIds),
           ]);
           const { data: balancesData, error: balancesErr } = balancesResult;
           if (balancesErr) {
             toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesErr)}`);
           } else {
+            const extensionFeesByContract = (extensionsResult.data || []).reduce(
+              (
+                totals: Record<string, number>,
+                row: {
+                  contract_id: string;
+                  label: string | null;
+                  amount: number | string | null;
+                  extension_start: string | null;
+                  extension_end: string | null;
+                },
+              ) => {
+                const isRentalExtension =
+                  row.label?.trim().toLowerCase().startsWith("rental extension:") ||
+                  Boolean(row.extension_start && row.extension_end);
+                if (isRentalExtension) {
+                  totals[row.contract_id] = (totals[row.contract_id] || 0) + Number(row.amount || 0);
+                }
+                return totals;
+              },
+              {},
+            );
             balanceByContract = Object.fromEntries(
               (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
                 balance.contract_id,
-                Number(balance.balance_due || 0),
+                Math.max(0, Number(balance.balance_due || 0) - (extensionFeesByContract[balance.contract_id] || 0)),
               ]),
             );
           }
