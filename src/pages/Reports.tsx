@@ -293,7 +293,7 @@ const Reports = () => {
                   </div>
                   <div className="rounded-md bg-tint-rose/40 px-2 py-2">
                     <div className="text-sm font-semibold text-tint-rose-foreground">{utilization.sold}</div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sold</div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Archived / Sold</div>
                   </div>
                 </div>
               </CardContent>

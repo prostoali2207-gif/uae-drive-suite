@@ -48,6 +48,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type Status = "Available" | "Rented" | "Service" | "Sold";
+type ActiveStatus = Exclude<Status, "Sold">;
+type FleetFilter = "All" | ActiveStatus | "Archived";
 
 interface Car {
   id: string;
@@ -76,7 +78,7 @@ const statusClasses: Record<Status, string> = {
   Sold: "bg-tint-rose text-tint-rose-foreground",
 };
 
-const filters: ("All" | Status)[] = ["All", "Available", "Rented", "Service", "Sold"];
+const activeFilters: ("All" | ActiveStatus)[] = ["All", "Available", "Rented", "Service"];
 
 const emptyForm = {
   plate: "",
@@ -91,14 +93,16 @@ const emptyForm = {
 };
 
 function displayStatus(status: string): string {
-  return status === "Service" ? "Maintenance" : status;
+  if (status === "Service") return "Maintenance / Service";
+  if (status === "Sold") return "Archived / Sold";
+  return status;
 }
 
 const Fleet = () => {
   const navigate = useNavigate();
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"All" | Status>("All");
+  const [filter, setFilter] = useState<FleetFilter>("All");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [markingSold, setMarkingSold] = useState(false);
@@ -141,7 +145,12 @@ const Fleet = () => {
   const filtered = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     return cars.filter((car) => {
-      const matchesStatus = filter === "All" || car.status === filter;
+      const matchesStatus =
+        filter === "Archived"
+          ? car.status === "Sold"
+          : filter === "All"
+            ? car.status !== "Sold"
+            : car.status === filter;
       const matchesSearch = !normalizedQuery
         || car.plate.toLowerCase().includes(normalizedQuery)
         || car.make.toLowerCase().includes(normalizedQuery)
@@ -166,7 +175,7 @@ const Fleet = () => {
 
   const counts = useMemo(
     () => ({
-      All: cars.length,
+      All: cars.filter((c) => c.status !== "Sold").length,
       Available: cars.filter((c) => c.status === "Available").length,
       Rented: cars.filter((c) => c.status === "Rented").length,
       Service: cars.filter((c) => c.status === "Service").length,
@@ -348,22 +357,38 @@ const Fleet = () => {
     <DashboardLayout title="Fleet" subtitle="Manage your vehicles">
       <div className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
-            {filters.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  filter === f
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f}
-                <span className="ml-1.5 opacity-60">{counts[f]}</span>
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
+              {activeFilters.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    filter === f
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {displayStatus(f)}
+                  <span className="ml-1.5 opacity-60">{counts[f]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="h-6 w-px bg-border max-sm:hidden" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => setFilter("Archived")}
+              className={cn(
+                "rounded-lg border border-border px-3 py-2 text-xs font-medium transition-colors",
+                filter === "Archived"
+                  ? "bg-foreground text-background"
+                  : "bg-card text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Archived / Sold
+              <span className="ml-1.5 opacity-60">{counts.Sold}</span>
+            </button>
           </div>
 
           <Dialog open={importOpen} onOpenChange={(v) => { setImportOpen(v); if (!v) setImportPreview(null); }}>
@@ -594,8 +619,8 @@ const Fleet = () => {
                     <SelectContent>
                       <SelectItem value="Available">Available</SelectItem>
                       <SelectItem value="Rented">Rented</SelectItem>
-                      <SelectItem value="Service">Service</SelectItem>
-                      <SelectItem value="Sold" disabled>Sold</SelectItem>
+                      <SelectItem value="Service">Maintenance / Service</SelectItem>
+                      <SelectItem value="Sold" disabled>Archived / Sold</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
