@@ -6,6 +6,16 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -35,7 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
-type CarStatus = "Available" | "Rented" | "Service";
+type CarStatus = "Available" | "Rented" | "Service" | "Sold";
 
 type Car = {
   id: string;
@@ -141,6 +151,9 @@ function getStatusBadgeClass(status: string): string {
   if (status === "Rented") {
     return "bg-tint-amber text-tint-amber-foreground";
   }
+  if (status === "Sold") {
+    return "bg-tint-rose text-tint-rose-foreground";
+  }
   if (status === "Closed" || status === "Completed") {
     return "bg-muted text-muted-foreground";
   }
@@ -185,8 +198,10 @@ const FleetDetail = () => {
   const [history, setHistory] = useState<RentalHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingCar, setSavingCar] = useState(false);
+  const [markingSold, setMarkingSold] = useState(false);
   const [savingMaintenance, setSavingMaintenance] = useState(false);
   const [editCarOpen, setEditCarOpen] = useState(false);
+  const [confirmSoldOpen, setConfirmSoldOpen] = useState(false);
   const [editMaintenanceOpen, setEditMaintenanceOpen] = useState(false);
   const [carForm, setCarForm] = useState<CarForm | null>(null);
   const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceForm>(emptyMaintenanceForm);
@@ -343,6 +358,48 @@ const FleetDetail = () => {
     }
 
     toast.success("Vehicle updated");
+    setEditCarOpen(false);
+    await fetchFleetDetail();
+  };
+
+  const handleMarkAsSold = async () => {
+    if (!id || !ownerId) return;
+
+    setMarkingSold(true);
+    const { data: blockingContracts, error: activeError } = await db
+      .from("contracts")
+      .select("id, status, end_date")
+      .eq("car_id", id)
+      .eq("owner_id", ownerId)
+      .in("status", ["Active", "Expiring Soon", "Overdue"]);
+
+    if (activeError) {
+      setMarkingSold(false);
+      toast.error("Failed to verify active contracts");
+      return;
+    }
+
+    if ((blockingContracts ?? []).length > 0) {
+      setMarkingSold(false);
+      setConfirmSoldOpen(false);
+      toast.error("Cannot mark as Sold while this vehicle has active or overdue contracts");
+      return;
+    }
+
+    const { error } = await db
+      .from("cars")
+      .update({ status: "Sold" })
+      .eq("id", id)
+      .eq("owner_id", ownerId);
+
+    setMarkingSold(false);
+    setConfirmSoldOpen(false);
+    if (error) {
+      toast.error(`Failed to mark vehicle as Sold: ${error.message}`);
+      return;
+    }
+
+    toast.success("Vehicle marked as Sold");
     setEditCarOpen(false);
     await fetchFleetDetail();
   };
@@ -644,6 +701,7 @@ const FleetDetail = () => {
                       <SelectItem value="Available">Available</SelectItem>
                       <SelectItem value="Rented">Rented</SelectItem>
                       <SelectItem value="Service">Service</SelectItem>
+                      <SelectItem value="Sold" disabled>Sold</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -681,6 +739,17 @@ const FleetDetail = () => {
               </div>
 
               <DialogFooter>
+                {car?.status !== "Sold" && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={markingSold}
+                    onClick={() => setConfirmSoldOpen(true)}
+                    className="sm:mr-auto"
+                  >
+                    Mark as Sold
+                  </Button>
+                )}
                 <Button type="button" variant="outline" onClick={() => setEditCarOpen(false)}>
                   Cancel
                 </Button>
@@ -693,6 +762,27 @@ const FleetDetail = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmSoldOpen} onOpenChange={setConfirmSoldOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark vehicle as Sold?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This vehicle will be hidden from active fleet and cannot be used in new contracts. History, fines and Salik will remain saved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={markingSold}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleMarkAsSold}
+              disabled={markingSold}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {markingSold ? "Marking..." : "Mark as Sold"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={editMaintenanceOpen} onOpenChange={setEditMaintenanceOpen}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[520px]">

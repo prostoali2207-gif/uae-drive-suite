@@ -5482,7 +5482,7 @@ const ContractDetail = () => {
     const { data } = await supabase
       .from("cars")
       .select("id, plate, make, model, year, status")
-      .eq("status", "available")
+      .eq("status", "Available")
       .order("plate");
     setAvailableCars((data as AvailableCarRow[]) ?? []);
     setShowEditModal(true);

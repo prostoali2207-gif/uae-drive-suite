@@ -126,11 +126,13 @@ const Reports = () => {
 
   const utilization = useMemo(() => {
     const total = cars.length;
+    const sold = cars.filter((c) => c.status === "Sold").length;
+    const activeTotal = cars.filter((c) => c.status !== "Sold").length;
     const rented = cars.filter((c) => c.status === "Rented").length;
     const available = cars.filter((c) => c.status === "Available").length;
     const service = cars.filter((c) => c.status === "Service").length;
-    const pct = total > 0 ? Math.round((rented / total) * 100) : 0;
-    return { total, rented, available, service, pct };
+    const pct = activeTotal > 0 ? Math.round((rented / activeTotal) * 100) : 0;
+    return { total, activeTotal, rented, available, service, sold, pct };
   }, [cars]);
 
   const topClients = useMemo(() => {
@@ -267,7 +269,7 @@ const Reports = () => {
                 <div>
                   <div className="text-3xl font-semibold">{utilization.pct}%</div>
                   <div className="text-xs text-muted-foreground">
-                    {utilization.rented} of {utilization.total} cars rented
+                    {utilization.rented} of {utilization.activeTotal} active cars rented
                   </div>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -276,7 +278,7 @@ const Reports = () => {
                     style={{ width: `${utilization.pct}%` }}
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                   <div className="rounded-md bg-tint-green/40 px-2 py-2">
                     <div className="text-sm font-semibold text-tint-green-foreground">{utilization.available}</div>
                     <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Available</div>
@@ -288,6 +290,10 @@ const Reports = () => {
                   <div className="rounded-md bg-tint-amber/40 px-2 py-2">
                     <div className="text-sm font-semibold text-tint-amber-foreground">{utilization.service}</div>
                     <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Service</div>
+                  </div>
+                  <div className="rounded-md bg-tint-rose/40 px-2 py-2">
+                    <div className="text-sm font-semibold text-tint-rose-foreground">{utilization.sold}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sold</div>
                   </div>
                 </div>
               </CardContent>

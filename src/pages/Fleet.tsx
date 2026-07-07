@@ -47,7 +47,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type Status = "Available" | "Rented" | "Service";
+type Status = "Available" | "Rented" | "Service" | "Sold";
 
 interface Car {
   id: string;
@@ -73,9 +73,10 @@ const statusClasses: Record<Status, string> = {
   Available: "bg-tint-green text-tint-green-foreground",
   Rented: "bg-tint-blue text-tint-blue-foreground",
   Service: "bg-tint-amber text-tint-amber-foreground",
+  Sold: "bg-tint-rose text-tint-rose-foreground",
 };
 
-const filters: ("All" | Status)[] = ["All", "Available", "Rented", "Service"];
+const filters: ("All" | Status)[] = ["All", "Available", "Rented", "Service", "Sold"];
 
 const emptyForm = {
   plate: "",
@@ -100,12 +101,12 @@ const Fleet = () => {
   const [filter, setFilter] = useState<"All" | Status>("All");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [markingSold, setMarkingSold] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [plateError, setPlateError] = useState("");
   const [tagError, setTagError] = useState("");
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmSoldOpen, setConfirmSoldOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<LegacyFleetImportPreview | null>(null);
   const [importLoading, setImportLoading] = useState(false);
@@ -169,6 +170,7 @@ const Fleet = () => {
       Available: cars.filter((c) => c.status === "Available").length,
       Rented: cars.filter((c) => c.status === "Rented").length,
       Service: cars.filter((c) => c.status === "Service").length,
+      Sold: cars.filter((c) => c.status === "Sold").length,
     }),
     [cars],
   );
@@ -307,35 +309,35 @@ const Fleet = () => {
     }
   };
 
-  const handleDeleteVehicle = async () => {
+  const handleMarkAsSold = async () => {
     if (!editingId) return;
-    setDeleting(true);
-    const { count, error: activeErr } = await supabase
+    setMarkingSold(true);
+    const { data: blockingContracts, error: activeErr } = await supabase
       .from("contracts")
-      .select("id", { count: "exact", head: true })
+      .select("id, status, end_date")
       .eq("car_id", editingId)
-      .in("status", ["Active", "Expiring Soon"]);
+      .in("status", ["Active", "Expiring Soon", "Overdue"]);
     if (activeErr) {
-      setDeleting(false);
+      setMarkingSold(false);
       toast.error("Failed to verify active contracts");
       return;
     }
-    if ((count ?? 0) > 0) {
-      setDeleting(false);
-      setConfirmDeleteOpen(false);
-      toast.error("Cannot delete vehicle with active contracts");
+    if ((blockingContracts ?? []).length > 0) {
+      setMarkingSold(false);
+      setConfirmSoldOpen(false);
+      toast.error("Cannot mark as Sold while this vehicle has active or overdue contracts");
       return;
     }
 
-    const { error: deleteErr } = await supabase.from("cars").delete().eq("id", editingId);
-    setDeleting(false);
-    setConfirmDeleteOpen(false);
-    if (deleteErr) {
-      toast.error(`Failed to delete vehicle: ${deleteErr.message}`);
+    const { error: updateErr } = await supabase.from("cars").update({ status: "Sold" }).eq("id", editingId);
+    setMarkingSold(false);
+    setConfirmSoldOpen(false);
+    if (updateErr) {
+      toast.error(`Failed to mark vehicle as Sold: ${updateErr.message}`);
       return;
     }
 
-    toast.success("Vehicle deleted");
+    toast.success("Vehicle marked as Sold");
     setOpen(false);
     setEditingId(null);
     setForm(emptyForm);
@@ -593,6 +595,7 @@ const Fleet = () => {
                       <SelectItem value="Available">Available</SelectItem>
                       <SelectItem value="Rented">Rented</SelectItem>
                       <SelectItem value="Service">Service</SelectItem>
+                      <SelectItem value="Sold" disabled>Sold</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -608,31 +611,31 @@ const Fleet = () => {
                   <Button
                     type="button"
                     variant="destructive"
-                    onClick={() => setConfirmDeleteOpen(true)}
-                    disabled={deleting}
+                    onClick={() => setConfirmSoldOpen(true)}
+                    disabled={markingSold || form.status === "Sold"}
                   >
-                    Delete Vehicle
+                    Mark as Sold
                   </Button>
                 )}
               </form>
             </DialogContent>
           </Dialog>
-          <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+          <AlertDialog open={confirmSoldOpen} onOpenChange={setConfirmSoldOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete vehicle?</AlertDialogTitle>
+                <AlertDialogTitle>Mark vehicle as Sold?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. The vehicle can be deleted only if there are no active contracts.
+                  This vehicle will be hidden from active fleet and cannot be used in new contracts. History, fines and Salik will remain saved.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogCancel disabled={markingSold}>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={handleDeleteVehicle}
+                  onClick={handleMarkAsSold}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  disabled={deleting}
+                  disabled={markingSold}
                 >
-                  {deleting ? "Deleting..." : "Delete Vehicle"}
+                  {markingSold ? "Marking..." : "Mark as Sold"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

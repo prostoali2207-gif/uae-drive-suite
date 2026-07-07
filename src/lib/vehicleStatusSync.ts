@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 
 const RENTED_CONTRACT_STATUSES = new Set(["Active", "Expiring Soon", "Overdue"]);
+const LOCKED_CAR_STATUSES = new Set(["Sold"]);
 
 export async function syncVehicleStatusesWithContracts() {
   const { data: contracts, error: contractsError } = await supabase
@@ -25,6 +26,8 @@ export async function syncVehicleStatusesWithContracts() {
   const toAvailable: string[] = [];
 
   (cars ?? []).forEach((car) => {
+    if (LOCKED_CAR_STATUSES.has(car.status)) return;
+
     const isRentedByContract = rentedCarIds.has(car.id as string);
     if (isRentedByContract && car.status !== "Rented") {
       toRented.push(car.id as string);
