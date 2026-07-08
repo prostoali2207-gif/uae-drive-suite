@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +30,10 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Calculator, Camera, Check, ChevronsUpDown } from "lucide-react";
+import { Calculator, Camera, Check, ChevronsUpDown, Image as ImageIcon, Loader2 } from "lucide-react";
 import {
   findVehicleContractOverlap,
   formatContractOverlapMessage,
@@ -157,6 +158,30 @@ interface RentalPeriod {
   daily_rate: number;
 }
 
+const REPLACEMENT_PHOTO_SLOTS = ["Front", "Rear", "Left side", "Right side", "Dashboard / odometer"];
+const REPLACEMENT_INSPECTION_GROUPS = [
+  {
+    type: "replacement_old_return",
+    title: "Old Vehicle Return Photos",
+    pathSegment: "old-return",
+  },
+  {
+    type: "replacement_new_handover",
+    title: "Replacement Vehicle Handover Photos",
+    pathSegment: "new-handover",
+  },
+] as const;
+
+type ReplacementInspectionType = (typeof REPLACEMENT_INSPECTION_GROUPS)[number]["type"];
+
+interface ReplacementInspectionPhoto {
+  id: string;
+  type: ReplacementInspectionType;
+  slot: string;
+  photo_url: string;
+  uploaded_at: string | null;
+}
+
 function PhotoPlaceholder({ title }: { title: string }) {
   return (
     <div className="space-y-2">
@@ -166,11 +191,286 @@ function PhotoPlaceholder({ title }: { title: string }) {
           <Camera className="h-4 w-4 text-white/45" aria-hidden="true" />
         </div>
         <div className="space-y-1">
-          <div className="text-sm text-white/70">Photo upload placeholder</div>
-          <div className="text-xs text-white/40">Storage upload is not enabled for replacement photos yet.</div>
+          <div className="text-sm text-white/70">Replacement inspection step</div>
+          <div className="text-xs text-white/40">Photo upload opens after confirming the vehicle replacement.</div>
         </div>
       </div>
     </div>
+  );
+}
+
+function replacementSlotKey(slot: string): string {
+  return slot.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function replacementPhotoStateKey(type: ReplacementInspectionType, slot: string) {
+  return `${type}:${slot}`;
+}
+
+function ReplacementInspectionModal({
+  contractId,
+  replacementId,
+  uploadedBy,
+  open,
+  onDone,
+}: {
+  contractId: string;
+  replacementId: string;
+  uploadedBy: string | null;
+  open: boolean;
+  onDone: () => void;
+}) {
+  const [photos, setPhotos] = useState<ReplacementInspectionPhoto[]>([]);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [uploadingKey, setUploadingKey] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const photosByTypeSlot = useMemo(() => {
+    const map = new Map<string, ReplacementInspectionPhoto>();
+    photos.forEach((photo) => map.set(replacementPhotoStateKey(photo.type, photo.slot), photo));
+    return map;
+  }, [photos]);
+
+  const requiredCount = REPLACEMENT_INSPECTION_GROUPS.length * REPLACEMENT_PHOTO_SLOTS.length;
+  const uploadedCount = REPLACEMENT_INSPECTION_GROUPS.reduce(
+    (count, group) =>
+      count +
+      REPLACEMENT_PHOTO_SLOTS.filter((slot) =>
+        photosByTypeSlot.has(replacementPhotoStateKey(group.type, slot)),
+      ).length,
+    0,
+  );
+  const progressValue = requiredCount > 0 ? (uploadedCount / requiredCount) * 100 : 0;
+
+  useEffect(() => {
+    if (!open || !contractId || !replacementId) return;
+
+    let cancelled = false;
+    const loadPhotos = async () => {
+      const { data, error } = await (supabase as any)
+        .from("contract_inspections")
+        .select("id, type, slot, photo_url, uploaded_at")
+        .eq("contract_id", contractId)
+        .in("type", REPLACEMENT_INSPECTION_GROUPS.map((group) => group.type));
+
+      if (cancelled) return;
+      if (error) {
+        setErrors((prev) => ({ ...prev, load: "Could not load replacement inspection photos." }));
+        return;
+      }
+
+      const scopedPhotos = ((data ?? []) as ReplacementInspectionPhoto[]).filter((photo) =>
+        photo.photo_url?.startsWith(`${contractId}/replacement-${replacementId}/`),
+      );
+      setPhotos(scopedPhotos);
+      setErrors((prev) => ({ ...prev, load: "" }));
+    };
+
+    loadPhotos();
+    return () => {
+      cancelled = true;
+    };
+  }, [contractId, open, replacementId]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    const loadPreviews = async () => {
+      const nextPreviews: Record<string, string> = {};
+      await Promise.all(
+        photos.map(async (photo) => {
+          const key = replacementPhotoStateKey(photo.type, photo.slot);
+          if (!photo.photo_url) return;
+          if (/^(https?:|data:|blob:)/.test(photo.photo_url)) {
+            nextPreviews[key] = photo.photo_url;
+            return;
+          }
+          const { data } = supabase.storage
+            .from("inspection-photos")
+            .getPublicUrl(photo.photo_url);
+          if (data?.publicUrl) nextPreviews[key] = data.publicUrl;
+        }),
+      );
+      if (!cancelled) setPreviews(nextPreviews);
+    };
+
+    loadPreviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [photos, open]);
+
+  const handleUpload = async (
+    group: (typeof REPLACEMENT_INSPECTION_GROUPS)[number],
+    slot: string,
+    file: File | undefined,
+  ) => {
+    if (!file) return;
+
+    const stateKey = replacementPhotoStateKey(group.type, slot);
+    setUploadingKey(stateKey);
+    setErrors((prev) => ({ ...prev, [stateKey]: "" }));
+
+    const path = `${contractId}/replacement-${replacementId}/${group.pathSegment}/${replacementSlotKey(slot)}.jpg`;
+    const uploadFile = await prepareImageForStorageUpload(file);
+    logImageCompressionUpload("ReplaceVehicleModal", file, uploadFile, path);
+    const { error: uploadError } = await supabase.storage
+      .from("inspection-photos")
+      .upload(path, uploadFile, {
+        contentType: uploadFile.type || "image/jpeg",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      setUploadingKey("");
+      setErrors((prev) => ({ ...prev, [stateKey]: uploadError.message }));
+      return;
+    }
+
+    const existing = photosByTypeSlot.get(stateKey);
+    const payload = {
+      contract_id: contractId,
+      type: group.type,
+      slot,
+      photo_url: path,
+      uploaded_at: new Date().toISOString(),
+      uploaded_by: uploadedBy,
+    };
+    const { data, error: saveError } = existing
+      ? await (supabase as any)
+          .from("contract_inspections")
+          .update(payload)
+          .eq("id", existing.id)
+          .select("id, type, slot, photo_url, uploaded_at")
+          .single()
+      : await (supabase as any)
+          .from("contract_inspections")
+          .insert(payload)
+          .select("id, type, slot, photo_url, uploaded_at")
+          .single();
+
+    setUploadingKey("");
+    if (saveError) {
+      setErrors((prev) => ({ ...prev, [stateKey]: saveError.message }));
+      return;
+    }
+
+    if (data) {
+      setPhotos((prev) => {
+        const next = prev.filter((photo) => replacementPhotoStateKey(photo.type, photo.slot) !== stateKey);
+        return [...next, data as ReplacementInspectionPhoto];
+      });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onDone(); }}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto bg-[#0F1117] border-white/10 text-white sm:max-w-[720px]">
+        <DialogHeader>
+          <DialogTitle>Replacement Inspection Photos</DialogTitle>
+          <DialogDescription className="text-white/60">
+            Capture old vehicle return and replacement vehicle handover photos.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+            <div className="mb-1.5 flex items-center justify-between text-xs text-white/55">
+              <span>Photos added</span>
+              <span className="font-ibm-plex-mono text-blue-300">{uploadedCount} / {requiredCount}</span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-blue-400 transition-all" style={{ width: `${progressValue}%` }} />
+            </div>
+            {errors.load && <div className="mt-2 text-xs text-red-300">{errors.load}</div>}
+          </div>
+
+          {REPLACEMENT_INSPECTION_GROUPS.map((group) => (
+            <section key={group.type} className="rounded-md border border-white/10 bg-white/[0.03]">
+              <div className="border-b border-white/10 px-3 py-2">
+                <h3 className="text-sm font-semibold text-white/90">{group.title}</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-2.5 p-3 sm:grid-cols-2">
+                {REPLACEMENT_PHOTO_SLOTS.map((slot, index) => {
+                  const stateKey = replacementPhotoStateKey(group.type, slot);
+                  const photo = photosByTypeSlot.get(stateKey);
+                  const preview = previews[stateKey];
+                  const isUploading = uploadingKey === stateKey;
+                  const error = errors[stateKey];
+
+                  return (
+                    <div key={stateKey} className="overflow-hidden rounded-md border border-white/10 bg-[#1a1a1a]">
+                      <div className="flex items-center gap-2 px-2.5 pb-1.5 pt-2.5">
+                        <div className={cn(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
+                          photo ? "bg-blue-500 text-white" : "bg-white/10 text-white/50",
+                        )}>
+                          {index + 1}
+                        </div>
+                        <div className="truncate text-[13px] font-medium text-white/85">{slot}</div>
+                      </div>
+                      <div className="mx-2.5">
+                        {preview ? (
+                          <img src={preview} alt={`${slot} replacement inspection`} className="h-[90px] w-full rounded-md border border-white/10 object-cover" />
+                        ) : (
+                          <div className="flex h-[90px] w-full items-center justify-center rounded-md border border-dashed border-white/10 bg-white/[0.03] text-white/40">
+                            <ImageIcon className="h-7 w-7" />
+                          </div>
+                        )}
+                        {photo?.uploaded_at && (
+                          <div className="mt-1 truncate text-[10px] text-white/40">
+                            Uploaded {new Date(photo.uploaded_at).toLocaleString("en-GB")}
+                          </div>
+                        )}
+                        {error && <div className="mt-1 text-[11px] text-red-300">{error}</div>}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-2">
+                        <div className={cn("flex items-center gap-1.5 text-[11px]", photo ? "text-blue-200" : "text-white/45")}>
+                          <span className={cn("h-1.5 w-1.5 rounded-full", photo ? "bg-blue-400" : "bg-white/35")} />
+                          {photo ? "Added" : "Missing"}
+                        </div>
+                        <input
+                          ref={(node) => {
+                            inputRefs.current[stateKey] = node;
+                          }}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(event) => {
+                            handleUpload(group, slot, event.target.files?.[0]);
+                            event.target.value = "";
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 shrink-0 gap-1 px-1.5 text-xs text-blue-200 hover:bg-blue-400/10 hover:text-blue-100"
+                          disabled={isUploading}
+                          onClick={() => inputRefs.current[stateKey]?.click()}
+                        >
+                          {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                          {isUploading ? "Uploading..." : photo ? "Retake" : "Take Photo"}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" className="min-h-10 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90" onClick={onDone}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -320,6 +620,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [currentMonthlyPrice, setCurrentMonthlyPrice] = useState<string>("");
   const [monthlyPrice, setMonthlyPrice] = useState<string>("");
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [replacementInspectionOpen, setReplacementInspectionOpen] = useState(false);
+  const [replacementInspectionId, setReplacementInspectionId] = useState("");
+  const [replacementInspectionUploadedBy, setReplacementInspectionUploadedBy] = useState<string | null>(null);
 
   const currentMonthlyPriceNumber = Number(currentMonthlyPrice);
   const currentPreviewDailyRate =
@@ -420,6 +723,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setCurrentMonthlyPrice("");
       setMonthlyPrice("");
       setRentalPeriods([]);
+      setReplacementInspectionOpen(false);
+      setReplacementInspectionId("");
+      setReplacementInspectionUploadedBy(null);
       
       const fetchModalData = async () => {
         setLoadingCars(true);
@@ -732,7 +1038,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       if (errNewCar) throw errNewCar;
 
       // e. Insert a row into contract_vehicles table for new car start
-      const { error: errNewVehicle } = await extendedDb
+      const { data: newVehicleRow, error: errNewVehicle } = await extendedDb
         .from("contract_vehicles")
         .insert({
           contract_id: contractId,
@@ -744,8 +1050,12 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
           start_mileage: startMileage || null,
           start_fuel_level: startFuelLevel || null,
           replacement_reason: replacementReason,
-        });
+        })
+        .select("id")
+        .single();
       if (errNewVehicle) throw errNewVehicle;
+      const replacementId = newVehicleRow?.id;
+      if (!replacementId) throw new Error("Replacement saved, but the replacement event ID was not returned.");
 
       const { data: updatedVehiclePeriods, error: updatedVehiclePeriodsError } = await extendedDb
         .from("contract_vehicles")
@@ -775,11 +1085,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
       toast({
         title: "Vehicle Replaced",
-        description: "Vehicle replacement recorded successfully.",
+        description: "Vehicle replacement recorded successfully. Add inspection photos next.",
       });
 
       onSuccess();
-      onClose();
+      setReplacementInspectionId(replacementId);
+      setReplacementInspectionUploadedBy(userId);
+      setReplacementInspectionOpen(true);
     } catch (err: unknown) {
       const message =
         err instanceof Error
@@ -799,6 +1111,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[95dvh] max-w-2xl flex-col overflow-hidden bg-[#0F1117] border-white/10 text-white p-6 rounded-lg shadow-xl font-dm-sans">
         <DialogHeader className="shrink-0">
@@ -1168,5 +1481,18 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <ReplacementInspectionModal
+      contractId={contractId}
+      replacementId={replacementInspectionId}
+      uploadedBy={replacementInspectionUploadedBy}
+      open={replacementInspectionOpen}
+      onDone={() => {
+        setReplacementInspectionOpen(false);
+        setReplacementInspectionId("");
+        setReplacementInspectionUploadedBy(null);
+        onClose();
+      }}
+    />
+    </>
   );
 };
