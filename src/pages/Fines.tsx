@@ -73,6 +73,7 @@ interface FineRow {
   car_id: string | null;
   client_id: string | null;
   contract_id: string | null;
+  is_company_expense?: boolean | null;
   cars: { plate: string } | null;
   clients: { full_name: string } | null;
 }
@@ -150,6 +151,8 @@ const statusClasses: Record<string, string> = {
 const matchesSearch = (value: string | null | undefined, query: string) =>
   (value ?? "").toLowerCase().includes(query);
 
+const isCompanyExpense = (fine: FineRow) => fine.is_company_expense === true;
+
 function formatDate(iso: string): string {
   if (!iso) return "—";
   const date = new Date(iso);
@@ -212,6 +215,7 @@ const Fines = () => {
   const [activeTab, setActiveTab] = useState("fines");
   const [finesSearch, setFinesSearch] = useState("");
   const [salikSearch, setSalikSearch] = useState("");
+  const [finesListFilter, setFinesListFilter] = useState<"all" | "unpaid" | "not-linked">("all");
 
   useEffect(() => {
     if (queryType === "fines" || queryType === "salik") {
@@ -274,7 +278,7 @@ const Fines = () => {
 
   useEffect(() => {
     setFinesPage(1);
-  }, [finesPageSize, finesSearch]);
+  }, [finesListFilter, finesPageSize, finesSearch]);
 
   useEffect(() => {
     setSalikPage(1);
@@ -283,14 +287,21 @@ const Fines = () => {
   const filteredFines = useMemo(() => {
     const query = finesSearch.trim().toLowerCase();
     const byStatus = activeStatusFilter ? fines.filter((fine) => fine.status === activeStatusFilter) : fines;
-    if (!query) return byStatus;
+    const byListFilter = byStatus.filter((fine) => {
+      if (finesListFilter === "unpaid") return fine.status === "Unpaid";
+      if (finesListFilter === "not-linked") {
+        return fine.status === "Unpaid" && fine.contract_id === null && !isCompanyExpense(fine);
+      }
+      return true;
+    });
+    if (!query) return byListFilter;
 
-    return byStatus.filter((fine) =>
+    return byListFilter.filter((fine) =>
       matchesSearch(fine.fine_number, query) ||
       matchesSearch(fine.clients?.full_name, query) ||
       matchesSearch(fine.cars?.plate, query),
     );
-  }, [activeStatusFilter, fines, finesSearch]);
+  }, [activeStatusFilter, fines, finesListFilter, finesSearch]);
 
   const filteredSalik = useMemo(() => {
     const query = salikSearch.trim().toLowerCase();
@@ -330,18 +341,18 @@ const Fines = () => {
     setSalikSearch("");
   };
 
-  const totalUnpaidFines = useMemo(
-    () => fines.filter((f) => f.status === "Unpaid").reduce((s, f) => s + Number(f.amount), 0),
-    [fines],
-  );
-
   const totalUnpaidSalik = useMemo(
     () => salik.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + Number(s.amount), 0),
     [salik],
   );
 
   const chargeableFines = useMemo(
-    () => fines.filter((fine) => fine.status === "Unpaid" && fine.contract_id !== null),
+    () => fines.filter((fine) => fine.status === "Unpaid" && fine.contract_id !== null && !isCompanyExpense(fine)),
+    [fines],
+  );
+
+  const unlinkedFines = useMemo(
+    () => fines.filter((fine) => fine.status === "Unpaid" && fine.contract_id === null && !isCompanyExpense(fine)),
     [fines],
   );
 
@@ -355,6 +366,11 @@ const Fines = () => {
     [chargeableFines],
   );
 
+  const unlinkedTotal = useMemo(
+    () => unlinkedFines.reduce((sum, fine) => sum + Number(fine.amount), 0),
+    [unlinkedFines],
+  );
+
   const chargeableSalikTotal = useMemo(
     () => chargeableSalik.reduce((sum, charge) => sum + Number(charge.amount), 0),
     [chargeableSalik],
@@ -366,6 +382,8 @@ const Fines = () => {
   );
   const finesEmptyMessage = activeStatusFilter === "Unpaid"
     ? "No unpaid fines found."
+    : finesListFilter === "not-linked"
+      ? "No unlinked unpaid fines found."
     : "No results found";
   const salikEmptyMessage = activeStatusFilter === "Unpaid"
     ? "No unpaid Salik charges found."
@@ -391,11 +409,12 @@ const Fines = () => {
 
     setChargingAllFines(true);
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("fines")
         .update({ status: "Charged to Client" })
         .eq("status", "Unpaid")
-        .not("contract_id", "is", null);
+        .not("contract_id", "is", null)
+        .or("is_company_expense.is.false,is_company_expense.is.null");
 
       if (error) throw error;
       await refetchFines();
@@ -436,6 +455,21 @@ const Fines = () => {
     } else {
       toast.success("Fine charged to client's outstanding balance");
       setFines((prev) => prev.map((f) => f.id === id ? { ...f, status: "Charged to Client" } : f));
+    }
+  };
+
+  const markFineAsCompanyExpense = async (id: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from("fines")
+        .update({ is_company_expense: true })
+        .eq("id", id);
+
+      if (error) throw error;
+      toast.success("Fine marked as company expense");
+      setFines((prev) => prev.map((f) => f.id === id ? { ...f, is_company_expense: true } : f));
+    } catch (error) {
+      toast.error(`Failed to update fine: ${(error as Error).message}`);
     }
   };
 
@@ -558,18 +592,40 @@ const Fines = () => {
             className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"
           />
         </div>
+        {activeTab === "fines" && (
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { value: "all", label: "All" },
+              { value: "unpaid", label: "Unpaid" },
+              { value: "not-linked", label: "Not Linked" },
+            ].map((filter) => (
+              <Button
+                key={filter.value}
+                type="button"
+                size="sm"
+                variant={finesListFilter === filter.value ? "default" : "outline"}
+                className="h-8"
+                onClick={() => setFinesListFilter(filter.value as typeof finesListFilter)}
+              >
+                {filter.label}
+              </Button>
+            ))}
+          </div>
+        )}
 
         <TabsContent value="fines" className="m-0 flex flex-col gap-4">
-          {totalUnpaidFines > 0 && (
+          {(chargeableFinesTotal > 0 || unlinkedFines.length > 0) && (
             <div className="flex items-center gap-3 rounded-xl border border-tint-rose-foreground/20 bg-tint-rose px-4 py-3">
               <AlertTriangle className="h-5 w-5 text-tint-rose-foreground" />
               <div className="flex-1">
                 <div className="text-sm font-semibold text-tint-rose-foreground">
-                  AED {totalUnpaidFines.toLocaleString()} in unpaid fines
+                  AED {chargeableFinesTotal.toLocaleString()} to charge clients
                 </div>
-                <div className="text-xs text-tint-rose-foreground/80">
-                  {fines.filter((f) => f.status === "Unpaid").length} fines awaiting action
-                </div>
+                {unlinkedFines.length > 0 && (
+                  <div className="text-xs text-tint-rose-foreground/80">
+                    AED {unlinkedTotal.toLocaleString()} not linked to a client — {unlinkedFines.length} fines
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -761,6 +817,7 @@ const Fines = () => {
                 ) : (
                   paginatedFines.map((f) => {
                     const paidAt = (f as FineRow & { paid_at?: string | null }).paid_at;
+                    const companyExpense = isCompanyExpense(f);
                     const displayedStatus: ChargeStatus = paidAt
                       ? "Paid"
                       : f.status === "Charged to Client"
@@ -782,7 +839,15 @@ const Fines = () => {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{f.cars?.plate ?? "—"}</TableCell>
-                      <TableCell className="text-sm font-medium text-foreground">{f.clients?.full_name ?? "—"}</TableCell>
+                      <TableCell className="text-sm font-medium text-foreground">
+                        {f.clients?.full_name ?? (
+                          companyExpense ? (
+                            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                              Company Expense
+                            </span>
+                          ) : "—"
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{f.fine_type}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(f.amount).toLocaleString()}</TableCell>
                       <TableCell>
@@ -798,8 +863,13 @@ const Fines = () => {
                               {displayedStatus}
                             </span>
                           )}
-                          {displayedStatus === "Unpaid" && (
-                            f.contract_id === null ? (
+                          {f.status === "Unpaid" && displayedStatus === "Unpaid" && f.contract_id !== null && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
+                              Charge to Client
+                            </Button>
+                          )}
+                          {f.status === "Unpaid" && displayedStatus === "Unpaid" && f.contract_id === null && !companyExpense && (
+                            <>
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -812,11 +882,10 @@ const Fines = () => {
                                   <TooltipContent>No contract linked – cannot charge client</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                            ) : (
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeFineToClient(f.id)}>
-                                Charge to Client
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => markFineAsCompanyExpense(f.id)}>
+                                Mark as Company Expense
                               </Button>
-                            )
+                            </>
                           )}
                         </div>
                       </TableCell>
