@@ -32,7 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Calculator, Check, ChevronsUpDown } from "lucide-react";
+import { Calculator, Camera, Check, ChevronsUpDown } from "lucide-react";
 import {
   findVehicleContractOverlap,
   formatContractOverlapMessage,
@@ -155,6 +155,23 @@ interface RentalPeriod {
   end: string;
   amount: number;
   daily_rate: number;
+}
+
+function PhotoPlaceholder({ title }: { title: string }) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs text-white/50 uppercase tracking-wider">{title}</Label>
+      <div className="flex min-h-24 items-center gap-3 rounded-md border border-dashed border-white/15 bg-[#1a1a1a] px-3 py-3 text-white/55">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]">
+          <Camera className="h-4 w-4 text-white/45" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <div className="text-sm text-white/70">Photo upload placeholder</div>
+          <div className="text-xs text-white/40">Storage upload is not enabled for replacement photos yet.</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function splitDatetimeLocal(value: string) {
@@ -299,6 +316,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [startMileage, setStartMileage] = useState("");
   const [startFuelLevel, setStartFuelLevel] = useState("");
   const [replacementReason, setReplacementReason] = useState("");
+  const [replacementType, setReplacementType] = useState("Permanent");
   const [currentMonthlyPrice, setCurrentMonthlyPrice] = useState<string>("");
   const [monthlyPrice, setMonthlyPrice] = useState<string>("");
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -357,6 +375,19 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     });
   }, [availableCars, newVehicleSearch]);
 
+  const handleReplacementReasonChange = (value: string) => {
+    setReplacementReason(value);
+
+    if (["Maintenance", "Breakdown", "Accident"].includes(value)) {
+      setSentToStatus("Maintenance");
+      return;
+    }
+
+    if (["Customer Request", "Company Operational Need"].includes(value)) {
+      setSentToStatus("Available");
+    }
+  };
+
   // Helper to format a Date object into local datetime-local string (YYYY-MM-DDTHH:MM)
   const formatDatetimeLocal = (date: Date) => {
     const pad = (num: number) => String(num).padStart(2, "0");
@@ -384,6 +415,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setStartMileage("");
       setStartFuelLevel("");
       setReplacementReason("");
+      setReplacementType("Permanent");
       setCurrentCar(null);
       setCurrentMonthlyPrice("");
       setMonthlyPrice("");
@@ -771,22 +803,77 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       <DialogContent className="flex max-h-[95dvh] max-w-2xl flex-col overflow-hidden bg-[#0F1117] border-white/10 text-white p-6 rounded-lg shadow-xl font-dm-sans">
         <DialogHeader className="shrink-0">
           <DialogTitle className="text-xl font-semibold tracking-tight text-white">
-            Replace Vehicle Mid-Contract
+            Vehicle Replacement
           </DialogTitle>
           <DialogDescription className="text-sm text-white/60">
-            Record the replacement time and assign the new vehicle to Contract:{" "}
-            <span className="font-ibm-plex-mono text-white bg-white/5 px-1.5 py-0.5 rounded text-xs">
-              {contractId.slice(0, 8).toUpperCase()}
-            </span>
+            Close current vehicle and hand over a replacement under the same contract.
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="my-4 rounded-md border border-white/10 bg-white/[0.03] p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-white/90">Replacement Details</h3>
+              <span className="font-ibm-plex-mono text-xs text-white/50">
+                Contract {contractId.slice(0, 8).toUpperCase()}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="replacement-time" className="text-xs text-white/50 uppercase tracking-wider">
+                  Replacement Date & Time
+                </Label>
+                <Input
+                  id="replacement-time"
+                  type="datetime-local"
+                  value={replacementTime}
+                  onChange={(e) => setReplacementTime(e.target.value)}
+                  className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-white/50 uppercase tracking-wider">
+                  Replacement Type
+                </Label>
+                <Select value={replacementType} onValueChange={setReplacementType}>
+                  <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#111111] border-white/10 text-white">
+                    <SelectItem value="Temporary" className="focus:bg-[#1a1a1a] focus:text-white">Temporary</SelectItem>
+                    <SelectItem value="Permanent" className="focus:bg-[#1a1a1a] focus:text-white">Permanent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-white/50 uppercase tracking-wider">
+                  Reason for Replacement
+                </Label>
+                <Select value={replacementReason} onValueChange={handleReplacementReasonChange}>
+                  <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                    <SelectValue placeholder="Select reason" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#111111] border-white/10 text-white">
+                    <SelectItem value="Maintenance" className="focus:bg-[#1a1a1a] focus:text-white">Maintenance</SelectItem>
+                    <SelectItem value="Breakdown" className="focus:bg-[#1a1a1a] focus:text-white">Breakdown</SelectItem>
+                    <SelectItem value="Accident" className="focus:bg-[#1a1a1a] focus:text-white">Accident</SelectItem>
+                    <SelectItem value="Customer Request" className="focus:bg-[#1a1a1a] focus:text-white">Customer Request</SelectItem>
+                    <SelectItem value="Company Operational Need" className="focus:bg-[#1a1a1a] focus:text-white">Company Operational Need</SelectItem>
+                    <SelectItem value="Other" className="focus:bg-[#1a1a1a] focus:text-white">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-4 border-t border-b border-white/10 py-6">
           {/* Section 1 — Current Vehicle End */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-white/90 border-b border-white/5 pb-2">
-              Section 1 — Current Vehicle End
+              Current Vehicle Return
             </h3>
             
             <div className="space-y-2">
@@ -801,26 +888,6 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 ) : (
                   currentCarId.slice(0, 8).toUpperCase()
                 )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="current-monthly-price" className="text-xs text-white/50 uppercase tracking-wider">
-                Monthly price
-              </Label>
-              <Input
-                id="current-monthly-price"
-                type="number"
-                min="1"
-                step="1"
-                inputMode="decimal"
-                value={currentMonthlyPrice}
-                onChange={(e) => setCurrentMonthlyPrice(e.target.value)}
-                placeholder="AED per month"
-                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
-              />
-              <div className="text-[11px] text-white/45 font-ibm-plex-mono">
-                Daily rate: {currentPreviewDailyRate > 0 ? `AED ${formatAed(currentPreviewDailyRate)}` : "AED --"}
               </div>
             </div>
 
@@ -887,24 +954,13 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="replacement-time" className="text-xs text-white/50 uppercase tracking-wider">
-                Replacement date & time
-              </Label>
-              <Input
-                id="replacement-time"
-                type="datetime-local"
-                value={replacementTime}
-                onChange={(e) => setReplacementTime(e.target.value)}
-                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-0"
-              />
-            </div>
+            <PhotoPlaceholder title="Old Vehicle Return Photos" />
           </div>
 
           {/* Section 2 — New Vehicle */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-white/90 border-b border-white/5 pb-2">
-              Section 2 — New Vehicle
+              Replacement Vehicle Handover
             </h3>
 
             <div className="space-y-2">
@@ -1014,28 +1070,34 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               </Select>
             </div>
 
+            <PhotoPlaceholder title="Replacement Vehicle Handover Photos" />
+          </div>
+          </div>
+
+          <div className="mb-4 grid grid-cols-1 gap-4 rounded-md border border-white/10 bg-white/[0.03] p-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-xs text-white/50 uppercase tracking-wider">
-                Reason for Replacement
+              <Label htmlFor="current-monthly-price" className="text-xs text-white/50 uppercase tracking-wider">
+                Current Vehicle Monthly Price
               </Label>
-              <Select value={replacementReason} onValueChange={setReplacementReason}>
-                <SelectTrigger className="w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
-                  <SelectValue placeholder="Select reason" />
-                </SelectTrigger>
-                <SelectContent className="bg-[#111111] border-white/10 text-white">
-                  <SelectItem value="Accident" className="focus:bg-[#1a1a1a] focus:text-white">Accident</SelectItem>
-                  <SelectItem value="Breakdown" className="focus:bg-[#1a1a1a] focus:text-white">Breakdown</SelectItem>
-                  <SelectItem value="Customer request" className="focus:bg-[#1a1a1a] focus:text-white">Customer request</SelectItem>
-                  <SelectItem value="Upgrade" className="focus:bg-[#1a1a1a] focus:text-white">Upgrade</SelectItem>
-                  <SelectItem value="Company decision" className="focus:bg-[#1a1a1a] focus:text-white">Company decision</SelectItem>
-                  <SelectItem value="Other" className="focus:bg-[#1a1a1a] focus:text-white">Other</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="current-monthly-price"
+                type="number"
+                min="1"
+                step="1"
+                inputMode="decimal"
+                value={currentMonthlyPrice}
+                onChange={(e) => setCurrentMonthlyPrice(e.target.value)}
+                placeholder="AED per month"
+                className="font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+              />
+              <div className="text-[11px] text-white/45 font-ibm-plex-mono">
+                Daily rate: {currentPreviewDailyRate > 0 ? `AED ${formatAed(currentPreviewDailyRate)}` : "AED --"}
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="replacement-monthly-price" className="text-xs text-white/50 uppercase tracking-wider">
-                Monthly price
+                Replacement Vehicle Monthly Price
               </Label>
               <Input
                 id="replacement-monthly-price"
@@ -1052,7 +1114,6 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 Daily rate: {previewDailyRate > 0 ? `AED ${formatAed(previewDailyRate)}` : "AED --"}
               </div>
             </div>
-          </div>
           </div>
 
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
