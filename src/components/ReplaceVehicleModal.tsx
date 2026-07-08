@@ -681,12 +681,12 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const handleReplacementReasonChange = (value: string) => {
     setReplacementReason(value);
 
-    if (["Maintenance", "Breakdown", "Accident"].includes(value)) {
+    if (["Breakdown", "Accident"].includes(value)) {
       setSentToStatus("Maintenance");
       return;
     }
 
-    if (["Customer Request", "Company Operational Need"].includes(value)) {
+    if (["Customer request", "Upgrade", "Company decision"].includes(value)) {
       setSentToStatus("Available");
     }
   };
@@ -1170,11 +1170,11 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                     <SelectValue placeholder="Select reason" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#111111] border-white/10 text-white">
-                    <SelectItem value="Maintenance" className="focus:bg-[#1a1a1a] focus:text-white">Maintenance</SelectItem>
                     <SelectItem value="Breakdown" className="focus:bg-[#1a1a1a] focus:text-white">Breakdown</SelectItem>
                     <SelectItem value="Accident" className="focus:bg-[#1a1a1a] focus:text-white">Accident</SelectItem>
-                    <SelectItem value="Customer Request" className="focus:bg-[#1a1a1a] focus:text-white">Customer Request</SelectItem>
-                    <SelectItem value="Company Operational Need" className="focus:bg-[#1a1a1a] focus:text-white">Company Operational Need</SelectItem>
+                    <SelectItem value="Customer request" className="focus:bg-[#1a1a1a] focus:text-white">Customer Request</SelectItem>
+                    <SelectItem value="Upgrade" className="focus:bg-[#1a1a1a] focus:text-white">Upgrade</SelectItem>
+                    <SelectItem value="Company decision" className="focus:bg-[#1a1a1a] focus:text-white">Company Decision</SelectItem>
                     <SelectItem value="Other" className="focus:bg-[#1a1a1a] focus:text-white">Other</SelectItem>
                   </SelectContent>
                 </Select>
