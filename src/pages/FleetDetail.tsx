@@ -272,25 +272,59 @@ const FleetDetail = () => {
       toast.error(`Failed to load swap history: ${swapsResult.error.message}`);
     }
 
-    const contractRows: RentalHistoryRow[] = ((contractsResult.data ?? []) as any[]).map((contract) => ({
-      id: `contract-${contract.id}`,
-      contract_id: contract.id,
-      start_date: contract.start_date,
-      end_date: contract.end_date,
-      client_name: getClientName(contract.clients),
-      status: contract.status,
-      rate_amount: contract.rate_amount === null ? null : Number(contract.rate_amount),
-      source: "contract",
-    }));
+    const contractRowsData = (contractsResult.data ?? []) as any[];
+    const vehicleHistoryContractIds = new Set<string>();
+
+    ((swapsResult.data ?? []) as any[]).forEach((swap) => {
+      if (swap.contract_id) vehicleHistoryContractIds.add(swap.contract_id);
+    });
+
+    const currentCarContractIds = contractRowsData
+      .map((contract) => contract.id)
+      .filter((contractId): contractId is string => Boolean(contractId));
+
+    if (currentCarContractIds.length > 0) {
+      const { data: relatedVehicleHistory, error: relatedVehicleHistoryError } = await db
+        .from("contract_vehicles")
+        .select("contract_id")
+        .in("contract_id", currentCarContractIds)
+        .eq("owner_id", user.id);
+
+      if (relatedVehicleHistoryError) {
+        toast.error(`Failed to verify vehicle history: ${relatedVehicleHistoryError.message}`);
+      } else {
+        ((relatedVehicleHistory ?? []) as any[]).forEach((record) => {
+          if (record.contract_id) vehicleHistoryContractIds.add(record.contract_id);
+        });
+      }
+    }
+
+    const contractRows: RentalHistoryRow[] = contractRowsData
+      .filter((contract) => !vehicleHistoryContractIds.has(contract.id))
+      .map((contract) => ({
+        id: `contract-${contract.id}`,
+        contract_id: contract.id,
+        start_date: contract.start_date,
+        end_date: contract.end_date,
+        client_name: getClientName(contract.clients),
+        status: contract.status,
+        rate_amount: contract.rate_amount === null ? null : Number(contract.rate_amount),
+        source: "contract",
+      }));
 
     const swapRows: RentalHistoryRow[] = ((swapsResult.data ?? []) as any[]).map((swap) => ({
-      id: `swap-${swap.contract_id}-${swap.started_at}`,
+      id: `swap-${swap.contract_id}-${swap.car_id}-${swap.started_at}`,
       contract_id: swap.contract_id,
       start_date: swap.started_at,
-      end_date: swap.ended_at,
+      end_date: swap.ended_at ?? swap.contracts?.end_date ?? null,
       client_name: getClientName(swap.contracts?.clients),
       status: swap.contracts?.status ?? "Unknown",
-      rate_amount: swap.daily_rate === null || swap.daily_rate === undefined ? null : Number(swap.daily_rate),
+      rate_amount:
+        swap.daily_rate === null || swap.daily_rate === undefined
+          ? swap.contracts?.rate_amount === null || swap.contracts?.rate_amount === undefined
+            ? null
+            : Number(swap.contracts.rate_amount)
+          : Number(swap.daily_rate),
       source: "swap",
     }));
 
