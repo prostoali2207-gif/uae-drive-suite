@@ -31,9 +31,26 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
+import {
+  generateReplacementAddendumPdf,
+  replacementAddendumInspectionUrl,
+  replacementAddendumResponsibilityClause,
+  type ReplacementAddendumPdfData,
+} from "@/lib/replacementAddendumPdf";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Calculator, Camera, Check, ChevronsUpDown, Image as ImageIcon, Loader2, PenLine } from "lucide-react";
+import {
+  Calculator,
+  Camera,
+  Check,
+  CheckCircle2,
+  ChevronsUpDown,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  MessageCircle,
+} from "lucide-react";
 import {
   findVehicleContractOverlap,
   formatContractOverlapMessage,
@@ -191,6 +208,12 @@ interface SignatureCanvasRef {
 interface ReplacementAddendumSignatures {
   customerSignature: string;
   companySignature: string;
+}
+
+interface ReplacementAddendumPreviewData extends ReplacementAddendumPdfData {
+  ownerId: string;
+  clientPhone?: string | null;
+  createdBy?: string | null;
 }
 
 function PhotoPlaceholder({ title }: { title: string }) {
@@ -376,80 +399,274 @@ function ReplacementSignatureField({
 function ReplacementAddendumSignatureModal({
   open,
   onCancel,
-  onContinue,
+  addendum,
+  onSigned,
+  onFinished,
 }: {
   open: boolean;
   onCancel: () => void;
-  onContinue: (signatures: ReplacementAddendumSignatures) => void;
+  addendum: ReplacementAddendumPreviewData | null;
+  onSigned: (signatures: ReplacementAddendumSignatures) => Promise<string>;
+  onFinished: () => void;
 }) {
   const customerSignatureRef = useRef<SignatureCanvasRef>(null);
   const companySignatureRef = useRef<SignatureCanvasRef>(null);
+  const [step, setStep] = useState<"review" | "success">("review");
   const [customerSigned, setCustomerSigned] = useState(false);
   const [companySigned, setCompanySigned] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [signedSignatures, setSignedSignatures] = useState<ReplacementAddendumSignatures | null>(null);
 
   useEffect(() => {
-    if (!open) {
-      setCustomerSigned(false);
-      setCompanySigned(false);
-    }
+    if (!open) return;
+    setStep("review");
+    setCustomerSigned(false);
+    setCompanySigned(false);
+    setSaving(false);
+    setPdfUrl("");
+    setSaveError("");
+    setSignedSignatures(null);
   }, [open]);
 
-  const handleContinue = () => {
+  const handleComplete = async () => {
     if (!customerSignatureRef.current || !companySignatureRef.current) return;
     if (customerSignatureRef.current.isEmpty() || companySignatureRef.current.isEmpty()) return;
+    if (!addendum) return;
 
-    onContinue({
+    setSaving(true);
+    setSaveError("");
+    const signatures = {
       customerSignature: customerSignatureRef.current.getDataUrl(),
       companySignature: companySignatureRef.current.getDataUrl(),
+    };
+    try {
+      const publicUrl = await onSigned(signatures);
+      setSignedSignatures(signatures);
+      setPdfUrl(publicUrl);
+      setStep("success");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to generate replacement addendum.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!addendum || !signedSignatures) return;
+    await generateReplacementAddendumPdf({
+      ...addendum,
+      customerSignature: signedSignatures.customerSignature,
+      companySignature: signedSignatures.companySignature,
     });
   };
 
+  const handleWhatsApp = () => {
+    if (!addendum) return;
+    const rawPhone = addendum.clientPhone ?? "";
+    let phone = rawPhone.replace(/[\s\-()]/g, "");
+    if (phone.startsWith("0")) {
+      phone = `+971${phone.slice(1)}`;
+    } else if (phone && !phone.startsWith("+")) {
+      phone = `+971${phone}`;
+    }
+    const text = encodeURIComponent(
+      pdfUrl
+        ? `Replacement Addendum #${addendum.replacementNo} is signed: ${pdfUrl}`
+        : `Replacement Addendum #${addendum.replacementNo} is signed for contract ${addendum.contractId}.`,
+    );
+    window.open(phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
+  };
+
+  const detailRows = addendum
+    ? [
+        ["Company", addendum.company.name],
+        ["Original Contract ID", addendum.contractId],
+        ["Replacement No.", `#${addendum.replacementNo}`],
+        ["Replacement Type", addendum.replacementType],
+        ["Reason", addendum.reason],
+        ["Replacement Date & Time", addendum.replacementDateTime],
+      ]
+    : [];
+  const oldVehicle = addendum?.oldVehicle;
+  const newVehicle = addendum?.newVehicle;
+  const inspectionUrl = addendum ? replacementAddendumInspectionUrl(addendum.contractId) : "";
+
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto bg-[#0F1117] border-white/10 text-white sm:max-w-[680px]">
-        <DialogHeader>
-          <DialogTitle>Replacement Addendum Signatures</DialogTitle>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) (step === "success" ? onFinished() : onCancel()); }}>
+      <DialogContent className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-white/10 bg-[#0F1117] p-0 text-white sm:h-[96vh] sm:w-[min(980px,calc(100vw-2rem))] sm:rounded-lg">
+        <DialogHeader className="shrink-0 border-b border-white/10 px-4 py-3 sm:px-6 sm:py-4">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-4 w-4" aria-hidden="true" />
+            Review &amp; Sign Replacement Addendum
+          </DialogTitle>
           <DialogDescription className="text-white/60">
-            Capture signatures for the vehicle replacement addendum.
+            Review the vehicle replacement addendum, then capture both signatures.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-md border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100">
-            <PenLine className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <div>Signatures are kept in this replacement flow only until addendum PDF persistence is implemented.</div>
-          </div>
+        <div className="flex-1 overflow-y-auto bg-black/20 px-3 py-3 sm:px-6 sm:py-5">
+          {step === "review" && (
+            <div className="mx-auto max-w-[794px] space-y-4">
+              {!addendum ? (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                  Replacement addendum details are not loaded. Please reopen the signature step.
+                </div>
+              ) : (
+                <>
+                  <section className="min-h-[880px] border border-[#d6e0eb] bg-white p-5 text-[#0f172a] shadow-sm sm:p-8">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="truncate text-lg font-bold">{addendum.company.name}</div>
+                        <div className="mt-1 text-xs text-[#005ab3]">Car Rental</div>
+                      </div>
+                      <div className="text-right text-[11px] text-[#566478]">
+                        {addendum.company.phone && <div>{addendum.company.phone}</div>}
+                        {addendum.company.email && <div className="break-all">{addendum.company.email}</div>}
+                      </div>
+                    </div>
 
-          <ReplacementSignatureField
-            title="Customer Signature"
-            signatureRef={customerSignatureRef}
-            signed={customerSigned}
-            onStroke={() => setCustomerSigned(true)}
-            onClear={() => setCustomerSigned(false)}
-          />
+                    <div className="mt-8">
+                      <h2 className="text-2xl font-bold leading-tight">Vehicle Replacement Addendum</h2>
+                      <p className="mt-2 text-xs text-[#566478]">Signed addendum to the original Rental Agreement.</p>
+                    </div>
 
-          <ReplacementSignatureField
-            title="Company Representative Signature"
-            signatureRef={companySignatureRef}
-            signed={companySigned}
-            onStroke={() => setCompanySigned(true)}
-            onClear={() => setCompanySigned(false)}
-          />
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                      {detailRows.map(([label, value]) => (
+                        <div key={label} className="rounded border border-[#d6e0eb] bg-[#f9fbfd] p-3">
+                          <div className="text-[10px] uppercase text-[#566478]">{label}</div>
+                          <div className="mt-1 break-words text-sm font-bold">{value || "-"}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-7 grid gap-4 md:grid-cols-2">
+                      <section>
+                        <h3 className="mb-3 text-xs font-bold uppercase text-[#005ab3]">Old Vehicle Return Details</h3>
+                        <div className="divide-y divide-[#d6e0eb] rounded border border-[#d6e0eb]">
+                          {[
+                            ["Vehicle", [oldVehicle?.plate, oldVehicle?.make, oldVehicle?.model].filter(Boolean).join(" - ")],
+                            ["Mileage", oldVehicle?.mileage ? `${oldVehicle.mileage} km` : ""],
+                            ["Fuel", oldVehicle?.fuel],
+                            ["Notes", oldVehicle?.notes],
+                          ].map(([label, value]) => (
+                            <div key={label} className="p-3">
+                              <div className="text-[10px] text-[#566478]">{label}</div>
+                              <div className="mt-1 break-words text-sm font-bold">{value || "-"}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section>
+                        <h3 className="mb-3 text-xs font-bold uppercase text-[#005ab3]">Replacement Vehicle Handover Details</h3>
+                        <div className="divide-y divide-[#d6e0eb] rounded border border-[#d6e0eb]">
+                          {[
+                            ["Vehicle", [newVehicle?.plate, newVehicle?.make, newVehicle?.model].filter(Boolean).join(" - ")],
+                            ["Mileage", newVehicle?.mileage ? `${newVehicle.mileage} km` : ""],
+                            ["Fuel", newVehicle?.fuel],
+                            ["Notes", newVehicle?.notes],
+                          ].map(([label, value]) => (
+                            <div key={label} className="p-3">
+                              <div className="text-[10px] text-[#566478]">{label}</div>
+                              <div className="mt-1 break-words text-sm font-bold">{value || "-"}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    </div>
+
+                    <div className="mt-6 rounded border border-[#d6e0eb] bg-[#f9fbfd] p-4">
+                      <div className="text-xs font-bold text-[#005ab3]">Inspection Photos</div>
+                      <div className="mt-2 break-all text-sm">{inspectionUrl}</div>
+                    </div>
+
+                    <div className="mt-6 rounded border border-[#d6e0eb] p-4">
+                      <div className="text-xs font-bold uppercase text-[#005ab3]">Responsibility Transfer Clause</div>
+                      <p className="mt-2 text-sm leading-relaxed">{replacementAddendumResponsibilityClause}</p>
+                    </div>
+
+                    <div className="mt-8">
+                      <h3 className="mb-3 text-xs font-bold uppercase text-[#005ab3]">Agreement & Signatures</h3>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <ReplacementSignatureField
+                          title="Customer Signature"
+                          signatureRef={customerSignatureRef}
+                          signed={customerSigned}
+                          onStroke={() => setCustomerSigned(true)}
+                          onClear={() => setCustomerSigned(false)}
+                        />
+
+                        <ReplacementSignatureField
+                          title="Company Representative Signature"
+                          signatureRef={companySignatureRef}
+                          signed={companySigned}
+                          onStroke={() => setCompanySigned(true)}
+                          onClear={() => setCompanySigned(false)}
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  {saveError && (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                      {saveError}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {step === "success" && (
+            <div className="flex min-h-full flex-col items-center justify-center gap-4 py-8 text-center">
+              <div className="rounded-full bg-blue-400/10 p-4">
+                <CheckCircle2 className="h-10 w-10 text-blue-200" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-base font-semibold text-white">Replacement Addendum signed successfully</p>
+                <p className="mt-1 text-sm text-white/60">The signed PDF was uploaded and saved in Documents.</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        <DialogFooter className="gap-2">
-          <Button type="button" variant="ghost" className="text-white/60 hover:bg-white/5 hover:text-white" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            className="min-h-10 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90"
-            disabled={!customerSigned || !companySigned}
-            onClick={handleContinue}
-          >
-            Continue to Generate Addendum
-          </Button>
-        </DialogFooter>
+        {step === "review" && (
+          <div className="shrink-0 border-t border-white/10 bg-[#0F1117] px-4 py-3 sm:px-6 sm:py-4">
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" className="text-white/60 hover:bg-white/5 hover:text-white" onClick={onCancel}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="min-h-10 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90"
+                disabled={!addendum || !customerSigned || !companySigned || saving}
+                onClick={handleComplete}
+              >
+                {saving ? "Generating..." : "Complete & Save Addendum"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "success" && (
+          <div className="shrink-0 border-t border-white/10 bg-[#0F1117] px-4 py-3 sm:px-6 sm:py-4">
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" className="gap-1.5" onClick={handleDownload}>
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Download PDF
+              </Button>
+              <Button type="button" className="gap-1.5 bg-green-600 text-white hover:bg-green-700" onClick={handleWhatsApp}>
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                Send via WhatsApp
+              </Button>
+              <Button type="button" onClick={onFinished}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -761,6 +978,33 @@ const formatAed = (amount: number) =>
       })
     : "--";
 
+const formatAddendumDateTime = (value: string) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.replace("T", " ");
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", " -");
+};
+
+const formatFuelLevelLabel = (value: string | number | null | undefined) => {
+  if (value === null || value === undefined || value === "") return "-";
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    if (numeric === 100) return "Full";
+    if (numeric === 75) return "3/4";
+    if (numeric === 50) return "1/2";
+    if (numeric === 25) return "1/4";
+    if (numeric === 0) return "Empty";
+  }
+  return String(value);
+};
+
 function calculateContractDailyRate(rateType: string, rateAmount: number | string) {
   const amount = Number(rateAmount);
   if (!Number.isFinite(amount) || amount <= 0) return 0;
@@ -881,8 +1125,8 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [replacementInspectionId, setReplacementInspectionId] = useState("");
   const [replacementInspectionUploadedBy, setReplacementInspectionUploadedBy] = useState<string | null>(null);
   const [replacementSignatureOpen, setReplacementSignatureOpen] = useState(false);
-  const [, setReplacementAddendumSignatures] =
-    useState<ReplacementAddendumSignatures | null>(null);
+  const [replacementAddendumData, setReplacementAddendumData] =
+    useState<ReplacementAddendumPreviewData | null>(null);
 
   const currentMonthlyPriceNumber = Number(currentMonthlyPrice);
   const currentPreviewDailyRate =
@@ -987,7 +1231,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setReplacementInspectionId("");
       setReplacementInspectionUploadedBy(null);
       setReplacementSignatureOpen(false);
-      setReplacementAddendumSignatures(null);
+      setReplacementAddendumData(null);
       
       const fetchModalData = async () => {
         setLoadingCars(true);
@@ -1321,7 +1565,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
       const { data: updatedVehiclePeriods, error: updatedVehiclePeriodsError } = await extendedDb
         .from("contract_vehicles")
-        .select("started_at, ended_at, daily_rate")
+        .select("id, started_at, ended_at, daily_rate, replacement_reason")
         .eq("contract_id", contractId);
       if (updatedVehiclePeriodsError) throw updatedVehiclePeriodsError;
 
@@ -1344,6 +1588,69 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
           .eq("id", activeRentalTarget.id);
         if (errRentalFeeAmount) throw errRentalFeeAmount;
       }
+
+      const replacementRows = ((updatedVehiclePeriods ?? []) as Array<{
+        id: string;
+        started_at: string;
+        replacement_reason: string | null;
+      }>)
+        .filter((row) => row.replacement_reason)
+        .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+      const replacementNo = Math.max(1, replacementRows.findIndex((row) => row.id === replacementId) + 1);
+
+      const [{ data: contractContact }, { data: profileData }] = await Promise.all([
+        (supabase as any)
+          .from("contracts")
+          .select("clients(phone)")
+          .eq("id", contractId)
+          .maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("company_name, phone_number, email")
+          .eq("id", userId)
+          .maybeSingle(),
+      ]);
+      const profile = (profileData ?? {}) as {
+        company_name?: string | null;
+        phone_number?: string | null;
+        email?: string | null;
+      };
+      const clientPhone = (contractContact as { clients?: { phone?: string | null } | null } | null)?.clients?.phone ?? null;
+
+      setReplacementAddendumData({
+        contractId,
+        replacementId,
+        replacementNo,
+        replacementType,
+        reason: replacementReason,
+        replacementDateTime: formatAddendumDateTime(replacementTime),
+        ownerId: userId,
+        createdBy: userId,
+        clientPhone,
+        company: {
+          name: profile.company_name || "Rental Company",
+          phone: profile.phone_number || "",
+          email: profile.email || user.email || "",
+        },
+        oldVehicle: {
+          plate: currentCar?.plate ?? "",
+          make: currentCar?.make ?? "",
+          model: currentCar?.model ?? "",
+          mileage: endMileage || null,
+          fuel: formatFuelLevelLabel(endFuelLevel),
+          notes: conditionNote || null,
+        },
+        newVehicle: {
+          plate: selectedNewCar?.plate ?? "",
+          make: selectedNewCar?.make ?? "",
+          model: selectedNewCar?.model ?? "",
+          mileage: startMileage || null,
+          fuel: formatFuelLevelLabel(startFuelLevel),
+          notes: "Replacement handover inspection photos completed.",
+        },
+        customerSignature: "",
+        companySignature: "",
+      });
 
       toast({
         title: "Vehicle Replaced",
@@ -1370,6 +1677,90 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     } finally {
       setConfirmLoading(false);
     }
+  };
+
+  const handleReplacementAddendumSigned = async (signatures: ReplacementAddendumSignatures) => {
+    if (!replacementAddendumData) {
+      throw new Error("Replacement addendum details are not loaded.");
+    }
+
+    const signedAddendum: ReplacementAddendumPreviewData = {
+      ...replacementAddendumData,
+      customerSignature: signatures.customerSignature,
+      companySignature: signatures.companySignature,
+    };
+    const blob = (await generateReplacementAddendumPdf(signedAddendum, { returnBlob: true })) as Blob;
+    const storagePath = `${contractId}/replacement-addendum-${replacementAddendumData.replacementId}.pdf`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("contract-pdfs")
+      .upload(storagePath, blob, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+    if (uploadError) throw uploadError;
+
+    const { data: publicData } = supabase.storage
+      .from("contract-pdfs")
+      .getPublicUrl(storagePath);
+    const publicUrl = publicData?.publicUrl ?? "";
+
+    const documentPayload = {
+      contract_id: contractId,
+      owner_id: replacementAddendumData.ownerId,
+      document_type: "vehicle_replacement_addendum",
+      title: `Replacement Addendum #${replacementAddendumData.replacementNo}`,
+      storage_bucket: "contract-pdfs",
+      storage_path: storagePath,
+      public_url: publicUrl,
+      created_by: replacementAddendumData.createdBy,
+    };
+
+    const { data: existingDocument, error: existingError } = await (supabase as any)
+      .from("contract_documents")
+      .select("id")
+      .eq("contract_id", contractId)
+      .eq("storage_bucket", "contract-pdfs")
+      .eq("storage_path", storagePath)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    const saveDocument = async (payload: Record<string, unknown>) => {
+      if (existingDocument?.id) {
+        return (supabase as any)
+          .from("contract_documents")
+          .update(payload)
+          .eq("id", existingDocument.id);
+      }
+
+      return (supabase as any)
+        .from("contract_documents")
+        .insert(payload);
+    };
+
+    let documentResult = await saveDocument(documentPayload);
+    if (documentResult.error && /created_by/i.test(documentResult.error.message ?? "")) {
+      const { created_by, ...payloadWithoutCreatedBy } = documentPayload;
+      documentResult = await saveDocument(payloadWithoutCreatedBy);
+    }
+    if (documentResult.error) throw documentResult.error;
+
+    setReplacementAddendumData(signedAddendum);
+    onSuccess();
+    toast({
+      title: "Replacement Addendum signed successfully",
+      description: "Signed PDF uploaded and saved in Documents.",
+    });
+
+    return publicUrl;
+  };
+
+  const finishReplacementAddendumFlow = () => {
+    setReplacementSignatureOpen(false);
+    setReplacementInspectionId("");
+    setReplacementInspectionUploadedBy(null);
+    setReplacementAddendumData(null);
+    onClose();
   };
 
   return (
@@ -1761,23 +2152,16 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     />
     <ReplacementAddendumSignatureModal
       open={replacementSignatureOpen}
+      addendum={replacementAddendumData}
       onCancel={() => {
         setReplacementSignatureOpen(false);
         setReplacementInspectionId("");
         setReplacementInspectionUploadedBy(null);
+        setReplacementAddendumData(null);
         onClose();
       }}
-      onContinue={(signatures) => {
-        setReplacementAddendumSignatures(signatures);
-        setReplacementSignatureOpen(false);
-        toast({
-          title: "Replacement signatures captured",
-          description: "Signatures are held temporarily. Addendum PDF generation is not enabled yet.",
-        });
-        setReplacementInspectionId("");
-        setReplacementInspectionUploadedBy(null);
-        onClose();
-      }}
+      onSigned={handleReplacementAddendumSigned}
+      onFinished={finishReplacementAddendumFlow}
     />
     </>
   );
