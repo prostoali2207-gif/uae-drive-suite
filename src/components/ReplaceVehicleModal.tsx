@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { forwardRef, useState, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import type { Database } from "@/integrations/supabase/types";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Calculator, Camera, Check, ChevronsUpDown, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Calculator, Camera, Check, ChevronsUpDown, Image as ImageIcon, Loader2, PenLine } from "lucide-react";
 import {
   findVehicleContractOverlap,
   formatContractOverlapMessage,
@@ -182,6 +182,17 @@ interface ReplacementInspectionPhoto {
   uploaded_at: string | null;
 }
 
+interface SignatureCanvasRef {
+  isEmpty: () => boolean;
+  getDataUrl: () => string;
+  clear: () => void;
+}
+
+interface ReplacementAddendumSignatures {
+  customerSignature: string;
+  companySignature: string;
+}
+
 function PhotoPlaceholder({ title }: { title: string }) {
   return (
     <div className="space-y-2">
@@ -207,18 +218,257 @@ function replacementPhotoStateKey(type: ReplacementInspectionType, slot: string)
   return `${type}:${slot}`;
 }
 
+const ReplacementSignatureCanvas = forwardRef<
+  SignatureCanvasRef,
+  { onStroke?: () => void; className?: string }
+>(function ReplacementSignatureCanvas({ onStroke, className }, ref) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawing = useRef(false);
+  const lastPos = useRef<{ x: number; y: number } | null>(null);
+
+  const resetCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  };
+
+  useEffect(() => {
+    resetCanvas();
+  }, []);
+
+  const getXY = (event: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    if ("touches" in event) {
+      const touch = event.touches[0];
+      return {
+        x: (touch.clientX - rect.left) * scaleX,
+        y: (touch.clientY - rect.top) * scaleY,
+      };
+    }
+
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
+    };
+  };
+
+  const startDraw = (event: React.MouseEvent | React.TouchEvent) => {
+    event.preventDefault();
+    isDrawing.current = true;
+    const pos = getXY(event);
+    lastPos.current = pos;
+
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fill();
+  };
+
+  const drawLine = (event: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing.current || !lastPos.current) return;
+    event.preventDefault();
+
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+
+    const pos = getXY(event);
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastPos.current = pos;
+  };
+
+  const stopDraw = () => {
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+    lastPos.current = null;
+    onStroke?.();
+  };
+
+  useImperativeHandle(ref, () => ({
+    isEmpty: () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return true;
+
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] !== 255 || data[i + 1] !== 255 || data[i + 2] !== 255) return false;
+      }
+      return true;
+    },
+    getDataUrl: () => canvasRef.current?.toDataURL("image/png") ?? "",
+    clear: resetCanvas,
+  }));
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={720}
+      height={220}
+      className={cn("h-36 w-full cursor-crosshair touch-none rounded-sm bg-white", className)}
+      onMouseDown={startDraw}
+      onMouseMove={drawLine}
+      onMouseUp={stopDraw}
+      onMouseLeave={stopDraw}
+      onTouchStart={startDraw}
+      onTouchMove={drawLine}
+      onTouchEnd={stopDraw}
+    />
+  );
+});
+
+function ReplacementSignatureField({
+  title,
+  signatureRef,
+  signed,
+  onStroke,
+  onClear,
+}: {
+  title: string;
+  signatureRef: React.RefObject<SignatureCanvasRef | null>;
+  signed: boolean;
+  onStroke: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <section className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <Label className="text-xs uppercase tracking-wider text-white/50">{title}</Label>
+        <span className={cn("text-[11px]", signed ? "text-blue-200" : "text-white/45")}>
+          {signed ? "Signed" : "Required"}
+        </span>
+      </div>
+      <ReplacementSignatureCanvas ref={signatureRef} onStroke={onStroke} />
+      <div className="mt-2 flex justify-end">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 text-xs text-white/60 hover:bg-white/5 hover:text-white"
+          onClick={() => {
+            signatureRef.current?.clear();
+            onClear();
+          }}
+        >
+          Clear
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function ReplacementAddendumSignatureModal({
+  open,
+  onCancel,
+  onContinue,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onContinue: (signatures: ReplacementAddendumSignatures) => void;
+}) {
+  const customerSignatureRef = useRef<SignatureCanvasRef>(null);
+  const companySignatureRef = useRef<SignatureCanvasRef>(null);
+  const [customerSigned, setCustomerSigned] = useState(false);
+  const [companySigned, setCompanySigned] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setCustomerSigned(false);
+      setCompanySigned(false);
+    }
+  }, [open]);
+
+  const handleContinue = () => {
+    if (!customerSignatureRef.current || !companySignatureRef.current) return;
+    if (customerSignatureRef.current.isEmpty() || companySignatureRef.current.isEmpty()) return;
+
+    onContinue({
+      customerSignature: customerSignatureRef.current.getDataUrl(),
+      companySignature: companySignatureRef.current.getDataUrl(),
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto bg-[#0F1117] border-white/10 text-white sm:max-w-[680px]">
+        <DialogHeader>
+          <DialogTitle>Replacement Addendum Signatures</DialogTitle>
+          <DialogDescription className="text-white/60">
+            Capture signatures for the vehicle replacement addendum.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-md border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100">
+            <PenLine className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <div>Signatures are kept in this replacement flow only until addendum PDF persistence is implemented.</div>
+          </div>
+
+          <ReplacementSignatureField
+            title="Customer Signature"
+            signatureRef={customerSignatureRef}
+            signed={customerSigned}
+            onStroke={() => setCustomerSigned(true)}
+            onClear={() => setCustomerSigned(false)}
+          />
+
+          <ReplacementSignatureField
+            title="Company Representative Signature"
+            signatureRef={companySignatureRef}
+            signed={companySigned}
+            onStroke={() => setCompanySigned(true)}
+            onClear={() => setCompanySigned(false)}
+          />
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button type="button" variant="ghost" className="text-white/60 hover:bg-white/5 hover:text-white" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className="min-h-10 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90"
+            disabled={!customerSigned || !companySigned}
+            onClick={handleContinue}
+          >
+            Continue to Generate Addendum
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ReplacementInspectionModal({
   contractId,
   replacementId,
   uploadedBy,
   open,
-  onDone,
+  onCancel,
+  onComplete,
 }: {
   contractId: string;
   replacementId: string;
   uploadedBy: string | null;
   open: boolean;
-  onDone: () => void;
+  onCancel: () => void;
+  onComplete: () => void;
 }) {
   const [photos, setPhotos] = useState<ReplacementInspectionPhoto[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -365,8 +615,10 @@ function ReplacementInspectionModal({
     }
   };
 
+  const isComplete = uploadedCount === requiredCount;
+
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onDone(); }}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
       <DialogContent className="max-h-[92dvh] overflow-y-auto bg-[#0F1117] border-white/10 text-white sm:max-w-[720px]">
         <DialogHeader>
           <DialogTitle>Replacement Inspection Photos</DialogTitle>
@@ -465,8 +717,13 @@ function ReplacementInspectionModal({
         </div>
 
         <DialogFooter>
-          <Button type="button" className="min-h-10 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90" onClick={onDone}>
-            Done
+          <Button
+            type="button"
+            className="min-h-10 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90"
+            disabled={!isComplete}
+            onClick={onComplete}
+          >
+            Continue to Sign Addendum
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -623,6 +880,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [replacementInspectionOpen, setReplacementInspectionOpen] = useState(false);
   const [replacementInspectionId, setReplacementInspectionId] = useState("");
   const [replacementInspectionUploadedBy, setReplacementInspectionUploadedBy] = useState<string | null>(null);
+  const [replacementSignatureOpen, setReplacementSignatureOpen] = useState(false);
+  const [, setReplacementAddendumSignatures] =
+    useState<ReplacementAddendumSignatures | null>(null);
 
   const currentMonthlyPriceNumber = Number(currentMonthlyPrice);
   const currentPreviewDailyRate =
@@ -726,6 +986,8 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setReplacementInspectionOpen(false);
       setReplacementInspectionId("");
       setReplacementInspectionUploadedBy(null);
+      setReplacementSignatureOpen(false);
+      setReplacementAddendumSignatures(null);
       
       const fetchModalData = async () => {
         setLoadingCars(true);
@@ -1486,8 +1748,32 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       replacementId={replacementInspectionId}
       uploadedBy={replacementInspectionUploadedBy}
       open={replacementInspectionOpen}
-      onDone={() => {
+      onCancel={() => {
         setReplacementInspectionOpen(false);
+        setReplacementInspectionId("");
+        setReplacementInspectionUploadedBy(null);
+        onClose();
+      }}
+      onComplete={() => {
+        setReplacementInspectionOpen(false);
+        setReplacementSignatureOpen(true);
+      }}
+    />
+    <ReplacementAddendumSignatureModal
+      open={replacementSignatureOpen}
+      onCancel={() => {
+        setReplacementSignatureOpen(false);
+        setReplacementInspectionId("");
+        setReplacementInspectionUploadedBy(null);
+        onClose();
+      }}
+      onContinue={(signatures) => {
+        setReplacementAddendumSignatures(signatures);
+        setReplacementSignatureOpen(false);
+        toast({
+          title: "Replacement signatures captured",
+          description: "Signatures are held temporarily. Addendum PDF generation is not enabled yet.",
+        });
         setReplacementInspectionId("");
         setReplacementInspectionUploadedBy(null);
         onClose();
