@@ -358,38 +358,42 @@ const ReplacementSignatureCanvas = forwardRef<
 
 function ReplacementSignatureField({
   title,
+  clearLabel,
   signatureRef,
   signed,
   onStroke,
   onClear,
 }: {
   title: string;
+  clearLabel: string;
   signatureRef: React.RefObject<SignatureCanvasRef | null>;
   signed: boolean;
   onStroke: () => void;
   onClear: () => void;
 }) {
   return (
-    <section className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+    <section className="rounded border border-[#d6e0eb] bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <Label className="text-xs uppercase tracking-wider text-white/50">{title}</Label>
-        <span className={cn("text-[11px]", signed ? "text-blue-200" : "text-white/45")}>
+        <Label className="text-[10px] font-bold uppercase tracking-normal text-[#005ab3]">{title}</Label>
+        <span className={cn("text-[11px] font-medium", signed ? "text-[#005ab3]" : "text-[#566478]")}>
           {signed ? "Signed" : "Required"}
         </span>
       </div>
-      <ReplacementSignatureCanvas ref={signatureRef} onStroke={onStroke} />
+      <div className="rounded-sm border border-[#d6e0eb] bg-white p-1">
+        <ReplacementSignatureCanvas ref={signatureRef} onStroke={onStroke} className="border border-[#edf2f7]" />
+      </div>
       <div className="mt-2 flex justify-end">
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="h-8 text-xs text-white/60 hover:bg-white/5 hover:text-white"
+          className="min-h-10 text-xs"
           onClick={() => {
             signatureRef.current?.clear();
             onClear();
           }}
         >
-          Clear
+          {clearLabel}
         </Button>
       </div>
     </section>
@@ -592,6 +596,7 @@ function ReplacementAddendumSignatureModal({
                       <div className="grid gap-4 md:grid-cols-2">
                         <ReplacementSignatureField
                           title="Customer Signature"
+                          clearLabel="Clear Customer Signature"
                           signatureRef={customerSignatureRef}
                           signed={customerSigned}
                           onStroke={() => setCustomerSigned(true)}
@@ -600,6 +605,7 @@ function ReplacementAddendumSignatureModal({
 
                         <ReplacementSignatureField
                           title="Company Representative Signature"
+                          clearLabel="Clear Company Signature"
                           signatureRef={companySignatureRef}
                           signed={companySigned}
                           onStroke={() => setCompanySigned(true)}
