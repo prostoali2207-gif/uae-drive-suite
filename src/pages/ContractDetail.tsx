@@ -188,6 +188,16 @@ interface PaymentRow {
   allocations?: unknown;
 }
 
+interface ContractDocumentRow {
+  id: string;
+  document_type: string;
+  title: string;
+  storage_bucket: string;
+  storage_path: string;
+  public_url: string | null;
+  created_at: string;
+}
+
 type PaymentMethod = "Cash" | "Card" | "Transfer";
 type InlinePaymentMethod = "Cash" | "Card" | "Bank Transfer" | "Cheque";
 
@@ -356,6 +366,25 @@ function getChargeVerificationLabel(recordCount: number, lastImportAt: string | 
   if (recordCount > 0) return `${recordCount} records`;
   if (lastImportAt) return `0 records - Last import: ${formatDate(lastImportAt)}`;
   return "Not imported yet";
+}
+
+function getContractDocumentLabel(documentType: string): string {
+  switch (documentType) {
+    case "original_rental_agreement":
+      return "Original Rental Agreement";
+    case "vehicle_replacement_addendum":
+      return "Vehicle Replacement Addendum";
+    case "final_return_checkin":
+      return "Final Return Check-in";
+    case "other":
+      return "Other";
+    default:
+      return documentType
+        .split("_")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+  }
 }
 
 function diffDays(start: string, end: string): number {
@@ -3699,6 +3728,7 @@ const ContractDetail = () => {
   });
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [contractFees, setContractFees] = useState<ContractFeeRow[]>([]);
+  const [contractDocuments, setContractDocuments] = useState<ContractDocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
@@ -3813,7 +3843,14 @@ const ContractDetail = () => {
     setNotesDraft((c as { notes?: string | null } | null)?.notes ?? "");
 
     if (c) {
-      const [paymentsRes, finesRes, salikRes, latestFinesImportRes, latestSalikImportRes] = await Promise.all([
+      const [
+        paymentsRes,
+        finesRes,
+        salikRes,
+        latestFinesImportRes,
+        latestSalikImportRes,
+        documentsRes,
+      ] = await Promise.all([
         supabase
           .from("payments")
           .select("id, payment_date, amount, method, status, allocations")
@@ -3843,10 +3880,21 @@ const ContractDetail = () => {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
+        (supabase as any)
+          .from("contract_documents")
+          .select("id, document_type, title, storage_bucket, storage_path, public_url, created_at")
+          .eq("contract_id", c.id)
+          .order("created_at", { ascending: true }),
       ]);
       if (!paymentsRes.error) setPayments(paymentsRes.data || []);
       if (!finesRes.error) setFines(finesRes.data || []);
       if (!salikRes.error) setSalik(salikRes.data || []);
+      if (documentsRes.error) {
+        toast.error("Failed to load contract documents");
+        setContractDocuments([]);
+      } else {
+        setContractDocuments((documentsRes.data ?? []) as ContractDocumentRow[]);
+      }
       setChargeImportEvidence({
         finesLastImportAt:
           !latestFinesImportRes.error && latestFinesImportRes.data
@@ -3858,6 +3906,7 @@ const ContractDetail = () => {
             : null,
       });
     } else {
+      setContractDocuments([]);
       setChargeImportEvidence({ finesLastImportAt: null, salikLastImportAt: null });
     }
     setLoading(false);
@@ -3929,6 +3978,38 @@ const ContractDetail = () => {
     await reconcileFinePaymentStatuses();
     await fetchData();
   }, [fetchData, reconcileFinePaymentStatuses]);
+
+  const getContractDocumentUrl = useCallback((document: ContractDocumentRow) => {
+    if (document.public_url) return document.public_url;
+
+    const { data } = supabase.storage
+      .from(document.storage_bucket)
+      .getPublicUrl(document.storage_path);
+
+    return data.publicUrl;
+  }, []);
+
+  const openContractDocument = useCallback((document: ContractDocumentRow) => {
+    const url = getContractDocumentUrl(document);
+    if (!url) {
+      toast.error("Document URL is not available");
+      return;
+    }
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [getContractDocumentUrl]);
+
+  const shareContractDocumentOnWhatsApp = useCallback((document: ContractDocumentRow) => {
+    if (!document.public_url) return;
+
+    const phone = contract?.clients?.phone?.replace(/\D/g, "") ?? "";
+    const message = `${document.title}: ${document.public_url}`;
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+      : `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [contract?.clients?.phone]);
 
   const effectiveContractEndDate = contract ? getLatestRentalPeriodEnd(contract, contractFees) : "";
 
@@ -6172,27 +6253,58 @@ const ContractDetail = () => {
 
           {/* DOCUMENTS */}
           <TabsContent value="documents" className="mt-4 max-w-full min-w-0">
-            <Panel
-              title="Documents"
-              icon={FileText}
-              action={
-                <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" disabled>
-                  <Plus className="h-3.5 w-3.5" />
-                  Upload
-                </Button>
-              }
-            >
-              <EmptyState
-                icon={FileText}
-                title="No documents uploaded"
-                description="Attach the signed contract, vehicle handover form, ID copies and other files here."
-                action={
-                  <Button size="sm" variant="outline" className="mt-2 h-8 gap-1.5" disabled>
-                    <Plus className="h-3.5 w-3.5" />
-                    Upload first document
-                  </Button>
-                }
-              />
+            <Panel title="Documents" icon={FileText}>
+              {contractDocuments.length === 0 ? (
+                <div className="flex min-h-[140px] items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
+                  <p className="text-sm font-medium text-muted-foreground">No documents saved yet.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border overflow-hidden rounded-md border border-border">
+                  {contractDocuments.map((document) => (
+                    <div
+                      key={document.id}
+                      className="flex flex-col gap-3 bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="truncate text-sm font-medium text-foreground">
+                          {document.title}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                          <span>{getContractDocumentLabel(document.document_type)}</span>
+                          <span aria-hidden>-</span>
+                          <span className="font-mono tabular-nums">
+                            {formatDubaiDateTime(document.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => openContractDocument(document)}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download
+                        </Button>
+                        {document.public_url && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1.5 text-xs"
+                            onClick={() => shareContractDocumentOnWhatsApp(document)}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            WhatsApp
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Panel>
           </TabsContent>
 
