@@ -216,6 +216,20 @@ interface ReplacementAddendumPreviewData extends ReplacementAddendumPdfData {
   createdBy?: string | null;
 }
 
+function getReplacementAddendumErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const details = [record.message, record.error, record.details, record.hint]
+      .filter(Boolean)
+      .map(String)
+      .join(" ");
+    if (details) return details;
+  }
+  return "Failed to generate replacement addendum.";
+}
+
 function PhotoPlaceholder({ title }: { title: string }) {
   return (
     <div className="space-y-2">
@@ -451,7 +465,8 @@ function ReplacementAddendumSignatureModal({
       setPdfUrl(publicUrl);
       setStep("success");
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Failed to generate replacement addendum.");
+      console.error("Replacement addendum signing failed", error);
+      setSaveError(getReplacementAddendumErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -1690,26 +1705,52 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       throw new Error("Replacement addendum details are not loaded.");
     }
 
-    const signedAddendum: ReplacementAddendumPreviewData = {
-      ...replacementAddendumData,
-      customerSignature: signatures.customerSignature,
-      companySignature: signatures.companySignature,
-    };
-    const blob = (await generateReplacementAddendumPdf(signedAddendum, { returnBlob: true })) as Blob;
-    const storagePath = `${contractId}/replacement-addendum-${replacementAddendumData.replacementId}.pdf`;
+    let signedAddendum: ReplacementAddendumPreviewData;
+    let blob: Blob;
+    let storagePath = "";
+    let publicUrl = "";
 
-    const { error: uploadError } = await supabase.storage
-      .from("contract-pdfs")
-      .upload(storagePath, blob, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
-    if (uploadError) throw uploadError;
+    try {
+      signedAddendum = {
+        ...replacementAddendumData,
+        customerSignature: signatures.customerSignature,
+        companySignature: signatures.companySignature,
+      };
+      blob = (await generateReplacementAddendumPdf(signedAddendum, { returnBlob: true })) as Blob;
+      if (!(blob instanceof Blob)) {
+        throw new Error("PDF generator did not return a Blob.");
+      }
+    } catch (error) {
+      console.error("Replacement addendum PDF generation failed", error);
+      throw new Error(`PDF generation failed: ${getReplacementAddendumErrorMessage(error)}`);
+    }
 
-    const { data: publicData } = supabase.storage
-      .from("contract-pdfs")
-      .getPublicUrl(storagePath);
-    const publicUrl = publicData?.publicUrl ?? "";
+    try {
+      storagePath = `${contractId}/replacement-addendum-${replacementAddendumData.replacementId}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("contract-pdfs")
+        .upload(storagePath, blob, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+      if (uploadError) throw uploadError;
+    } catch (error) {
+      console.error("Replacement addendum PDF upload failed", error);
+      throw new Error(`PDF upload failed: ${getReplacementAddendumErrorMessage(error)}`);
+    }
+
+    try {
+      const { data: publicData } = supabase.storage
+        .from("contract-pdfs")
+        .getPublicUrl(storagePath);
+      publicUrl = publicData?.publicUrl ?? "";
+      if (!publicUrl) {
+        throw new Error("Supabase did not return a public URL.");
+      }
+    } catch (error) {
+      console.error("Replacement addendum public URL generation failed", error);
+      throw new Error(`Public URL generation failed: ${getReplacementAddendumErrorMessage(error)}`);
+    }
 
     const documentPayload = {
       contract_id: contractId,
@@ -1722,34 +1763,40 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       created_by: replacementAddendumData.createdBy,
     };
 
-    const { data: existingDocument, error: existingError } = await (supabase as any)
-      .from("contract_documents")
-      .select("id")
-      .eq("contract_id", contractId)
-      .eq("storage_bucket", "contract-pdfs")
-      .eq("storage_path", storagePath)
-      .maybeSingle();
-    if (existingError) throw existingError;
+    try {
+      const { data: existingDocuments, error: existingError } = await (supabase as any)
+        .from("contract_documents")
+        .select("id")
+        .eq("contract_id", contractId)
+        .eq("storage_bucket", "contract-pdfs")
+        .eq("storage_path", storagePath);
+      if (existingError) throw existingError;
 
-    const saveDocument = async (payload: Record<string, unknown>) => {
-      if (existingDocument?.id) {
+      const saveDocument = async (payload: Record<string, unknown>) => {
+        if ((existingDocuments ?? []).length > 0) {
+          return (supabase as any)
+            .from("contract_documents")
+            .update(payload)
+            .eq("contract_id", contractId)
+            .eq("storage_bucket", "contract-pdfs")
+            .eq("storage_path", storagePath);
+        }
+
         return (supabase as any)
           .from("contract_documents")
-          .update(payload)
-          .eq("id", existingDocument.id);
+          .insert(payload);
+      };
+
+      let documentResult = await saveDocument(documentPayload);
+      if (documentResult.error && /created_by/i.test(documentResult.error.message ?? "")) {
+        const { created_by, ...payloadWithoutCreatedBy } = documentPayload;
+        documentResult = await saveDocument(payloadWithoutCreatedBy);
       }
-
-      return (supabase as any)
-        .from("contract_documents")
-        .insert(payload);
-    };
-
-    let documentResult = await saveDocument(documentPayload);
-    if (documentResult.error && /created_by/i.test(documentResult.error.message ?? "")) {
-      const { created_by, ...payloadWithoutCreatedBy } = documentPayload;
-      documentResult = await saveDocument(payloadWithoutCreatedBy);
+      if (documentResult.error) throw documentResult.error;
+    } catch (error) {
+      console.error("Replacement addendum document registration failed", error);
+      throw new Error(`Document registration failed: ${getReplacementAddendumErrorMessage(error)}`);
     }
-    if (documentResult.error) throw documentResult.error;
 
     setReplacementAddendumData(signedAddendum);
     onSuccess();
