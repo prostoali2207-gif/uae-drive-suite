@@ -50,6 +50,7 @@ import {
   Image as ImageIcon,
   Loader2,
   MessageCircle,
+  X,
 } from "lucide-react";
 import {
   findVehicleContractOverlap,
@@ -175,7 +176,6 @@ interface RentalPeriod {
   daily_rate: number;
 }
 
-const REPLACEMENT_PHOTO_SLOTS = ["Front", "Rear", "Left side", "Right side", "Dashboard / odometer"];
 const REPLACEMENT_INSPECTION_GROUPS = [
   {
     type: "replacement_old_return",
@@ -188,6 +188,7 @@ const REPLACEMENT_INSPECTION_GROUPS = [
     pathSegment: "new-handover",
   },
 ] as const;
+const MAX_REPLACEMENT_PHOTOS_PER_GROUP = 10;
 
 type ReplacementInspectionType = (typeof REPLACEMENT_INSPECTION_GROUPS)[number]["type"];
 
@@ -247,12 +248,17 @@ function PhotoPlaceholder({ title }: { title: string }) {
   );
 }
 
-function replacementSlotKey(slot: string): string {
-  return slot.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function replacementPhotoStateKey(type: ReplacementInspectionType, id: string) {
+  return `${type}:${id}`;
 }
 
-function replacementPhotoStateKey(type: ReplacementInspectionType, slot: string) {
-  return `${type}:${slot}`;
+function replacementPhotoPath(
+  contractId: string,
+  replacementId: string,
+  group: (typeof REPLACEMENT_INSPECTION_GROUPS)[number],
+) {
+  const suffix = Math.random().toString(36).slice(2, 10);
+  return `${contractId}/replacement-${replacementId}/${group.pathSegment}/${Date.now()}-${suffix}.jpg`;
 }
 
 const ReplacementSignatureCanvas = forwardRef<
@@ -714,22 +720,21 @@ function ReplacementInspectionModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const photosByTypeSlot = useMemo(() => {
-    const map = new Map<string, ReplacementInspectionPhoto>();
-    photos.forEach((photo) => map.set(replacementPhotoStateKey(photo.type, photo.slot), photo));
-    return map;
+  const photosByType = useMemo(() => {
+    const grouped: Record<ReplacementInspectionType, ReplacementInspectionPhoto[]> = {
+      replacement_old_return: [],
+      replacement_new_handover: [],
+    };
+    photos.forEach((photo) => {
+      grouped[photo.type].push(photo);
+    });
+    return grouped;
   }, [photos]);
 
-  const requiredCount = REPLACEMENT_INSPECTION_GROUPS.length * REPLACEMENT_PHOTO_SLOTS.length;
-  const uploadedCount = REPLACEMENT_INSPECTION_GROUPS.reduce(
-    (count, group) =>
-      count +
-      REPLACEMENT_PHOTO_SLOTS.filter((slot) =>
-        photosByTypeSlot.has(replacementPhotoStateKey(group.type, slot)),
-      ).length,
-    0,
-  );
-  const progressValue = requiredCount > 0 ? (uploadedCount / requiredCount) * 100 : 0;
+  const oldVehiclePhotoCount = photosByType.replacement_old_return.length;
+  const replacementVehiclePhotoCount = photosByType.replacement_new_handover.length;
+  const completedGroups = REPLACEMENT_INSPECTION_GROUPS.filter((group) => photosByType[group.type].length > 0).length;
+  const progressValue = (completedGroups / REPLACEMENT_INSPECTION_GROUPS.length) * 100;
 
   useEffect(() => {
     if (!open || !contractId || !replacementId) return;
@@ -769,7 +774,7 @@ function ReplacementInspectionModal({
       const nextPreviews: Record<string, string> = {};
       await Promise.all(
         photos.map(async (photo) => {
-          const key = replacementPhotoStateKey(photo.type, photo.slot);
+          const key = replacementPhotoStateKey(photo.type, photo.id);
           if (!photo.photo_url) return;
           if (/^(https?:|data:|blob:)/.test(photo.photo_url)) {
             nextPreviews[key] = photo.photo_url;
@@ -792,68 +797,114 @@ function ReplacementInspectionModal({
 
   const handleUpload = async (
     group: (typeof REPLACEMENT_INSPECTION_GROUPS)[number],
-    slot: string,
-    file: File | undefined,
+    fileList: FileList | null,
   ) => {
-    if (!file) return;
+    const files = Array.from(fileList ?? []);
+    if (!files.length) return;
 
-    const stateKey = replacementPhotoStateKey(group.type, slot);
+    const groupPhotos = photosByType[group.type];
+    const availableSlots = MAX_REPLACEMENT_PHOTOS_PER_GROUP - groupPhotos.length;
+    const filesToUpload = files.slice(0, Math.max(availableSlots, 0));
+    const stateKey = replacementPhotoStateKey(group.type, "upload");
+
+    if (!filesToUpload.length) {
+      setErrors((prev) => ({ ...prev, [stateKey]: "Maximum 10 photos reached." }));
+      return;
+    }
+
+    const highestSlot = groupPhotos.reduce((highest, photo) => {
+      const numericSlot = Number.parseInt(photo.slot, 10);
+      return Number.isFinite(numericSlot) ? Math.max(highest, numericSlot) : highest;
+    }, 0);
+    const insertedPhotos: ReplacementInspectionPhoto[] = [];
+    setUploadingKey(stateKey);
+    setErrors((prev) => ({
+      ...prev,
+      [stateKey]: files.length > filesToUpload.length ? "Only 10 photos can be saved per group." : "",
+    }));
+
+    for (let index = 0; index < filesToUpload.length; index += 1) {
+      const file = filesToUpload[index];
+      const slot = String(highestSlot + index + 1);
+      const path = replacementPhotoPath(contractId, replacementId, group);
+      const uploadFile = await prepareImageForStorageUpload(file);
+      logImageCompressionUpload("ReplaceVehicleModal", file, uploadFile, path);
+      const { error: uploadError } = await supabase.storage
+        .from("inspection-photos")
+        .upload(path, uploadFile, {
+          contentType: uploadFile.type || "image/jpeg",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        setUploadingKey("");
+        setErrors((prev) => ({ ...prev, [stateKey]: uploadError.message }));
+        return;
+      }
+
+      const payload = {
+        contract_id: contractId,
+        type: group.type,
+        slot,
+        photo_url: path,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: uploadedBy,
+      };
+      const { data, error: saveError } = await (supabase as any)
+        .from("contract_inspections")
+        .insert(payload)
+        .select("id, type, slot, photo_url, uploaded_at")
+        .single();
+
+      if (saveError) {
+        setUploadingKey("");
+        setErrors((prev) => ({ ...prev, [stateKey]: saveError.message }));
+        return;
+      }
+
+      if (data) insertedPhotos.push(data as ReplacementInspectionPhoto);
+    }
+
+    setUploadingKey("");
+    if (insertedPhotos.length) {
+      setPhotos((prev) => [...prev, ...insertedPhotos]);
+    }
+    setErrors((prev) => ({
+      ...prev,
+      [stateKey]: files.length > filesToUpload.length ? "Only 10 photos can be saved per group." : "",
+    }));
+  };
+
+  const handleDelete = async (photo: ReplacementInspectionPhoto) => {
+    const stateKey = replacementPhotoStateKey(photo.type, photo.id);
     setUploadingKey(stateKey);
     setErrors((prev) => ({ ...prev, [stateKey]: "" }));
 
-    const path = `${contractId}/replacement-${replacementId}/${group.pathSegment}/${replacementSlotKey(slot)}.jpg`;
-    const uploadFile = await prepareImageForStorageUpload(file);
-    logImageCompressionUpload("ReplaceVehicleModal", file, uploadFile, path);
-    const { error: uploadError } = await supabase.storage
+    const { error: storageError } = await supabase.storage
       .from("inspection-photos")
-      .upload(path, uploadFile, {
-        contentType: uploadFile.type || "image/jpeg",
-        upsert: true,
-      });
+      .remove([photo.photo_url]);
 
-    if (uploadError) {
+    if (storageError) {
       setUploadingKey("");
-      setErrors((prev) => ({ ...prev, [stateKey]: uploadError.message }));
+      setErrors((prev) => ({ ...prev, [stateKey]: storageError.message }));
       return;
     }
 
-    const existing = photosByTypeSlot.get(stateKey);
-    const payload = {
-      contract_id: contractId,
-      type: group.type,
-      slot,
-      photo_url: path,
-      uploaded_at: new Date().toISOString(),
-      uploaded_by: uploadedBy,
-    };
-    const { data, error: saveError } = existing
-      ? await (supabase as any)
-          .from("contract_inspections")
-          .update(payload)
-          .eq("id", existing.id)
-          .select("id, type, slot, photo_url, uploaded_at")
-          .single()
-      : await (supabase as any)
-          .from("contract_inspections")
-          .insert(payload)
-          .select("id, type, slot, photo_url, uploaded_at")
-          .single();
+    const { error: deleteError } = await (supabase as any)
+      .from("contract_inspections")
+      .delete()
+      .eq("id", photo.id);
 
     setUploadingKey("");
-    if (saveError) {
-      setErrors((prev) => ({ ...prev, [stateKey]: saveError.message }));
+    if (deleteError) {
+      setErrors((prev) => ({ ...prev, [stateKey]: deleteError.message }));
       return;
     }
 
-    if (data) {
-      setPhotos((prev) => {
-        const next = prev.filter((photo) => replacementPhotoStateKey(photo.type, photo.slot) !== stateKey);
-        return [...next, data as ReplacementInspectionPhoto];
-      });
-    }
+    setPhotos((prev) => prev.filter((item) => item.id !== photo.id));
   };
 
-  const isComplete = uploadedCount === requiredCount;
+  const isComplete = completedGroups === REPLACEMENT_INSPECTION_GROUPS.length;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
@@ -868,90 +919,116 @@ function ReplacementInspectionModal({
         <div className="space-y-4">
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
             <div className="mb-1.5 flex items-center justify-between text-xs text-white/55">
-              <span>Photos added</span>
-              <span className="font-ibm-plex-mono text-blue-300">{uploadedCount} / {requiredCount}</span>
+              <span>Inspection photos</span>
+              <span className="font-ibm-plex-mono text-blue-300">{completedGroups} / {REPLACEMENT_INSPECTION_GROUPS.length} groups</span>
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-white/10">
               <div className="h-full rounded-full bg-blue-400 transition-all" style={{ width: `${progressValue}%` }} />
             </div>
+            <div className="mt-2 text-xs text-white/50">
+              Old Vehicle: {oldVehiclePhotoCount} photos &middot; Replacement Vehicle: {replacementVehiclePhotoCount} photos
+            </div>
             {errors.load && <div className="mt-2 text-xs text-red-300">{errors.load}</div>}
           </div>
 
-          {REPLACEMENT_INSPECTION_GROUPS.map((group) => (
-            <section key={group.type} className="rounded-md border border-white/10 bg-white/[0.03]">
-              <div className="border-b border-white/10 px-3 py-2">
-                <h3 className="text-sm font-semibold text-white/90">{group.title}</h3>
-              </div>
-              <div className="grid grid-cols-1 gap-2.5 p-3 sm:grid-cols-2">
-                {REPLACEMENT_PHOTO_SLOTS.map((slot, index) => {
-                  const stateKey = replacementPhotoStateKey(group.type, slot);
-                  const photo = photosByTypeSlot.get(stateKey);
-                  const preview = previews[stateKey];
-                  const isUploading = uploadingKey === stateKey;
-                  const error = errors[stateKey];
+          {REPLACEMENT_INSPECTION_GROUPS.map((group) => {
+            const groupPhotos = photosByType[group.type];
+            const uploadKey = replacementPhotoStateKey(group.type, "upload");
+            const isUploading = uploadingKey === uploadKey;
+            const isAtLimit = groupPhotos.length >= MAX_REPLACEMENT_PHOTOS_PER_GROUP;
+            const groupError = errors[uploadKey];
 
-                  return (
-                    <div key={stateKey} className="overflow-hidden rounded-md border border-white/10 bg-[#1a1a1a]">
-                      <div className="flex items-center gap-2 px-2.5 pb-1.5 pt-2.5">
-                        <div className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
-                          photo ? "bg-blue-500 text-white" : "bg-white/10 text-white/50",
-                        )}>
-                          {index + 1}
-                        </div>
-                        <div className="truncate text-[13px] font-medium text-white/85">{slot}</div>
-                      </div>
-                      <div className="mx-2.5">
-                        {preview ? (
-                          <img src={preview} alt={`${slot} replacement inspection`} className="h-[90px] w-full rounded-md border border-white/10 object-cover" />
-                        ) : (
-                          <div className="flex h-[90px] w-full items-center justify-center rounded-md border border-dashed border-white/10 bg-white/[0.03] text-white/40">
-                            <ImageIcon className="h-7 w-7" />
+            return (
+              <section key={group.type} className="rounded-md border border-white/10 bg-white/[0.03]">
+                <div className="border-b border-white/10 px-3 py-2">
+                  <h3 className="text-sm font-semibold text-white/90">{group.title}</h3>
+                </div>
+                <div className="space-y-3 p-3">
+                  {groupPhotos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                      {groupPhotos.map((photo) => {
+                        const photoKey = replacementPhotoStateKey(photo.type, photo.id);
+                        const preview = previews[photoKey];
+                        const isDeleting = uploadingKey === photoKey;
+                        const photoError = errors[photoKey];
+
+                        return (
+                          <div key={photo.id} className="min-w-0">
+                            <div className="relative aspect-[4/3] overflow-hidden rounded-md border border-white/10 bg-[#1a1a1a]">
+                              {preview ? (
+                                <img
+                                  src={preview}
+                                  alt={`${group.title} ${photo.slot}`}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center border border-dashed border-white/10 bg-white/[0.03] text-white/40">
+                                  <ImageIcon className="h-7 w-7" />
+                                </div>
+                              )}
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute right-1 top-1 h-7 w-7"
+                                disabled={isDeleting}
+                                onClick={() => handleDelete(photo)}
+                                aria-label="Delete photo"
+                              >
+                                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                              </Button>
+                            </div>
+                            {photo.uploaded_at && (
+                              <div className="mt-1 truncate text-[10px] text-white/40">
+                                Uploaded {new Date(photo.uploaded_at).toLocaleString("en-GB")}
+                              </div>
+                            )}
+                            {photoError && <div className="mt-1 text-[11px] text-red-300">{photoError}</div>}
                           </div>
-                        )}
-                        {photo?.uploaded_at && (
-                          <div className="mt-1 truncate text-[10px] text-white/40">
-                            Uploaded {new Date(photo.uploaded_at).toLocaleString("en-GB")}
-                          </div>
-                        )}
-                        {error && <div className="mt-1 text-[11px] text-red-300">{error}</div>}
-                      </div>
-                      <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-2">
-                        <div className={cn("flex items-center gap-1.5 text-[11px]", photo ? "text-blue-200" : "text-white/45")}>
-                          <span className={cn("h-1.5 w-1.5 rounded-full", photo ? "bg-blue-400" : "bg-white/35")} />
-                          {photo ? "Added" : "Missing"}
-                        </div>
-                        <input
-                          ref={(node) => {
-                            inputRefs.current[stateKey] = node;
-                          }}
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          onChange={(event) => {
-                            handleUpload(group, slot, event.target.files?.[0]);
-                            event.target.value = "";
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 shrink-0 gap-1 px-1.5 text-xs text-blue-200 hover:bg-blue-400/10 hover:text-blue-100"
-                          disabled={isUploading}
-                          onClick={() => inputRefs.current[stateKey]?.click()}
-                        >
-                          {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-                          {isUploading ? "Uploading..." : photo ? "Retake" : "Take Photo"}
-                        </Button>
-                      </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+                  ) : (
+                    <div className="flex h-28 w-full items-center justify-center rounded-md border border-dashed border-white/10 bg-[#1a1a1a] text-white/40">
+                      <ImageIcon className="h-7 w-7" />
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={(node) => {
+                        inputRefs.current[uploadKey] = node;
+                      }}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      multiple
+                      className="hidden"
+                      onChange={(event) => {
+                        handleUpload(group, event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-10 shrink-0 gap-1.5 px-2 text-xs text-blue-200 hover:bg-blue-400/10 hover:text-blue-100"
+                      disabled={isUploading || isAtLimit}
+                      onClick={() => inputRefs.current[uploadKey]?.click()}
+                    >
+                      {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                      {isUploading ? "Uploading..." : "Add Photos"}
+                    </Button>
+                    <span className="font-ibm-plex-mono text-xs text-white/50">
+                      {groupPhotos.length}/{MAX_REPLACEMENT_PHOTOS_PER_GROUP}
+                    </span>
+                  </div>
+                  {groupError && <div className="text-[11px] text-red-300">{groupError}</div>}
+                </div>
+              </section>
+            );
+          })}
         </div>
 
         <DialogFooter>
