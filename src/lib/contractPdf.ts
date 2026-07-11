@@ -40,7 +40,7 @@ interface ContractPdfData {
     make: string;
     model: string;
     year: number;
-    color?: string | null;
+    color: string | null;
     vehicle_color?: string | null;
     car_color?: string | null;
     colour?: string | null;
@@ -348,14 +348,16 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       doc.setTextColor(...blue);
       doc.text(companyName.charAt(0).toUpperCase(), logoX + 14, logoY + 18, { align: "center" });
     }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(...ink);
-    doc.text(companyName, logoX + 42, logoY + 12, { maxWidth: 210 });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...blue);
-    doc.text("Car Rental", logoX + 42, logoY + 27);
+    if (!logoImage) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(...ink);
+      doc.text(companyName, logoX + 42, logoY + 12, { maxWidth: 210 });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...blue);
+      doc.text("Car Rental", logoX + 42, logoY + 27);
+    }
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(...ink);
@@ -445,7 +447,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     ["Plate Number", valueOrDash(car?.plate)],
     ["Make & Model", car ? `${car.make} ${car.model}` : "-"],
     ["Year", car ? String(car.year) : "-"],
-    ["Color", valueOrDash(vehicleColor)],
+    ["Color", car?.color || "—"],
   ];
   listCard(vehicleX, y, colW, vehicleRows);
 

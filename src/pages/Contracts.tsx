@@ -100,7 +100,7 @@ interface ContractRow {
   client_signature?: string | null;
   manager_signature?: string | null;
   clients: { full_name: string; phone: string; nationality: string; client_type: string; emirates_id: string | null; passport_number: string | null; license_number: string | null } | null;
-  cars: { plate: string; make: string; model: string; year: number } | null;
+  cars: { plate: string; make: string; model: string; year: number; color: string | null } | null;
 }
 
 interface ClientOption { id: string; full_name: string; }
@@ -717,7 +717,7 @@ const Contracts = () => {
       const [contractsRes, clientsRes, carsRes, profileRes] = await Promise.all([
         supabase
           .from("contracts")
-          .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year)")
+          .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year, color)")
           .eq("owner_id", userId)
           .order("created_at", { ascending: false }),
         supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
