@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, FileText, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, Search } from "lucide-react";
+import { Plus, FileText, Check, ChevronsUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, Camera, Image as ImageIcon, Loader2, Search, X } from "lucide-react";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -412,25 +412,13 @@ const createEmptyForm = () => ({
   notes: "",
 });
 
-const PICKUP_PHOTO_SLOTS = [
-  { key: "front", label: "Front", legacySlots: ["Front"] },
-  { key: "rear", label: "Rear", legacySlots: ["Rear"] },
-  { key: "left_side", label: "Left side", legacySlots: ["Left side"] },
-  { key: "right_side", label: "Right side", legacySlots: ["Right side"] },
-  { key: "dashboard", label: "Dashboard", legacySlots: ["Dashboard / odometer"] },
-  { key: "odometer", label: "Odometer", legacySlots: [] },
-  { key: "interior_front", label: "Interior front", legacySlots: [] },
-  { key: "interior_rear", label: "Interior rear", legacySlots: [] },
-];
+const PICKUP_PHOTO_MAX = 10;
 
-type PickupPhotoSlot = (typeof PICKUP_PHOTO_SLOTS)[number];
-
-function pickupSlotKey(slot: string): string {
-  return slot.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
-function getPickupSlotKeys(slot: PickupPhotoSlot): string[] {
-  return [slot.key, ...slot.legacySlots];
+interface PickupPhoto {
+  id: string;
+  slot: string;
+  photo_url: string;
+  uploaded_at: string | null;
 }
 
 interface PickupInspectionModalProps {
@@ -441,140 +429,112 @@ interface PickupInspectionModalProps {
 }
 
 function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: PickupInspectionModalProps) {
-  const [photos, setPhotos] = useState<Record<string, { id: string; photo_url: string; uploaded_at: string | null }>>({});
+  const [photos, setPhotos] = useState<PickupPhoto[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
-  const [uploadingSlot, setUploadingSlot] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const addedPhotoCount = PICKUP_PHOTO_SLOTS.filter((slot) => getPickupSlotKeys(slot).some((key) => photos[key])).length;
-  const progressValue = (addedPhotoCount / PICKUP_PHOTO_SLOTS.length) * 100;
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open || !contractId) return;
+  const photoCount = photos.length;
+  const progressValue = (photoCount / PICKUP_PHOTO_MAX) * 100;
+  const atLimit = photoCount >= PICKUP_PHOTO_MAX;
 
-    let cancelled = false;
-    const loadPhotos = async () => {
-      const { data, error } = await (supabase as any)
-        .from("contract_inspections")
-        .select("id, slot, photo_url, uploaded_at")
-        .eq("contract_id", contractId)
-        .eq("type", "pickup");
+  const refreshPhotos = useCallback(async () => {
+    if (!contractId) return;
+    const { data, error } = await (supabase as any)
+      .from("contract_inspections")
+      .select("id, slot, photo_url, uploaded_at")
+      .eq("contract_id", contractId)
+      .eq("type", "pickup")
+      .order("uploaded_at", { ascending: true });
 
-      if (cancelled) return;
-      if (error) {
-        setErrors((prev) => ({ ...prev, load: "Could not load pickup photos." }));
-        return;
-      }
-
-      const nextPhotos: Record<string, { id: string; photo_url: string; uploaded_at: string | null }> = {};
-      (data ?? []).forEach((photo: { id: string; slot: string; photo_url: string; uploaded_at: string | null }) => {
-        nextPhotos[photo.slot] = {
-          id: photo.id,
-          photo_url: photo.photo_url,
-          uploaded_at: photo.uploaded_at,
-        };
-      });
-      setPhotos(nextPhotos);
-      setErrors((prev) => ({ ...prev, load: "" }));
-    };
-
-    loadPhotos();
-    return () => {
-      cancelled = true;
-    };
-  }, [contractId, open]);
+    if (error) {
+      setErrors((prev) => ({ ...prev, load: "Could not load pickup photos." }));
+      return;
+    }
+    setPhotos((data ?? []) as PickupPhoto[]);
+    setErrors((prev) => ({ ...prev, load: "" }));
+  }, [contractId]);
 
   useEffect(() => {
     if (!open) return;
+    refreshPhotos();
+  }, [open, refreshPhotos]);
 
+  useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     const loadPreviews = async () => {
-      const nextPreviews: Record<string, string> = {};
+      const next: Record<string, string> = {};
       await Promise.all(
-        Object.entries(photos).map(async ([slot, photo]) => {
+        photos.map(async (photo) => {
           if (!photo.photo_url) return;
           if (/^(https?:|data:|blob:)/.test(photo.photo_url)) {
-            nextPreviews[slot] = photo.photo_url;
+            next[photo.id] = photo.photo_url;
             return;
           }
-          const { data } = supabase.storage
-            .from("inspection-photos")
-            .getPublicUrl(photo.photo_url);
-          if (data?.publicUrl) nextPreviews[slot] = data.publicUrl;
+          const { data } = supabase.storage.from("inspection-photos").getPublicUrl(photo.photo_url);
+          if (data?.publicUrl) next[photo.id] = data.publicUrl;
         }),
       );
-      if (!cancelled) setPreviews(nextPreviews);
+      if (!cancelled) setPreviews(next);
     };
-
     loadPreviews();
     return () => {
       cancelled = true;
     };
   }, [photos, open]);
 
-  const handleUpload = async (slot: string, file: File | undefined, existingSlot = slot) => {
-    if (!file) return;
+  const handleUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const availableSlots = PICKUP_PHOTO_MAX - photoCount;
+    if (availableSlots <= 0) return;
 
-    setUploadingSlot(slot);
-    setErrors((prev) => ({ ...prev, [slot]: "" }));
+    const filesToUpload = Array.from(files).slice(0, availableSlots);
+    setUploading(true);
+    setErrors((prev) => ({ ...prev, upload: "" }));
 
-    const path = `${contractId}/pickup/${pickupSlotKey(slot)}.jpg`;
-    const uploadFile = await prepareImageForStorageUpload(file);
-    logImageCompressionUpload("Contracts", file, uploadFile, path);
-    const { error: uploadError } = await supabase.storage
-      .from("inspection-photos")
-      .upload(path, uploadFile, {
-        contentType: uploadFile.type || "image/jpeg",
-        upsert: true,
-      });
+    for (const file of filesToUpload) {
+      const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const path = `${contractId}/pickup/${uniqueId}.jpg`;
+      const uploadFile = await prepareImageForStorageUpload(file);
+      logImageCompressionUpload("Contracts", file, uploadFile, path);
 
-    if (uploadError) {
-      setUploadingSlot("");
-      setErrors((prev) => ({ ...prev, [slot]: uploadError.message }));
-      return;
+      const { error: uploadError } = await supabase.storage
+        .from("inspection-photos")
+        .upload(path, uploadFile, {
+          contentType: uploadFile.type || "image/jpeg",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        setErrors((prev) => ({ ...prev, upload: uploadError.message }));
+        continue;
+      }
+
+      const payload = {
+        contract_id: contractId,
+        type: "pickup",
+        slot: uniqueId,
+        photo_url: path,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: uploadedBy,
+      };
+
+      const { error: saveError } = await (supabase as any).from("contract_inspections").insert(payload);
+      if (saveError) {
+        setErrors((prev) => ({ ...prev, upload: saveError.message }));
+      }
     }
 
-    const payload = {
-      contract_id: contractId,
-      type: "pickup",
-      slot,
-      photo_url: path,
-      uploaded_at: new Date().toISOString(),
-      uploaded_by: uploadedBy,
-    };
+    setUploading(false);
+    await refreshPhotos();
+  };
 
-    const existing = photos[existingSlot];
-    const { data, error: saveError } = existing
-      ? await (supabase as any)
-          .from("contract_inspections")
-          .update(payload)
-          .eq("id", existing.id)
-          .select("id, slot, photo_url, uploaded_at")
-          .single()
-      : await (supabase as any)
-          .from("contract_inspections")
-          .insert(payload)
-          .select("id, slot, photo_url, uploaded_at")
-          .single();
-
-    setUploadingSlot("");
-    if (saveError) {
-      setErrors((prev) => ({ ...prev, [slot]: saveError.message }));
-      return;
-    }
-
-    if (data) {
-      setPhotos((prev) => {
-        const next = { ...prev };
-        if (existingSlot !== slot) delete next[existingSlot];
-        next[slot] = {
-          id: data.id,
-          photo_url: data.photo_url,
-          uploaded_at: data.uploaded_at,
-        };
-        return next;
-      });
-    }
+  const deletePhoto = async (photo: PickupPhoto) => {
+    await supabase.storage.from("inspection-photos").remove([photo.photo_url]);
+    await (supabase as any).from("contract_inspections").delete().eq("id", photo.id);
+    await refreshPhotos();
   };
 
   return (
@@ -590,94 +550,73 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
         <div className="px-5 pt-3">
           <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
             <span>Photos added</span>
-            <span className="font-mono font-medium text-primary">{addedPhotoCount} / {PICKUP_PHOTO_SLOTS.length}</span>
+            <span className="font-mono font-medium text-primary">{photoCount} / {PICKUP_PHOTO_MAX}</span>
           </div>
           <div className="h-1 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressValue}%` }} />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5 px-4 py-4">
+        <div className="px-4 py-4">
           {errors.load && (
-            <div className="col-span-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {errors.load}
             </div>
           )}
-          {PICKUP_PHOTO_SLOTS.map((slot, index) => {
-            const slotKeys = getPickupSlotKeys(slot);
-            const photoKey = slotKeys.find((key) => photos[key]) ?? slot.key;
-            const photo = photos[photoKey];
-            const preview = previews[photoKey];
-            const error = errors[slot.key] ?? errors[photoKey];
-            const isUploading = uploadingSlot === slot.key;
-            const hasPhoto = Boolean(photo);
-            return (
-              <div
-                key={slot.key}
-                className={cn(
-                  "overflow-hidden rounded-lg border bg-card",
-                  hasPhoto ? "border-tint-green/40" : "border-border",
-                )}
-              >
-                <div className="flex items-center gap-2 px-2.5 pb-1.5 pt-2.5">
-                  <div
-                    className={cn(
-                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
-                      hasPhoto ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {index + 1}
-                  </div>
-                  <div className="truncate text-[13px] font-medium text-foreground">{slot.label}</div>
-                </div>
-                <div className="mx-2.5">
-                  {preview ? (
-                    <img src={preview} alt={`${slot.label} pickup`} className="h-[90px] w-full rounded-md border border-border object-cover" />
-                  ) : (
-                    <div className="flex h-[90px] w-full items-center justify-center rounded-md bg-muted/40 text-muted-foreground">
-                      <ImageIcon className="h-7 w-7" />
-                    </div>
-                  )}
-                  {photo?.uploaded_at && (
-                    <div className="mt-1 truncate text-[10px] text-muted-foreground">
-                      Uploaded {new Date(photo.uploaded_at).toLocaleString("en-GB")}
-                    </div>
-                  )}
-                  {error && <div className="mt-1 text-[11px] text-destructive">{error}</div>}
-                </div>
-                <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-2">
-                  <div className={cn("flex items-center gap-1.5 text-[11px]", hasPhoto ? "text-tint-green-foreground" : "text-muted-foreground")}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full", hasPhoto ? "bg-tint-green" : "bg-muted-foreground/60")} />
-                    {hasPhoto ? "Added" : "Missing"}
-                  </div>
-                  <input
-                    ref={(node) => {
-                      inputRefs.current[slot.key] = node;
-                    }}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={(event) => {
-                      handleUpload(slot.key, event.target.files?.[0], photoKey);
-                      event.target.value = "";
-                    }}
+          {errors.upload && (
+            <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {errors.upload}
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map((photo) => (
+              <div key={photo.id} className="relative">
+                {previews[photo.id] ? (
+                  <img
+                    src={previews[photo.id]}
+                    alt="pickup"
+                    className="h-24 w-full rounded-md border border-border object-cover"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 gap-1 px-1.5 text-xs text-primary hover:text-primary"
-                    disabled={isUploading}
-                    onClick={() => inputRefs.current[slot.key]?.click()}
-                  >
-                    {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-                    {isUploading ? "Uploading..." : hasPhoto ? "Retake" : "Take Photo"}
-                  </Button>
-                </div>
+                ) : (
+                  <div className="flex h-24 w-full items-center justify-center rounded-md bg-muted/40 text-muted-foreground">
+                    <ImageIcon className="h-6 w-6" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => deletePhoto(photo)}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              handleUpload(event.target.files);
+              event.target.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 min-h-11 w-full gap-1.5 text-xs"
+            disabled={uploading || atLimit}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+            {uploading ? "Uploading..." : atLimit ? "Limit reached" : "Add Photos"}
+            <span className="ml-1 text-muted-foreground">({photoCount}/{PICKUP_PHOTO_MAX})</span>
+          </Button>
         </div>
 
         <DialogFooter className="flex-col gap-2 px-4 pb-5 sm:flex-col sm:space-x-0">
