@@ -4,48 +4,56 @@ import { Image as ImageIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface InspectionRow {
+  id: string;
   slot: string;
   photo_url: string | null;
 }
 
-interface ReplacementInspectionRow extends InspectionRow {
+interface ReplacementInspectionRow {
+  id: string;
   type: "replacement_old_return" | "replacement_new_handover";
+  slot: string;
+  photo_url: string | null;
   uploaded_at: string | null;
 }
 
 interface ReplacementInspectionGroup {
   replacementId: string;
-  oldReturn: Record<string, string>;
-  newHandover: Record<string, string>;
+  oldReturn: string[];
+  newHandover: string[];
   firstUploadedAt: string;
 }
-
-const PHOTO_SLOTS = [
-  { key: "front", label: "Front", legacySlots: ["Front"] },
-  { key: "rear", label: "Rear", legacySlots: ["Rear"] },
-  { key: "left_side", label: "Left side", legacySlots: ["Left side"] },
-  { key: "right_side", label: "Right side", legacySlots: ["Right side"] },
-  { key: "dashboard", label: "Dashboard", legacySlots: ["Dashboard / odometer"] },
-  { key: "odometer", label: "Odometer", legacySlots: [] },
-  { key: "interior_front", label: "Interior front", legacySlots: [] },
-  { key: "interior_rear", label: "Interior rear", legacySlots: [] },
-];
-
-const PHOTO_SLOT_KEYS = new Map(
-  PHOTO_SLOTS.flatMap((slot) => [
-    [slot.key, slot.key],
-    ...slot.legacySlots.map((legacySlot) => [legacySlot, slot.key] as const),
-  ]),
-);
 
 function getReplacementId(photoUrl: string): string | null {
   const replacementSegment = photoUrl.split("/").find((segment) => segment.startsWith("replacement-"));
   return replacementSegment ? replacementSegment.split("replacement-")[1] || null : null;
 }
 
+function PhotoGrid({ urls }: { urls: string[] }) {
+  if (urls.length === 0) {
+    return (
+      <div className="flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-border bg-muted/30 text-muted-foreground">
+        <ImageIcon className="h-8 w-8" />
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {urls.map((url, index) => (
+        <img
+          key={`${url}-${index}`}
+          src={url}
+          alt="inspection"
+          className="aspect-square w-full rounded-md border border-border object-cover"
+        />
+      ))}
+    </div>
+  );
+}
+
 const InspectionView = () => {
   const { contractId } = useParams<{ contractId: string }>();
-  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [pickupPhotos, setPickupPhotos] = useState<string[]>([]);
   const [replacementGroups, setReplacementGroups] = useState<ReplacementInspectionGroup[]>([]);
   const [replacementError, setReplacementError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -66,9 +74,10 @@ const InspectionView = () => {
 
       const { data, error: fetchError } = await (supabase as any)
         .from("contract_inspections")
-        .select("slot, photo_url")
+        .select("id, slot, photo_url")
         .eq("contract_id", contractId)
-        .eq("type", "pickup");
+        .eq("type", "pickup")
+        .order("uploaded_at", { ascending: true });
 
       if (cancelled) return;
 
@@ -78,10 +87,8 @@ const InspectionView = () => {
         return;
       }
 
-      const rows = ((data ?? []) as InspectionRow[]).filter(
-        (row) => row.photo_url && PHOTO_SLOT_KEYS.has(row.slot),
-      );
-      const nextPhotos: Record<string, string> = {};
+      const rows = ((data ?? []) as InspectionRow[]).filter((row) => row.photo_url);
+      const urls: string[] = [];
 
       await Promise.all(
         rows.map(async (row) => {
@@ -89,19 +96,19 @@ const InspectionView = () => {
           if (!photoUrl) return;
 
           if (/^(https?:|data:|blob:)/.test(photoUrl)) {
-            nextPhotos[PHOTO_SLOT_KEYS.get(row.slot) ?? row.slot] = photoUrl;
+            urls.push(photoUrl);
             return;
           }
 
           const { data: publicUrlData } = supabase.storage
             .from("inspection-photos")
             .getPublicUrl(photoUrl);
-          if (publicUrlData?.publicUrl) nextPhotos[PHOTO_SLOT_KEYS.get(row.slot) ?? row.slot] = publicUrlData.publicUrl;
+          if (publicUrlData?.publicUrl) urls.push(publicUrlData.publicUrl);
         }),
       );
 
       if (!cancelled) {
-        setPhotos(nextPhotos);
+        setPickupPhotos(urls);
         setLoading(false);
       }
     };
@@ -126,7 +133,7 @@ const InspectionView = () => {
 
       const { data, error: fetchError } = await (supabase as any)
         .from("contract_inspections")
-        .select("type, slot, photo_url, uploaded_at")
+        .select("id, type, slot, photo_url, uploaded_at")
         .eq("contract_id", contractId)
         .in("type", ["replacement_old_return", "replacement_new_handover"])
         .order("uploaded_at", { ascending: true });
@@ -139,9 +146,7 @@ const InspectionView = () => {
         return;
       }
 
-      const rows = ((data ?? []) as ReplacementInspectionRow[]).filter(
-        (row) => row.photo_url && PHOTO_SLOT_KEYS.has(row.slot),
-      );
+      const rows = ((data ?? []) as ReplacementInspectionRow[]).filter((row) => row.photo_url);
       const groups = new Map<string, ReplacementInspectionGroup>();
 
       await Promise.all(
@@ -163,15 +168,14 @@ const InspectionView = () => {
 
           const group = groups.get(replacementId) ?? {
             replacementId,
-            oldReturn: {},
-            newHandover: {},
+            oldReturn: [] as string[],
+            newHandover: [] as string[],
             firstUploadedAt: row.uploaded_at ?? "",
           };
-          const slotKey = PHOTO_SLOT_KEYS.get(row.slot) ?? row.slot;
           if (row.type === "replacement_old_return") {
-            group.oldReturn[slotKey] = resolvedUrl;
+            group.oldReturn.push(resolvedUrl);
           } else {
-            group.newHandover[slotKey] = resolvedUrl;
+            group.newHandover.push(resolvedUrl);
           }
           if (!group.firstUploadedAt || (row.uploaded_at && row.uploaded_at < group.firstUploadedAt)) {
             group.firstUploadedAt = row.uploaded_at ?? "";
@@ -194,7 +198,7 @@ const InspectionView = () => {
     };
   }, [contractId]);
 
-  const hasPhotos = useMemo(() => Object.keys(photos).length > 0, [photos]);
+  const hasPickupPhotos = useMemo(() => pickupPhotos.length > 0, [pickupPhotos]);
 
   return (
     <main className="min-h-screen bg-background px-4 py-6 text-foreground">
@@ -216,35 +220,21 @@ const InspectionView = () => {
           </div>
         ) : (
           <>
-            {!hasPhotos && (
-              <div className="mb-4 rounded-md border border-border bg-card px-3 py-4 text-sm text-muted-foreground">
-                No inspection photos uploaded yet.
+            <section className="mb-6 overflow-hidden rounded-md border border-border bg-card">
+              <div className="border-b border-border px-3 py-2 text-sm font-medium">
+                Pickup Photos
               </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              {PHOTO_SLOTS.map((slot) => (
-                <section key={slot.key} className="overflow-hidden rounded-md border border-border bg-card">
-                  <div className="border-b border-border px-3 py-2 text-sm font-medium">
-                    {slot.label}
-                  </div>
-                  {photos[slot.key] ? (
-                    <img
-                      src={photos[slot.key]}
-                      alt={`${slot.label} inspection`}
-                      className="aspect-square w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex aspect-square w-full items-center justify-center bg-muted/30 text-muted-foreground">
-                      <ImageIcon className="h-8 w-8" />
-                    </div>
-                  )}
-                </section>
-              ))}
-            </div>
+              <div className="p-3">
+                {!hasPickupPhotos ? (
+                  <div className="text-sm text-muted-foreground">No inspection photos uploaded yet.</div>
+                ) : (
+                  <PhotoGrid urls={pickupPhotos} />
+                )}
+              </div>
+            </section>
 
             {(replacementError || replacementGroups.length > 0) && (
-              <div className="mt-6 space-y-5">
+              <div className="space-y-5">
                 {replacementError && (
                   <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-4 text-sm text-destructive">
                     {replacementError}
@@ -260,50 +250,12 @@ const InspectionView = () => {
                     <div className="space-y-4 p-3">
                       <div>
                         <h3 className="mb-2 text-sm font-medium">Old Vehicle Return Photos</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                          {PHOTO_SLOTS.map((slot) => (
-                            <section key={`${group.replacementId}-old-${slot.key}`} className="overflow-hidden rounded-md border border-border bg-background">
-                              <div className="border-b border-border px-3 py-2 text-sm font-medium">
-                                {slot.label}
-                              </div>
-                              {group.oldReturn[slot.key] ? (
-                                <img
-                                  src={group.oldReturn[slot.key]}
-                                  alt={`${slot.label} old vehicle return`}
-                                  className="aspect-square w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex aspect-square w-full items-center justify-center bg-muted/30 text-muted-foreground">
-                                  <ImageIcon className="h-8 w-8" />
-                                </div>
-                              )}
-                            </section>
-                          ))}
-                        </div>
+                        <PhotoGrid urls={group.oldReturn} />
                       </div>
 
                       <div>
                         <h3 className="mb-2 text-sm font-medium">Replacement Vehicle Handover Photos</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                          {PHOTO_SLOTS.map((slot) => (
-                            <section key={`${group.replacementId}-new-${slot.key}`} className="overflow-hidden rounded-md border border-border bg-background">
-                              <div className="border-b border-border px-3 py-2 text-sm font-medium">
-                                {slot.label}
-                              </div>
-                              {group.newHandover[slot.key] ? (
-                                <img
-                                  src={group.newHandover[slot.key]}
-                                  alt={`${slot.label} replacement vehicle handover`}
-                                  className="aspect-square w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex aspect-square w-full items-center justify-center bg-muted/30 text-muted-foreground">
-                                  <ImageIcon className="h-8 w-8" />
-                                </div>
-                              )}
-                            </section>
-                          ))}
-                        </div>
+                        <PhotoGrid urls={group.newHandover} />
                       </div>
                     </div>
                   </section>
