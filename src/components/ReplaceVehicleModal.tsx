@@ -1284,7 +1284,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     setReplacementReason(value);
 
     if (["Breakdown", "Accident"].includes(value)) {
-      setSentToStatus("Maintenance");
+      setSentToStatus("Service");
       return;
     }
 
@@ -2044,8 +2044,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 </SelectTrigger>
                 <SelectContent className="bg-[#111111] border-white/10 text-white">
                   <SelectItem value="Available" className="focus:bg-[#1a1a1a] focus:text-white">Available</SelectItem>
-                  <SelectItem value="Maintenance" className="focus:bg-[#1a1a1a] focus:text-white">Maintenance</SelectItem>
-                  <SelectItem value="Blocked" className="focus:bg-[#1a1a1a] focus:text-white">Blocked</SelectItem>
+                  <SelectItem value="Service" className="focus:bg-[#1a1a1a] focus:text-white">Maintenance</SelectItem>
                 </SelectContent>
               </Select>
             </div>
