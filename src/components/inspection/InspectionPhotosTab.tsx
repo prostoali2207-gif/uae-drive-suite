@@ -137,9 +137,14 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
       error: files.length > filesToUpload.length ? "Only 10 photos can be saved per section." : "",
     });
 
+    const highestSlot = photosByType[type].reduce((highest, photo) => {
+      const numericSlot = Number.parseInt(photo.slot, 10);
+      return Number.isFinite(numericSlot) ? Math.max(highest, numericSlot) : highest;
+    }, 0);
+
     for (let index = 0; index < filesToUpload.length; index += 1) {
       const file = filesToUpload[index];
-      const slot = String(currentCount + index + 1);
+      const slot = String(highestSlot + index + 1);
       const path = uniquePhotoPath(contractId, type, file);
       const uploadFile = await prepareImageForStorageUpload(file);
       logImageCompressionUpload("InspectionPhotosTab", file, uploadFile, path);
@@ -231,7 +236,7 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
                 {previewUrl ? (
                   <img
                     src={previewUrl}
-                    alt={`${type} inspection photo ${photo.slot}`}
+                    alt={`${type} inspection photo`}
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -298,21 +303,25 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
                 event.target.value = "";
               }}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="min-h-11 gap-1.5 text-xs sm:min-h-9"
-              disabled={isAtLimit || uploadState.uploading}
-              onClick={() => inputRefs.current[uploadKey]?.click()}
-            >
-              {uploadState.uploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Camera className="h-3.5 w-3.5" />
-              )}
-              {uploadState.uploading ? "Uploading..." : "Add Photos"}
-            </Button>
+            {isAtLimit ? (
+              <span className="text-xs font-medium text-muted-foreground">Limit reached</span>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 gap-1.5 text-xs sm:min-h-9"
+                disabled={uploadState.uploading}
+                onClick={() => inputRefs.current[uploadKey]?.click()}
+              >
+                {uploadState.uploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Camera className="h-3.5 w-3.5" />
+                )}
+                {uploadState.uploading ? "Uploading..." : "Add Photos"}
+              </Button>
+            )}
             <span className="text-xs text-muted-foreground">
               {sectionPhotos.length}/{MAX_PHOTOS_PER_TYPE}
             </span>
