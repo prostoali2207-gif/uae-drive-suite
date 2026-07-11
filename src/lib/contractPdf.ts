@@ -398,15 +398,17 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   };
 
   const drawTermsContinuationTitle = () => {
-    sectionTitle(6, "Terms of Use", "— Continued");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...blue);
+    doc.text("6.  TERMS OF USE — CONTINUED", margin, y);
+    y += 17;
     y += 6;
   };
 
-  const ensureTermsLineFits = (lineHeight: number) => {
-    if (y + lineHeight > contentBottomY) {
-      addContentPage();
-      drawTermsContinuationTitle();
-    }
+  const addTermsContinuationPage = () => {
+    addContentPage();
+    drawTermsContinuationTitle();
   };
 
   const drawTerms = () => {
@@ -421,20 +423,28 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.setFontSize(8.3);
     doc.setTextColor(...ink);
 
+    const getParagraphHeight = (lines: string[]) => lines.length * lineHeight;
+
     paragraphs.forEach((paragraph) => {
       const text = paragraph.trim();
       if (!text) {
         y += blankLineGap;
         if (y > contentBottomY) {
-          addContentPage();
-          drawTermsContinuationTitle();
+          addTermsContinuationPage();
         }
         return;
       }
 
       const lines = doc.splitTextToSize(text, contentW);
+      const paragraphHeight = getParagraphHeight(lines);
+      const availableOnFreshTermsPage = contentBottomY - (margin + 20 + 23);
+      if (y + paragraphHeight > contentBottomY) {
+        addTermsContinuationPage();
+      }
       lines.forEach((lineText: string) => {
-        ensureTermsLineFits(lineHeight);
+        if (paragraphHeight > availableOnFreshTermsPage && y + lineHeight > contentBottomY) {
+          addTermsContinuationPage();
+        }
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.3);
         doc.setTextColor(...ink);
@@ -537,13 +547,8 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   y += 6;
   drawTerms();
 
-  ensureBlockFits(155);
+  addContentPage();
   sectionTitle(7, "Return Check-in");
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(...muted);
-  doc.text("To be completed when the vehicle is returned", margin, y - 4);
-  y += 10;
   const returnY = y;
   const returnW = contentW;
   doc.setFillColor(255, 255, 255);
@@ -559,7 +564,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.text("Return mileage, fuel level, damage notes, and photos will be recorded at check-in.", margin + 18, returnY + 51, { maxWidth: returnW - 36 });
   y = returnY + 120;
 
-  ensureBlockFits(260);
+  ensureBlockFits(253);
   sectionTitle(8, "Agreement & Signatures");
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
