@@ -29,7 +29,8 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<Record<InspectionType, boolean>>({ pickup: false, return: false });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const inputRefs = useRef<Record<InspectionType, HTMLInputElement | null>>({ pickup: null, return: null });
+  const cameraInputRefs = useRef<Record<InspectionType, HTMLInputElement | null>>({ pickup: null, return: null });
+  const galleryInputRefs = useRef<Record<InspectionType, HTMLInputElement | null>>({ pickup: null, return: null });
 
   const photosByType = useMemo(() => {
     const map: Record<InspectionType, InspectionPhoto[]> = { pickup: [], return: [] };
@@ -184,7 +185,20 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
 
           <input
             ref={(node) => {
-              inputRefs.current[type] = node;
+              cameraInputRefs.current[type] = node;
+            }}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(event) => {
+              uploadPhotos(type, event.target.files);
+              event.target.value = "";
+            }}
+          />
+          <input
+            ref={(node) => {
+              galleryInputRefs.current[type] = node;
             }}
             type="file"
             accept="image/*"
@@ -195,22 +209,34 @@ export function InspectionPhotosTab({ contractId, uploadedBy }: InspectionPhotos
               event.target.value = "";
             }}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3 min-h-11 gap-1.5 text-xs sm:min-h-9"
-            disabled={isUploading || atLimit}
-            onClick={() => inputRefs.current[type]?.click()}
-          >
-            {isUploading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Camera className="h-3.5 w-3.5" />
-            )}
-            {isUploading ? "Uploading..." : atLimit ? "Limit reached" : "Add Photos"}
-            <span className="ml-1 text-muted-foreground">({count}/{MAX_PHOTOS})</span>
-          </Button>
+
+          <div className="mt-3 flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 flex-1 gap-1.5 text-xs sm:min-h-9"
+              disabled={isUploading || atLimit}
+              onClick={() => cameraInputRefs.current[type]?.click()}
+            >
+              {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+              Take Photo
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 flex-1 gap-1.5 text-xs sm:min-h-9"
+              disabled={isUploading || atLimit}
+              onClick={() => galleryInputRefs.current[type]?.click()}
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              Choose from Gallery
+            </Button>
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {atLimit ? "Limit reached — " : ""}{count}/{MAX_PHOTOS} photos
+          </div>
         </div>
       </section>
     );
