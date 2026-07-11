@@ -226,21 +226,37 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.rect(10, 10, pageW - 20, pageH - 20);
   };
 
-  const footer = (pageNo: number) => {
-    const footerY = pageH - 42;
+  const footerY = pageH - 42;
+  const contentBottomY = footerY - 24;
+
+  const footer = (pageNo: number, pageTotal: number) => {
     doc.setDrawColor(...blue);
     doc.setLineWidth(1);
     doc.line(margin, footerY, pageW - margin, footerY);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...muted);
-    doc.text(`Page ${pageNo} of 3`, pageW - margin, footerY + 17, { align: "right" });
+    doc.text(`Page ${pageNo} of ${pageTotal}`, pageW - margin, footerY + 17, { align: "right" });
   };
 
   const startPage = (pageNo: number) => {
     if (pageNo > 1) doc.addPage();
     pageFrame();
     y = pageNo === 1 ? margin : margin + 20;
+  };
+
+  const addContentPage = () => {
+    doc.addPage();
+    pageFrame();
+    y = margin + 20;
+  };
+
+  const renderFooters = () => {
+    const pageTotal = doc.getNumberOfPages();
+    for (let pageNo = 1; pageNo <= pageTotal; pageNo += 1) {
+      doc.setPage(pageNo);
+      footer(pageNo, pageTotal);
+    }
   };
 
   const sectionTitle = (num: number, title: string, suffix = "", x = margin) => {
@@ -381,46 +397,58 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     y += 34;
   };
 
+  const drawTermsContinuationTitle = () => {
+    sectionTitle(6, "Terms of Use", "— Continued");
+    y += 6;
+  };
+
+  const ensureTermsLineFits = (lineHeight: number) => {
+    if (y + lineHeight > contentBottomY) {
+      addContentPage();
+      drawTermsContinuationTitle();
+    }
+  };
+
   const drawTerms = () => {
-    const termsText = termsEn.trim() ||
+    const termsText = termsEn.replace(/\r\n?/g, "\n").trim() ||
       "The renter agrees to return the vehicle in the same condition as received.\n\nAny traffic fines, Salik charges, or damages incurred during the rental period are the responsibility of the renter.\n\nThe deposit will be refunded after inspection upon vehicle return.";
-    const rawBullets = termsText
-      .split(/\n{2,}/)
-      .flatMap((chunk) => chunk.split(/(?=\(\d+\))/))
-      .map((b) => b.replace(/\n/g, " ").trim())
-      .map((b) => {
-        const mentionsDeposit = /deposit|security/i.test(b);
-        const mentionsFixedDeposit = /AED\s*2,?000|2,?000\s*AED|fixed\s+deposit/i.test(b);
-        return mentionsDeposit && mentionsFixedDeposit
-          ? "The Company may retain a security deposit when applicable, as stated in the Financial Summary."
-          : b;
-      })
-      .filter(Boolean);
-    let clipped = false;
+    const paragraphs = termsText.replace(/\r\n?/g, "\n").split("\n");
+    const lineHeight = 11.5;
+    const paragraphGap = 4.5;
+    const blankLineGap = 8;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.3);
     doc.setTextColor(...ink);
-    rawBullets.forEach((bullet, index) => {
-      if (y > pageH - 72) {
-        clipped = true;
+
+    paragraphs.forEach((paragraph) => {
+      const text = paragraph.trim();
+      if (!text) {
+        y += blankLineGap;
+        if (y > contentBottomY) {
+          addContentPage();
+          drawTermsContinuationTitle();
+        }
         return;
       }
-      const numbered = bullet.match(/^(\(?\d+\)?[.)]?)\s*(.*)$/);
-      const clauseText = numbered?.[2] || bullet;
-      const split = doc.splitTextToSize(clauseText, contentW - 50);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(...ink);
-      doc.text(`${index + 1}.`, margin, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(split, margin + 28, y);
-      y += split.length * 11.5 + 11;
+
+      const lines = doc.splitTextToSize(text, contentW);
+      lines.forEach((lineText: string) => {
+        ensureTermsLineFits(lineHeight);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.3);
+        doc.setTextColor(...ink);
+        doc.text(lineText, margin, y);
+        y += lineHeight;
+      });
+      y += paragraphGap;
     });
-    if (clipped) {
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(7.5);
-      doc.setTextColor(...muted);
-      doc.text("Additional terms continue in the company profile.", margin, pageH - 66);
+
+  };
+
+  const ensureBlockFits = (height: number) => {
+    if (y + height > contentBottomY) {
+      addContentPage();
     }
   };
 
@@ -503,15 +531,13 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.addImage(inspectionQr, "PNG", pageW - margin - 54, qrY + 5, 54, 54);
   }
   y = qrY + 82;
-  footer(1);
 
   startPage(2);
   sectionTitle(6, "Terms of Use");
   y += 6;
   drawTerms();
-  footer(2);
 
-  startPage(3);
+  ensureBlockFits(155);
   sectionTitle(7, "Return Check-in");
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
@@ -533,6 +559,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.text("Return mileage, fuel level, damage notes, and photos will be recorded at check-in.", margin + 18, returnY + 51, { maxWidth: returnW - 36 });
   y = returnY + 120;
 
+  ensureBlockFits(260);
   sectionTitle(8, "Agreement & Signatures");
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
@@ -584,7 +611,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.text(money(contract.deposit_amount), margin + contentW * 0.75, y + 49, { align: "center" });
   setStroke(line, 0.8);
   doc.line(margin + contentW / 2, y + 14, margin + contentW / 2, y + 58);
-  footer(3);
+  renderFooters();
 
   const filename = `Contract_${contractNumber}_${(c?.full_name || "client").replace(/\s+/g, "_")}.pdf`;
   if (options?.returnBlob) {
