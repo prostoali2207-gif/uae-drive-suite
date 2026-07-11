@@ -433,7 +433,8 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const photoCount = photos.length;
   const progressValue = (photoCount / PICKUP_PHOTO_MAX) * 100;
@@ -595,7 +596,18 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
           </div>
 
           <input
-            ref={inputRef}
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(event) => {
+              handleUpload(event.target.files);
+              event.target.value = "";
+            }}
+          />
+          <input
+            ref={galleryInputRef}
             type="file"
             accept="image/*"
             multiple
@@ -605,18 +617,34 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
               event.target.value = "";
             }}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3 min-h-11 w-full gap-1.5 text-xs"
-            disabled={uploading || atLimit}
-            onClick={() => inputRef.current?.click()}
-          >
-            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-            {uploading ? "Uploading..." : atLimit ? "Limit reached" : "Add Photos"}
-            <span className="ml-1 text-muted-foreground">({photoCount}/{PICKUP_PHOTO_MAX})</span>
-          </Button>
+
+          <div className="mt-3 flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 flex-1 gap-1.5 text-xs"
+              disabled={uploading || atLimit}
+              onClick={() => cameraInputRef.current?.click()}
+            >
+              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+              Take Photo
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 flex-1 gap-1.5 text-xs"
+              disabled={uploading || atLimit}
+              onClick={() => galleryInputRef.current?.click()}
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              Choose from Gallery
+            </Button>
+          </div>
+          <div className="mt-1 text-center text-[11px] text-muted-foreground">
+            {atLimit ? "Limit reached — " : ""}{photoCount}/{PICKUP_PHOTO_MAX} photos
+          </div>
         </div>
 
         <DialogFooter className="flex-col gap-2 px-4 pb-5 sm:flex-col sm:space-x-0">
