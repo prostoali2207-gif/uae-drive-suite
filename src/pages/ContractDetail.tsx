@@ -5729,6 +5729,13 @@ const ContractDetail = () => {
       due: Number(contract.total_amount),
       dueDate: contract.end_date,
     },
+    ...rentalFeeLines.map((fee, index) => ({
+      id: `fee-${fee.id}`,
+      category: "rental" as const,
+      label: `Extension #${index + 1}`,
+      due: Number(fee.amount),
+      overdueImmediately: true,
+    })),
     ...manualFeeLines.map((fee) => ({
       id: `fee-${fee.id}`,
       category: "fees" as const,
