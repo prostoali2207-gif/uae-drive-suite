@@ -5791,7 +5791,9 @@ const ContractDetail = () => {
       if (savedAllocations?.lines && Object.keys(savedAllocations.lines).length > 0) {
         Object.entries(savedAllocations.lines).forEach(([lineId, value]) => {
           const numericValue = Number(value);
-          applied += addLinePayment(lineId, numericValue);
+          if (numericValue <= 0) return;
+          addLinePayment(lineId, numericValue);
+          applied += numericValue;
         });
       } else if (savedAllocations) {
         (["rental", "fees", "fines", "salik"] as const).forEach((category) => {
