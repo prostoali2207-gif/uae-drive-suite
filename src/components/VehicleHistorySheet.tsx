@@ -215,32 +215,13 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     });
   };
 
-  const getEarliestTimestamp = (...timestamps: Array<string | null>) => {
-    const validTimestamps = timestamps.filter(
-      (timestamp): timestamp is string => Boolean(timestamp),
-    );
-    if (validTimestamps.length === 0) return null;
-
-    return validTimestamps.reduce((earliest, timestamp) =>
-      new Date(timestamp).getTime() < new Date(earliest).getTime()
-        ? timestamp
-        : earliest,
-    );
-  };
-
   const buildReplacementEvents = (
     vehicles: CombinedVehicleHistory[],
-    rentalPeriods: RentalPeriod[],
   ): ReplacementEvent[] =>
     vehicles.flatMap((before, index) => {
       const after = vehicles[index + 1];
       const replacementAt = before.ended_at;
       if (!after || !replacementAt) return [];
-
-      const currentPeriod = findMatchingPeriod(replacementAt, rentalPeriods);
-      const periodStart = getPeriodStartTimestamp(currentPeriod);
-      const periodEnd = getPeriodEndTimestamp(currentPeriod);
-      const afterEnd = getEarliestTimestamp(after.ended_at, periodEnd);
 
       return [
         {
@@ -248,14 +229,13 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
           replacement_at: replacementAt,
           before: {
             ...before,
-            ...preventReversedRange(
-              periodStart ?? before.display_started_at,
-              replacementAt,
-            ),
+            display_started_at: before.display_started_at,
+            display_ended_at: replacementAt,
           },
           after: {
             ...after,
-            ...preventReversedRange(replacementAt, afterEnd),
+            display_started_at: replacementAt,
+            display_ended_at: after.display_ended_at,
           },
         },
       ];
@@ -387,7 +367,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
       }));
 
       setHistory(combined);
-      setReplacementEvents(buildReplacementEvents(combined, rentalPeriods));
+      setReplacementEvents(buildReplacementEvents(combined));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("Error fetching vehicle history:", err);
