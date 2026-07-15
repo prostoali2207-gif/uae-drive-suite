@@ -50,6 +50,7 @@ import {
   Image as ImageIcon,
   Loader2,
   MessageCircle,
+  ArrowLeft,
   X,
 } from "lucide-react";
 import {
@@ -127,6 +128,13 @@ interface ReplaceVehicleModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  presentation?: "dialog" | "page";
+  contractSummary?: {
+    contractNumber: string;
+    clientName: string;
+    currentVehicle: string;
+    rentalPeriod: string;
+  };
 }
 
 interface Car {
@@ -1194,8 +1202,11 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  presentation = "dialog",
+  contractSummary,
 }) => {
   const { toast } = useToast();
+  const isPage = presentation === "page";
   
   const [availableCars, setAvailableCars] = useState<Car[]>([]);
   const [loadingCars, setLoadingCars] = useState(false);
@@ -1225,6 +1236,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [replacementSignatureOpen, setReplacementSignatureOpen] = useState(false);
   const [replacementAddendumData, setReplacementAddendumData] =
     useState<ReplacementAddendumPreviewData | null>(null);
+  const [workflowStep, setWorkflowStep] = useState(1);
 
   const currentMonthlyPriceNumber = Number(currentMonthlyPrice);
   const currentPreviewDailyRate =
@@ -1330,6 +1342,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setReplacementInspectionUploadedBy(null);
       setReplacementSignatureOpen(false);
       setReplacementAddendumData(null);
+      setWorkflowStep(1);
       
       const fetchModalData = async () => {
         setLoadingCars(true);
@@ -1756,6 +1769,10 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       });
 
       onSuccess();
+      if (isPage) {
+        onClose();
+        return;
+      }
       setReplacementInspectionId(replacementId);
       setReplacementInspectionUploadedBy(userId);
       setReplacementInspectionOpen(true);
@@ -1892,6 +1909,318 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     setReplacementAddendumData(null);
     onClose();
   };
+
+  const workflowSteps = [
+    { number: 1, label: "Details" },
+    { number: 2, label: "Vehicles" },
+    { number: 3, label: "Photos" },
+    { number: 4, label: "Review" },
+  ];
+  const confirmDisabled = !selectedNewCarId || !replacementReason || previewDailyRate <= 0 || confirmLoading;
+  const summaryCurrentVehicle =
+    contractSummary?.currentVehicle ||
+    (currentCar ? `${currentCar.plate} - ${currentCar.make} ${currentCar.model} (${currentCar.year})` : currentCarId.slice(0, 8).toUpperCase());
+  const replacementDateTimeLabel = replacementTime ? replacementTime.replace("T", " ") : "-";
+  const goToNextStep = () => setWorkflowStep((current) => Math.min(current + 1, 4));
+  const goToPreviousStep = () => setWorkflowStep((current) => Math.max(current - 1, 1));
+  const renderReadOnlyField = (label: string, value: React.ReactNode) => (
+    <div className="space-y-1">
+      <div className="text-[11px] uppercase tracking-wider text-white/45">{label}</div>
+      <div className="min-h-11 rounded-md border border-white/10 bg-[#15171d] px-3 py-2 text-sm text-white/80">
+        {value || "-"}
+      </div>
+    </div>
+  );
+  const renderCostBreakdown = () => (
+    <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+        <Calculator className="h-4 w-4 text-blue-300" aria-hidden="true" />
+        Swap cost calculator
+      </div>
+
+      {loadingRentalPeriods ? (
+        <div className="text-sm text-white/55">Loading rental periods...</div>
+      ) : swapCostPreview ? (
+        <div className="space-y-2 text-sm text-white/75">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>Car #1</span>
+            <span className="font-ibm-plex-mono text-white">
+              {swapCostPreview.oldCarDays} days × AED {formatAed(swapCostPreview.oldCarDailyRate)} = AED{" "}
+              {formatAed(swapCostPreview.oldCarTotal)}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>Car #2</span>
+            <span className="font-ibm-plex-mono text-white">
+              {swapCostPreview.newCarDays} days × AED {formatAed(swapCostPreview.newCarDailyRate)} = AED{" "}
+              {formatAed(swapCostPreview.newCarTotal)}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-white">
+            <span className="font-medium">Period total</span>
+            <span className="font-ibm-plex-mono">
+              AED {formatAed(swapCostPreview.oldCarTotal)} + AED {formatAed(swapCostPreview.newCarTotal)} = AED{" "}
+              {formatAed(swapCostPreview.total)}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm text-amber-200/80">Swap date does not fall within any rental period.</div>
+      )}
+    </div>
+  );
+
+  if (isPage) {
+    return (
+      <div className="min-h-screen bg-[#0F1117] pb-28 text-white font-dm-sans">
+        <div className="sticky top-0 z-20 border-b border-white/10 bg-[#0F1117]/95 px-4 py-3 backdrop-blur md:px-8">
+          <div className="mx-auto flex max-w-4xl items-center gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11 px-3 text-white/70 hover:bg-white/5 hover:text-white"
+              onClick={onClose}
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back
+            </Button>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold">Replace Vehicle</h1>
+              <p className="truncate text-xs text-white/50">
+                Contract {contractSummary?.contractNumber || contractId.slice(0, 8).toUpperCase()}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <main className="mx-auto max-w-4xl space-y-4 px-4 py-4 md:px-8">
+          <div className="grid grid-cols-4 overflow-hidden rounded-md border border-white/10">
+            {workflowSteps.map((step) => (
+              <button
+                key={step.number}
+                type="button"
+                onClick={() => setWorkflowStep(step.number)}
+                className={cn(
+                  "min-h-11 border-r border-white/10 px-2 text-center text-xs text-white/45 last:border-r-0",
+                  workflowStep === step.number && "bg-white/[0.07] text-white",
+                )}
+              >
+                <span className="font-ibm-plex-mono">{step.number}</span> {step.label}
+              </button>
+            ))}
+          </div>
+
+          {workflowStep === 1 && (
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-white/90">Replacement details</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {renderReadOnlyField("Contract number", contractSummary?.contractNumber || contractId.slice(0, 8).toUpperCase())}
+                {renderReadOnlyField("Client name", contractSummary?.clientName || "Loading client...")}
+                {renderReadOnlyField("Current vehicle", summaryCurrentVehicle)}
+                {renderReadOnlyField("Current rental period", contractSummary?.rentalPeriod || contractStartDate)}
+                <div className="space-y-2">
+                  <Label htmlFor="replacement-time-page" className="text-xs uppercase tracking-wider text-white/50">
+                    Replacement Date and Time
+                  </Label>
+                  <Input
+                    id="replacement-time-page"
+                    type="datetime-local"
+                    value={replacementTime}
+                    onChange={(e) => setReplacementTime(e.target.value)}
+                    className="min-h-11 font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wider text-white/50">Replacement Type</Label>
+                  <Select value={replacementType} onValueChange={setReplacementType}>
+                    <SelectTrigger className="min-h-11 w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#111111] border-white/10 text-white">
+                      <SelectItem value="Temporary" className="focus:bg-[#1a1a1a] focus:text-white">Temporary</SelectItem>
+                      <SelectItem value="Permanent" className="focus:bg-[#1a1a1a] focus:text-white">Permanent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className="text-xs uppercase tracking-wider text-white/50">Replacement Reason</Label>
+                  <Select value={replacementReason} onValueChange={handleReplacementReasonChange}>
+                    <SelectTrigger className="min-h-11 w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0">
+                      <SelectValue placeholder="Select reason" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#111111] border-white/10 text-white">
+                      <SelectItem value="Breakdown" className="focus:bg-[#1a1a1a] focus:text-white">Breakdown</SelectItem>
+                      <SelectItem value="Accident" className="focus:bg-[#1a1a1a] focus:text-white">Accident</SelectItem>
+                      <SelectItem value="Customer request" className="focus:bg-[#1a1a1a] focus:text-white">Customer Request</SelectItem>
+                      <SelectItem value="Upgrade" className="focus:bg-[#1a1a1a] focus:text-white">Upgrade</SelectItem>
+                      <SelectItem value="Company decision" className="focus:bg-[#1a1a1a] focus:text-white">Company Decision</SelectItem>
+                      <SelectItem value="Other" className="focus:bg-[#1a1a1a] focus:text-white">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {workflowStep === 2 && (
+            <section className="space-y-5">
+              <div className="space-y-3">
+                <h2 className="text-sm font-semibold text-white/90">Current vehicle return</h2>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {renderReadOnlyField("Current vehicle", loadingCurrentCar ? "Loading vehicle info..." : summaryCurrentVehicle)}
+                  <div className="space-y-2">
+                    <Label htmlFor="end-mileage-page" className="text-xs uppercase tracking-wider text-white/50">End Mileage</Label>
+                    <Input id="end-mileage-page" type="number" min="0" step="1" inputMode="numeric" value={endMileage} onChange={(e) => setEndMileage(e.target.value)} className="min-h-11 font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-0" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase tracking-wider text-white/50">Fuel Level</Label>
+                    <Select value={endFuelLevel} onValueChange={setEndFuelLevel}>
+                      <SelectTrigger className="min-h-11 w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0"><SelectValue placeholder="Select fuel level" /></SelectTrigger>
+                      <SelectContent className="bg-[#111111] border-white/10 text-white">
+                        <SelectItem value="0">Empty</SelectItem><SelectItem value="25">1/4</SelectItem><SelectItem value="50">1/2</SelectItem><SelectItem value="75">3/4</SelectItem><SelectItem value="100">Full</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase tracking-wider text-white/50">Send Vehicle To</Label>
+                    <Select value={sentToStatus} onValueChange={setSentToStatus}>
+                      <SelectTrigger className="min-h-11 w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-[#111111] border-white/10 text-white">
+                        <SelectItem value="Available">Available</SelectItem><SelectItem value="Service">Maintenance</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="condition-note-page" className="text-xs uppercase tracking-wider text-white/50">Condition Note</Label>
+                    <Textarea id="condition-note-page" value={conditionNote} onChange={(e) => setConditionNote(e.target.value)} placeholder="e.g. minor scratch on rear bumper" className="min-h-20 bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-white/10 pt-5">
+                <h2 className="text-sm font-semibold text-white/90">Replacement vehicle handover</h2>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label className="text-xs uppercase tracking-wider text-white/50">Available Vehicle</Label>
+                    {loadingCars ? (
+                      <div className="min-h-11 rounded-md border border-white/10 bg-[#1a1a1a] px-3 py-2 text-sm text-white/60">Loading available fleet...</div>
+                    ) : availableCars.length === 0 ? (
+                      <div className="min-h-11 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">No available cars found in fleet.</div>
+                    ) : (
+                      <Popover open={newVehicleComboboxOpen} onOpenChange={setNewVehicleComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button type="button" variant="outline" role="combobox" aria-expanded={newVehicleComboboxOpen} className="min-h-11 w-full justify-between bg-[#1a1a1a] border-white/10 text-white hover:bg-[#1a1a1a] hover:text-white">
+                            {selectedNewCar ? <span className="truncate text-left"><span className="font-ibm-plex-mono mr-2">{selectedNewCar.plate}</span> - {selectedNewCar.make} {selectedNewCar.model} ({selectedNewCar.year})</span> : <span className="text-white/50">Select new vehicle</span>}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-[#111111] border-white/10 text-white" align="start">
+                          <Command shouldFilter={false} className="bg-[#111111] text-white">
+                            <CommandInput placeholder="Select new vehicle" value={newVehicleSearch} onValueChange={setNewVehicleSearch} className="text-white placeholder:text-white/25" />
+                            <CommandList className="max-h-56">
+                              <CommandEmpty>No available cars found in fleet.</CommandEmpty>
+                              <CommandGroup>
+                                {filteredAvailableCars.map((car) => (
+                                  <CommandItem key={car.id} value={`${car.plate} ${car.make} ${car.model}`} onSelect={() => { setSelectedNewCarId(car.id); setNewVehicleComboboxOpen(false); setNewVehicleSearch(""); }} className="focus:bg-[#1a1a1a] focus:text-white">
+                                    <Check className={cn("mr-2 h-4 w-4", selectedNewCarId === car.id ? "opacity-100" : "opacity-0")} />
+                                    <span className="truncate"><span className="font-ibm-plex-mono mr-2">{car.plate}</span> - {car.make} {car.model} ({car.year})</span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="start-mileage-page" className="text-xs uppercase tracking-wider text-white/50">Start Mileage</Label>
+                    <Input id="start-mileage-page" type="number" min="0" step="1" inputMode="numeric" value={startMileage} onChange={(e) => setStartMileage(e.target.value)} className="min-h-11 font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-0" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase tracking-wider text-white/50">Fuel Level</Label>
+                    <Select value={startFuelLevel} onValueChange={setStartFuelLevel}>
+                      <SelectTrigger className="min-h-11 w-full bg-[#1a1a1a] border-white/10 text-white focus:ring-0 focus:ring-offset-0"><SelectValue placeholder="Select fuel level" /></SelectTrigger>
+                      <SelectContent className="bg-[#111111] border-white/10 text-white">
+                        <SelectItem value="0">Empty</SelectItem><SelectItem value="25">1/4</SelectItem><SelectItem value="50">1/2</SelectItem><SelectItem value="75">3/4</SelectItem><SelectItem value="100">Full</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="current-monthly-price-page" className="text-xs uppercase tracking-wider text-white/50">Current Vehicle Monthly Price</Label>
+                    <Input id="current-monthly-price-page" type="number" min="1" step="1" inputMode="decimal" value={currentMonthlyPrice} onChange={(e) => setCurrentMonthlyPrice(e.target.value)} placeholder="AED per month" className="min-h-11 font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0" />
+                    <div className="text-[11px] text-white/45 font-ibm-plex-mono">Daily rate: {currentPreviewDailyRate > 0 ? `AED ${formatAed(currentPreviewDailyRate)}` : "AED --"}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="replacement-monthly-price-page" className="text-xs uppercase tracking-wider text-white/50">Replacement Vehicle Monthly Price</Label>
+                    <Input id="replacement-monthly-price-page" type="number" min="1" step="1" inputMode="decimal" value={monthlyPrice} onChange={(e) => setMonthlyPrice(e.target.value)} placeholder="AED per month" className="min-h-11 font-ibm-plex-mono bg-[#1a1a1a] border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500 focus-visible:ring-offset-0" />
+                    <div className="text-[11px] text-white/45 font-ibm-plex-mono">Daily rate: {previewDailyRate > 0 ? `AED ${formatAed(previewDailyRate)}` : "AED --"}</div>
+                  </div>
+                </div>
+              </div>
+              {renderCostBreakdown()}
+            </section>
+          )}
+
+          {workflowStep === 3 && (
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-white/90">Photo documentation</h2>
+              {["Current vehicle return photos", "Replacement vehicle handover photos"].map((title) => (
+                <div key={title} className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-white/80">
+                    <Camera className="h-4 w-4 text-white/45" aria-hidden="true" />
+                    {title}
+                  </div>
+                  <p className="text-sm text-white/55">Optional. Photo upload is not available yet in this page workflow.</p>
+                </div>
+              ))}
+              <Button type="button" variant="outline" className="min-h-11 w-full border-white/10 bg-[#1a1a1a] text-white hover:bg-white/5" onClick={goToNextStep}>
+                Skip photos
+              </Button>
+            </section>
+          )}
+
+          {workflowStep === 4 && (
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-white/90">Review and confirmation</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {renderReadOnlyField("Vehicle change", `${summaryCurrentVehicle} -> ${selectedNewCar ? `${selectedNewCar.plate} - ${selectedNewCar.make} ${selectedNewCar.model}` : "No vehicle selected"}`)}
+                {renderReadOnlyField("Replacement date and time", replacementDateTimeLabel)}
+                {renderReadOnlyField("Reason", replacementReason)}
+                {renderReadOnlyField("Old vehicle destination", sentToStatus === "Service" ? "Maintenance" : sentToStatus)}
+                {renderReadOnlyField("Old mileage and fuel", `${endMileage || "-"} km / ${formatFuelLevelLabel(endFuelLevel) || "-"}`)}
+                {renderReadOnlyField("New mileage and fuel", `${startMileage || "-"} km / ${formatFuelLevelLabel(startFuelLevel) || "-"}`)}
+              </div>
+              {renderCostBreakdown()}
+            </section>
+          )}
+        </main>
+
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[#0F1117] p-3 md:px-8">
+          <div className="mx-auto flex max-w-4xl gap-3">
+            {workflowStep === 1 ? (
+              <Button type="button" variant="outline" className="min-h-11 flex-1 border-white/10 bg-transparent text-white hover:bg-white/5" onClick={onClose}>
+                Back to contract
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" className="min-h-11 flex-1 border-white/10 bg-transparent text-white hover:bg-white/5" onClick={goToPreviousStep}>
+                Back
+              </Button>
+            )}
+            {workflowStep < 4 ? (
+              <Button type="button" className="min-h-11 flex-1 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90" onClick={goToNextStep}>
+                {workflowStep === 3 ? "Skip photos" : `Continue to ${workflowSteps[workflowStep].label}`}
+              </Button>
+            ) : (
+              <Button type="button" disabled={confirmDisabled} onClick={handleConfirm} className="min-h-11 flex-1 bg-[#4f6ef7] text-white hover:bg-[#4f6ef7]/90 disabled:cursor-not-allowed disabled:opacity-50">
+                {confirmLoading ? "Replacing vehicle..." : "Confirm vehicle replacement"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -2048,8 +2377,6 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 </SelectContent>
               </Select>
             </div>
-
-            <PhotoPlaceholder title="Old Vehicle Return Photos" />
           </div>
 
           {/* Section 2 — New Vehicle */}
@@ -2164,8 +2491,6 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 </SelectContent>
               </Select>
             </div>
-
-            <PhotoPlaceholder title="Replacement Vehicle Handover Photos" />
           </div>
           </div>
 

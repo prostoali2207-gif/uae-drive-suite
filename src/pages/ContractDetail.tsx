@@ -33,7 +33,6 @@ import {
 } from "lucide-react";
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
 import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFeeInline";
-import { ReplaceVehicleModal } from "@/components/ReplaceVehicleModal";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import SalikModal from "@/components/SalikModal";
 import SalikDetailModal from "@/components/SalikDetailModal";
@@ -3762,7 +3761,6 @@ const ContractDetail = () => {
   const [editCarId, setEditCarId] = useState("");
   const [availableCars, setAvailableCars] = useState<AvailableCarRow[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [replaceVehicleOpen, setReplaceVehicleOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [replacementCount, setReplacementCount] = useState(0);
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
@@ -6068,7 +6066,7 @@ const ContractDetail = () => {
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1.5"
-                onClick={() => setReplaceVehicleOpen(true)}
+                onClick={() => navigate(`/contracts/${contract.id}/replace-vehicle`)}
                 disabled={contract.status === "Closed"}
               >
                 Replace Vehicle
@@ -7341,17 +7339,6 @@ const ContractDetail = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <ReplaceVehicleModal
-        contractId={contract.id}
-        currentCarId={contract.car_id}
-        contractStartDate={contract.start_date}
-        isOpen={replaceVehicleOpen}
-        onClose={() => setReplaceVehicleOpen(false)}
-        onSuccess={() => {
-          setReplaceVehicleOpen(false);
-          fetchData();
-        }}
-      />
       <VehicleHistorySheet contractId={contract.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </DashboardLayout>
   );

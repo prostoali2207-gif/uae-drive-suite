@@ -14,6 +14,7 @@ import Fleet from "./pages/Fleet.tsx";
 import FleetDetail from "./pages/FleetDetail";
 import Contracts from "./pages/Contracts.tsx";
 import ContractDetail from "./pages/ContractDetail.tsx";
+import ReplaceVehicle from "./pages/ReplaceVehicle.tsx";
 import Clients from "./pages/Clients.tsx";
 import ClientDetail from "./pages/ClientDetail.tsx";
 import Fines from "./pages/Fines.tsx";
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/fleet" element={<ProtectedRoute><Fleet /></ProtectedRoute>} />
               <Route path="/fleet/:id" element={<FleetDetail />} />
               <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
+              <Route path="/contracts/:contractId/replace-vehicle" element={<ProtectedRoute><ReplaceVehicle /></ProtectedRoute>} />
               <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetail /></ProtectedRoute>} />
               <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
               <Route path="/clients/:id" element={<ProtectedRoute><ClientDetail /></ProtectedRoute>} />
