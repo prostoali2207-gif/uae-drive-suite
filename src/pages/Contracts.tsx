@@ -751,31 +751,10 @@ const Contracts = () => {
           if (balancesErr) {
             toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesErr)}`);
           } else {
-            const extensionFeesByContract = (extensionsResult.data || []).reduce(
-              (
-                totals: Record<string, number>,
-                row: {
-                  contract_id: string;
-                  label: string | null;
-                  amount: number | string | null;
-                  extension_start: string | null;
-                  extension_end: string | null;
-                },
-              ) => {
-                const isRentalExtension =
-                  row.label?.trim().toLowerCase().startsWith("rental extension:") ||
-                  Boolean(row.extension_start && row.extension_end);
-                if (isRentalExtension) {
-                  totals[row.contract_id] = (totals[row.contract_id] || 0) + Number(row.amount || 0);
-                }
-                return totals;
-              },
-              {},
-            );
             balanceByContract = Object.fromEntries(
               (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
                 balance.contract_id,
-                Math.max(0, Number(balance.balance_due || 0) - (extensionFeesByContract[balance.contract_id] || 0)),
+                Number(balance.balance_due || 0),
               ]),
             );
           }
