@@ -120,6 +120,7 @@ interface ContractRecord {
     email: string | null;
     emirates_id: string | null;
     passport_number: string | null;
+    license_number: string | null;
     nationality: string;
     client_type: string;
   } | null;
@@ -3826,7 +3827,7 @@ const ContractDetail = () => {
     const { data: contractData, error: contractErr } = await supabase
       .from("contracts")
       .select(
-        "*, clients(full_name, phone, email, emirates_id, passport_number, nationality, client_type), cars(plate, make, model, year, color)",
+        "*, clients(full_name, phone, email, emirates_id, passport_number, license_number, nationality, client_type), cars(plate, make, model, year, color)",
       )
       .eq("id", id)
       .maybeSingle();
