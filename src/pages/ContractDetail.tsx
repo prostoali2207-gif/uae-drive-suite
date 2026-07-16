@@ -34,6 +34,7 @@ import {
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
 import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFeeInline";
 import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
+import { VehicleTimelineSheet } from "@/components/VehicleTimelineSheet";
 import SalikModal from "@/components/SalikModal";
 import SalikDetailModal from "@/components/SalikDetailModal";
 import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";
@@ -3763,6 +3764,7 @@ const ContractDetail = () => {
   const [availableCars, setAvailableCars] = useState<AvailableCarRow[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false); // TEMP: for comparing new VehicleTimelineSheet, remove after review
   const [replacementCount, setReplacementCount] = useState(0);
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
@@ -6129,6 +6131,17 @@ const ContractDetail = () => {
                     <span className="text-white/30 text-xs">→</span>
                   </button>
                 )}
+                {/* TEMP: test button for new VehicleTimelineSheet, remove after review */}
+                <button
+                  onClick={() => setTimelineOpen(true)}
+                  className="w-full flex items-center justify-between mt-3 pt-3 border-t border-white/[0.07] text-left hover:bg-white/[0.02] rounded px-0.5 transition-colors"
+                >
+                  <span className="flex items-center gap-2 text-[12px] font-medium text-white/50">
+                    <History className="w-4 h-4" />
+                    Timeline (test)
+                  </span>
+                  <span className="text-white/30 text-xs">→</span>
+                </button>
               </Panel>
 
               <Panel title="Rental Period">
@@ -7341,6 +7354,8 @@ const ContractDetail = () => {
         </DialogContent>
       </Dialog>
       <VehicleHistorySheet contractId={contract.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      {/* TEMP: remove after review */}
+      <VehicleTimelineSheet contractId={contract.id} open={timelineOpen} onClose={() => setTimelineOpen(false)} />
     </DashboardLayout>
   );
 };
