@@ -528,6 +528,26 @@ const documentLinks = (request: ClientRegistrationRequest) => [
   ["License Back", request.license_back_url],
 ].filter(([, url]) => Boolean(url)) as [string, string][];
 
+const getClientDocumentPath = (storedUrl: string | null): string | null => {
+  if (!storedUrl?.trim()) return null;
+
+  try {
+    const url = new URL(storedUrl, window.location.origin);
+    const marker = "/client-documents/";
+    const markerIndex = url.pathname.indexOf(marker);
+    const encodedPath = markerIndex >= 0
+      ? url.pathname.slice(markerIndex + marker.length)
+      : url.origin === window.location.origin
+        ? url.pathname.replace(/^\/+/, "")
+        : "";
+    const path = decodeURIComponent(encodedPath).replace(/^\/+/, "").trim();
+
+    return path && !path.split("/").includes("..") ? path : null;
+  } catch {
+    return null;
+  }
+};
+
 const getInitials = (name: string) =>
   name
     .trim()
@@ -586,8 +606,37 @@ const Clients = () => {
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [reviewingRequest, setReviewingRequest] = useState<ClientRegistrationRequest | null>(null);
   const [reviewActionLoading, setReviewActionLoading] = useState(false);
+  const [openingDocumentUrl, setOpeningDocumentUrl] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isMobileClientsLayout, setIsMobileClientsLayout] = useState(false);
+
+  const handleOpenRequestDocument = async (storedUrl: string) => {
+    if (openingDocumentUrl) return;
+
+    const path = getClientDocumentPath(storedUrl);
+    if (!path) {
+      toast.error("This document link is invalid and cannot be opened.");
+      return;
+    }
+
+    setOpeningDocumentUrl(storedUrl);
+    try {
+      const { data, error } = await supabase.storage
+        .from("client-documents")
+        .createSignedUrl(path, 300);
+
+      if (error || !data?.signedUrl) {
+        toast.error("Could not generate a secure document link. Please try again.");
+        return;
+      }
+
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("Could not generate a secure document link. Please try again.");
+    } finally {
+      setOpeningDocumentUrl(null);
+    }
+  };
 
   const uploadClientDocument = async (file: File | undefined, field: ClientDocumentUrlField) => {
     if (!file) return;
@@ -1226,15 +1275,15 @@ const Clients = () => {
                     ) : (
                       <div className="grid gap-2 sm:grid-cols-2">
                         {documentLinks(reviewingRequest).map(([label, url]) => (
-                          <a
+                          <button
+                            type="button"
                             key={label}
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                            onClick={() => handleOpenRequestDocument(url)}
+                            disabled={openingDocumentUrl !== null}
+                            className="min-h-10 rounded-lg border border-border px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {label}
-                          </a>
+                            {openingDocumentUrl === url ? "Opening..." : label}
+                          </button>
                         ))}
                       </div>
                     )}
