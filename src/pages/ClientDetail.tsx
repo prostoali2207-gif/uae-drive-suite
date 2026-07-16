@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { createClientDocumentSignedUrl } from "@/lib/clientDocuments";
 import { toast } from "sonner";
 
 interface ClientRecord {
@@ -71,6 +72,46 @@ const InfoRow = ({ label, value }: { label: string; value?: string | null }) => 
   </div>
 );
 
+type DocumentPreviewState = { status: "loading" | "ready" | "unavailable"; signedUrl?: string };
+
+const DocumentPreview = ({
+  label,
+  storedUrl,
+  preview,
+  opening,
+  onOpen,
+  onImageError,
+}: {
+  label: string;
+  storedUrl: string;
+  preview: DocumentPreviewState;
+  opening: boolean;
+  onOpen: () => void;
+  onImageError: () => void;
+}) => (
+  <div className="flex flex-col gap-1.5">
+    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+    <button
+      type="button"
+      onClick={onOpen}
+      disabled={preview.status !== "ready" || opening}
+      className="flex h-24 w-32 items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-center text-xs text-muted-foreground disabled:cursor-default"
+      aria-label={`Open ${label}`}
+    >
+      {preview.status === "loading" && <span className="animate-pulse">Loading preview...</span>}
+      {preview.status === "unavailable" && <span className="px-2">Document unavailable</span>}
+      {preview.status === "ready" && preview.signedUrl && (
+        <img
+          src={preview.signedUrl}
+          alt={label}
+          onError={onImageError}
+          className={cn("h-full w-full object-cover", opening && "opacity-60")}
+        />
+      )}
+    </button>
+  </div>
+);
+
 const ClientDetail = () => {
   const { id } = useParams<{ id: string }>();
   const [client, setClient] = useState<ClientRecord | null>(null);
@@ -78,6 +119,8 @@ const ClientDetail = () => {
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [clientRefreshKey, setClientRefreshKey] = useState(0);
+  const [documentPreviews, setDocumentPreviews] = useState<Record<string, DocumentPreviewState>>({});
+  const [openingDocument, setOpeningDocument] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -104,6 +147,56 @@ const ClientDetail = () => {
     };
     fetchData();
   }, [id, clientRefreshKey]);
+
+  const clientDocuments = useMemo(() => {
+    if (!client) return [];
+    return [
+      ...(client.client_type === "Resident"
+        ? [
+            { label: "EID Front", storedUrl: client.eid_front_url },
+            { label: "EID Back", storedUrl: client.eid_back_url },
+          ]
+        : [{ label: "Passport", storedUrl: client.passport_photo_url }]),
+      { label: "License Front", storedUrl: client.license_front_url },
+      { label: "License Back", storedUrl: client.license_back_url },
+    ].filter((document): document is { label: string; storedUrl: string } => Boolean(document.storedUrl));
+  }, [client]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const initial = Object.fromEntries(
+      clientDocuments.map(({ storedUrl }) => [storedUrl, { status: "loading" as const }]),
+    );
+    setDocumentPreviews(initial);
+
+    clientDocuments.forEach(async ({ storedUrl }) => {
+      try {
+        const signedUrl = await createClientDocumentSignedUrl(storedUrl);
+        if (!cancelled) {
+          setDocumentPreviews((current) => ({ ...current, [storedUrl]: { status: "ready", signedUrl } }));
+        }
+      } catch {
+        if (!cancelled) {
+          setDocumentPreviews((current) => ({ ...current, [storedUrl]: { status: "unavailable" } }));
+        }
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [clientDocuments]);
+
+  const handleOpenDocument = async (storedUrl: string) => {
+    if (openingDocument) return;
+    setOpeningDocument(storedUrl);
+    try {
+      const signedUrl = await createClientDocumentSignedUrl(storedUrl);
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("Could not open this document. Please try again.");
+    } finally {
+      setOpeningDocument(null);
+    }
+  };
 
   const totals = useMemo(() => {
     const totalBilled = contracts.reduce((s, c) => s + Number(c.total_amount), 0);
@@ -180,51 +273,21 @@ const ClientDetail = () => {
         <div className="rounded-xl border border-border bg-card p-6">
           <h2 className="text-sm font-semibold text-foreground">Documents</h2>
           <div className="mt-4 flex flex-wrap gap-4">
-            {client.client_type === "Resident" && (
-              <>
-                {client.eid_front_url && (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">EID Front</span>
-                    <a href={client.eid_front_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
-                      <img src={client.eid_front_url} alt="EID Front" className="h-full w-full object-cover" />
-                    </a>
-                  </div>
-                )}
-                {client.eid_back_url && (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">EID Back</span>
-                    <a href={client.eid_back_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
-                      <img src={client.eid_back_url} alt="EID Back" className="h-full w-full object-cover" />
-                    </a>
-                  </div>
-                )}
-              </>
-            )}
-            {client.client_type === "Tourist" && client.passport_photo_url && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Passport</span>
-                <a href={client.passport_photo_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
-                  <img src={client.passport_photo_url} alt="Passport" className="h-full w-full object-cover" />
-                </a>
-              </div>
-            )}
-            {client.license_front_url && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">License Front</span>
-                <a href={client.license_front_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
-                  <img src={client.license_front_url} alt="License Front" className="h-full w-full object-cover" />
-                </a>
-              </div>
-            )}
-            {client.license_back_url && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">License Back</span>
-                <a href={client.license_back_url} target="_blank" rel="noreferrer" className="block h-24 w-32 overflow-hidden rounded-md border border-border bg-muted">
-                  <img src={client.license_back_url} alt="License Back" className="h-full w-full object-cover" />
-                </a>
-              </div>
-            )}
-            {!client.eid_front_url && !client.eid_back_url && !client.passport_photo_url && !client.license_front_url && !client.license_back_url && (
+            {clientDocuments.map(({ label, storedUrl }) => (
+              <DocumentPreview
+                key={`${label}-${storedUrl}`}
+                label={label}
+                storedUrl={storedUrl}
+                preview={documentPreviews[storedUrl] ?? { status: "loading" }}
+                opening={openingDocument === storedUrl}
+                onOpen={() => handleOpenDocument(storedUrl)}
+                onImageError={() => setDocumentPreviews((current) => ({
+                  ...current,
+                  [storedUrl]: { status: "unavailable" },
+                }))}
+              />
+            ))}
+            {clientDocuments.length === 0 && (
               <span className="text-sm text-muted-foreground italic">No documents uploaded.</span>
             )}
           </div>
