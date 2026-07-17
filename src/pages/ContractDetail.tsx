@@ -33,7 +33,6 @@ import {
 } from "lucide-react";
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
 import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFeeInline";
-import { VehicleHistorySheet } from "@/components/VehicleHistorySheet";
 import { VehicleTimelineSheet } from "@/components/VehicleTimelineSheet";
 import SalikModal from "@/components/SalikModal";
 import SalikDetailModal from "@/components/SalikDetailModal";
@@ -3763,8 +3762,7 @@ const ContractDetail = () => {
   const [editCarId, setEditCarId] = useState("");
   const [availableCars, setAvailableCars] = useState<AvailableCarRow[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [timelineOpen, setTimelineOpen] = useState(false); // TEMP: for comparing new VehicleTimelineSheet, remove after review
+  const [timelineOpen, setTimelineOpen] = useState(false);
   const [replacementCount, setReplacementCount] = useState(0);
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
@@ -6118,27 +6116,13 @@ const ContractDetail = () => {
                     value={`${contract.initial_mileage.toLocaleString()} km`}
                   />
                 </div>
-                {replacementCount > 0 && (
-                  <button
-                    onClick={() => setHistoryOpen(true)}
-                    className="w-full flex items-center justify-between mt-3 pt-3 border-t border-white/[0.07] text-left hover:bg-white/[0.02] rounded px-0.5 transition-colors"
-                  >
-                    <span className="flex items-center gap-2 text-[12px] font-medium text-white/50">
-                      <History className="w-4 h-4" />
-                      Vehicle replacements
-                      <span className="font-mono text-[10px] text-blue-400 bg-blue-400/10 border border-blue-400/20 rounded px-1.5 py-0.5">{replacementCount}</span>
-                    </span>
-                    <span className="text-white/30 text-xs">→</span>
-                  </button>
-                )}
-                {/* TEMP: test button for new VehicleTimelineSheet, remove after review */}
                 <button
                   onClick={() => setTimelineOpen(true)}
                   className="w-full flex items-center justify-between mt-3 pt-3 border-t border-white/[0.07] text-left hover:bg-white/[0.02] rounded px-0.5 transition-colors"
                 >
                   <span className="flex items-center gap-2 text-[12px] font-medium text-white/50">
                     <History className="w-4 h-4" />
-                    Timeline (test)
+                    Vehicle Timeline
                   </span>
                   <span className="text-white/30 text-xs">→</span>
                 </button>
@@ -7353,8 +7337,6 @@ const ContractDetail = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <VehicleHistorySheet contractId={contract.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
-      {/* TEMP: remove after review */}
       <VehicleTimelineSheet contractId={contract.id} open={timelineOpen} onClose={() => setTimelineOpen(false)} />
     </DashboardLayout>
   );
