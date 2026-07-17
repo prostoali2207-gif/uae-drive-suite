@@ -431,7 +431,7 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
             </div>
           ) : periodGroups.length === 0 ? (
             <div className="py-12 text-center text-sm italic text-white/40">
-              No vehicle history recorded
+              This vehicle was never replaced — the same car was used for the entire rental period.
             </div>
           ) : (
             <div className="space-y-4">
