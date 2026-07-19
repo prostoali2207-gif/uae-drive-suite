@@ -1106,8 +1106,10 @@ const FinancialsAccordion = ({
   const rentalFees = sortRentalExtensionFees(contractFees);
   const latestRentalFeeId = rentalFees.at(-1)?.id;
   const originalRentalLabel = `${formatDate(contract.start_date)} -> ${formatDate(contract.end_date)}`;
-  const rentalTotal = Number(contract.total_amount);
-  const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
+  const rentalTotal = Number(contract.total_amount) + rentalFees.reduce((s, fee) => s + Number(fee.amount), 0);
+  const paymentsTotal = payments
+    .filter((payment) => payment.status.toLowerCase() === "paid")
+    .reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
   const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
   const otherFees = contractFees.filter((fee) => !isRentalExtensionFee(fee));
@@ -4078,9 +4080,7 @@ const ContractDetail = () => {
   }, [contract, fines, salik, payments, days]);
 
   const totals = useMemo(() => {
-    const feeCharges = contractFees
-      .filter((fee) => !isRentalExtensionFee(fee))
-      .reduce((sum, fee) => sum + Number(fee.amount), 0);
+    const feeCharges = contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0);
     const charges = ledger.reduce((s, e) => e.type === "Deposit" ? s : s + e.debit, 0) + feeCharges;
     const credits = ledger.reduce((s, e) => s + e.credit, 0);
     // Security deposit is reconciled separately and must not reduce the customer balance.
@@ -4789,10 +4789,9 @@ const ContractDetail = () => {
       return;
     }
 
-    const nextTotalAmount = Math.round((Number(contract.total_amount) + extensionAmount) * 100) / 100;
     const { error: contractEndDateError } = await supabase
       .from("contracts")
-      .update({ end_date: extensionEnd, total_amount: nextTotalAmount } as never)
+      .update({ end_date: extensionEnd } as never)
       .eq("id", contract.id);
 
     if (contractEndDateError) {
@@ -5742,18 +5741,14 @@ const ContractDetail = () => {
       due: Number(fee.amount),
       overdueImmediately: true,
     })),
-    ...fines
-      .filter((fine) => fine.status !== "Paid")
-      .map((fine) => ({
+    ...fines.map((fine) => ({
         id: `fine-${fine.id}`,
         category: "fines" as const,
         label: fine.fine_number ? `${fine.fine_type} ${fine.fine_number}` : fine.fine_type,
         due: Number(fine.amount),
         overdueImmediately: true,
       })),
-    ...salik
-      .filter((charge) => charge.status.toLowerCase() !== "paid")
-      .map((charge) => ({
+    ...salik.map((charge) => ({
         id: `salik-${charge.id}`,
         category: "salik" as const,
         label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
@@ -5791,18 +5786,16 @@ const ContractDetail = () => {
         Object.entries(savedAllocations.lines).forEach(([lineId, value]) => {
           const numericValue = Number(value);
           if (numericValue <= 0) return;
-          addLinePayment(lineId, numericValue);
-          applied += numericValue;
+          applied += addLinePayment(lineId, numericValue);
         });
       } else if (savedAllocations) {
         (["rental", "fees", "fines", "salik"] as const).forEach((category) => {
           const value = Number(savedAllocations[category] ?? 0);
           if (value <= 0) return;
-          distributePayment(
+          applied += distributePayment(
             grossPaymentAllocationLines.filter((line) => line.category === category),
             value,
           );
-          applied += value;
         });
       }
 
@@ -5850,11 +5843,12 @@ const ContractDetail = () => {
     const isImmediateCharge = line.category !== "rental" && line.overdueImmediately;
     return isPastRentalPeriod || isImmediateCharge ? sum + Number(line.due) : sum;
   }, 0);
-  const allocationOutstandingBalance = paymentAllocationLines.reduce((sum, line) => sum + Number(line.due), 0);
   const financialTotals: ContractFinancialTotals = {
     ...totals,
-    outstanding: Math.max(0, allocationOutstandingBalance),
-    overdue: Math.min(allocationOutstandingBalance, Math.max(0, overdueBalance)),
+    // The total balance is authoritative from current charges minus actual Paid payments.
+    // Saved allocations only explain/distribute payments and must not redefine the balance.
+    outstanding: totals.outstanding,
+    overdue: Math.min(totals.outstanding, Math.max(0, overdueBalance)),
   };
   const isOverdue = financialTotals.overdue > 0 && contract.status !== "Cancelled";
   const closeDepositAmount = Math.max(0, Number(contract.deposit_amount) || 0);

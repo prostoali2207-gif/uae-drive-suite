@@ -116,23 +116,13 @@ const RenewContractDialog = ({
         return;
       }
 
-      const { data: contractData, error: contractLoadError } = await supabase
-        .from("contracts")
-        .select("total_amount")
-        .eq("id", contractId)
-        .maybeSingle();
-
-      if (contractLoadError) throw contractLoadError;
-      if (!contractData) throw new Error("Contract not found");
-
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
       if (!userId) throw new Error("Could not confirm current user");
 
-      const nextTotalAmount = Math.round((Number(contractData.total_amount) + amount) * 100) / 100;
       const { error: contractUpdateError } = await supabase
         .from("contracts")
-        .update({ end_date: newEndDate, total_amount: nextTotalAmount } as never)
+        .update({ end_date: newEndDate } as never)
         .eq("id", contractId);
 
       if (contractUpdateError) throw contractUpdateError;
