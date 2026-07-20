@@ -1,0 +1,71 @@
+name: Retry additional driver signatures
+
+on:
+  push:
+    branches:
+      - feature/additional-contract-drivers
+    paths:
+      - automation/retry-additional-driver-signatures.txt
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/additional-contract-drivers
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Extract and correct focused patch script
+        run: |
+          awk '
+            /python3 <<.PY./ {capture=1; next}
+            capture && /^          PY$/ {capture=0; exit}
+            capture {sub(/^          /, ""); print}
+          ' .github/workflows/apply-additional-driver-signatures.yml > /tmp/apply_signatures.py
+
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/apply_signatures.py')
+          text = path.read_text()
+          old = '''text = replace_once(
+              text,
+              '    setManagerSigHasContent(false);\n',
+              '    setManagerSigHasContent(false);\n'
+              '    setDriverSigHasContent({});\n'
+              '    driverSigRefs.current = {};\n',
+          )'''
+          new = '''text = replace_once(
+              text,
+              '    setClientSigHasContent(false);\n    setManagerSigHasContent(false);\n    setClientSigDataUrl("");',
+              '    setClientSigHasContent(false);\n'
+              '    setManagerSigHasContent(false);\n'
+              '    setDriverSigHasContent({});\n'
+              '    driverSigRefs.current = {};\n'
+              '    setClientSigDataUrl("");',
+          )'''
+          if old not in text:
+              raise SystemExit('Could not find reset-state patch block')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+          python3 /tmp/apply_signatures.py
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Commit verified signatures implementation
+        run: |
+          rm -f automation/run-additional-driver-signatures.txt automation/retry-additional-driver-signatures.txt
+          git config user.name "FleetDesk Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/components/SignContractModal.tsx src/lib/contractPdf.ts automation/run-additional-driver-signatures.txt automation/retry-additional-driver-signatures.txt
+          git commit -m "feat: require additional driver signatures in contract PDF"
+          git push origin feature/additional-contract-drivers
