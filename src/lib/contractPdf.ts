@@ -17,6 +17,16 @@ interface ContractPdfData {
   special_conditions?: string | null;
   client_signature?: string | null;
   manager_signature?: string | null;
+  contract_drivers?: Array<{
+    id: string;
+    position: number;
+    signature: string | null;
+    clients: {
+      full_name: string;
+      license_number: string;
+      license_expiry: string | null;
+    } | null;
+  }>;
   clients: {
     full_name: string;
     phone: string;
@@ -616,6 +626,59 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.text(money(contract.deposit_amount), margin + contentW * 0.75, y + 49, { align: "center" });
   setStroke(line, 0.8);
   doc.line(margin + contentW / 2, y + 14, margin + contentW / 2, y + 58);
+  const additionalDrivers = contract.contract_drivers ?? [];
+  const driversPerPage = 3;
+  for (let offset = 0; offset < additionalDrivers.length; offset += driversPerPage) {
+    const pageDrivers = additionalDrivers.slice(offset, offset + driversPerPage);
+    addContentPage();
+    sectionTitle(9, "Additional Drivers");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...ink);
+    doc.text(
+      "Each driver confirms that their driving documents are valid and agrees to the driving obligations in this rental agreement.",
+      margin,
+      y,
+      { maxWidth: contentW },
+    );
+    y += 30;
+
+    pageDrivers.forEach((driver) => {
+      const client = driver.clients;
+      const boxY = y;
+      doc.setFillColor(255, 255, 255);
+      setStroke(line, 0.7);
+      doc.roundedRect(margin, boxY, contentW, 174, 4, 4, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...blue);
+      doc.text(`ADDITIONAL DRIVER ${driver.position}`, margin + 14, boxY + 22);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...muted);
+      doc.text("Full Name", margin + 14, boxY + 45);
+      doc.text("License Number", margin + 205, boxY + 45);
+      doc.text("License Expiry", margin + 390, boxY + 45);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...ink);
+      doc.text(valueOrDash(client?.full_name), margin + 14, boxY + 60, { maxWidth: 170 });
+      doc.text(valueOrDash(client?.license_number), margin + 205, boxY + 60, { maxWidth: 160 });
+      doc.text(client?.license_expiry ? fmtDate(client.license_expiry) : "-", margin + 390, boxY + 60, { maxWidth: 120 });
+
+      if (driver.signature?.startsWith("data:image")) {
+        try { doc.addImage(driver.signature, "PNG", margin + 40, boxY + 78, 190, 50); } catch { /* ignore */ }
+      }
+      setStroke(line, 0.6);
+      doc.line(margin + 30, boxY + 132, margin + 250, boxY + 132);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...ink);
+      doc.text(`Date: ${today}`, margin + 30, boxY + 151);
+      y = boxY + 190;
+    });
+  }
+
   renderFooters();
 
   const filename = `Contract_${contractNumber}_${(c?.full_name || "client").replace(/\s+/g, "_")}.pdf`;
