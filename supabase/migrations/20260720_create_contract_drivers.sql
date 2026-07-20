@@ -33,14 +33,14 @@ create policy "Owners insert contract drivers"
     and exists (
       select 1
       from public.contracts c
-      where c.id = contract_id
+      where c.id = contract_drivers.contract_id
         and c.owner_id = auth.uid()
-        and c.client_id <> client_id
+        and c.client_id <> contract_drivers.client_id
     )
     and exists (
       select 1
       from public.clients cl
-      where cl.id = client_id
+      where cl.id = contract_drivers.client_id
         and cl.owner_id = auth.uid()
     )
   );
@@ -55,14 +55,14 @@ create policy "Owners update contract drivers"
     and exists (
       select 1
       from public.contracts c
-      where c.id = contract_id
+      where c.id = contract_drivers.contract_id
         and c.owner_id = auth.uid()
-        and c.client_id <> client_id
+        and c.client_id <> contract_drivers.client_id
     )
     and exists (
       select 1
       from public.clients cl
-      where cl.id = client_id
+      where cl.id = contract_drivers.client_id
         and cl.owner_id = auth.uid()
     )
   );
