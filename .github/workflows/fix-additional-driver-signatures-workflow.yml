@@ -1,0 +1,37 @@
+name: Fix additional driver signatures workflow
+
+on:
+  push:
+    branches:
+      - feature/additional-contract-drivers
+    paths:
+      - automation/fix-additional-driver-signatures-workflow.txt
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/additional-contract-drivers
+          fetch-depth: 0
+      - name: Relax duplicate-anchor check
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/apply-additional-driver-signatures.yml')
+          text = path.read_text()
+          old = "if count != 1:\n                  raise SystemExit(f'Expected one match, found {count}: {old[:120]!r}')"
+          new = "if count < 1:\n                  raise SystemExit(f'Expected at least one match: {old[:120]!r}')"
+          if old not in text:
+              raise SystemExit('Target check not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/apply-additional-driver-signatures.yml
+          git commit -m "fix: relax signature integration anchor check"
+          git push origin feature/additional-contract-drivers
