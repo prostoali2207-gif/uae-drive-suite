@@ -10,6 +10,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { generateContractPdf } from "@/lib/contractPdf";
+import {
+  getContractDrivers,
+  saveContractDriverSignatures,
+  type ContractDriverRow,
+} from "@/lib/contractDrivers";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -148,6 +153,7 @@ interface ContractSummary {
   pdfData: ContractForPdf;
   previewData: PreviewContract;
   profile: CompanyProfile;
+  drivers: ContractDriverRow[];
 }
 
 interface SignContractModalProps {
@@ -287,9 +293,11 @@ function SummaryTile({ label, value, accent = false }: { label: string; value: s
 
 function ContractPage({
   pageNo,
+  pageTotal,
   children,
 }: {
   pageNo: number;
+  pageTotal: number;
   children: React.ReactNode;
 }) {
   return (
@@ -301,7 +309,7 @@ function ContractPage({
         {children}
       </div>
       <div className="mt-4 border-t border-[#005ab3] pt-2 text-right text-[9px] text-[#566478]">
-        Page {pageNo} of 3
+        Page {pageNo} of {pageTotal}
       </div>
     </section>
   );
@@ -344,6 +352,9 @@ function ContractHtmlPreview({
   onManagerStroke,
   onClientClear,
   onManagerClear,
+  driverSigRefs,
+  onDriverStroke,
+  onDriverClear,
 }: {
   summary: ContractSummary;
   clientSigRef: React.Ref<SigRef>;
@@ -352,11 +363,19 @@ function ContractHtmlPreview({
   onManagerStroke: () => void;
   onClientClear: () => void;
   onManagerClear: () => void;
+  driverSigRefs: React.MutableRefObject<Record<string, SigRef | null>>;
+  onDriverStroke: (driverId: string) => void;
+  onDriverClear: (driverId: string) => void;
 }) {
   const contract = summary.previewData;
   const c = contract.clients;
   const car = contract.cars;
   const company = summary.profile;
+  const driverPages = Array.from(
+    { length: Math.ceil(summary.drivers.length / 2) },
+    (_, index) => summary.drivers.slice(index * 2, index * 2 + 2),
+  );
+  const pageTotal = 3 + driverPages.length;
   const [inspectionQr, setInspectionQr] = useState("");
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
   const today = fmtDate(new Date().toISOString());
@@ -451,7 +470,7 @@ function ContractHtmlPreview({
 
   return (
     <div className="flex flex-col gap-4 pb-6">
-      <ContractPage pageNo={1}>
+      <ContractPage pageNo={1} pageTotal={pageTotal}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             {company.logoUrl ? (
@@ -541,7 +560,7 @@ function ContractHtmlPreview({
         </div>
       </ContractPage>
 
-      <ContractPage pageNo={2}>
+      <ContractPage pageNo={2} pageTotal={pageTotal}>
         <SectionTitle num={6} title="TERMS OF USE" />
         <ol className="mt-5 space-y-4 text-[11px] leading-relaxed text-[#0f172a]">
           {termsBullets.map((term, index) => (
@@ -553,7 +572,7 @@ function ContractHtmlPreview({
         </ol>
       </ContractPage>
 
-      <ContractPage pageNo={3}>
+      <ContractPage pageNo={3} pageTotal={pageTotal}>
         <SectionTitle num={7} title="RETURN CHECK-IN" />
         <div className="-mt-2 text-[9px] text-[#566478]">To be completed when the vehicle is returned</div>
         <div className="mt-4 rounded border border-[#d6e0eb] bg-white p-5">
@@ -600,6 +619,33 @@ function ContractHtmlPreview({
           </div>
         </div>
       </ContractPage>
+
+      {driverPages.map((drivers, pageIndex) => (
+        <ContractPage key={pageIndex} pageNo={4 + pageIndex} pageTotal={pageTotal}>
+          <SectionTitle num={9} title="ADDITIONAL DRIVERS" />
+          <p className="text-[10px] leading-relaxed text-[#0f172a]">
+            Each driver confirms that their driving documents are valid and that they agree to the driving obligations in this rental agreement.
+          </p>
+          <div className="mt-6 grid gap-5">
+            {drivers.map((driver) => (
+              <div key={driver.id}>
+                <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                  <FieldCard label="Full Name" value={valueOrDash(driver.clients?.full_name)} />
+                  <FieldCard label="License Number" value={valueOrDash(driver.clients?.license_number)} />
+                  <FieldCard label="License Expiry" value={valueOrDash(driver.clients?.license_expiry ? fmtDate(driver.clients.license_expiry) : "-")} />
+                </div>
+                <SignatureBox
+                  title={`ADDITIONAL DRIVER ${driver.position}`}
+                  signer={driver.clients?.full_name || ""}
+                  canvasRef={(instance) => { driverSigRefs.current[driver.id] = instance; }}
+                  onStroke={() => onDriverStroke(driver.id)}
+                  onClear={() => onDriverClear(driver.id)}
+                />
+              </div>
+            ))}
+          </div>
+        </ContractPage>
+      ))}
     </div>
   );
 }
@@ -617,12 +663,14 @@ export function SignContractModal({
   const [saving, setSaving] = useState(false);
   const [clientSigHasContent, setClientSigHasContent] = useState(false);
   const [managerSigHasContent, setManagerSigHasContent] = useState(false);
+  const [driverSigHasContent, setDriverSigHasContent] = useState<Record<string, boolean>>({});
   const [clientSigDataUrl, setClientSigDataUrl] = useState("");
   const [managerSigDataUrl, setManagerSigDataUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
 
   const clientSigRef = useRef<SigRef>(null);
   const managerSigRef = useRef<SigRef>(null);
+  const driverSigRefs = useRef<Record<string, SigRef | null>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -633,6 +681,8 @@ export function SignContractModal({
     setSaving(false);
     setClientSigHasContent(false);
     setManagerSigHasContent(false);
+    setDriverSigHasContent({});
+    driverSigRefs.current = {};
     setClientSigDataUrl("");
     setManagerSigDataUrl("");
     setSummary(null);
@@ -642,7 +692,7 @@ export function SignContractModal({
 
     const load = async () => {
       try {
-        const [contractRes, authRes] = await Promise.all([
+        const [contractRes, authRes, drivers] = await Promise.all([
           supabase
             .from("contracts")
             .select(
@@ -651,6 +701,7 @@ export function SignContractModal({
             .eq("id", contractId)
             .single(),
           supabase.auth.getUser(),
+          getContractDrivers(contractId),
         ]);
 
         if (contractRes.error || !contractRes.data) {
@@ -706,7 +757,7 @@ export function SignContractModal({
         const client = pdfData.clients?.full_name ?? clientName;
 
         if (!cancelled) {
-          setSummary({ clientName: client, pdfData, previewData, profile });
+          setSummary({ clientName: client, pdfData, previewData, profile, drivers });
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unexpected signature step error.";
@@ -735,6 +786,14 @@ export function SignContractModal({
       toast.error("Company representative signature is required.");
       return;
     }
+    const missingDriverSignature = summary?.drivers.find((driver) => {
+      const ref = driverSigRefs.current[driver.id];
+      return !ref || ref.isEmpty();
+    });
+    if (missingDriverSignature) {
+      toast.error(`Signature is required for ${missingDriverSignature.clients?.full_name || "each additional driver"}.`);
+      return;
+    }
     if (!summary?.pdfData) {
       toast.error("Contract details are not loaded. Please reopen the signature step.");
       return;
@@ -742,6 +801,15 @@ export function SignContractModal({
 
     const clientSignature = clientSigRef.current.getDataUrl();
     const managerSignature = managerSigRef.current.getDataUrl();
+    const driverSignatures = summary.drivers.map((driver) => ({
+      id: driver.id,
+      signature: driverSigRefs.current[driver.id]!.getDataUrl(),
+    }));
+    const signedDrivers = summary.drivers.map((driver) => ({
+      ...driver,
+      signature: driverSignatures.find((item) => item.id === driver.id)?.signature || null,
+      signed_at: new Date().toISOString(),
+    }));
 
     setSaving(true);
     const { error } = await supabase
@@ -755,8 +823,17 @@ export function SignContractModal({
       return;
     }
 
+    try {
+      await saveContractDriverSignatures(driverSignatures);
+    } catch (driverError) {
+      setSaving(false);
+      toast.error("Failed to save additional driver signatures: " + (driverError instanceof Error ? driverError.message : "unknown error"));
+      return;
+    }
+
     setClientSigDataUrl(clientSignature);
     setManagerSigDataUrl(managerSignature);
+    setSummary((current) => current ? { ...current, drivers: signedDrivers } : current);
 
     try {
       const blob = await generateContractPdf(
@@ -764,6 +841,7 @@ export function SignContractModal({
           ...summary.pdfData,
           client_signature: clientSignature,
           manager_signature: managerSignature,
+          contract_drivers: signedDrivers,
         },
         { returnBlob: true },
       ) as Blob;
@@ -829,6 +907,14 @@ export function SignContractModal({
                     managerSigRef.current?.clear();
                     setManagerSigHasContent(false);
                   }}
+                  driverSigRefs={driverSigRefs}
+                  onDriverStroke={(driverId) => {
+                    setDriverSigHasContent((current) => ({ ...current, [driverId]: true }));
+                  }}
+                  onDriverClear={(driverId) => {
+                    driverSigRefs.current[driverId]?.clear();
+                    setDriverSigHasContent((current) => ({ ...current, [driverId]: false }));
+                  }}
                 />
               ) : null}
             </>
@@ -851,7 +937,7 @@ export function SignContractModal({
           )}
         </div>
 
-        {step === "review" && clientSigHasContent && managerSigHasContent && (
+        {step === "review" && clientSigHasContent && managerSigHasContent && summary?.drivers.every((driver) => driverSigHasContent[driver.id]) && (
           <div className="shrink-0 border-t border-border bg-background px-4 py-3 sm:px-6 sm:py-4">
             <div className="flex justify-end">
               <Button
@@ -877,6 +963,7 @@ export function SignContractModal({
                       ...summary.pdfData,
                       client_signature: clientSigDataUrl || null,
                       manager_signature: managerSigDataUrl || null,
+                      contract_drivers: summary.drivers,
                     });
                     toast.success("Contract PDF downloaded");
                   } catch {

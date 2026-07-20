@@ -49,6 +49,8 @@ import { diffCalendarDays, parseDateInput, parseDateTimeInput } from "@/lib/date
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { toast } from "sonner";
 import { SignContractModal } from "@/components/SignContractModal";
+import { AdditionalDriversField } from "@/components/AdditionalDriversField";
+import { saveContractDrivers } from "@/lib/contractDrivers";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
 import {
   AlertDialog,
@@ -103,7 +105,12 @@ interface ContractRow {
   cars: { plate: string; make: string; model: string; year: number; color: string | null } | null;
 }
 
-interface ClientOption { id: string; full_name: string; }
+interface ClientOption {
+  id: string;
+  full_name: string;
+  license_number: string;
+  license_expiry: string | null;
+}
 interface CarOption { id: string; plate: string; make: string; model: string; status: string; }
 type VehicleAvailability =
   | { status: "available" }
@@ -677,6 +684,7 @@ const Contracts = () => {
   const [form, setForm] = useState(createEmptyForm);
   const [showNotes, setShowNotes] = useState(false);
   const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
+  const [additionalDriverIds, setAdditionalDriverIds] = useState<string[]>([]);
   const [endTimeManuallyEdited, setEndTimeManuallyEdited] = useState(false);
   const [clientSelectOpen, setClientSelectOpen] = useState(false);
   const [carSelectOpen, setCarSelectOpen] = useState(false);
@@ -720,7 +728,11 @@ const Contracts = () => {
           .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year, color)")
           .eq("owner_id", userId)
           .order("created_at", { ascending: false }),
-        supabase.from("clients").select("id, full_name").eq("owner_id", userId).order("full_name"),
+        supabase
+          .from("clients")
+          .select("id, full_name, license_number, license_expiry")
+          .eq("owner_id", userId)
+          .order("full_name"),
         supabase.from("cars").select("id, plate, make, model, status").eq("owner_id", userId).order("plate"),
         supabase.from("profiles").select("deposit_return_days" as never).eq("id", userId).single(),
       ]);
@@ -1064,6 +1076,7 @@ const Contracts = () => {
     setClientSelectOpen(false);
     setCarSelectOpen(false);
     setVehicleAvailability(null);
+    setAdditionalDriverIds([]);
   };
 
   const prefillInitialMileage = async (carId: string) => {
@@ -1227,6 +1240,17 @@ const Contracts = () => {
         toast.error("Failed to create contract: " + toSupabaseMessage(error));
         console.error("Contract creation error:", error);
       } else {
+        try {
+          await saveContractDrivers(createdId, userId, additionalDriverIds);
+        } catch (driverError) {
+          console.error("Additional drivers insert error:", driverError);
+          await supabase.from("contracts").delete().eq("id", createdId);
+          toast.error(
+            "Contract was not created because additional drivers could not be saved: " +
+              (driverError instanceof Error ? driverError.message : "unknown error"),
+          );
+          return;
+        }
         let additionalChargesError: { message?: string } | null = null;
         const chargesToInsert = additionalCharges.filter((charge) => {
           const amount = Number(charge.amount);
@@ -1271,6 +1295,7 @@ const Contracts = () => {
         setForm(createEmptyForm());
         setShowNotes(false);
         setAdditionalCharges([]);
+        setAdditionalDriverIds([]);
         setEndTimeManuallyEdited(false);
         setClientSearch("");
         setCarSearch("");
@@ -1412,6 +1437,7 @@ const Contracts = () => {
                                 value={c.id}
                                 onSelect={() => {
                                   setForm((prev) => ({ ...prev, client_id: c.id }));
+                                  setAdditionalDriverIds((prev) => prev.filter((id) => id !== c.id));
                                   setClientSelectOpen(false);
                                   setClientSearch("");
                                 }}
@@ -1434,6 +1460,12 @@ const Contracts = () => {
                     Client not found? Add the client first from Clients.
                   </p>
                 </div>
+                <AdditionalDriversField
+                  clients={clients}
+                  primaryClientId={form.client_id}
+                  value={additionalDriverIds}
+                  onChange={setAdditionalDriverIds}
+                />
                 {docExpiredWarnings.length > 0 && (
                   <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1">
                     {docExpiredWarnings.map((w, i) => (
