@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { MessageCircle, Calendar, DollarSign } from "lucide-react";
+import { MessageCircle, Calendar } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,11 +37,8 @@ const RenewContractDialog = ({
   clientPhone,
   carPlate,
   currentEndDate,
-  rateType,
-  rateAmount,
 }: RenewContractDialogProps) => {
   const [newEndDate, setNewEndDate] = useState("");
-  const [paymentAmount, setPaymentAmount] = useState(String(rateAmount));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formatDateForDisplay = (dateString: string) => {
@@ -95,12 +92,6 @@ const RenewContractDialog = ({
         return;
       }
 
-      const amount = Number(paymentAmount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        toast.error("Enter a valid extension amount");
-        return;
-      }
-
       const { data: existingExtension, error: existingExtensionError } = await (supabase as any)
         .from("contract_fees")
         .select("id")
@@ -127,26 +118,25 @@ const RenewContractDialog = ({
 
       if (contractUpdateError) throw contractUpdateError;
 
-      const { error } = await (supabase as any)
+      // Keep a zero-value period marker for vehicle replacement history.
+      // Financial charges are added separately through Add Fee.
+      const { error: extensionMarkerError } = await (supabase as any)
         .from("contract_fees")
         .insert({
           contract_id: contractId,
           category: "other",
           label: buildRentalExtensionLabel(extensionStart, newEndDate),
-          amount,
+          amount: 0,
           extension_start: extensionStart,
           extension_end: newEndDate,
           owner_id: userId,
         });
 
-      if (error) throw error;
+      if (extensionMarkerError) throw extensionMarkerError;
 
-      toast.success("Contract extension saved");
+      toast.success("Contract period extended. Add the rental charge separately in Finance.");
       onOpenChange(false);
-      
-      // Reset form
       setNewEndDate("");
-      setPaymentAmount(String(rateAmount));
     } catch (error) {
       console.error("Error renewing contract:", error);
       toast.error("Failed to renew contract");
@@ -159,38 +149,29 @@ const RenewContractDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Renew Contract</DialogTitle>
+          <DialogTitle>Extend Contract Period</DialogTitle>
           <DialogDescription>
-            Renew the rental contract for {clientName} ({carPlate})
+            Change only the rental end date for {clientName} ({carPlate}). Add the rental charge separately in Finance.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="newEndDate" className="flex items-center gap-2">
-              <Calendar className="w-4 h-4" />
+              <Calendar className="h-4 w-4" />
               New End Date
             </Label>
             <Input
               id="newEndDate"
               type="date"
               value={newEndDate}
-              onChange={(e) => setNewEndDate(e.target.value)}
+              onChange={(event) => setNewEndDate(event.target.value)}
               min={new Date(currentEndDate).toISOString().split("T")[0]}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="paymentAmount" className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              Payment Amount (AED)
-            </Label>
-            <Input
-              id="paymentAmount"
-              type="number"
-              value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
-            />
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            This action changes the contract period only. It does not add or change any amount.
           </div>
 
           <div className="space-y-2">
@@ -203,7 +184,7 @@ const RenewContractDialog = ({
                 onClick={handleEnglishWhatsApp}
                 className="flex-1"
               >
-                <MessageCircle className="w-4 h-4 mr-2" />
+                <MessageCircle className="mr-2 h-4 w-4" />
                 Ask client (EN)
               </Button>
               <Button
@@ -213,7 +194,7 @@ const RenewContractDialog = ({
                 onClick={handleRussianWhatsApp}
                 className="flex-1"
               >
-                <MessageCircle className="w-4 h-4 mr-2" />
+                <MessageCircle className="mr-2 h-4 w-4" />
                 Ask client (RU)
               </Button>
             </div>
@@ -234,7 +215,7 @@ const RenewContractDialog = ({
             onClick={handleConfirmRenewal}
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Renewing..." : "Confirm Renewal"}
+            {isSubmitting ? "Extending..." : "Extend Period"}
           </Button>
         </DialogFooter>
       </DialogContent>
