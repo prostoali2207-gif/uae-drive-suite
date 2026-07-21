@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/parking-pdf-import
 
 permissions:
   contents: write
@@ -16,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: main
       - name: Patch Fines page
         run: |
           python - <<'PY'
@@ -58,10 +57,6 @@ jobs:
 
           path.write_text(text)
           PY
-      - name: Build
-        run: |
-          npm ci
-          npm run build
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
@@ -69,4 +64,8 @@ jobs:
           git add src/pages/Fines.tsx
           git diff --cached --quiet && exit 0
           git commit -m "Add Parking tab to fines and Salik page"
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin HEAD:main
+      - name: Verify build
+        run: |
+          npm ci
+          npm run build
