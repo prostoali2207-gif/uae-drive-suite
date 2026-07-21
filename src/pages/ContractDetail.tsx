@@ -8,7 +8,6 @@ import {
   Download,
   FileDown,
   Plus,
-  CalendarPlus,
   CheckCircle2,
   FileText,
   Receipt,
@@ -242,10 +241,6 @@ type AmountEditTarget =
   | { type: "rental"; label: string; amount: number }
   | { type: "payment"; label: string; amount: number; payment: PaymentRow }
   | { type: "fee"; label: string; amount: number; fee: ContractFeeRow };
-
-type RentalPeriodEditTarget =
-  | { type: "contract"; startDate: string; endDate: string; amount: number }
-  | { type: "extension"; startDate: string; endDate: string; amount: number; fee: ContractFeeRow };
 
 type ContractFinancialTotals = {
   charges: number;
@@ -599,7 +594,6 @@ type RentalHistoryPeriod = {
   name: string;
   startDate: string;
   endDate: string;
-  amount: number;
   fee?: ContractFeeRow;
 };
 
@@ -628,7 +622,6 @@ const buildRentalPeriods = (
       name: "Original Contract",
       startDate: contract.start_date,
       endDate: originalEndDate,
-      amount: Number(contract.total_amount),
     },
   ];
 
@@ -643,7 +636,6 @@ const buildRentalPeriods = (
       name: `Extension #${index + 1}`,
       startDate,
       endDate,
-      amount: Number(fee.amount),
       fee,
     });
   });
@@ -1433,7 +1425,6 @@ type FinancialsPanelProps = {
   onCancelAddFee: () => void;
   onSaveFee: (fee: AddFeeInlineFee) => void;
   onAddPayment: () => void;
-  onEditRentalPeriod: (fee?: ContractFeeRow) => void;
   onEditPaymentAmount: (payment: PaymentRow) => void;
   onEditFeeAmount: (fee: ContractFeeRow) => void;
   onDeletePayment: (payment: PaymentRow) => void;
@@ -2377,7 +2368,6 @@ const FinancialsPanel = ({
   onCancelAddFee,
   onSaveFee,
   onAddPayment,
-  onEditRentalPeriod,
   onEditPaymentAmount,
   onEditFeeAmount,
   onDeletePayment,
@@ -2593,8 +2583,9 @@ const FinancialsPanel = ({
         icon: CalendarDays,
         iconTone: "blue",
       },
-      ...rentalExtensions.map((fee, index) => {
-        return {
+      ...rentalExtensions.flatMap((fee, index) => {
+        if (Number(fee.amount) === 0) return [];
+        return [{
           id: `rent-extension-${fee.id}`,
           date: fee.extension_start ?? fee.created_at ?? contract.start_date,
           group: "adjustments" as const,
@@ -2607,7 +2598,7 @@ const FinancialsPanel = ({
           icon: CalendarDays,
           iconTone: "blue" as const,
           contractFee: fee,
-        };
+        }];
       }),
       ...otherFees.map((fee) => ({
         id: `fee-${fee.id}`,
@@ -2687,10 +2678,7 @@ const FinancialsPanel = ({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
   });
-  const rentalPeriods = buildRentalPeriods(contract, rentalExtensions).map((period) => ({
-    ...period,
-    onEdit: () => onEditRentalPeriod(period.fee),
-  })).sort((a, b) => {
+  const rentalPeriods = buildRentalPeriods(contract, rentalExtensions).sort((a, b) => {
     const aTime = new Date(a.startDate).getTime() || 0;
     const bTime = new Date(b.startDate).getTime() || 0;
     return bTime - aTime;
@@ -3036,20 +3024,7 @@ const FinancialsPanel = ({
                     <div className="text-[11px] text-muted-foreground">
                       {diffDays(currentRentalPeriod.startDate, currentRentalPeriod.endDate)} days
                     </div>
-                    <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-foreground">
-                      {fmtAed(currentRentalPeriod.amount)}
-                    </div>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Edit current rental period"
-                    className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-green-950/40 hover:text-foreground"
-                    onClick={currentRentalPeriod.onEdit}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
                 </div>
               </div>
             </div>
@@ -3072,7 +3047,6 @@ const FinancialsPanel = ({
                         {formatDate(period.startDate)} - {formatDate(period.endDate)} - {diffDays(period.startDate, period.endDate)} days
                       </div>
                     </div>
-                    <div className="shrink-0 font-mono text-xs tabular-nums">{fmtAed(period.amount)}</div>
                   </div>
                 ))}
               </div>
@@ -3751,9 +3725,9 @@ const ContractDetail = () => {
   const [depositReturnDueDate, setDepositReturnDueDate] = useState("");
   const [depositReturnDueDateEdited, setDepositReturnDueDateEdited] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [showExtensionForm, setShowExtensionForm] = useState(false);
   const [extendEndDate, setExtendEndDate] = useState("");
-  const [extendAmount, setExtendAmount] = useState("");
+  const [extendEndTime, setExtendEndTime] = useState("");
   const [extendError, setExtendError] = useState("");
   const [isExtending, setIsExtending] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -3780,11 +3754,6 @@ const ContractDetail = () => {
   const [amountEditAllocationError, setAmountEditAllocationError] = useState("");
   const [amountEditExtensionEndDate, setAmountEditExtensionEndDate] = useState("");
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
-  const [rentalPeriodEditTarget, setRentalPeriodEditTarget] = useState<RentalPeriodEditTarget | null>(null);
-  const [rentalPeriodEndDate, setRentalPeriodEndDate] = useState("");
-  const [rentalPeriodAmount, setRentalPeriodAmount] = useState("");
-  const [rentalPeriodEditError, setRentalPeriodEditError] = useState("");
-  const [savingRentalPeriod, setSavingRentalPeriod] = useState(false);
   const [markingDepositReturned, setMarkingDepositReturned] = useState(false);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
@@ -4226,10 +4195,9 @@ const ContractDetail = () => {
         trips: Number(charge.trips) || 0,
         amount: Number(charge.amount) || 0,
       }));
-      const fees = ((feesRes.data ?? []) as Array<{ id: string; label: string; amount: number }>).map((fee) => ({
-        ...fee,
-        amount: Number(fee.amount) || 0,
-      }));
+      const fees = ((feesRes.data ?? []) as Array<{ id: string; label: string; amount: number }>)
+        .map((fee) => ({ ...fee, amount: Number(fee.amount) || 0 }))
+        .filter((fee) => fee.amount !== 0);
       const paidAmount = ((paymentsRes.data ?? []) as Array<{ amount: number }>).reduce(
         (sum, payment) => sum + (Number(payment.amount) || 0),
         0,
@@ -4697,46 +4665,49 @@ const ContractDetail = () => {
     await fetchData();
   };
 
-  const openExtendModal = () => {
+  const openExtensionForm = () => {
     if (!contract) return;
     setExtendEndDate("");
-    setExtendAmount("");
+    setExtendEndTime(formatTimeDisplay(contract.end_time));
     setExtendError("");
-    setShowExtendModal(true);
+    setShowExtensionForm(true);
+  };
+
+  const closeExtensionForm = () => {
+    if (isExtending) return;
+    setShowExtensionForm(false);
+    setExtendEndDate("");
+    setExtendEndTime("");
+    setExtendError("");
   };
 
   const handleExtendContract = async () => {
     if (!contract) return;
     setExtendError("");
 
-    if (!extendEndDate) {
-      setExtendError("Select a new end date.");
+    if (!extendEndDate || !extendEndTime) {
+      setExtendError("Select a new end date and time.");
       return;
     }
 
     const extensionStart = getLatestRentalPeriodEnd(contract, contractFees);
-
-    if (extendEndDate <= extensionStart) {
-      setExtendError("New end date must be later than the current end date.");
-      return;
-    }
-
-    const extensionAmount = Number(extendAmount);
-    if (!Number.isFinite(extensionAmount) || extensionAmount <= 0) {
-      setExtendError("Enter a valid extension amount.");
+    const currentEnd = parseContractDateTime(extensionStart, contract.end_time);
+    const nextEnd = parseContractDateTime(extendEndDate, extendEndTime);
+    if (nextEnd <= currentEnd) {
+      setExtendError("New end date and time must be later than the current contract end.");
       return;
     }
 
     setIsExtending(true);
     const extensionEnd = extendEndDate;
-    const newEndTime = formatTimeForDb(contract.end_time);
+    const newEndTime = formatTimeForDb(extendEndTime);
 
     let overlap = null;
     try {
       overlap = await findVehicleContractOverlap(supabase, {
         carId: contract.car_id,
         startDate: extensionStart,
-        startTime: contract.start_time,
+        startTime: contract.end_time,
         endDate: extensionEnd,
         endTime: newEndTime,
         excludeContractId: contract.id,
@@ -4774,9 +4745,9 @@ const ContractDetail = () => {
     if (existingExtension?.id) {
       setIsExtending(false);
       toast.info("This extension period already exists");
-      setShowExtendModal(false);
+      setShowExtensionForm(false);
       setExtendEndDate("");
-      setExtendAmount("");
+      setExtendEndTime("");
       await fetchContractFees();
       return;
     }
@@ -4791,7 +4762,7 @@ const ContractDetail = () => {
 
     const { error: contractEndDateError } = await supabase
       .from("contracts")
-      .update({ end_date: extensionEnd } as never)
+      .update({ end_date: extensionEnd, end_time: newEndTime } as never)
       .eq("id", contract.id);
 
     if (contractEndDateError) {
@@ -4808,7 +4779,7 @@ const ContractDetail = () => {
         contract_id: contract.id,
         category: RENTAL_EXTENSION_CATEGORY,
         label: buildRentalExtensionLabel(extensionStart, extensionEnd),
-        amount: extensionAmount,
+        amount: 0,
         extension_start: extensionStart,
         extension_end: extensionEnd,
         owner_id: userId,
@@ -4822,9 +4793,9 @@ const ContractDetail = () => {
     setIsExtending(false);
 
     toast.success("Contract extended");
-    setShowExtendModal(false);
+    setShowExtensionForm(false);
     setExtendEndDate("");
-    setExtendAmount("");
+    setExtendEndTime("");
     await fetchData();
     await fetchContractFees();
     setFeeRefreshKey((key) => key + 1);
@@ -5417,174 +5388,6 @@ const ContractDetail = () => {
     toast.success("Fee amount updated");
   };
 
-  const openRentalPeriodEditDialog = (fee?: ContractFeeRow) => {
-    if (!contract) return;
-
-    if (fee && isStructuredRentalExtensionFee(fee)) {
-      const startDate = fee.extension_start ?? contract.end_date;
-      const endDate = fee.extension_end ?? contract.end_date;
-      const amount = Number(fee.amount);
-      setRentalPeriodEditTarget({ type: "extension", startDate, endDate, amount, fee });
-      setRentalPeriodEndDate(endDate);
-      setRentalPeriodAmount(String(amount));
-    } else {
-      const amount = Number(contract.total_amount);
-      setRentalPeriodEditTarget({
-        type: "contract",
-        startDate: contract.start_date,
-        endDate: contract.end_date,
-        amount,
-      });
-      setRentalPeriodEndDate(contract.end_date);
-      setRentalPeriodAmount(String(amount));
-    }
-
-    setRentalPeriodEditError("");
-  };
-
-  const closeRentalPeriodEditDialog = () => {
-    if (savingRentalPeriod) return;
-    setRentalPeriodEditTarget(null);
-    setRentalPeriodEndDate("");
-    setRentalPeriodAmount("");
-    setRentalPeriodEditError("");
-  };
-
-  const handleSaveRentalPeriod = async () => {
-    if (!contract || !rentalPeriodEditTarget) return;
-
-    if (!rentalPeriodEndDate) {
-      setRentalPeriodEditError("Select an end date.");
-      return;
-    }
-
-    if (rentalPeriodEndDate < rentalPeriodEditTarget.startDate) {
-      setRentalPeriodEditError("End Date cannot be before Start Date.");
-      return;
-    }
-
-    const nextAmount = Number(rentalPeriodAmount);
-    if (!Number.isFinite(nextAmount) || nextAmount < 0) {
-      setRentalPeriodEditError("Amount must be 0 or greater.");
-      return;
-    }
-
-    setSavingRentalPeriod(true);
-    setRentalPeriodEditError("");
-
-    try {
-      const conflict = await findVehicleContractOverlap(supabase, {
-        carId: contract.car_id,
-        startDate:
-          rentalPeriodEditTarget.type === "contract"
-            ? contract.start_date
-            : rentalPeriodEditTarget.startDate,
-        startTime: contract.start_time,
-        endDate: rentalPeriodEndDate,
-        endTime: contract.end_time,
-        excludeContractId: contract.id,
-        operation: rentalPeriodEditTarget.type === "contract" ? "contract-edit" : "contract-extension",
-      });
-
-      if (conflict) {
-        setSavingRentalPeriod(false);
-        setRentalPeriodEditError(formatContractOverlapMessage(conflict));
-        return;
-      }
-    } catch (error) {
-      setSavingRentalPeriod(false);
-      setRentalPeriodEditError(
-        error instanceof Error ? error.message : "Could not check vehicle availability.",
-      );
-      return;
-    }
-
-    if (rentalPeriodEditTarget.type === "contract") {
-      const { error } = await supabase
-        .from("contracts")
-        .update({
-          end_date: rentalPeriodEndDate,
-          total_amount: nextAmount,
-        } as never)
-        .eq("id", contract.id);
-
-      if (error) {
-        setSavingRentalPeriod(false);
-        setRentalPeriodEditError("Failed to update rental period.");
-        return;
-      }
-
-      setContract((current) =>
-        current
-          ? { ...current, end_date: rentalPeriodEndDate, total_amount: nextAmount }
-          : current,
-      );
-      await fetchData();
-    } else {
-      const nextLabel = buildRentalExtensionLabel(
-        rentalPeriodEditTarget.startDate,
-        rentalPeriodEndDate,
-      );
-      const amountDelta = Math.round((nextAmount - Number(rentalPeriodEditTarget.amount)) * 100) / 100;
-      const nextContractTotal = Math.round((Number(contract.total_amount) + amountDelta) * 100) / 100;
-      const { error: contractAmountError } = await supabase
-        .from("contracts")
-        .update({ total_amount: nextContractTotal } as never)
-        .eq("id", contract.id);
-
-      if (contractAmountError) {
-        setSavingRentalPeriod(false);
-        setRentalPeriodEditError("Failed to update rental amount.");
-        return;
-      }
-
-      const { error } = await (supabase as any)
-        .from("contract_fees")
-        .update({
-          extension_end: rentalPeriodEndDate,
-          amount: nextAmount,
-          label: nextLabel,
-        })
-        .eq("id", rentalPeriodEditTarget.fee.id);
-
-      if (error) {
-        setSavingRentalPeriod(false);
-        setRentalPeriodEditError("Failed to update rental period.");
-        return;
-      }
-
-      const nextFees = contractFees.map((fee) =>
-        fee.id === rentalPeriodEditTarget.fee.id
-          ? {
-              ...fee,
-              extension_end: rentalPeriodEndDate,
-              amount: nextAmount,
-              label: nextLabel,
-            }
-          : fee,
-      );
-
-      try {
-        await syncContractEndDateWithFees(nextFees);
-      } catch {
-        setSavingRentalPeriod(false);
-        setRentalPeriodEditError("Rental period saved, but contract end date did not sync.");
-        return;
-      }
-
-      setContract((current) =>
-        current ? { ...current, total_amount: nextContractTotal } : current,
-      );
-      await fetchContractFees();
-    }
-
-    setSavingRentalPeriod(false);
-    setRentalPeriodEditTarget(null);
-    setRentalPeriodEndDate("");
-    setRentalPeriodAmount("");
-    toast.success("Rental period updated");
-  };
-
   const handleOpenEditModal = async () => {
     if (!contract) return;
     setEditStartDate(contract.start_date);
@@ -5717,6 +5520,7 @@ const ContractDetail = () => {
     </Button>
   );
   const rentalFeeLines = sortRentalExtensionFees(contractFees);
+  const financialRentalFeeLines = rentalFeeLines.filter((fee) => Number(fee.amount) !== 0);
   const manualFeeLines = contractFees.filter((fee) => !isRentalExtensionFee(fee));
   const contractDueDateLabel = formatDate(effectiveContractEndDate);
   const grossPaymentAllocationLines: ContractPaymentAllocationLine[] = [
@@ -5727,10 +5531,10 @@ const ContractDetail = () => {
       due: Number(contract.total_amount),
       dueDate: contract.end_date,
     },
-    ...rentalFeeLines.map((fee, index) => ({
+    ...financialRentalFeeLines.map((fee) => ({
       id: `fee-${fee.id}`,
       category: "rental" as const,
-      label: `Extension #${index + 1}`,
+      label: `Extension #${rentalFeeLines.findIndex((period) => period.id === fee.id) + 1}`,
       due: Number(fee.amount),
       overdueImmediately: true,
     })),
@@ -5894,12 +5698,6 @@ const ContractDetail = () => {
     !isCloseRetainFullValid ||
     !isCloseDepositReturnDateValid;
   const latestRentalPeriodEnd = getLatestRentalPeriodEnd(contract, rentalFeeLines);
-  const extensionMinDate = addDaysToDateInput(latestRentalPeriodEnd, 1);
-  const extensionPreviewDays = extendEndDate ? diffDays(latestRentalPeriodEnd, extendEndDate) : 0;
-  const extensionPreviewCharge = Number(extendAmount);
-  const extensionConfirmLabel = extendEndDate
-    ? `Confirm Extension → ${formatDate(extendEndDate)}`
-    : "Confirm Extension";
   const amountEditIsExtension =
     amountEditTarget?.type === "fee" && isStructuredRentalExtensionFee(amountEditTarget.fee);
   const amountEditExtensionPeriod =
@@ -5964,12 +5762,6 @@ const ContractDetail = () => {
                   <FileDown className="h-3.5 w-3.5" />
                   Contract
                 </Button>
-                {canExtendContract && (
-                  <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={openExtendModal}>
-                    <CalendarPlus className="h-3.5 w-3.5" />
-                    Extend
-                  </Button>
-                )}
                 {!isContractClosed && (
                   <Button
                     variant="outline"
@@ -6047,12 +5839,6 @@ const ContractDetail = () => {
           {/* OVERVIEW */}
           <TabsContent value="overview" className="mt-4 max-w-full min-w-0 space-y-3">
             <div className="flex flex-wrap gap-2">
-              {canExtendContract && (
-                <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={openExtendModal}>
-                  <CalendarPlus className="h-3.5 w-3.5" />
-                  Extend Rental
-                </Button>
-              )}
               <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Details
@@ -6125,12 +5911,62 @@ const ContractDetail = () => {
               <Panel title="Rental Period">
                 <div className="grid grid-cols-2 gap-x-4">
                   <Field label="Start Date" value={formatDateWithOptionalTime(contract.start_date, contract.start_time)} />
-                  <Field label="End Date" value={formatDateWithOptionalTime(effectiveContractEndDate, contract.end_time)} />
+                  <div className="flex min-w-0 items-start gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      <Field label="End Date" value={formatDateWithOptionalTime(effectiveContractEndDate, contract.end_time)} />
+                    </div>
+                    {canExtendContract && !showExtensionForm ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="mt-1 h-9 w-9 shrink-0 text-muted-foreground"
+                        aria-label="Extend rental period"
+                        onClick={openExtensionForm}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
                   <Field label="Total Days" value={days} />
                   <Field label="Rate Type" value={contract.rate_type} />
                   <Field label={`${contract.rate_type} Rate`} value={fmtAed(contract.rate_amount)} />
                   <Field label="Deposit" value={fmtAed(contract.deposit_amount)} />
                 </div>
+                {showExtensionForm ? (
+                  <div className="mt-3 border-t border-border pt-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-1">
+                        <Label htmlFor="extension-end-date" className="text-[11px] text-muted-foreground">New End Date</Label>
+                        <Input
+                          id="extension-end-date"
+                          type="date"
+                          min={effectiveContractEndDate}
+                          value={extendEndDate}
+                          onChange={(event) => { setExtendEndDate(event.target.value); setExtendError(""); }}
+                          className="h-10 min-w-0 text-sm"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <Label htmlFor="extension-end-time" className="text-[11px] text-muted-foreground">New End Time</Label>
+                        <Input
+                          id="extension-end-time"
+                          type="time"
+                          value={extendEndTime}
+                          onChange={(event) => { setExtendEndTime(event.target.value); setExtendError(""); }}
+                          className="h-10 min-w-0 text-sm"
+                        />
+                      </div>
+                    </div>
+                    {extendError ? <p className="mt-2 text-xs text-destructive">{extendError}</p> : null}
+                    <div className="mt-3 flex gap-2">
+                      <Button type="button" size="sm" className="h-10 flex-1" disabled={isExtending || !extendEndDate || !extendEndTime} onClick={() => void handleExtendContract()}>
+                        {isExtending ? "Saving..." : "Save"}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="h-10 flex-1" disabled={isExtending} onClick={closeExtensionForm}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : null}
               </Panel>
             </div>
 
@@ -6208,7 +6044,6 @@ const ContractDetail = () => {
               onCancelAddFee={() => setShowAddFeeInline(false)}
               onSaveFee={(fee) => void handleAddFee(fee)}
               onAddPayment={() => setShowPaymentModal(true)}
-              onEditRentalPeriod={openRentalPeriodEditDialog}
               onEditPaymentAmount={(payment) =>
                 openAmountEditDialog({
                   type: "payment",
@@ -6677,89 +6512,6 @@ const ContractDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={rentalPeriodEditTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) closeRentalPeriodEditDialog();
-        }}
-      >
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle>Edit Rental Period</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="rental-period-start-date" className="text-xs">
-                Start Date
-              </Label>
-              <Input
-                id="rental-period-start-date"
-                type="date"
-                value={rentalPeriodEditTarget?.startDate ?? ""}
-                readOnly
-                aria-readonly="true"
-                className="bg-muted/40"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="rental-period-end-date" className="text-xs">
-                End Date
-              </Label>
-              <Input
-                id="rental-period-end-date"
-                type="date"
-                min={rentalPeriodEditTarget?.startDate}
-                value={rentalPeriodEndDate}
-                onChange={(event) => {
-                  setRentalPeriodEndDate(event.target.value);
-                  setRentalPeriodEditError("");
-                }}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="rental-period-amount" className="text-xs">
-                Amount (AED)
-              </Label>
-              <Input
-                id="rental-period-amount"
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                value={rentalPeriodAmount}
-                onChange={(event) => {
-                  setRentalPeriodAmount(event.target.value);
-                  setRentalPeriodEditError("");
-                }}
-                className="font-mono tabular-nums"
-              />
-            </div>
-            {rentalPeriodEditError ? (
-              <p className="text-xs text-destructive">{rentalPeriodEditError}</p>
-            ) : null}
-          </div>
-          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={closeRentalPeriodEditDialog}
-              disabled={savingRentalPeriod}
-              className="w-full sm:w-auto"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSaveRentalPeriod}
-              disabled={savingRentalPeriod || !rentalPeriodEndDate || rentalPeriodAmount === ""}
-              className="w-full sm:w-auto"
-            >
-              {savingRentalPeriod ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <AlertDialog
         open={paymentToDelete !== null}
         onOpenChange={(open) => {
@@ -6863,94 +6615,6 @@ const ContractDetail = () => {
               onClick={handleSaveEdit}
             >
               {isSavingEdit ? "Saving…" : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showExtendModal} onOpenChange={(v) => !v && setShowExtendModal(false)}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle>Extend Contract</DialogTitle>
-            <DialogDescription className="text-xs">
-              {contract ? `CTR-${contract.id.slice(0, 8).toUpperCase()}` : ""}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                New end date
-              </Label>
-              <input
-                type="date"
-                min={extensionMinDate}
-                value={extendEndDate}
-                onChange={(e) => {
-                  setExtendEndDate(e.target.value);
-                  setExtendError("");
-                }}
-                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-10 md:text-sm"
-              />
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label htmlFor="extension-amount" className="text-xs uppercase tracking-wide text-muted-foreground">
-                Amount (AED)
-              </Label>
-              <Input
-                id="extension-amount"
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                value={extendAmount}
-                onChange={(e) => {
-                  setExtendAmount(e.target.value);
-                  setExtendError("");
-                }}
-                className="font-mono tabular-nums"
-                placeholder="0.00"
-              />
-            </div>
-
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
-              <div className="grid gap-1 font-mono text-muted-foreground">
-                <div className="flex items-center justify-between gap-3">
-                  <span>Period</span>
-                  <span className="text-right text-foreground">
-                    {formatDate(latestRentalPeriodEnd)} {"->"} {extendEndDate ? formatDate(extendEndDate) : "Select date"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Days</span>
-                  <span className="text-right text-foreground">{extensionPreviewDays}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Charge</span>
-                  <span className="text-right text-foreground">
-                    {Number.isFinite(extensionPreviewCharge) ? fmtAed(extensionPreviewCharge) : "AED 0"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {extendError && (
-              <div className="rounded-md border border-tint-rose-foreground/20 bg-tint-rose px-3 py-2 text-xs text-tint-rose-foreground">
-                {extendError}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowExtendModal(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={isExtending || !extendEndDate || !extendAmount}
-              onClick={handleExtendContract}
-            >
-              {isExtending ? "Saving..." : extensionConfirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

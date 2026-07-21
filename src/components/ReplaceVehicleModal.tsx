@@ -1396,14 +1396,18 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               : [];
           const extensionPeriods = ((feePeriodsRes.data ?? []) as ContractFeePeriod[])
             .filter((fee) => fee.extension_start && fee.extension_end)
-            .map((fee) => ({
-              id: fee.id,
-              type: "fee" as const,
-              start: fee.extension_start!,
-              end: fee.extension_end!,
-              amount: Number(fee.amount),
-              daily_rate: Number(fee.amount) / 30,
-            }))
+            .map((fee) => {
+              const extensionAmount = Number(fee.amount);
+              const dailyRate = extensionAmount > 0 ? extensionAmount / 30 : contractDailyRate;
+              return {
+                id: fee.id,
+                type: "fee" as const,
+                start: fee.extension_start!,
+                end: fee.extension_end!,
+                amount: extensionAmount,
+                daily_rate: dailyRate,
+              };
+            })
             .filter((period) => Number.isFinite(period.daily_rate) && period.daily_rate > 0);
           setRentalPeriods([...originalPeriod, ...extensionPeriods]);
         } catch (err: unknown) {
