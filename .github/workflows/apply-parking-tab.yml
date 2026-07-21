@@ -1,0 +1,72 @@
+name: Apply parking tab patch
+
+on:
+  push:
+    branches:
+      - main
+      - feature/parking-pdf-import
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Patch Fines page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pages/Fines.tsx')
+          text = path.read_text()
+          if 'ParkingChargesTab' in text:
+              print('Parking tab already applied')
+              raise SystemExit(0)
+
+          replacements = [
+              (
+                  'import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";\n',
+                  'import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";\nimport { ParkingChargesTab } from "@/components/ParkingChargesTab";\n',
+              ),
+              (
+                  'if (queryType === "fines" || queryType === "salik") {',
+                  'if (queryType === "fines" || queryType === "salik" || queryType === "parking") {',
+              ),
+              (
+                  '<TabsTrigger value="salik">Salik Charges</TabsTrigger>\n',
+                  '<TabsTrigger value="salik">Salik Charges</TabsTrigger>\n          <TabsTrigger value="parking">Parking</TabsTrigger>\n',
+              ),
+              (
+                  '        <div className="relative">\n          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />\n          <Input\n            value={activeTab === "fines" ? finesSearch : salikSearch}\n            onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : setSalikSearch(e.target.value)}\n            placeholder={activeTab === "fines" ? "Search fine number, client, or plate..." : "Search transaction ID, client, or plate..."}\n            className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"\n          />\n        </div>\n',
+                  '        {activeTab !== "parking" && (\n          <div className="relative">\n            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />\n            <Input\n              value={activeTab === "fines" ? finesSearch : salikSearch}\n              onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : setSalikSearch(e.target.value)}\n              placeholder={activeTab === "fines" ? "Search fine number, client, or plate..." : "Search transaction ID, client, or plate..."}\n              className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"\n            />\n          </div>\n        )}\n',
+              ),
+              (
+                  '        </TabsContent>\n      </Tabs>\n\n      <Dialog open={!!importSummary}',
+                  '        </TabsContent>\n\n        <TabsContent value="parking" className="m-0">\n          <ParkingChargesTab />\n        </TabsContent>\n      </Tabs>\n\n      <Dialog open={!!importSummary}',
+              ),
+          ]
+
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'Expected Fines.tsx block was not found: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Fines.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Add Parking tab to fines and Salik page"
+          git push origin HEAD:${{ github.ref_name }}
