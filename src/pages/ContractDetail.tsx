@@ -88,7 +88,11 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import {
+  findVehicleContractOverlap,
+  formatContractOverlapMessage,
+  parseContractDateTime,
+} from "@/lib/contractOverlap";
 import { addDaysToDateInputValue, diffCalendarDays } from "@/lib/dateUtils";
 import { generateContractPdf } from "@/lib/contractPdf";
 import jsPDF from "jspdf";
@@ -4685,8 +4689,9 @@ const ContractDetail = () => {
     if (!contract) return;
     setExtendError("");
 
-    if (!extendEndDate || !extendEndTime) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(extendEndDate) || !/^\d{2}:\d{2}$/.test(extendEndTime)) {
       setExtendError("Select a new end date and time.");
+      toast.error("Select a valid new end date and time");
       return;
     }
 
@@ -4694,17 +4699,17 @@ const ContractDetail = () => {
     const currentEnd = parseContractDateTime(extensionStart, contract.end_time);
     const nextEnd = parseContractDateTime(extendEndDate, extendEndTime);
     if (nextEnd <= currentEnd) {
-      setExtendError("New end date and time must be later than the current contract end.");
+      const message = "New end date and time must be later than the current contract end.";
+      setExtendError(message);
+      toast.error(message);
       return;
     }
 
     setIsExtending(true);
     const extensionEnd = extendEndDate;
     const newEndTime = formatTimeForDb(extendEndTime);
-
-    let overlap = null;
     try {
-      overlap = await findVehicleContractOverlap(supabase, {
+      const overlap = await findVehicleContractOverlap(supabase, {
         carId: contract.car_id,
         startDate: extensionStart,
         startTime: contract.end_time,
@@ -4713,92 +4718,73 @@ const ContractDetail = () => {
         excludeContractId: contract.id,
         operation: "contract-extension",
       });
-    } catch (error) {
-      setIsExtending(false);
-      const message = error instanceof Error ? error.message : "Could not check vehicle availability. Try again.";
-      setExtendError(message);
-      return;
-    }
 
-    if (overlap) {
-      setIsExtending(false);
-      setExtendError(formatContractOverlapMessage(overlap));
-      return;
-    }
+      if (overlap) {
+        throw new Error(formatContractOverlapMessage(overlap));
+      }
 
-    const { data: existingExtension, error: existingExtensionError } = await (supabase as any)
-      .from("contract_fees")
-      .select("id")
-      .eq("contract_id", contract.id)
-      .eq("extension_start", extensionStart)
-      .eq("extension_end", extensionEnd)
-      .maybeSingle();
+      const { data: existingExtension, error: existingExtensionError } = await (supabase as any)
+        .from("contract_fees")
+        .select("id")
+        .eq("contract_id", contract.id)
+        .eq("extension_start", extensionStart)
+        .eq("extension_end", extensionEnd)
+        .maybeSingle();
 
-    if (existingExtensionError) {
-      setIsExtending(false);
-      const message = "Could not verify existing extension periods. Try again.";
-      setExtendError(message);
-      toast.error(message);
-      return;
-    }
+      if (existingExtensionError) {
+        throw new Error(existingExtensionError.message || "Could not verify existing extension periods.");
+      }
 
-    if (existingExtension?.id) {
-      setIsExtending(false);
-      toast.info("This extension period already exists");
+      if (existingExtension?.id) {
+        throw new Error("This extension period already exists.");
+      }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (userError || !userId) {
+        throw new Error(userError?.message || "Could not confirm current user. Try again.");
+      }
+
+      const { error: contractEndDateError } = await supabase
+        .from("contracts")
+        .update({ end_date: extensionEnd, end_time: newEndTime } as never)
+        .eq("id", contract.id);
+
+      if (contractEndDateError) {
+        throw new Error(contractEndDateError.message || "Could not update the contract end date.");
+      }
+
+      const { error: feeError } = await (supabase as any)
+        .from("contract_fees")
+        .insert({
+          contract_id: contract.id,
+          category: RENTAL_EXTENSION_CATEGORY,
+          label: buildRentalExtensionLabel(extensionStart, extensionEnd),
+          amount: 0,
+          extension_start: extensionStart,
+          extension_end: extensionEnd,
+          owner_id: userId,
+        });
+
+      if (feeError) {
+        throw new Error(`Contract end updated, but extension history failed: ${feeError.message}`);
+      }
+
+      toast.success("Contract extended");
       setShowExtensionForm(false);
       setExtendEndDate("");
       setExtendEndTime("");
+      await fetchData();
       await fetchContractFees();
-      return;
-    }
-
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id;
-    if (!userId) {
-      setIsExtending(false);
-      setExtendError("Could not confirm current user. Try again.");
-      return;
-    }
-
-    const { error: contractEndDateError } = await supabase
-      .from("contracts")
-      .update({ end_date: extensionEnd, end_time: newEndTime } as never)
-      .eq("id", contract.id);
-
-    if (contractEndDateError) {
-      setIsExtending(false);
-      const message = "Could not update the contract end date.";
+      setFeeRefreshKey((key) => key + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not extend the contract. Try again.";
+      console.error("Failed to extend contract", error);
       setExtendError(message);
       toast.error(message);
-      return;
+    } finally {
+      setIsExtending(false);
     }
-
-    const { error: feeError } = await (supabase as any)
-      .from("contract_fees")
-      .insert({
-        contract_id: contract.id,
-        category: RENTAL_EXTENSION_CATEGORY,
-        label: buildRentalExtensionLabel(extensionStart, extensionEnd),
-        amount: 0,
-        extension_start: extensionStart,
-        extension_end: extensionEnd,
-        owner_id: userId,
-      });
-
-    if (feeError) {
-      console.error("Failed to insert extension history", feeError);
-      toast.warning("Contract extended, but extension history was not saved");
-    }
-
-    setIsExtending(false);
-
-    toast.success("Contract extended");
-    setShowExtensionForm(false);
-    setExtendEndDate("");
-    setExtendEndTime("");
-    await fetchData();
-    await fetchContractFees();
-    setFeeRefreshKey((key) => key + 1);
   };
 
   const buildDepositPaymentAllocations = (amount: number) => {
@@ -5960,7 +5946,7 @@ const ContractDetail = () => {
                     </div>
                     {extendError ? <p className="mt-2 text-xs text-destructive">{extendError}</p> : null}
                     <div className="mt-3 flex gap-2">
-                      <Button type="button" size="sm" className="h-10 flex-1" disabled={isExtending || !extendEndDate || !extendEndTime} onClick={() => void handleExtendContract()}>
+                      <Button type="button" size="sm" className="h-10 flex-1" disabled={isExtending || !extendEndDate || !extendEndTime} onClick={handleExtendContract}>
                         {isExtending ? "Saving..." : "Save"}
                       </Button>
                       <Button type="button" size="sm" variant="outline" className="h-10 flex-1" disabled={isExtending} onClick={closeExtensionForm}>Cancel</Button>
