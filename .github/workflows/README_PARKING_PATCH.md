@@ -1,1 +1,0 @@
-This temporary workflow applies a minimal, asserted patch to `src/pages/Fines.tsx` after merge. Remove both this note and `apply-parking-tab.yml` after the generated patch commit is verified.
