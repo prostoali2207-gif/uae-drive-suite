@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Check, ChevronsUpDown, Plus, Search, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
 import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
+import { ParkingChargesTab } from "@/components/ParkingChargesTab";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -218,7 +219,7 @@ const Fines = () => {
   const [finesListFilter, setFinesListFilter] = useState<"all" | "unpaid" | "not-linked">("all");
 
   useEffect(() => {
-    if (queryType === "fines" || queryType === "salik") {
+    if (queryType === "fines" || queryType === "salik" || queryType === "parking") {
       setActiveTab(queryType);
     }
   }, [queryType]);
@@ -582,16 +583,19 @@ const Fines = () => {
         <TabsList className="w-fit">
           <TabsTrigger value="fines">Traffic Fines</TabsTrigger>
           <TabsTrigger value="salik">Salik Charges</TabsTrigger>
+          <TabsTrigger value="parking">Parking</TabsTrigger>
         </TabsList>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-          <Input
-            value={activeTab === "fines" ? finesSearch : salikSearch}
-            onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : setSalikSearch(e.target.value)}
-            placeholder={activeTab === "fines" ? "Search fine number, client, or plate..." : "Search transaction ID, client, or plate..."}
-            className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"
-          />
-        </div>
+        {activeTab !== "parking" && (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            <Input
+              value={activeTab === "fines" ? finesSearch : salikSearch}
+              onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : setSalikSearch(e.target.value)}
+              placeholder={activeTab === "fines" ? "Search fine number, client, or plate..." : "Search transaction ID, client, or plate..."}
+              className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"
+            />
+          </div>
+        )}
         {activeTab === "fines" && (
           <div className="flex flex-wrap items-center gap-2">
             {[
@@ -1079,6 +1083,10 @@ const Fines = () => {
               onPageSizeChange={setSalikPageSize}
             />
           </div>
+        </TabsContent>
+
+        <TabsContent value="parking" className="m-0">
+          <ParkingChargesTab />
         </TabsContent>
       </Tabs>
 
