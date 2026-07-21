@@ -447,6 +447,7 @@ const contractNumberLabel = (id: string) => `CTR-${id.slice(0, 8).toUpperCase()}
 
 const RENTAL_EXTENSION_LABEL = "Rental Extension";
 const RENTAL_EXTENSION_CATEGORY: FeeCategory = "other";
+const RENTAL_EXTENSION_CHARGE_PATTERN = /^Rent Extension #\d+$/i;
 const DEPOSIT_RECONCILIATION_PREFIX = "[Deposit reconciliation]";
 const DEPOSIT_RETURN_PREFIX = "[Deposit return]";
 
@@ -581,6 +582,8 @@ const isRentalExtensionFee = (fee: ContractFeeRow) => {
 };
 
 const isStructuredRentalExtensionFee = (fee: ContractFeeRow) => Boolean(fee.extension_start);
+const isRentalExtensionCharge = (fee: ContractFeeRow) =>
+  !fee.extension_start && !fee.extension_end && RENTAL_EXTENSION_CHARGE_PATTERN.test(fee.label.trim());
 
 const sortRentalExtensionFees = (fees: ContractFeeRow[]) =>
   [...fees].filter(isRentalExtensionFee).sort((a, b) => {
@@ -2383,7 +2386,12 @@ const FinancialsPanel = ({
   onInlinePaymentRecorded,
 }: FinancialsPanelProps) => {
   const rentalExtensions = sortRentalExtensionFees(contractFees);
-  const otherFees = contractFees.filter((fee) => !rentalExtensions.some((extension) => extension.id === fee.id));
+  const rentalExtensionCharges = contractFees.filter(isRentalExtensionCharge);
+  const otherFees = contractFees.filter(
+    (fee) =>
+      !rentalExtensions.some((extension) => extension.id === fee.id) &&
+      !isRentalExtensionCharge(fee),
+  );
   const paymentAllocationLineLookup = useMemo(() => {
     const lookup = new Map<string, Pick<PaymentAllocationDisplayLine, "category" | "label">>();
     lookup.set(`rental-${contract.id}`, { category: "rental", label: "Original Contract" });
@@ -2392,8 +2400,16 @@ const FinancialsPanel = ({
       lookup.set(`fee-${fee.id}`, { category: "rental", label: `Extension #${index + 1}` });
     });
 
+    rentalExtensionCharges.forEach((fee) => {
+      lookup.set(`fee-${fee.id}`, { category: "rental", label: fee.label });
+    });
+
     contractFees
-      .filter((fee) => !rentalExtensions.some((extension) => extension.id === fee.id))
+      .filter(
+        (fee) =>
+          !rentalExtensions.some((extension) => extension.id === fee.id) &&
+          !isRentalExtensionCharge(fee),
+      )
       .forEach((fee) => {
         lookup.set(`fee-${fee.id}`, { category: "fees", label: fee.label });
       });
@@ -2413,7 +2429,7 @@ const FinancialsPanel = ({
     });
 
     return lookup;
-  }, [contract.id, contractFees, fines, rentalExtensions, salik]);
+  }, [contract.id, contractFees, fines, rentalExtensionCharges, rentalExtensions, salik]);
   const depositInfo = getDepositReconciliationInfo(contract);
   const rawDepositStatus = (contract as any).deposit_status;
   const normalizedDepositStatus =
@@ -2604,6 +2620,20 @@ const FinancialsPanel = ({
           contractFee: fee,
         }];
       }),
+      ...rentalExtensionCharges.map((fee) => ({
+        id: `rent-extension-charge-${fee.id}`,
+        date: fee.created_at ?? contract.start_date,
+        group: "charges" as const,
+        type: "Rent",
+        description: fee.label,
+        details: "Extension rent charge",
+        amount: Number(fee.amount),
+        amountTone: "debit" as const,
+        reference: contractNumberLabel(contract.id),
+        icon: CalendarDays,
+        iconTone: "blue" as const,
+        contractFee: fee,
+      })),
       ...otherFees.map((fee) => ({
         id: `fee-${fee.id}`,
         date: fee.created_at ?? contract.start_date,
@@ -2670,6 +2700,7 @@ const FinancialsPanel = ({
     otherFees,
     paymentAllocationLineLookup,
     payments,
+    rentalExtensionCharges,
     rentalExtensions,
     salik,
   ]);
@@ -3732,6 +3763,7 @@ const ContractDetail = () => {
   const [showExtensionForm, setShowExtensionForm] = useState(false);
   const [extendEndDate, setExtendEndDate] = useState("");
   const [extendEndTime, setExtendEndTime] = useState("");
+  const [extendRentAmount, setExtendRentAmount] = useState("");
   const [extendError, setExtendError] = useState("");
   const [isExtending, setIsExtending] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -4673,6 +4705,7 @@ const ContractDetail = () => {
     if (!contract) return;
     setExtendEndDate("");
     setExtendEndTime(formatTimeDisplay(contract.end_time));
+    setExtendRentAmount("");
     setExtendError("");
     setShowExtensionForm(true);
   };
@@ -4682,6 +4715,7 @@ const ContractDetail = () => {
     setShowExtensionForm(false);
     setExtendEndDate("");
     setExtendEndTime("");
+    setExtendRentAmount("");
     setExtendError("");
   };
 
@@ -4692,6 +4726,14 @@ const ContractDetail = () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(extendEndDate) || !/^\d{2}:\d{2}$/.test(extendEndTime)) {
       setExtendError("Select a new end date and time.");
       toast.error("Select a valid new end date and time");
+      return;
+    }
+
+    const extensionRentAmount = Number(extendRentAmount);
+    if (!Number.isFinite(extensionRentAmount) || extensionRentAmount <= 0) {
+      const message = "Enter a valid extension rent amount.";
+      setExtendError(message);
+      toast.error(message);
       return;
     }
 
@@ -4708,6 +4750,7 @@ const ContractDetail = () => {
     setIsExtending(true);
     const extensionEnd = extendEndDate;
     const newEndTime = formatTimeForDb(extendEndTime);
+    const extensionNumber = sortRentalExtensionFees(contractFees).length + 1;
     try {
       const overlap = await findVehicleContractOverlap(supabase, {
         carId: contract.car_id,
@@ -4756,24 +4799,34 @@ const ContractDetail = () => {
 
       const { error: feeError } = await (supabase as any)
         .from("contract_fees")
-        .insert({
-          contract_id: contract.id,
-          category: RENTAL_EXTENSION_CATEGORY,
-          label: buildRentalExtensionLabel(extensionStart, extensionEnd),
-          amount: 0,
-          extension_start: extensionStart,
-          extension_end: extensionEnd,
-          owner_id: userId,
-        });
+        .insert([
+          {
+            contract_id: contract.id,
+            category: RENTAL_EXTENSION_CATEGORY,
+            label: buildRentalExtensionLabel(extensionStart, extensionEnd),
+            amount: 0,
+            extension_start: extensionStart,
+            extension_end: extensionEnd,
+            owner_id: userId,
+          },
+          {
+            contract_id: contract.id,
+            category: RENTAL_EXTENSION_CATEGORY,
+            label: `Rent Extension #${extensionNumber}`,
+            amount: extensionRentAmount,
+            owner_id: userId,
+          },
+        ]);
 
       if (feeError) {
-        throw new Error(`Contract end updated, but extension history failed: ${feeError.message}`);
+        throw new Error(`Contract end updated, but extension records failed: ${feeError.message}`);
       }
 
       toast.success("Contract extended");
       setShowExtensionForm(false);
       setExtendEndDate("");
       setExtendEndTime("");
+      setExtendRentAmount("");
       await fetchData();
       await fetchContractFees();
       setFeeRefreshKey((key) => key + 1);
@@ -5507,7 +5560,10 @@ const ContractDetail = () => {
   );
   const rentalFeeLines = sortRentalExtensionFees(contractFees);
   const financialRentalFeeLines = rentalFeeLines.filter((fee) => Number(fee.amount) !== 0);
-  const manualFeeLines = contractFees.filter((fee) => !isRentalExtensionFee(fee));
+  const rentalExtensionChargeLines = contractFees.filter(isRentalExtensionCharge);
+  const manualFeeLines = contractFees.filter(
+    (fee) => !isRentalExtensionFee(fee) && !isRentalExtensionCharge(fee),
+  );
   const contractDueDateLabel = formatDate(effectiveContractEndDate);
   const grossPaymentAllocationLines: ContractPaymentAllocationLine[] = [
     {
@@ -5523,6 +5579,13 @@ const ContractDetail = () => {
       label: `Extension #${rentalFeeLines.findIndex((period) => period.id === fee.id) + 1}`,
       due: Number(fee.amount),
       overdueImmediately: true,
+    })),
+    ...rentalExtensionChargeLines.map((fee) => ({
+      id: `fee-${fee.id}`,
+      category: "rental" as const,
+      label: fee.label,
+      due: Number(fee.amount),
+      dueDate: effectiveContractEndDate,
     })),
     ...manualFeeLines.map((fee) => ({
       id: `fee-${fee.id}`,
@@ -5944,9 +6007,25 @@ const ContractDetail = () => {
                         />
                       </div>
                     </div>
+                    <div className="mt-2 grid gap-1">
+                      <Label htmlFor="extension-rent-amount" className="text-[11px] text-muted-foreground">
+                        Extension Rent Amount (AED)
+                      </Label>
+                      <Input
+                        id="extension-rent-amount"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={extendRentAmount}
+                        onChange={(event) => { setExtendRentAmount(event.target.value); setExtendError(""); }}
+                        className="h-10 text-sm font-mono tabular-nums"
+                        placeholder="0.00"
+                      />
+                    </div>
                     {extendError ? <p className="mt-2 text-xs text-destructive">{extendError}</p> : null}
                     <div className="mt-3 flex gap-2">
-                      <Button type="button" size="sm" className="h-10 flex-1" disabled={isExtending || !extendEndDate || !extendEndTime} onClick={handleExtendContract}>
+                      <Button type="button" size="sm" className="h-10 flex-1" disabled={isExtending || !extendEndDate || !extendEndTime || !extendRentAmount} onClick={handleExtendContract}>
                         {isExtending ? "Saving..." : "Save"}
                       </Button>
                       <Button type="button" size="sm" variant="outline" className="h-10 flex-1" disabled={isExtending} onClick={closeExtensionForm}>Cancel</Button>
