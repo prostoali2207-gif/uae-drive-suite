@@ -1,0 +1,61 @@
+name: Connect vehicle timeline edit
+
+on:
+  push:
+    branches:
+      - feature/edit-vehicle-timeline
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/edit-vehicle-timeline
+          fetch-depth: 0
+
+      - name: Connect edit panel
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/VehicleTimelineSheet.tsx')
+          source = path.read_text()
+
+          import_anchor = 'import { SupabaseClient } from "@supabase/supabase-js";\n'
+          import_line = 'import { VehicleTimelineEditPanel } from "@/components/VehicleTimelineEditPanel";\n'
+          if import_line not in source:
+              if import_anchor not in source:
+                  raise SystemExit('Import anchor not found')
+              source = source.replace(import_anchor, import_anchor + import_line, 1)
+
+          render_anchor = '''                                </dl>
+                              </AccordionContent>'''
+          render_block = '''                                </dl>
+                                <VehicleTimelineEditPanel
+                                  node={node}
+                                  contractId={contractId}
+                                  isFirstVehicle={history[0]?.id === node.id}
+                                  isActive={active}
+                                  onSaved={fetchHistory}
+                                />
+                              </AccordionContent>'''
+          if '<VehicleTimelineEditPanel' not in source:
+              if render_anchor not in source:
+                  raise SystemExit('Render anchor not found')
+              source = source.replace(render_anchor, render_block, 1)
+
+          path.write_text(source)
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "fleetdesk-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/components/VehicleTimelineSheet.tsx
+          git commit -m "Connect vehicle history correction panel"
+          git push origin feature/edit-vehicle-timeline
