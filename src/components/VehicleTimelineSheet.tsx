@@ -13,6 +13,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { History } from "lucide-react";
+import { VehicleTimelineEditPanel } from "@/components/VehicleTimelineEditPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
@@ -530,6 +531,13 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
                                     </div>
                                   ))}
                                 </dl>
+                                <VehicleTimelineEditPanel
+                                  node={node}
+                                  contractId={contractId}
+                                  isFirstVehicle={history[0]?.id === node.id}
+                                  isActive={active}
+                                  onSaved={fetchHistory}
+                                />
                               </AccordionContent>
                             </AccordionItem>
                           </div>
