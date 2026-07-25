@@ -2589,6 +2589,7 @@ const FinancialsPanel = ({
     const salikTotal = salik.reduce((sum, charge) => sum + Number(charge.amount), 0);
     const salikTripCount = salik.reduce((sum, charge) => sum + Number(charge.trips), 0);
 
+    const rentalPeriods = buildRentalPeriods(contract, rentalExtensions);
     const rows: FinancialTransaction[] = [
       {
         id: `rent-${contract.id}`,
@@ -2596,7 +2597,7 @@ const FinancialsPanel = ({
         group: "charges",
         type: "Rent",
         description: "Rent - Original Contract",
-        details: `${formatDate(contract.start_date)} - ${formatDate(contract.end_date)}`,
+        details: `${formatDate(rentalPeriods[0]?.startDate ?? contract.start_date)} - ${formatDate(rentalPeriods[0]?.endDate ?? contract.end_date)}`,
         amount: Number(contract.total_amount),
         amountTone: "debit",
         reference: contractNumberLabel(contract.id),
@@ -2620,20 +2621,27 @@ const FinancialsPanel = ({
           contractFee: fee,
         }];
       }),
-      ...rentalExtensionCharges.map((fee) => ({
-        id: `rent-extension-charge-${fee.id}`,
-        date: fee.created_at ?? contract.start_date,
-        group: "charges" as const,
-        type: "Rent",
-        description: fee.label,
-        details: "Extension rent charge",
-        amount: Number(fee.amount),
-        amountTone: "debit" as const,
-        reference: contractNumberLabel(contract.id),
-        icon: CalendarDays,
-        iconTone: "blue" as const,
-        contractFee: fee,
-      })),
+      ...rentalExtensionCharges.map((fee) => {
+        const extensionNumber = fee.label.match(/#(\d+)/)?.[1];
+        const rentalPeriod = rentalPeriods.find((period) => period.name === `Extension #${extensionNumber}`);
+
+        return {
+          id: `rent-extension-charge-${fee.id}`,
+          date: fee.created_at ?? contract.start_date,
+          group: "charges" as const,
+          type: "Rent",
+          description: fee.label,
+          details: rentalPeriod
+            ? `${formatDate(rentalPeriod.startDate)} - ${formatDate(rentalPeriod.endDate)}`
+            : "Extension rent charge",
+          amount: Number(fee.amount),
+          amountTone: "debit" as const,
+          reference: contractNumberLabel(contract.id),
+          icon: CalendarDays,
+          iconTone: "blue" as const,
+          contractFee: fee,
+        };
+      }),
       ...otherFees.map((fee) => ({
         id: `fee-${fee.id}`,
         date: fee.created_at ?? contract.start_date,
