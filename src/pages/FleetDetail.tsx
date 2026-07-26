@@ -154,7 +154,7 @@ function getStatusBadgeClass(status: string): string {
   if (status === "Sold") {
     return "bg-tint-rose text-tint-rose-foreground";
   }
-  if (status === "Closed" || status === "Completed") {
+  if (status === "Closed" || status === "Completed" || status === "Replaced") {
     return "bg-muted text-muted-foreground";
   }
   return "bg-card text-muted-foreground";
@@ -318,7 +318,7 @@ const FleetDetail = () => {
       start_date: swap.started_at,
       end_date: swap.ended_at ?? swap.contracts?.end_date ?? null,
       client_name: getClientName(swap.contracts?.clients),
-      status: swap.contracts?.status ?? "Unknown",
+      status: swap.ended_at !== null ? "Replaced" : swap.contracts?.status ?? "Unknown",
       rate_amount:
         swap.daily_rate === null || swap.daily_rate === undefined
           ? swap.contracts?.rate_amount === null || swap.contracts?.rate_amount === undefined
