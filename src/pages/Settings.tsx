@@ -70,6 +70,7 @@ const Settings = () => {
   const [salikFeeValue, setSalikFeeValue] = useState(1);
   const [termsEn, setTermsEn] = useState("");
   const [termsAr, setTermsAr] = useState("");
+  const [termsKeyPoints, setTermsKeyPoints] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoSignedUrl, setLogoSignedUrl] = useState<string | null>(null);
   const [stampUrl, setStampUrl] = useState<string | null>(null);
@@ -140,6 +141,7 @@ const Settings = () => {
       setSalikFeeValue(p.salik_fee_value ?? 1);
       setTermsEn(p.terms_en || "");
       setTermsAr(p.terms_ar || "");
+      setTermsKeyPoints((p as any).terms_key_points || "");
       setLogoUrl(p.logo_url);
       setStampUrl(p.stamp_url || null);
       loadStoragePreview(p.logo_url, setLogoSignedUrl);
@@ -180,7 +182,8 @@ const Settings = () => {
       salik_fee_value: salikFeeValue,
       terms_en: termsEn.trim() || null,
       terms_ar: termsAr.trim() || null,
-    };
+      terms_key_points: termsKeyPoints.trim() || null,
+    } as any;
 
     const { data, error } = await supabase.from("profiles").upsert(profileData).select();
     setSaving(false);
@@ -636,6 +639,21 @@ const Settings = () => {
                 <CardDescription>Rental terms shown on company documents.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="terms-key-points">Key Terms (shown to customer before signing)</Label>
+                  <Textarea
+                    id="terms-key-points"
+                    value={termsKeyPoints}
+                    onChange={(e) => setTermsKeyPoints(e.target.value)}
+                    placeholder={"One short point per line, e.g.:\nDeposit AED 2,000 held 15 days\nMileage limit 250 km/day, excess AED 1/km\nFines +AED 20 service fee each"}
+                    rows={5}
+                    className="resize-y"
+                  />
+                  <CardDescription className="text-xs">
+                    Each line becomes one bullet shown to the customer in a quick summary before they sign — keep each line short. This is separate from the full legal terms below.
+                  </CardDescription>
+                </div>
+
                 <div className="grid gap-1.5">
                   <Label htmlFor="terms-en">English Terms</Label>
                   <Textarea
