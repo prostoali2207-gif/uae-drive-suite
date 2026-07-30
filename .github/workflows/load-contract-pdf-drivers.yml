@@ -1,0 +1,57 @@
+name: Load drivers in contract PDFs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/load-contract-pdf-drivers.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Make PDF generator load saved drivers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/lib/contractPdf.ts')
+          s = path.read_text()
+          old = '  const additionalDrivers = contract.contract_drivers ?? [];'
+          new = '''  let additionalDrivers = contract.contract_drivers ?? [];
+  if (additionalDrivers.length === 0) {
+    const { data: savedDrivers, error: driversError } = await supabase
+      .from("contract_drivers")
+      .select("id, position, signature, clients(full_name, license_number, license_expiry)")
+      .eq("contract_id", contract.id)
+      .order("position", { ascending: true });
+
+    if (driversError) throw driversError;
+    additionalDrivers = (savedDrivers ?? []) as ContractPdfData["contract_drivers"];
+  }'''
+          if s.count(old) != 1:
+            raise SystemExit(f'expected one additionalDrivers anchor, found {s.count(old)}')
+          path.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Verify build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit fix and remove workflow
+        run: |
+          rm .github/workflows/load-contract-pdf-drivers.yml
+          git config user.name fleetdesk-bot
+          git config user.email actions@users.noreply.github.com
+          git add src/lib/contractPdf.ts .github/workflows/load-contract-pdf-drivers.yml
+          git commit -m "Load saved drivers in every contract PDF"
+          git push origin main
