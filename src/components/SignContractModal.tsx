@@ -1,12 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, Circle, FileText, MessageCircle } from "lucide-react";
-import QRCode from "qrcode";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ArrowLeft, Check, CheckCircle2, ChevronDown, FileText, Loader2, MessageCircle, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { generateContractPdf } from "@/lib/contractPdf";
@@ -15,8 +8,8 @@ import {
   saveContractDriverSignatures,
   type ContractDriverRow,
 } from "@/lib/contractDrivers";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface SigRef {
   isEmpty: () => boolean;
@@ -24,137 +17,105 @@ interface SigRef {
   clear: () => void;
 }
 
-const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void; className?: string }>(
-  function SignatureCanvas({ onStroke, className }, ref) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const isDrawing = useRef(false);
-    const lastPos = useRef<{ x: number; y: number } | null>(null);
+const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(function SignatureCanvas({ onStroke }, ref) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const last = useRef<{ x: number; y: number } | null>(null);
 
-    useEffect(() => {
+  const reset = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  };
+
+  useEffect(reset, []);
+
+  const point = (event: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const source = "touches" in event ? event.touches[0] : event;
+    return {
+      x: (source.clientX - rect.left) * (canvas.width / rect.width),
+      y: (source.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
+  const start = (event: React.MouseEvent | React.TouchEvent) => {
+    event.preventDefault();
+    drawing.current = true;
+    last.current = point(event);
+  };
+
+  const move = (event: React.MouseEvent | React.TouchEvent) => {
+    if (!drawing.current || !last.current) return;
+    event.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const next = point(event);
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(last.current.x, last.current.y);
+    ctx.lineTo(next.x, next.y);
+    ctx.stroke();
+    last.current = next;
+  };
+
+  const stop = () => {
+    if (!drawing.current) return;
+    drawing.current = false;
+    last.current = null;
+    onStroke?.();
+  };
+
+  useImperativeHandle(ref, () => ({
+    isEmpty: () => {
       const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }, []);
-
-    const getXY = (e: React.MouseEvent | React.TouchEvent) => {
-      const canvas = canvasRef.current!;
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      if ("touches" in e) {
-        const t = e.touches[0];
-        return {
-          x: (t.clientX - rect.left) * scaleX,
-          y: (t.clientY - rect.top) * scaleY,
-        };
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return true;
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let index = 0; index < data.length; index += 4) {
+        if (data[index] !== 255 || data[index + 1] !== 255 || data[index + 2] !== 255) return false;
       }
-      const me = e as React.MouseEvent;
-      return {
-        x: (me.clientX - rect.left) * scaleX,
-        y: (me.clientY - rect.top) * scaleY,
-      };
-    };
+      return true;
+    },
+    getDataUrl: () => canvasRef.current?.toDataURL("image/png") || "",
+    clear: reset,
+  }));
 
-    const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
-      e.preventDefault();
-      isDrawing.current = true;
-      const pos = getXY(e);
-      lastPos.current = pos;
-      const ctx = canvasRef.current?.getContext("2d");
-      if (ctx) {
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
-        ctx.fillStyle = "#1a1a1a";
-        ctx.fill();
-      }
-    };
-
-    const drawLine = (e: React.MouseEvent | React.TouchEvent) => {
-      if (!isDrawing.current || !lastPos.current) return;
-      e.preventDefault();
-      const ctx = canvasRef.current?.getContext("2d");
-      if (!ctx) return;
-      const pos = getXY(e);
-      ctx.strokeStyle = "#1a1a1a";
-      ctx.lineWidth = 3;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      ctx.moveTo(lastPos.current.x, lastPos.current.y);
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
-      lastPos.current = pos;
-    };
-
-    const stopDraw = () => {
-      if (!isDrawing.current) return;
-      isDrawing.current = false;
-      lastPos.current = null;
-      onStroke?.();
-    };
-
-    useImperativeHandle(ref, () => ({
-      isEmpty: () => {
-        const canvas = canvasRef.current;
-        if (!canvas) return true;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return true;
-        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        for (let i = 0; i < data.length; i += 4) {
-          if (data[i] !== 255 || data[i + 1] !== 255 || data[i + 2] !== 255) return false;
-        }
-        return true;
-      },
-      getDataUrl: () => canvasRef.current?.toDataURL("image/png") ?? "",
-      clear: () => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      },
-    }));
-
-    return (
-      <canvas
-        ref={canvasRef}
-        width={720}
-        height={220}
-        className={cn("h-36 w-full cursor-crosshair touch-none rounded-sm bg-white", className)}
-        onMouseDown={startDraw}
-        onMouseMove={drawLine}
-        onMouseUp={stopDraw}
-        onMouseLeave={stopDraw}
-        onTouchStart={startDraw}
-        onTouchMove={drawLine}
-        onTouchEnd={stopDraw}
-      />
-    );
-  },
-);
+  return (
+    <canvas
+      ref={canvasRef}
+      width={900}
+      height={300}
+      className="h-44 w-full touch-none rounded-xl border-2 border-cyan-400 bg-white"
+      onMouseDown={start}
+      onMouseMove={move}
+      onMouseUp={stop}
+      onMouseLeave={stop}
+      onTouchStart={start}
+      onTouchMove={move}
+      onTouchEnd={stop}
+    />
+  );
+});
 
 type ContractForPdf = Parameters<typeof generateContractPdf>[0];
-type PreviewContract = ContractForPdf & Record<string, unknown>;
+type FlowStep = "review" | "terms" | "sign" | "success";
+type Signer = { key: string; label: string; name: string; driver?: ContractDriverRow };
 
-interface CompanyProfile {
+interface LoadedContract {
+  data: ContractForPdf;
+  drivers: ContractDriverRow[];
   companyName: string;
   companyPhone: string;
-  companyEmail: string;
   termsEn: string;
-  termsKeyPoints: string;
-  logoUrl: string | null;
-}
-
-interface ContractSummary {
-  clientName: string;
-  pdfData: ContractForPdf;
-  previewData: PreviewContract;
-  profile: CompanyProfile;
-  drivers: ContractDriverRow[];
+  keyTerms: string[];
 }
 
 interface SignContractModalProps {
@@ -164,927 +125,377 @@ interface SignContractModalProps {
   onComplete: () => void;
 }
 
-const colors = {
-  blue: "#005ab3",
-  blueSoft: "#f0f7ff",
-  ink: "#0f172a",
-  muted: "#566478",
-  line: "#d6e0eb",
-  panel: "#f9fbfd",
-};
-
-function fmtDate(iso: string): string {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function fmtDateTime(date: string, time?: string | null): string {
-  const formattedDate = fmtDate(date);
-  if (!time) return formattedDate;
-  const [hours, minutes] = time.split(":");
-  if (!hours || !minutes) return formattedDate;
-  return `${formattedDate} ${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
-}
-
-function valueOrDash(value?: string | number | null): string {
-  if (value === null || value === undefined || value === "") return "-";
-  return String(value);
-}
-
-function unknownString(value: unknown): string {
-  return typeof value === "string" || typeof value === "number" ? String(value) : "";
-}
-
-function firstValue(...values: unknown[]): string {
-  const value = values.find((v) => v !== null && v !== undefined && String(v).trim() !== "");
-  return value === null || value === undefined ? "" : String(value);
-}
-
-function money(value: number): string {
+function money(value: unknown) {
   return `AED ${Number(value || 0).toLocaleString()}`;
 }
 
-function km(value: number): string {
-  return `${Number(value || 0).toLocaleString()} km`;
+function dateTime(date: unknown, time: unknown) {
+  if (!date) return "—";
+  const formatted = new Date(`${String(date)}T00:00:00`).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  return time ? `${formatted} ${String(time).slice(0, 5)}` : formatted;
 }
 
-function getTermsBullets(termsEn: string): string[] {
-  const termsText = termsEn.trim() ||
-    "The renter agrees to return the vehicle in the same condition as received.\n\nAny traffic fines, Salik charges, or damages incurred during the rental period are the responsibility of the renter.\n\nThe deposit will be refunded after inspection upon vehicle return.";
-
-  return termsText
-    .split(/\n{2,}/)
-    .flatMap((chunk) => chunk.split(/(?=\(\d+\))/))
-    .map((bullet) => bullet.replace(/\n/g, " ").trim())
-    .map((bullet) => {
-      const mentionsDeposit = /deposit|security/i.test(bullet);
-      const mentionsFixedDeposit = /AED\s*2,?000|2,?000\s*AED|fixed\s+deposit/i.test(bullet);
-      return mentionsDeposit && mentionsFixedDeposit
-        ? "The Company may retain a security deposit when applicable, as stated in the Financial Summary."
-        : bullet;
-    })
-    .filter(Boolean)
-    .map((bullet) => bullet.replace(/^(\(?\d+\)?[.)]?)\s*/, ""));
-}
-
-const defaultKeyTerms = [
-  "Security deposit: Refunded within 15 days after vehicle return, minus any unpaid fines or damage.",
-  "Mileage: 250 km/day or 5,000 km/month; excess is charged at AED 1/km.",
-  "Fines and Salik: The customer's responsibility, plus a 20 AED admin fee per fine.",
-  "Smoking/vaping: A AED 500 cleaning charge applies inside the vehicle.",
-  "Prohibited driving: Off-road driving, racing, or drifting may incur a contractual charge up to AED 100,000.",
-  "Excessive speeding: More than 20 km/h over the limit may result in remote disablement and an AED 10,000 charge.",
-];
-
-function getKeyTerms(termsKeyPoints: string): string[] {
-  const configuredTerms = termsKeyPoints
-    .split(/\r?\n/)
-    .map((term) => term.trim())
-    .filter(Boolean);
-
-  return configuredTerms.length > 0 ? configuredTerms : defaultKeyTerms;
-}
-
-function SectionTitle({ num, title }: { num: number; title: string }) {
+function SummaryItem({ label, value, accent }: { label: string; value: React.ReactNode; accent?: boolean }) {
   return (
-    <h3 className="mb-3 text-[11px] font-bold uppercase tracking-normal text-[#005ab3]">
-      {num}.&nbsp;&nbsp;{title}
-    </h3>
-  );
-}
-
-function IconBadge() {
-  return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] border border-[#cde0f5] bg-[#f0f7ff]">
-      <span className="h-1.5 w-1.5 rounded-full bg-[#005ab3]" />
-    </span>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-2 border-b border-[#d6e0eb] py-2 last:border-b-0">
-      <IconBadge />
-      <div className="min-w-0">
-        <div className="text-[8px] text-[#566478]">{label}</div>
-        <div className={cn("break-words text-[10px] font-bold text-[#0f172a]", /\d|AED/.test(value) && "font-mono")}>
-          {valueOrDash(value)}
-        </div>
-      </div>
+    <div className={cn("rounded-xl border bg-white p-3", accent ? "border-amber-300 bg-amber-50" : "border-slate-200")}>
+      <div className={cn("text-xs font-bold uppercase tracking-wide", accent ? "text-amber-800" : "text-slate-500")}>{label}</div>
+      <div className="mt-1 break-words text-sm font-semibold text-slate-950">{value}</div>
     </div>
   );
 }
 
-function ListCard({ rows }: { rows: [string, string][] }) {
-  return (
-    <div className="rounded border border-[#d6e0eb] bg-white px-3 py-1">
-      {rows.map(([label, value]) => (
-        <DetailRow key={label} label={label} value={value} />
-      ))}
-    </div>
-  );
-}
-
-function FieldCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-h-[42px] gap-2 rounded border border-[#d6e0eb] bg-white p-2">
-      <IconBadge />
-      <div className="min-w-0">
-        <div className="text-[8px] text-[#566478]">{label}</div>
-        <div className={cn("break-words text-[10px] font-bold text-[#0f172a]", /\d|AED/.test(value) && "font-mono")}>
-          {valueOrDash(value)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryTile({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className={cn("rounded border bg-white p-2", accent ? "border-[#005ab3] bg-[#f4f8fc]" : "border-[#d6e0eb]")}>
-      <div className={cn("text-[8px] font-bold", accent ? "text-[#005ab3]" : "text-[#566478]")}>{label}</div>
-      <div className={cn("mt-2 break-words text-[11px] font-bold text-[#0f172a]", /\d|AED/.test(value) && "font-mono")}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function ContractPage({
-  pageNo,
-  pageTotal,
-  children,
-}: {
-  pageNo: number;
-  pageTotal: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      className="mx-auto flex w-full max-w-[794px] flex-col bg-white p-4 text-[#0f172a] shadow-sm ring-1 ring-[#d6e0eb] sm:p-8"
-      style={{ minHeight: "1123px" }}
-    >
-      <div className="flex-1 border border-[#d6e0eb] p-4 sm:p-6">
-        {children}
-      </div>
-      <div className="mt-4 border-t border-[#005ab3] pt-2 text-right text-[9px] text-[#566478]">
-        Page {pageNo} of {pageTotal}
-      </div>
-    </section>
-  );
-}
-
-function SignatureBox({
-  title,
-  signer,
-  canvasRef,
-  onStroke,
-  onClear,
-}: {
-  title: string;
-  signer: string;
-  canvasRef: React.Ref<SigRef>;
-  onStroke: () => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="rounded border border-[#d6e0eb] bg-white p-3">
-      <div className="text-center text-[10px] font-bold uppercase text-[#005ab3]">{title}</div>
-      <div className="mt-3 rounded-sm border border-[#d6e0eb]">
-        <SignatureCanvas ref={canvasRef} onStroke={onStroke} />
-      </div>
-      <div className="mt-2 h-px bg-[#d6e0eb]" />
-      <div className="mt-2 text-[10px] font-bold text-[#0f172a]">{valueOrDash(signer)}</div>
-      <div className="mt-1 text-[9px] text-[#0f172a]">Date: {fmtDate(new Date().toISOString())}</div>
-      <Button type="button" variant="outline" size="sm" className="mt-3 min-h-10 w-full text-xs" onClick={onClear}>
-        Clear
-      </Button>
-    </div>
-  );
-}
-
-function ContractHtmlPreview({
-  summary,
-  clientSigRef,
-  managerSigRef,
-  onClientStroke,
-  onManagerStroke,
-  onClientClear,
-  onManagerClear,
-  driverSigRefs,
-  onDriverStroke,
-  onDriverClear,
-  termsExpanded,
-  termsOpened,
-  termsAcknowledged,
-  onTermsToggle,
-  onTermsAcknowledgedChange,
-}: {
-  summary: ContractSummary;
-  clientSigRef: React.Ref<SigRef>;
-  managerSigRef: React.Ref<SigRef>;
-  onClientStroke: () => void;
-  onManagerStroke: () => void;
-  onClientClear: () => void;
-  onManagerClear: () => void;
-  driverSigRefs: React.MutableRefObject<Record<string, SigRef | null>>;
-  onDriverStroke: (driverId: string) => void;
-  onDriverClear: (driverId: string) => void;
-  termsExpanded: boolean;
-  termsOpened: boolean;
-  termsAcknowledged: boolean;
-  onTermsToggle: () => void;
-  onTermsAcknowledgedChange: (checked: boolean) => void;
-}) {
-  const contract = summary.previewData;
-  const c = contract.clients;
-  const car = contract.cars;
-  const company = summary.profile;
-  const driverPages = Array.from(
-    { length: Math.ceil(summary.drivers.length / 2) },
-    (_, index) => summary.drivers.slice(index * 2, index * 2 + 2),
-  );
-  const pageTotal = 3 + driverPages.length;
-  const [inspectionQr, setInspectionQr] = useState("");
-  const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
-  const today = fmtDate(new Date().toISOString());
-  const idLabel = c?.client_type === "Tourist" ? "Passport Number" : "Emirates ID";
-  const idValue = c?.client_type === "Tourist" ? valueOrDash(c?.passport_number) : valueOrDash(c?.emirates_id);
-  const clientRecord = (c ?? {}) as Record<string, unknown>;
-  const carRecord = (car ?? {}) as Record<string, unknown>;
-  const licenseNumber = firstValue(
-    c?.license_number,
-    c?.driver_license_number,
-    c?.driving_license_number,
-    c?.licenseNo,
-    c?.drivingLicenseNo,
-    c?.drivers_license,
-    c?.license,
-    c?.driving_license,
-    c?.client_license_number,
-    c?.driverLicenseNumber,
-    clientRecord.license_number,
-    clientRecord.driver_license_number,
-    clientRecord.driving_license_number,
-    clientRecord.licenseNo,
-    clientRecord.drivingLicenseNo,
-    clientRecord.drivers_license,
-    clientRecord.license,
-    clientRecord.driving_license,
-    clientRecord.client_license_number,
-    clientRecord.driverLicenseNumber,
-    contract.license_number,
-    contract.driver_license_number,
-    contract.driving_license_number,
-    contract.licenseNo,
-    contract.drivingLicenseNo,
-    contract.drivers_license,
-    contract.license,
-    contract.driving_license,
-    contract.client_license_number,
-    contract.driverLicenseNumber,
-  );
-  const vehicleColor = firstValue(
-    car?.color,
-    car?.vehicle_color,
-    car?.car_color,
-    car?.colour,
-    carRecord.color,
-    carRecord.vehicle_color,
-    carRecord.car_color,
-    carRecord.colour,
-    contract.color,
-    contract.vehicle_color,
-    contract.car_color,
-    contract.colour,
-  );
-  const exteriorCondition = firstValue(
-    contract.exterior_condition,
-    contract.exteriorCondition,
-    contract.special_conditions,
-  );
-  const interiorCondition = firstValue(
-    contract.interior_condition,
-    contract.interiorCondition,
-  );
-
-  const termsBullets = useMemo(() => getTermsBullets(company.termsEn), [company.termsEn]);
-  const keyTerms = useMemo(() => getKeyTerms(company.termsKeyPoints), [company.termsKeyPoints]);
-  useEffect(() => {
-    let cancelled = false;
-    QRCode.toDataURL(`https://uae-drive-suite.vercel.app/inspection/${contract.id}`, { width: 120 })
-      .then((dataUrl) => {
-        if (!cancelled) setInspectionQr(dataUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setInspectionQr("");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [contract.id]);
-
-  const vehicleRows: [string, string][] = [
-    ["Plate Number", valueOrDash(car?.plate)],
-    ["Make & Model", car ? `${car.make} ${car.model}` : "-"],
-    ["Year", car ? String(car.year) : "-"],
-    ["Color", valueOrDash(vehicleColor)],
-  ];
-
-  const conditionRows: [string, string][] = [
-    ["Initial Mileage", km(contract.initial_mileage)],
-    ["Fuel Level", valueOrDash(contract.fuel_level)],
-  ];
-  if (exteriorCondition) conditionRows.push(["Exterior Condition", exteriorCondition]);
-  if (interiorCondition) conditionRows.push(["Interior Condition", interiorCondition]);
-
-  return (
-    <div className="flex flex-col gap-4 pb-6">
-      <ContractPage pageNo={1} pageTotal={pageTotal}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            {company.logoUrl ? (
-              <img src={company.logoUrl} alt="" className="h-8 max-w-10 object-contain" />
-            ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f0f7ff] text-sm font-bold text-[#005ab3]">
-                {company.companyName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0">
-              <div className="truncate text-[16px] font-bold">{company.companyName}</div>
-              <div className="text-[10px] text-[#005ab3]">Car Rental</div>
-            </div>
-          </div>
-          <div className="min-w-0 text-right text-[9px] text-[#0f172a]">
-            <div>{company.companyPhone}</div>
-            <div className="break-all">{company.companyEmail}</div>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <h2 className="text-[26px] font-bold leading-tight text-[#0f172a]">CAR RENTAL AGREEMENT</h2>
-          <div className="mt-2 text-[11px]">Signed by both parties - legally binding</div>
-          <div className="mt-5 text-[9px] text-[#566478]">
-            Document ID: {contractNumber} | Date of Issue: {today}
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-6 md:grid-cols-2">
-          <div>
-            <SectionTitle num={1} title="CLIENT DETAILS" />
-            <ListCard
-              rows={[
-                ["Full Name", valueOrDash(c?.full_name)],
-                ["Phone", valueOrDash(c?.phone)],
-                ["Nationality", valueOrDash(c?.nationality)],
-                ["License Number", valueOrDash(licenseNumber)],
-                [idLabel, idValue],
-              ]}
-            />
-          </div>
-          <div>
-            <SectionTitle num={2} title="VEHICLE DETAILS" />
-            <ListCard rows={vehicleRows} />
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <SectionTitle num={3} title="RENTAL PERIOD" />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <FieldCard label="Start Date" value={fmtDateTime(contract.start_date, contract.start_time)} />
-            <FieldCard label="End Date" value={fmtDateTime(contract.end_date, contract.end_time)} />
-            <FieldCard label="Rate Type" value={contract.rate_type} />
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <SectionTitle num={4} title="FINANCIAL SUMMARY" />
-          <div className="rounded border border-[#d6e0eb] bg-[#f9fbfd] p-2">
-            <div className="grid gap-2 sm:grid-cols-4">
-              <SummaryTile label={`${contract.rate_type} Rate`} value={money(contract.rate_amount)} />
-              <SummaryTile label="Total Rental Amount" value={money(contract.total_amount)} accent />
-              <SummaryTile label="Deposit Held" value={money(contract.deposit_amount)} accent />
-              <SummaryTile label="Traffic Charges" value="Per contract" />
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <SectionTitle num={5} title="VEHICLE CONDITION AT PICK-UP" />
-          <div className="grid gap-3 sm:grid-cols-3">
-            {conditionRows.map(([label, value]) => (
-              <FieldCard key={label} label={label} value={value} />
-            ))}
-          </div>
-          <div className="mt-3 flex min-h-[64px] items-center justify-between gap-3 rounded border border-[#d6e0eb] bg-white p-3">
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold text-[#0f172a]">Inspection Photos</div>
-              <div className="mt-1 text-[9px] text-[#566478]">Scan to view vehicle inspection photos.</div>
-            </div>
-            {inspectionQr ? (
-              <img src={inspectionQr} alt="Inspection photos QR" className="h-[54px] w-[54px] shrink-0" />
-            ) : (
-              <div className="h-[54px] w-[54px] shrink-0 rounded border border-[#d6e0eb]" />
-            )}
-          </div>
-        </div>
-      </ContractPage>
-
-      <ContractPage pageNo={2} pageTotal={pageTotal}>
-        <SectionTitle num={6} title="TERMS OF USE" />
-
-        <div className="mt-5 rounded border border-[#d6e0eb] bg-[#f9fbfd] p-4">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-[#005ab3]">Key Terms</div>
-          <div className="mt-3 grid gap-3 text-[10px] leading-relaxed text-[#0f172a] sm:grid-cols-2">
-            {keyTerms.map((term, index) => (
-              <div key={`${index}-${term.slice(0, 20)}`} className="flex items-start gap-2">
-                <Circle className="mt-1 h-2 w-2 shrink-0 fill-[#005ab3] text-[#005ab3]" />
-                <span>{term}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4 overflow-hidden rounded border border-[#d6e0eb] bg-white">
-          <button
-            type="button"
-            className="flex min-h-10 w-full items-center justify-between gap-3 px-4 py-3 text-left text-[11px] font-bold text-[#0f172a]"
-            aria-expanded={termsExpanded}
-            onClick={onTermsToggle}
-          >
-            <span>Full Contract Terms · 15 clauses</span>
-            <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", termsExpanded && "rotate-180")} />
-          </button>
-          {termsExpanded && (
-            <ol className="space-y-4 border-t border-[#d6e0eb] px-4 py-4 text-[11px] leading-relaxed text-[#0f172a]">
-              {termsBullets.map((term, index) => (
-                <li key={`${index}-${term.slice(0, 20)}`} className="grid grid-cols-[28px,1fr] gap-2">
-                  <span className="font-bold">{index + 1}.</span>
-                  <span>{term}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-
-        <label className={cn(
-          "mt-4 flex min-h-10 items-start gap-3 rounded border border-[#d6e0eb] bg-white p-3 text-[10px] leading-relaxed text-[#0f172a]",
-          !termsOpened && "cursor-not-allowed opacity-60",
-        )}>
-          <input
-            type="checkbox"
-            className="mt-0.5 h-4 w-4 shrink-0 accent-[#005ab3]"
-            disabled={!termsOpened}
-            checked={termsAcknowledged}
-            onChange={(event) => onTermsAcknowledgedChange(event.target.checked)}
-          />
-          <span>I have read and agree to the terms and conditions of this rental agreement</span>
-        </label>
-      </ContractPage>
-
-      <ContractPage pageNo={3} pageTotal={pageTotal}>
-        <SectionTitle num={7} title="RETURN CHECK-IN" />
-        <div className="-mt-2 text-[9px] text-[#566478]">To be completed when the vehicle is returned</div>
-        <div className="mt-4 rounded border border-[#d6e0eb] bg-white p-5">
-          <div className="text-[12px] font-bold">To be completed when the vehicle is returned.</div>
-          <div className="mt-3 text-[10px] leading-relaxed text-[#566478]">
-            Return mileage, fuel level, damage notes, and photos will be recorded at check-in.
-          </div>
-        </div>
-
-        <div className="mt-10">
-          <SectionTitle num={8} title="AGREEMENT & SIGNATURES" />
-          <p className="text-[10px] leading-relaxed text-[#0f172a]">
-            By signing below, both parties confirm that they have read, understood, and agreed to all terms and
-            conditions stated in this Car Rental Agreement.
-          </p>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <SignatureBox
-              title="CUSTOMER"
-              signer={c?.full_name || ""}
-              canvasRef={clientSigRef}
-              onStroke={onClientStroke}
-              onClear={onClientClear}
-            />
-            <SignatureBox
-              title="COMPANY REPRESENTATIVE"
-              signer={company.companyName}
-              canvasRef={managerSigRef}
-              onStroke={onManagerStroke}
-              onClear={onManagerClear}
-            />
-          </div>
-        </div>
-
-        <div className="mt-6 rounded border border-[#d6e0eb] bg-[#f9fbfd] p-4">
-          <div className="grid grid-cols-2 divide-x divide-[#d6e0eb] text-center">
-            <div>
-              <div className="text-[10px] font-bold text-[#005ab3]">Total Rental Amount</div>
-              <div className="mt-3 font-mono text-[16px] font-bold text-[#005ab3]">{money(contract.total_amount)}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-[#005ab3]">Deposit Held</div>
-              <div className="mt-3 font-mono text-[16px] font-bold text-[#005ab3]">{money(contract.deposit_amount)}</div>
-            </div>
-          </div>
-        </div>
-      </ContractPage>
-
-      {driverPages.map((drivers, pageIndex) => (
-        <ContractPage key={pageIndex} pageNo={4 + pageIndex} pageTotal={pageTotal}>
-          <SectionTitle num={9} title="ADDITIONAL DRIVERS" />
-          <p className="text-[10px] leading-relaxed text-[#0f172a]">
-            Each driver confirms that their driving documents are valid and that they agree to the driving obligations in this rental agreement.
-          </p>
-          <div className="mt-6 grid gap-5">
-            {drivers.map((driver) => (
-              <div key={driver.id}>
-                <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                  <FieldCard label="Full Name" value={valueOrDash(driver.clients?.full_name)} />
-                  <FieldCard label="License Number" value={valueOrDash(driver.clients?.license_number)} />
-                  <FieldCard label="License Expiry" value={valueOrDash(driver.clients?.license_expiry ? fmtDate(driver.clients.license_expiry) : "-")} />
-                </div>
-                <SignatureBox
-                  title={`ADDITIONAL DRIVER ${driver.position}`}
-                  signer={driver.clients?.full_name || ""}
-                  canvasRef={(instance) => { driverSigRefs.current[driver.id] = instance; }}
-                  onStroke={() => onDriverStroke(driver.id)}
-                  onClear={() => onDriverClear(driver.id)}
-                />
-              </div>
-            ))}
-          </div>
-        </ContractPage>
-      ))}
-    </div>
-  );
-}
-
-export function SignContractModal({
-  contractId,
-  clientName,
-  open,
-  onComplete,
-}: SignContractModalProps) {
-  const [step, setStep] = useState<"review" | "success">("review");
-  const [loadingData, setLoadingData] = useState(true);
-  const [summary, setSummary] = useState<ContractSummary | null>(null);
-  const [loadError, setLoadError] = useState("");
+export function SignContractModal({ contractId, clientName, open, onComplete }: SignContractModalProps) {
+  const [step, setStep] = useState<FlowStep>("review");
+  const [loaded, setLoaded] = useState<LoadedContract | null>(null);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [clientSigHasContent, setClientSigHasContent] = useState(false);
-  const [managerSigHasContent, setManagerSigHasContent] = useState(false);
-  const [driverSigHasContent, setDriverSigHasContent] = useState<Record<string, boolean>>({});
-  const [clientSigDataUrl, setClientSigDataUrl] = useState("");
-  const [managerSigDataUrl, setManagerSigDataUrl] = useState("");
-  const [pdfUrl, setPdfUrl] = useState("");
+  const [error, setError] = useState("");
   const [termsExpanded, setTermsExpanded] = useState(false);
-  const [termsOpened, setTermsOpened] = useState(false);
-  const [termsAcknowledged, setTermsAcknowledged] = useState(false);
-
-  const clientSigRef = useRef<SigRef>(null);
-  const managerSigRef = useRef<SigRef>(null);
-  const driverSigRefs = useRef<Record<string, SigRef | null>>({});
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [activeSigner, setActiveSigner] = useState(0);
+  const [signatures, setSignatures] = useState<Record<string, string>>({});
+  const [canvasHasContent, setCanvasHasContent] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const signatureRef = useRef<SigRef>(null);
 
   useEffect(() => {
     if (!open) return;
-
     let cancelled = false;
-
     setStep("review");
-    setSaving(false);
-    setClientSigHasContent(false);
-    setManagerSigHasContent(false);
-    setDriverSigHasContent({});
-    driverSigRefs.current = {};
-    setClientSigDataUrl("");
-    setManagerSigDataUrl("");
-    setSummary(null);
-    setPdfUrl("");
+    setLoaded(null);
+    setError("");
     setTermsExpanded(false);
-    setTermsOpened(false);
-    setTermsAcknowledged(false);
-    setLoadError("");
-    setLoadingData(true);
+    setTermsAccepted(false);
+    setActiveSigner(0);
+    setSignatures({});
+    setPdfUrl("");
+    setLoading(true);
 
     const load = async () => {
       try {
-        const [contractRes, authRes, drivers] = await Promise.all([
+        const [contractResult, authResult, drivers] = await Promise.all([
           supabase
             .from("contracts")
-            .select(
-              "*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year, color)",
-            )
+            .select("*, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year, color)")
             .eq("id", contractId)
             .single(),
           supabase.auth.getUser(),
           getContractDrivers(contractId),
         ]);
+        if (contractResult.error || !contractResult.data) throw new Error(contractResult.error?.message || "Contract not found");
 
-        if (contractRes.error || !contractRes.data) {
-          const message = contractRes.error?.message || "Contract was not found.";
-          if (!cancelled) {
-            setLoadError(message);
-            toast.error("Could not open signature step: " + message);
-          }
-          return;
-        }
-
-        const user = authRes.data.user;
-        let profile: CompanyProfile = {
-          companyName: "Rental Company",
-          companyPhone: "",
-          companyEmail: user?.email || "",
-          termsEn: "",
-          termsKeyPoints: "",
-          logoUrl: null,
-        };
-
+        const user = authResult.data.user;
+        let companyName = "Rental Company";
+        let companyPhone = "";
+        let termsEn = "";
+        let keyTerms: string[] = [];
         if (user) {
-          const { data: profileData } = await supabase
+          const { data: profile } = await supabase
             .from("profiles")
-            .select("company_name, logo_url, phone_number, terms_en, terms_key_points, email")
+            .select("company_name, phone_number, terms_en, terms_key_points")
             .eq("id", user.id)
             .single();
-
-          if (profileData) {
-            const p = profileData as {
-              company_name?: string | null;
-              logo_url?: string | null;
-              phone_number?: string | null;
-              terms_en?: string | null;
-              email?: string | null;
-            };
-            let logoUrl = p.logo_url || null;
-            if (logoUrl && !logoUrl.startsWith("http")) {
-              const { data: signed } = await supabase.storage.from("company-logos").createSignedUrl(logoUrl, 60);
-              logoUrl = signed?.signedUrl || null;
-            }
-            profile = {
-              companyName: p.company_name || profile.companyName,
-              companyPhone: p.phone_number || "",
-              companyEmail: p.email || user.email || "",
-              termsEn: p.terms_en || "",
-              termsKeyPoints: (p as any).terms_key_points || "",
-              logoUrl,
-            };
-          }
+          companyName = profile?.company_name || companyName;
+          companyPhone = profile?.phone_number || "";
+          termsEn = profile?.terms_en || "";
+          keyTerms = String((profile as { terms_key_points?: string | null } | null)?.terms_key_points || "")
+            .split(/\r?\n/)
+            .map((item) => item.trim())
+            .filter(Boolean);
         }
-
-        const pdfData = contractRes.data as unknown as ContractForPdf;
-        const previewData = contractRes.data as unknown as PreviewContract;
-        const client = pdfData.clients?.full_name ?? clientName;
 
         if (!cancelled) {
-          setSummary({ clientName: client, pdfData, previewData, profile, drivers });
+          setLoaded({
+            data: contractResult.data as unknown as ContractForPdf,
+            drivers,
+            companyName,
+            companyPhone,
+            termsEn,
+            keyTerms,
+          });
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unexpected signature step error.";
-        if (!cancelled) {
-          setLoadError(message);
-          toast.error("Could not open signature step: " + message);
-        }
+      } catch (loadError) {
+        const message = loadError instanceof Error ? loadError.message : "Could not load contract";
+        if (!cancelled) setError(message);
       } finally {
-        if (!cancelled) setLoadingData(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     load();
+    return () => { cancelled = true; };
+  }, [open, contractId]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [open, contractId, clientName]);
+  const signers = useMemo<Signer[]>(() => {
+    if (!loaded) return [];
+    const contract = loaded.data as ContractForPdf & { clients?: { full_name?: string | null } | null };
+    return [
+      { key: "customer", label: "Main customer", name: contract.clients?.full_name || clientName },
+      ...loaded.drivers.map((driver) => ({
+        key: `driver-${driver.id}`,
+        label: `Additional driver ${driver.position}`,
+        name: driver.clients?.full_name || `Driver ${driver.position}`,
+        driver,
+      })),
+      { key: "company", label: "Company representative", name: loaded.companyName },
+    ];
+  }, [loaded, clientName]);
 
-  const handleSave = async () => {
-    if (!clientSigRef.current || clientSigRef.current.isEmpty()) {
-      toast.error("Customer signature is required.");
-      return;
-    }
-    if (!managerSigRef.current || managerSigRef.current.isEmpty()) {
-      toast.error("Company representative signature is required.");
-      return;
-    }
-    const missingDriverSignature = summary?.drivers.find((driver) => {
-      const ref = driverSigRefs.current[driver.id];
-      return !ref || ref.isEmpty();
-    });
-    if (missingDriverSignature) {
-      toast.error(`Signature is required for ${missingDriverSignature.clients?.full_name || "each additional driver"}.`);
-      return;
-    }
-    if (!summary?.pdfData) {
-      toast.error("Contract details are not loaded. Please reopen the signature step.");
-      return;
-    }
+  const signer = signers[activeSigner];
+  const signedCount = signers.filter((item) => signatures[item.key]).length;
 
-    const clientSignature = clientSigRef.current.getDataUrl();
-    const managerSignature = managerSigRef.current.getDataUrl();
-    const driverSignatures = summary.drivers.map((driver) => ({
-      id: driver.id,
-      signature: driverSigRefs.current[driver.id]!.getDataUrl(),
-    }));
-    const signedDrivers = summary.drivers.map((driver) => ({
-      ...driver,
-      signature: driverSignatures.find((item) => item.id === driver.id)?.signature || null,
-      signed_at: new Date().toISOString(),
-    }));
+  const saveCurrentSignature = () => {
+    if (!signer || !signatureRef.current || signatureRef.current.isEmpty()) {
+      toast.error("Please add this signature first.");
+      return;
+    }
+    const dataUrl = signatureRef.current.getDataUrl();
+    setSignatures((current) => ({ ...current, [signer.key]: dataUrl }));
+    signatureRef.current.clear();
+    setCanvasHasContent(false);
+    if (activeSigner < signers.length - 1) setActiveSigner((current) => current + 1);
+  };
+
+  const completeSigning = async () => {
+    if (!loaded) return;
+    const customerSignature = signatures.customer;
+    const companySignature = signatures.company;
+    const missing = signers.find((item) => !signatures[item.key]);
+    if (!customerSignature || !companySignature || missing) {
+      toast.error(`Signature required: ${missing?.name || "all participants"}`);
+      return;
+    }
 
     setSaving(true);
-    const { error } = await supabase
-      .from("contracts")
-      .update({ client_signature: clientSignature, manager_signature: managerSignature })
-      .eq("id", contractId);
-
-    if (error) {
-      setSaving(false);
-      toast.error("Failed to save signatures: " + error.message);
-      return;
-    }
-
     try {
+      const { error: contractError } = await supabase
+        .from("contracts")
+        .update({ client_signature: customerSignature, manager_signature: companySignature })
+        .eq("id", contractId);
+      if (contractError) throw contractError;
+
+      const driverSignatures = loaded.drivers.map((driver) => ({
+        id: driver.id,
+        signature: signatures[`driver-${driver.id}`],
+      }));
       await saveContractDriverSignatures(driverSignatures);
-    } catch (driverError) {
-      setSaving(false);
-      toast.error("Failed to save additional driver signatures: " + (driverError instanceof Error ? driverError.message : "unknown error"));
-      return;
-    }
 
-    setClientSigDataUrl(clientSignature);
-    setManagerSigDataUrl(managerSignature);
-    setSummary((current) => current ? { ...current, drivers: signedDrivers } : current);
+      const signedDrivers = loaded.drivers.map((driver) => ({
+        ...driver,
+        signature: signatures[`driver-${driver.id}`],
+        signed_at: new Date().toISOString(),
+      }));
 
-    try {
       const blob = await generateContractPdf(
         {
-          ...summary.pdfData,
-          client_signature: clientSignature,
-          manager_signature: managerSignature,
+          ...loaded.data,
+          client_signature: customerSignature,
+          manager_signature: companySignature,
           contract_drivers: signedDrivers,
         },
         { returnBlob: true },
       ) as Blob;
       const filePath = `${contractId}.pdf`;
-      await supabase.storage.from("contract-pdfs").upload(filePath, blob, {
+      const { error: uploadError } = await supabase.storage.from("contract-pdfs").upload(filePath, blob, {
         contentType: "application/pdf",
         upsert: true,
       });
-      const { data: publicData } = supabase.storage
-        .from("contract-pdfs")
-        .getPublicUrl(filePath);
-      if (publicData?.publicUrl) setPdfUrl(publicData.publicUrl);
-    } catch (err) {
-      console.error("PDF upload failed:", err);
+      if (uploadError) throw uploadError;
+      const publicUrl = supabase.storage.from("contract-pdfs").getPublicUrl(filePath).data.publicUrl;
+      setPdfUrl(publicUrl);
+      setStep("success");
+      toast.success("All signatures saved");
+    } catch (saveError) {
+      toast.error(saveError instanceof Error ? saveError.message : "Could not save signatures");
     } finally {
       setSaving(false);
     }
-
-    toast.success("Contract signed successfully");
-    setStep("success");
   };
 
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onComplete(); }}>
-      <DialogContent className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[96vh] sm:w-[min(1180px,calc(100vw-2rem))] sm:rounded-lg">
-        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 sm:px-6 sm:py-4">
-          <div className="flex items-center justify-between gap-3">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <FileText className="h-4 w-4" />
-              Review &amp; Sign Contract
-            </DialogTitle>
-            {step === "review" && (
-              <div className="hidden text-xs font-medium text-muted-foreground sm:block">
-                Scroll to the agreement section and sign in place
-              </div>
-            )}
-          </div>
-        </DialogHeader>
+  if (!open) return null;
 
-        <div className="flex-1 overflow-y-auto bg-muted/30 px-3 py-3 sm:px-6 sm:py-5">
-          {step === "review" && (
-            <>
-              {loadingData ? (
-                <div className="mx-auto max-w-[794px] rounded-md border border-border bg-background py-12 text-center text-sm text-muted-foreground">
-                  Loading contract preview...
+  const contract = loaded?.data as (ContractForPdf & {
+    clients?: { full_name?: string | null; phone?: string | null; license_number?: string | null } | null;
+    cars?: { plate?: string | null; make?: string | null; model?: string | null } | null;
+    start_date?: string;
+    start_time?: string;
+    end_date?: string;
+    end_time?: string;
+    rate_type?: string;
+    rate_amount?: number;
+    total_amount?: number;
+    deposit_amount?: number;
+    initial_mileage?: number;
+    fuel_level?: string;
+  }) | null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex h-[100dvh] flex-col overflow-hidden bg-slate-100 text-slate-950">
+      <header className="shrink-0 border-b border-cyan-700 bg-cyan-600 px-3 py-3 text-white shadow-sm">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-base font-bold"><FileText className="h-4 w-4" /> Contract signing</div>
+            <div className="truncate text-xs text-cyan-50">Review → terms → all participants → completed</div>
+          </div>
+          <div className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">
+            {step === "review" ? "1/4" : step === "terms" ? "2/4" : step === "sign" ? "3/4" : "4/4"}
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+        <div className="mx-auto max-w-5xl">
+          {loading && <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-cyan-600" /></div>}
+          {error && <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
+          {!loading && !error && loaded && contract && step === "review" && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-bold">Check the contract</h2>
+                <p className="text-sm text-slate-600">Additional drivers are shown here and each one will sign separately.</p>
+              </div>
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SummaryItem label="Main customer" value={contract.clients?.full_name || clientName} />
+                  <SummaryItem label="Vehicle" value={`${contract.cars?.plate || "—"} · ${contract.cars?.make || ""} ${contract.cars?.model || ""}`} />
+                  <SummaryItem label="Rental period" value={`${dateTime(contract.start_date, contract.start_time)} → ${dateTime(contract.end_date, contract.end_time)}`} />
+                  <SummaryItem label="Rate" value={`${contract.rate_type || "—"} · ${money(contract.rate_amount)}`} />
+                  <SummaryItem label="Rental total" value={money(contract.total_amount)} />
+                  <SummaryItem label="Deposit held separately" value={money(contract.deposit_amount)} accent />
+                  <SummaryItem label="Initial mileage" value={`${Number(contract.initial_mileage || 0).toLocaleString()} km`} />
+                  <SummaryItem label="Fuel" value={contract.fuel_level || "—"} />
                 </div>
-              ) : loadError ? (
-                <div className="mx-auto max-w-[794px] rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-                  Could not load this contract for signing. {loadError}
-                </div>
-              ) : summary ? (
-                <ContractHtmlPreview
-                  summary={summary}
-                  clientSigRef={clientSigRef}
-                  managerSigRef={managerSigRef}
-                  onClientStroke={() => setClientSigHasContent(true)}
-                  onManagerStroke={() => setManagerSigHasContent(true)}
-                  onClientClear={() => {
-                    clientSigRef.current?.clear();
-                    setClientSigHasContent(false);
-                  }}
-                  onManagerClear={() => {
-                    managerSigRef.current?.clear();
-                    setManagerSigHasContent(false);
-                  }}
-                  driverSigRefs={driverSigRefs}
-                  onDriverStroke={(driverId) => {
-                    setDriverSigHasContent((current) => ({ ...current, [driverId]: true }));
-                  }}
-                  onDriverClear={(driverId) => {
-                    driverSigRefs.current[driverId]?.clear();
-                    setDriverSigHasContent((current) => ({ ...current, [driverId]: false }));
-                  }}
-                  termsExpanded={termsExpanded}
-                  termsOpened={termsOpened}
-                  termsAcknowledged={termsAcknowledged}
-                  onTermsToggle={() => {
-                    setTermsExpanded((current) => !current);
-                    setTermsOpened(true);
-                  }}
-                  onTermsAcknowledgedChange={setTermsAcknowledged}
-                />
-              ) : null}
-            </>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-bold">Authorized additional drivers ({loaded.drivers.length})</div>
+                {loaded.drivers.length === 0 ? (
+                  <div className="mt-3 rounded-lg bg-slate-100 p-3 text-sm text-slate-500">No additional drivers</div>
+                ) : (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {loaded.drivers.map((driver) => (
+                      <div key={driver.id} className="rounded-lg border border-slate-200 p-3">
+                        <div className="font-semibold">{driver.position}. {driver.clients?.full_name || "Unknown driver"}</div>
+                        <div className="mt-1 text-xs text-slate-500">License: {driver.clients?.license_number || "Missing"}</div>
+                        <div className="text-xs text-slate-500">Expiry: {driver.clients?.license_expiry || "Missing"}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           )}
 
-          {step === "success" && (
-            <div className="flex flex-col items-center gap-4 py-8 text-center">
-              <div className="rounded-full bg-tint-green p-4">
-                <CheckCircle2 className="h-10 w-10 text-tint-green-foreground" />
-              </div>
+          {!loading && !error && loaded && step === "terms" && (
+            <div className="space-y-4">
               <div>
-                <p className="text-base font-semibold text-foreground">
-                  Contract signed by both parties
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Signatures saved successfully.
-                </p>
+                <h2 className="text-xl font-bold">Terms and responsibility</h2>
+                <p className="text-sm text-slate-600">The customer reads and accepts the contract before anyone signs.</p>
+              </div>
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-bold">Key terms</div>
+                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                  {(loaded.keyTerms.length ? loaded.keyTerms : [
+                    "Deposit is separate from rental payments.",
+                    "The customer is responsible for fines, Salik and damage during the rental period.",
+                    "The vehicle must be returned on time with the agreed fuel and condition.",
+                  ]).map((term, index) => <div key={index} className="flex gap-2"><span className="font-bold text-cyan-700">•</span><span>{term}</span></div>)}
+                </div>
+                <button type="button" className="mt-4 flex min-h-11 w-full items-center justify-between rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold" onClick={() => setTermsExpanded((current) => !current)}>
+                  Full contract terms
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", termsExpanded && "rotate-180")} />
+                </button>
+                {termsExpanded && <div className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">{loaded.termsEn || "No custom full terms have been configured."}</div>}
+                <label className="mt-4 flex min-h-12 items-start gap-3 rounded-lg border-2 border-cyan-300 bg-cyan-50 p-3 text-sm">
+                  <input type="checkbox" className="mt-0.5 h-5 w-5 accent-cyan-600" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+                  <span>I have read and agree to the rental terms, deposit rules, fines, Salik and vehicle responsibility.</span>
+                </label>
+              </section>
+            </div>
+          )}
+
+          {!loading && !error && loaded && step === "sign" && signer && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-bold">Signatures</h2>
+                <p className="text-sm text-slate-600">Pass the phone in this order. Every person signs only their own section.</p>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {signers.map((item, index) => (
+                  <button key={item.key} type="button" onClick={() => { setActiveSigner(index); signatureRef.current?.clear(); setCanvasHasContent(false); }} className={cn("min-h-11 shrink-0 rounded-lg border px-3 text-left text-xs font-semibold", index === activeSigner ? "border-cyan-600 bg-cyan-50 text-cyan-800" : "border-slate-300 bg-white text-slate-700", signatures[item.key] && "border-emerald-400 bg-emerald-50 text-emerald-800")}>
+                    {signatures[item.key] ? <Check className="mr-1 inline h-3.5 w-3.5" /> : null}{item.name}
+                  </button>
+                ))}
+              </div>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-cyan-700">{signer.label}</div>
+                    <div className="mt-1 text-lg font-bold">{signer.name}</div>
+                    {signer.driver && <div className="mt-1 text-xs text-slate-500">License: {signer.driver.clients?.license_number || "Missing"}</div>}
+                  </div>
+                  <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{signedCount}/{signers.length} signed</div>
+                </div>
+
+                {signatures[signer.key] ? (
+                  <div className="mt-4">
+                    <img src={signatures[signer.key]} alt="Saved signature" className="h-44 w-full rounded-xl border-2 border-emerald-300 bg-white object-contain" />
+                    <Button type="button" variant="outline" className="mt-3 h-11 w-full border-slate-300" onClick={() => setSignatures((current) => { const next = { ...current }; delete next[signer.key]; return next; })}>Redo signature</Button>
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <SignatureCanvas ref={signatureRef} onStroke={() => setCanvasHasContent(true)} />
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <Button type="button" variant="outline" className="h-11 border-slate-300" onClick={() => { signatureRef.current?.clear(); setCanvasHasContent(false); }}>Clear</Button>
+                      <Button type="button" className="h-11 bg-cyan-600 font-bold text-white hover:bg-cyan-700" disabled={!canvasHasContent} onClick={saveCurrentSignature}>Save signature</Button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {!loading && !error && loaded && step === "success" && (
+            <div className="mx-auto max-w-xl py-10 text-center">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-10 w-10" /></div>
+              <h2 className="mt-5 text-2xl font-bold">Contract signed by all participants</h2>
+              <p className="mt-2 text-sm text-slate-600">Customer, additional drivers and company representative signatures are saved in the contract and PDF.</p>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => generateContractPdf({ ...loaded.data, client_signature: signatures.customer, manager_signature: signatures.company, contract_drivers: loaded.drivers.map((driver) => ({ ...driver, signature: signatures[`driver-${driver.id}`] })) })}>Download PDF</Button>
+                <Button className="h-12 gap-2 bg-green-600 text-white hover:bg-green-700" onClick={() => {
+                  const phone = String((loaded.data as ContractForPdf & { clients?: { phone?: string | null } | null }).clients?.phone || "").replace(/[\s\-()]/g, "");
+                  const text = encodeURIComponent(pdfUrl ? `Your signed rental contract: ${pdfUrl}` : `Your rental contract is signed. Contract ID: ${contractId}`);
+                  window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
+                }}><MessageCircle className="h-4 w-4" />Send via WhatsApp</Button>
               </div>
             </div>
           )}
         </div>
+      </main>
 
-        {step === "review" && termsAcknowledged && clientSigHasContent && managerSigHasContent && summary?.drivers.every((driver) => driverSigHasContent[driver.id]) && (
-          <div className="shrink-0 border-t border-border bg-background px-4 py-3 sm:px-6 sm:py-4">
-            <div className="flex justify-end">
-              <Button
-                className="min-h-10"
-                disabled={loadingData || !!loadError || saving}
-                onClick={handleSave}
-              >
-                {saving ? "Saving..." : "Complete & Save"}
-              </Button>
-            </div>
+      {!loading && !error && loaded && step !== "success" && (
+        <footer className="shrink-0 border-t border-slate-200 bg-white px-3 py-3">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <Button type="button" variant="outline" className="h-11 border-slate-300 bg-white" disabled={step === "review"} onClick={() => setStep(step === "sign" ? "terms" : "review")}>
+              <ArrowLeft className="mr-2 h-4 w-4" />Back
+            </Button>
+            {step === "review" && <Button className="h-11 bg-cyan-600 px-6 font-bold text-white hover:bg-cyan-700" onClick={() => setStep("terms")}>Continue to terms</Button>}
+            {step === "terms" && <Button className="h-11 bg-cyan-600 px-6 font-bold text-white hover:bg-cyan-700" disabled={!termsAccepted} onClick={() => setStep("sign")}><PenLine className="mr-2 h-4 w-4" />Start signing</Button>}
+            {step === "sign" && <Button className="h-11 bg-cyan-600 px-6 font-bold text-white hover:bg-cyan-700" disabled={signedCount !== signers.length || saving} onClick={completeSigning}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{saving ? "Saving..." : "Save signed contract"}</Button>}
           </div>
-        )}
+        </footer>
+      )}
 
-        {step === "success" && (
-          <div className="shrink-0 border-t border-border bg-background px-4 py-3 sm:px-6 sm:py-4">
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  if (!summary?.pdfData) return;
-                  try {
-                    await generateContractPdf({
-                      ...summary.pdfData,
-                      client_signature: clientSigDataUrl || null,
-                      manager_signature: managerSigDataUrl || null,
-                      contract_drivers: summary.drivers,
-                    });
-                    toast.success("Contract PDF downloaded");
-                  } catch {
-                    toast.error("Failed to generate PDF");
-                  }
-                }}
-              >
-                Download PDF
-              </Button>
-              <Button
-                className="gap-1.5 bg-green-600 text-white hover:bg-green-700"
-                onClick={() => {
-                  const raw = summary?.pdfData?.clients?.phone ?? "";
-                  let phone = raw.replace(/[\s\-()]/g, "");
-                  if (phone.startsWith("0")) {
-                    phone = "+971" + phone.slice(1);
-                  } else if (phone && !phone.startsWith("+")) {
-                    phone = "+971" + phone;
-                  }
-                  const text = encodeURIComponent(
-                    pdfUrl
-                      ? `Your rental contract is ready: ${pdfUrl}`
-                      : `Your rental contract is ready. Contract ID: ${contractId}`,
-                  );
-                  window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
-                }}
-              >
-                <MessageCircle className="h-4 w-4" />
-                Send via WhatsApp
-              </Button>
-              <Button onClick={onComplete}>Close</Button>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+      {step === "success" && (
+        <footer className="shrink-0 border-t border-slate-200 bg-white px-3 py-3">
+          <div className="mx-auto max-w-5xl"><Button className="h-12 w-full bg-cyan-600 font-bold text-white hover:bg-cyan-700" onClick={onComplete}>Finish and open contract</Button></div>
+        </footer>
+      )}
+    </div>
   );
 }
