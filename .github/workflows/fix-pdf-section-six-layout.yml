@@ -1,0 +1,47 @@
+name: Fix PDF section six layout
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-pdf-section-six-layout.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-pdf-section-six-layout
+          fetch-depth: 0
+
+      - name: Keep vehicle condition block on one page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/lib/contractPdf.ts')
+          s = path.read_text()
+          old = '  sectionTitle(additionalDrivers.length > 0 ? 6 : 5, "Vehicle Condition at Pick-up");'
+          new = '  ensureBlockFits(170);\n  sectionTitle(additionalDrivers.length > 0 ? 6 : 5, "Vehicle Condition at Pick-up");'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one section-six anchor, found {s.count(old)}')
+          path.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Verify build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit fix
+        run: |
+          rm .github/workflows/fix-pdf-section-six-layout.yml
+          git config user.name fleetdesk-bot
+          git config user.email actions@users.noreply.github.com
+          git add src/lib/contractPdf.ts .github/workflows/fix-pdf-section-six-layout.yml
+          git commit -m "Keep vehicle condition section inside PDF page"
+          git push origin HEAD:fix-pdf-section-six-layout
