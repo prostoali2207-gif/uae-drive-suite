@@ -1,0 +1,129 @@
+name: Fix contract PDF drivers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-contract-pdf-drivers.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch contract PDF generator
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/lib/contractPdf.ts')
+          s = path.read_text()
+
+          s = s.replace(
+            '  const c = contract.clients;\n  const car = contract.cars;\n',
+            '''  const c = contract.clients;
+  const car = contract.cars;
+
+  // Always load the saved additional drivers when a caller did not include them.
+  // This keeps PDFs downloaded later from Contract Details identical to the signed PDF.
+  let additionalDrivers = contract.contract_drivers ?? [];
+  if (additionalDrivers.length === 0) {
+    const { data: savedDrivers, error: driversError } = await supabase
+      .from("contract_drivers")
+      .select("id, position, signature, clients(full_name, license_number, license_expiry)")
+      .eq("contract_id", contract.id)
+      .order("position", { ascending: true });
+
+    if (driversError) throw driversError;
+    additionalDrivers = (savedDrivers ?? []) as ContractPdfData["contract_drivers"];
+  }
+''',
+            1,
+          )
+
+          s = s.replace(
+            '    doc.text("Signed by both parties - legally binding", margin, y);',
+            '    doc.text("Signed by all required parties - legally binding", margin, y);',
+            1,
+          )
+
+          old_header_end = '''    doc.text(`Document ID: ${contractNumber}    |    Date of Issue: ${today}`, margin, y);
+    y += 34;
+  };'''
+          new_header_end = '''    doc.text(`Document ID: ${contractNumber}    |    Date of Issue: ${today}`, margin, y);
+    y += 18;
+    if (additionalDrivers.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...blue);
+      doc.text("AUTHORIZED ADDITIONAL DRIVERS", margin, y);
+      y += 11;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...ink);
+      const driverSummary = additionalDrivers
+        .map((driver) => `${valueOrDash(driver.clients?.full_name)} (${valueOrDash(driver.clients?.license_number)})`)
+        .join("   |   ");
+      const driverLines = doc.splitTextToSize(driverSummary, contentW);
+      doc.text(driverLines, margin, y);
+      y += driverLines.length * 9 + 12;
+    } else {
+      y += 16;
+    }
+  };'''
+          if old_header_end not in s:
+            raise SystemExit('header anchor not found')
+          s = s.replace(old_header_end, new_header_end, 1)
+
+          s = s.replace(
+            '  y = clientY + clientH + 34;',
+            '  y = clientY + clientH + 20;',
+            1,
+          )
+
+          s = s.replace(
+            'summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Traffic Charges", "Per contract");',
+            'summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Fines, parking & tolls", "Charged as incurred");',
+            1,
+          )
+
+          s = s.replace(
+            '"By signing below, both parties confirm that they have read, understood, and agreed to all terms and conditions stated in this Car Rental Agreement."',
+            '"By signing below, all required parties confirm that they have read, understood, and agreed to all terms and conditions stated in this Car Rental Agreement."',
+            1,
+          )
+
+          s = s.replace(
+            '  const additionalDrivers = contract.contract_drivers ?? [];\n  const driversPerPage = 3;',
+            '  const driversPerPage = 3;',
+            1,
+          )
+
+          s = s.replace(
+            'sectionTitle(9, "Additional Drivers");',
+            'sectionTitle(9, "Additional Driver Signatures");',
+            1,
+          )
+
+          path.write_text(s)
+          PY
+
+      - name: Verify build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit repair and remove workflow
+        run: |
+          rm .github/workflows/fix-contract-pdf-drivers.yml
+          git config user.name fleetdesk-bot
+          git config user.email actions@users.noreply.github.com
+          git add src/lib/contractPdf.ts .github/workflows/fix-contract-pdf-drivers.yml
+          git commit -m "Fix additional drivers in contract PDFs"
+          git push origin main
