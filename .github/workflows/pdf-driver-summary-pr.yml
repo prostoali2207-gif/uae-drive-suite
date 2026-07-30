@@ -54,3 +54,4 @@ jobs:
           git add src/lib/contractPdf.ts .github/workflows/pdf-driver-summary-pr.yml
           git commit -m 'Improve contract PDF driver summary'
           git push origin HEAD:pdf-driver-summary-fix
+# trigger
