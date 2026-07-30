@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Car,
   FileText,
+  Plus,
   Users,
   AlertTriangle,
   CreditCard,
@@ -28,6 +29,7 @@ const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Fleet", url: "/fleet", icon: Car },
   { title: "Contracts", url: "/contracts", icon: FileText },
+  { title: "New Contract", url: "/contracts/new", icon: Plus },
   { title: "Clients", url: "/clients", icon: Users },
   { title: "Fines & Salik", url: "/fines", icon: AlertTriangle },
   { title: "Payments", url: "/payments", icon: CreditCard },
@@ -81,9 +83,13 @@ export function AppSidebar() {
                       className={({ isActive }) =>
                         [
                           "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                          item.title === "New Contract"
+                            ? isActive
+                              ? "bg-blue-600 text-white"
+                              : "bg-blue-600/15 text-blue-300 hover:bg-blue-600 hover:text-white"
+                            : isActive
+                              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                         ].join(" ")
                       }
                     >
