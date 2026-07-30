@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { CheckCircle2, FileText, MessageCircle } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, ChevronDown, FileText, Gauge, MessageCircle, Wallet } from "lucide-react";
 import QRCode from "qrcode";
 import {
   Dialog,
@@ -355,6 +355,11 @@ function ContractHtmlPreview({
   driverSigRefs,
   onDriverStroke,
   onDriverClear,
+  termsExpanded,
+  termsOpened,
+  termsAcknowledged,
+  onTermsToggle,
+  onTermsAcknowledgedChange,
 }: {
   summary: ContractSummary;
   clientSigRef: React.Ref<SigRef>;
@@ -366,6 +371,11 @@ function ContractHtmlPreview({
   driverSigRefs: React.MutableRefObject<Record<string, SigRef | null>>;
   onDriverStroke: (driverId: string) => void;
   onDriverClear: (driverId: string) => void;
+  termsExpanded: boolean;
+  termsOpened: boolean;
+  termsAcknowledged: boolean;
+  onTermsToggle: () => void;
+  onTermsAcknowledgedChange: (checked: boolean) => void;
 }) {
   const contract = summary.previewData;
   const c = contract.clients;
@@ -562,14 +572,72 @@ function ContractHtmlPreview({
 
       <ContractPage pageNo={2} pageTotal={pageTotal}>
         <SectionTitle num={6} title="TERMS OF USE" />
-        <ol className="mt-5 space-y-4 text-[11px] leading-relaxed text-[#0f172a]">
-          {termsBullets.map((term, index) => (
-            <li key={`${index}-${term.slice(0, 20)}`} className="grid grid-cols-[28px,1fr] gap-2">
-              <span className="font-bold">{index + 1}.</span>
-              <span>{term}</span>
-            </li>
-          ))}
-        </ol>
+
+        <div className="mt-5 rounded border border-[#d6e0eb] bg-[#f9fbfd] p-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[#005ab3]">Key Terms</div>
+          <div className="mt-3 grid gap-3 text-[10px] leading-relaxed text-[#0f172a] sm:grid-cols-2">
+            <div className="flex items-start gap-2">
+              <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
+              <span><strong>Security deposit:</strong> Refunded within 15 days after vehicle return, minus any unpaid fines or damage.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
+              <span><strong>Mileage:</strong> 250 km/day or 5,000 km/month; excess is charged at <span className="font-mono">AED 1/km</span>.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
+              <span><strong>Fines and Salik:</strong> The customer's responsibility, plus a <span className="font-mono">20 AED</span> admin fee per fine.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
+              <span><strong>Smoking/vaping:</strong> A <span className="font-mono">AED 500</span> cleaning charge applies inside the vehicle.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
+              <span><strong>Prohibited driving:</strong> Off-road driving, racing, or drifting may incur a contractual charge up to <span className="font-mono">AED 100,000</span>.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
+              <span><strong>Excessive speeding:</strong> More than 20 km/h over the limit may result in remote disablement and an <span className="font-mono">AED 10,000</span> charge.</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-hidden rounded border border-[#d6e0eb] bg-white">
+          <button
+            type="button"
+            className="flex min-h-10 w-full items-center justify-between gap-3 px-4 py-3 text-left text-[11px] font-bold text-[#0f172a]"
+            aria-expanded={termsExpanded}
+            onClick={onTermsToggle}
+          >
+            <span>Full Contract Terms · 15 clauses</span>
+            <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", termsExpanded && "rotate-180")} />
+          </button>
+          {termsExpanded && (
+            <ol className="space-y-4 border-t border-[#d6e0eb] px-4 py-4 text-[11px] leading-relaxed text-[#0f172a]">
+              {termsBullets.map((term, index) => (
+                <li key={`${index}-${term.slice(0, 20)}`} className="grid grid-cols-[28px,1fr] gap-2">
+                  <span className="font-bold">{index + 1}.</span>
+                  <span>{term}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+
+        <label className={cn(
+          "mt-4 flex min-h-10 items-start gap-3 rounded border border-[#d6e0eb] bg-white p-3 text-[10px] leading-relaxed text-[#0f172a]",
+          !termsOpened && "cursor-not-allowed opacity-60",
+        )}>
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[#005ab3]"
+            disabled={!termsOpened}
+            checked={termsAcknowledged}
+            onChange={(event) => onTermsAcknowledgedChange(event.target.checked)}
+          />
+          <span>I have read and agree to the terms and conditions of this rental agreement</span>
+        </label>
       </ContractPage>
 
       <ContractPage pageNo={3} pageTotal={pageTotal}>
@@ -667,6 +735,9 @@ export function SignContractModal({
   const [clientSigDataUrl, setClientSigDataUrl] = useState("");
   const [managerSigDataUrl, setManagerSigDataUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
+  const [termsExpanded, setTermsExpanded] = useState(false);
+  const [termsOpened, setTermsOpened] = useState(false);
+  const [termsAcknowledged, setTermsAcknowledged] = useState(false);
 
   const clientSigRef = useRef<SigRef>(null);
   const managerSigRef = useRef<SigRef>(null);
@@ -687,6 +758,9 @@ export function SignContractModal({
     setManagerSigDataUrl("");
     setSummary(null);
     setPdfUrl("");
+    setTermsExpanded(false);
+    setTermsOpened(false);
+    setTermsAcknowledged(false);
     setLoadError("");
     setLoadingData(true);
 
@@ -915,6 +989,14 @@ export function SignContractModal({
                     driverSigRefs.current[driverId]?.clear();
                     setDriverSigHasContent((current) => ({ ...current, [driverId]: false }));
                   }}
+                  termsExpanded={termsExpanded}
+                  termsOpened={termsOpened}
+                  termsAcknowledged={termsAcknowledged}
+                  onTermsToggle={() => {
+                    setTermsExpanded((current) => !current);
+                    setTermsOpened(true);
+                  }}
+                  onTermsAcknowledgedChange={setTermsAcknowledged}
                 />
               ) : null}
             </>
@@ -937,7 +1019,7 @@ export function SignContractModal({
           )}
         </div>
 
-        {step === "review" && clientSigHasContent && managerSigHasContent && summary?.drivers.every((driver) => driverSigHasContent[driver.id]) && (
+        {step === "review" && termsAcknowledged && clientSigHasContent && managerSigHasContent && summary?.drivers.every((driver) => driverSigHasContent[driver.id]) && (
           <div className="shrink-0 border-t border-border bg-background px-4 py-3 sm:px-6 sm:py-4">
             <div className="flex justify-end">
               <Button
