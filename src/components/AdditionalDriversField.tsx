@@ -65,27 +65,27 @@ export function AdditionalDriversField({
   };
 
   return (
-    <div className="grid gap-2 rounded-lg border border-border p-3">
+    <div className="grid gap-2 rounded-lg border border-slate-300 bg-white p-3 text-slate-950">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <Label>Additional drivers</Label>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <Label className="text-slate-900">Additional drivers</Label>
+          <p className="mt-0.5 text-xs text-slate-500">
             Existing clients only. They do not become responsible for payment or deposit.
           </p>
         </div>
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="gap-1.5">
+            <Button type="button" variant="outline" size="sm" className="gap-1.5 !border-cyan-500 !bg-white !text-slate-900">
               <Plus className="h-3.5 w-3.5" />
               Add driver
               <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[340px] p-0" align="end">
-            <Command>
+          <PopoverContent className="z-[110] w-[min(340px,calc(100vw-1.5rem))] !border-cyan-500 !bg-white p-0 !text-slate-950 shadow-xl" align="end" sideOffset={6} collisionPadding={12}>
+            <Command className="!bg-white !text-slate-950">
               <CommandInput placeholder="Search existing client..." />
-              <CommandList>
+              <CommandList className="max-h-64 !bg-white">
                 <CommandEmpty>No eligible clients found.</CommandEmpty>
                 <CommandGroup>
                   {available.map((client) => {
@@ -98,12 +98,12 @@ export function AdditionalDriversField({
                         value={`${client.full_name} ${client.license_number}`}
                         disabled={disabled}
                         onSelect={() => addDriver(client)}
-                        className="items-start gap-2"
+                        className="items-start gap-2 !text-slate-950 data-[selected=true]:!bg-cyan-50"
                       >
                         <Check className={cn("mt-0.5 h-4 w-4", value.includes(client.id) ? "opacity-100" : "opacity-0")} />
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-medium">{client.full_name}</div>
-                          <div className={cn("text-xs", disabled ? "text-destructive" : "text-muted-foreground")}>
+                          <div className={cn("text-xs", disabled ? "text-red-600" : "text-slate-500")}>
                             {missingLicense
                               ? "Driver license is missing"
                               : expired
@@ -122,7 +122,7 @@ export function AdditionalDriversField({
       </div>
 
       {selected.length === 0 ? (
-        <div className="rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        <div className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-500">
           No additional drivers
         </div>
       ) : (
