@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { BarChart3, Car, CreditCard, FileText, LayoutDashboard, MoreHorizontal, Settings, TriangleAlert, Users } from "lucide-react";
+import { BarChart3, Car, CreditCard, FileText, LayoutDashboard, MoreHorizontal, Plus, Settings, TriangleAlert, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,11 +12,12 @@ import { cn } from "@/lib/utils";
 const primaryNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Contracts", url: "/contracts", icon: FileText },
+  { title: "New", url: "/contracts/new", icon: Plus, action: true },
   { title: "Clients", url: "/clients", icon: Users },
-  { title: "Fleet", url: "/fleet", icon: Car },
 ];
 
 const moreNav = [
+  { title: "Fleet", url: "/fleet", icon: Car },
   { title: "Payments", url: "/payments", icon: CreditCard },
   { title: "Fines & Salik", url: "/fines", icon: TriangleAlert },
   { title: "Reports", url: "/reports", icon: BarChart3 },
@@ -25,6 +26,7 @@ const moreNav = [
 
 const isActivePath = (pathname: string, url: string) => {
   if (url === "/") return pathname === "/";
+  if (url === "/contracts") return pathname === "/contracts" || (pathname.startsWith("/contracts/") && pathname !== "/contracts/new");
   return pathname === url || pathname.startsWith(`${url}/`);
 };
 
@@ -44,8 +46,12 @@ export function BottomNav() {
               to={item.url}
               end={item.url === "/"}
               className={cn(
-                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-medium text-muted-foreground",
-                active && "bg-muted text-foreground",
+                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-medium",
+                item.action
+                  ? "bg-blue-600 text-white shadow-md"
+                  : "text-muted-foreground",
+                active && !item.action && "bg-muted text-foreground",
+                active && item.action && "bg-blue-500 ring-2 ring-blue-300",
               )}
             >
               <item.icon className="h-4 w-4" />
