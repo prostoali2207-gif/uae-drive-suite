@@ -515,6 +515,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Fines, parking & tolls", "Charged as incurred");
   y = financeY + 103;
 
+  ensureBlockFits(170);
   sectionTitle(additionalDrivers.length > 0 ? 6 : 5, "Vehicle Condition at Pick-up");
   const condY = y;
   const condGap = 10;
