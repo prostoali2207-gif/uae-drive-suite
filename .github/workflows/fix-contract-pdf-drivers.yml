@@ -127,3 +127,5 @@ jobs:
           git add src/lib/contractPdf.ts .github/workflows/fix-contract-pdf-drivers.yml
           git commit -m "Fix additional drivers in contract PDFs"
           git push origin main
+
+# trigger
