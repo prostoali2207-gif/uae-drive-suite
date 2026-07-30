@@ -1396,12 +1396,10 @@ const Contracts = () => {
           </div>
 
           <Dialog open={open} onOpenChange={handleContractDialogOpenChange}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="hidden gap-1.5 md:inline-flex">
+            <Button size="sm" className="hidden gap-1.5 md:inline-flex" onClick={() => navigate("/contracts/new")}>
                 <Plus className="h-4 w-4" />
                 New Contract
               </Button>
-            </DialogTrigger>
             <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-[640px]">
               <DialogHeader>
                 <DialogTitle>Create new contract</DialogTitle>
@@ -1769,15 +1767,14 @@ const Contracts = () => {
                 </DialogFooter>
               </form>
             </DialogContent>
-            <DialogTrigger asChild>
-              <Button
-                size="icon"
-                className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
-                aria-label="New Contract"
-              >
-                <Plus className="h-5 w-5" />
-              </Button>
-            </DialogTrigger>
+            <Button
+      size="icon"
+      className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 md:hidden"
+      aria-label="New Contract"
+      onClick={() => navigate("/contracts/new")}
+    >
+      <Plus className="h-5 w-5" />
+    </Button>
           </Dialog>
         </div>
 
