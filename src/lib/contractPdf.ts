@@ -92,7 +92,6 @@ async function loadImage(url: string): Promise<{ dataUrl: string; w: number; h: 
 }
 
 export async function generateContractPdf(contract: ContractPdfData, options?: { returnBlob?: boolean }): Promise<Blob | void> {
-  // Fetch company profile (logo + name + phone + terms)
   const { data: { user } } = await supabase.auth.getUser();
   let companyName = "Rental Company";
   let companyPhone = "";
@@ -132,6 +131,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const today = fmtDate(new Date().toISOString());
   const c = contract.clients;
   const car = contract.cars;
+  const additionalDrivers = contract.contract_drivers ?? [];
 
   const blue: [number, number, number] = [0, 90, 179];
   const blueSoft: [number, number, number] = [240, 247, 255];
@@ -346,15 +346,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     return h;
   };
 
-  const fuelGauge = (x: number, rowY: number, level: string) => {
-    const normalized = String(level || "").toLowerCase();
-    const ratio = normalized === "full" ? 1 : normalized === "3/4" ? 0.75 : normalized === "half" || normalized === "1/2" ? 0.5 : normalized === "1/4" ? 0.25 : 0;
-    doc.setFillColor(236, 242, 248);
-    doc.roundedRect(x, rowY, 48, 7, 3, 3, "F");
-    doc.setFillColor(...blue);
-    doc.roundedRect(x, rowY, 48 * ratio, 7, 3, 3, "F");
-  };
-
   const drawHeader = () => {
     const logoX = margin;
     const logoY = margin - 3;
@@ -398,7 +389,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...ink);
-    doc.text("Signed by both parties - legally binding", margin, y);
+    doc.text("Signed by all required parties - legally binding", margin, y);
     y += 24;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
@@ -407,13 +398,13 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     y += 34;
   };
 
+  const termsSectionNumber = additionalDrivers.length > 0 ? 7 : 6;
   const drawTermsContinuationTitle = () => {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(...blue);
-    doc.text("6.  TERMS OF USE — CONTINUED", margin, y);
-    y += 17;
-    y += 6;
+    doc.text(`${termsSectionNumber}.  TERMS OF USE — CONTINUED`, margin, y);
+    y += 23;
   };
 
   const addTermsContinuationPage = () => {
@@ -439,22 +430,16 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       const text = paragraph.trim();
       if (!text) {
         y += blankLineGap;
-        if (y > contentBottomY) {
-          addTermsContinuationPage();
-        }
+        if (y > contentBottomY) addTermsContinuationPage();
         return;
       }
 
       const lines = doc.splitTextToSize(text, contentW);
       const paragraphHeight = getParagraphHeight(lines);
-      const availableOnFreshTermsPage = contentBottomY - (margin + 20 + 23);
-      if (y + paragraphHeight > contentBottomY) {
-        addTermsContinuationPage();
-      }
+      const availableOnFreshTermsPage = contentBottomY - (margin + 43);
+      if (y + paragraphHeight > contentBottomY) addTermsContinuationPage();
       lines.forEach((lineText: string) => {
-        if (paragraphHeight > availableOnFreshTermsPage && y + lineHeight > contentBottomY) {
-          addTermsContinuationPage();
-        }
+        if (paragraphHeight > availableOnFreshTermsPage && y + lineHeight > contentBottomY) addTermsContinuationPage();
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.3);
         doc.setTextColor(...ink);
@@ -463,13 +448,10 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       });
       y += paragraphGap;
     });
-
   };
 
   const ensureBlockFits = (height: number) => {
-    if (y + height > contentBottomY) {
-      addContentPage();
-    }
+    if (y + height > contentBottomY) addContentPage();
   };
 
   startPage(1);
@@ -491,16 +473,27 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   y = topY;
   const vehicleX = margin + colW + twoColGap;
   sectionTitle(2, "Vehicle Details", "", vehicleX);
-  const vehicleRows: [string, string][] = [
+  listCard(vehicleX, y, colW, [
     ["Plate Number", valueOrDash(car?.plate)],
     ["Make & Model", car ? `${car.make} ${car.model}` : "-"],
     ["Year", car ? String(car.year) : "-"],
-    ["Color", car?.color || "—"],
-  ];
-  listCard(vehicleX, y, colW, vehicleRows);
+    ["Color", vehicleColor || "—"],
+  ]);
 
-  y = clientY + clientH + 34;
-  sectionTitle(3, "Rental Period");
+  y = clientY + clientH + 18;
+  if (additionalDrivers.length > 0) {
+    sectionTitle(3, "Authorized Additional Drivers");
+    const driverRows = additionalDrivers.map((driver) => [
+      `Driver ${driver.position}`,
+      `${valueOrDash(driver.clients?.full_name)} · Licence ${valueOrDash(driver.clients?.license_number)}`,
+    ] as [string, string]);
+    const driversH = listCard(margin, y, contentW, driverRows);
+    y += driversH + 22;
+  } else {
+    y += 16;
+  }
+
+  sectionTitle(additionalDrivers.length > 0 ? 4 : 3, "Rental Period");
   const periodY = y;
   const periodGap = 12;
   const periodW = (contentW - periodGap * 2) / 3;
@@ -509,7 +502,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   fieldCard(margin + (periodW + periodGap) * 2, periodY, periodW, "Rate Type", contract.rate_type);
   y = periodY + 68;
 
-  sectionTitle(4, "Financial Summary");
+  sectionTitle(additionalDrivers.length > 0 ? 5 : 4, "Financial Summary");
   const tileGap = 10;
   const tileW = (contentW - tileGap * 3) / 4;
   const financeY = y;
@@ -519,10 +512,10 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   summaryTile(margin + 9, financeY + 9, tileW, `${contract.rate_type} Rate`, money(contract.rate_amount));
   summaryTile(margin + 9 + tileW + tileGap, financeY + 9, tileW, "Total Rental Amount", money(contract.total_amount), true);
   summaryTile(margin + 9 + (tileW + tileGap) * 2, financeY + 9, tileW, "Deposit Held", money(contract.deposit_amount), true);
-  summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Traffic Charges", "Per contract");
+  summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Fines, parking & tolls", "Charged as incurred");
   y = financeY + 103;
 
-  sectionTitle(5, "Vehicle Condition at Pick-up");
+  sectionTitle(additionalDrivers.length > 0 ? 6 : 5, "Vehicle Condition at Pick-up");
   const condY = y;
   const condGap = 10;
   const conditionRows: [string, string][] = [
@@ -532,9 +525,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   if (exteriorCondition) conditionRows.push(["Exterior Condition", exteriorCondition]);
   if (interiorCondition) conditionRows.push(["Interior Condition", interiorCondition]);
   const condW = (contentW - condGap * (conditionRows.length - 1)) / conditionRows.length;
-  conditionRows.forEach(([label, value], index) => {
-    fieldCard(margin + (condW + condGap) * index, condY, condW, label, value);
-  });
+  conditionRows.forEach(([label, value], index) => fieldCard(margin + (condW + condGap) * index, condY, condW, label, value));
   const qrY = condY + 54;
   doc.setFillColor(255, 255, 255);
   setStroke(line, 0.6);
@@ -547,23 +538,19 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.setFontSize(7.5);
   doc.setTextColor(...muted);
   doc.text("Scan to view vehicle inspection photos.", margin + 16, qrY + 42);
-  if (inspectionQr) {
-    doc.addImage(inspectionQr, "PNG", pageW - margin - 54, qrY + 5, 54, 54);
-  }
-  y = qrY + 82;
+  if (inspectionQr) doc.addImage(inspectionQr, "PNG", pageW - margin - 54, qrY + 5, 54, 54);
 
   startPage(2);
-  sectionTitle(6, "Terms of Use");
+  sectionTitle(termsSectionNumber, "Terms of Use");
   y += 6;
   drawTerms();
 
   addContentPage();
-  sectionTitle(7, "Return Check-in");
+  sectionTitle(additionalDrivers.length > 0 ? 8 : 7, "Return Check-in");
   const returnY = y;
-  const returnW = contentW;
   doc.setFillColor(255, 255, 255);
   setStroke(line, 0.7);
-  doc.roundedRect(margin, returnY, returnW, 84, 4, 4, "FD");
+  doc.roundedRect(margin, returnY, contentW, 84, 4, 4, "FD");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...ink);
@@ -571,15 +558,15 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...muted);
-  doc.text("Return mileage, fuel level, damage notes, and photos will be recorded at check-in.", margin + 18, returnY + 51, { maxWidth: returnW - 36 });
+  doc.text("Return mileage, fuel level, damage notes, and photos will be recorded at check-in.", margin + 18, returnY + 51, { maxWidth: contentW - 36 });
   y = returnY + 120;
 
   ensureBlockFits(253);
-  sectionTitle(8, "Agreement & Signatures");
+  sectionTitle(additionalDrivers.length > 0 ? 9 : 8, "Agreement & Signatures");
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...ink);
-  doc.text("By signing below, both parties confirm that they have read, understood, and agreed to all terms and conditions stated in this Car Rental Agreement.", margin, y, { maxWidth: contentW });
+  doc.text("By signing below, all required parties confirm that they have read, understood, and agreed to all terms and conditions stated in this Car Rental Agreement.", margin, y, { maxWidth: contentW });
   y += 28;
 
   const sigW = (contentW - 12) / 2;
@@ -626,21 +613,16 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.text(money(contract.deposit_amount), margin + contentW * 0.75, y + 49, { align: "center" });
   setStroke(line, 0.8);
   doc.line(margin + contentW / 2, y + 14, margin + contentW / 2, y + 58);
-  const additionalDrivers = contract.contract_drivers ?? [];
+
   const driversPerPage = 3;
   for (let offset = 0; offset < additionalDrivers.length; offset += driversPerPage) {
     const pageDrivers = additionalDrivers.slice(offset, offset + driversPerPage);
     addContentPage();
-    sectionTitle(9, "Additional Drivers");
+    sectionTitle(10, "Additional Driver Signatures");
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(...ink);
-    doc.text(
-      "Each driver confirms that their driving documents are valid and agrees to the driving obligations in this rental agreement.",
-      margin,
-      y,
-      { maxWidth: contentW },
-    );
+    doc.text("Each driver confirms that their driving documents are valid and agrees to the driving obligations in this rental agreement.", margin, y, { maxWidth: contentW });
     y += 30;
 
     pageDrivers.forEach((driver) => {
@@ -653,7 +635,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       doc.setFontSize(9);
       doc.setTextColor(...blue);
       doc.text(`ADDITIONAL DRIVER ${driver.position}`, margin + 14, boxY + 22);
-
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(...muted);
@@ -665,7 +646,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
       doc.text(valueOrDash(client?.full_name), margin + 14, boxY + 60, { maxWidth: 170 });
       doc.text(valueOrDash(client?.license_number), margin + 205, boxY + 60, { maxWidth: 160 });
       doc.text(client?.license_expiry ? fmtDate(client.license_expiry) : "-", margin + 390, boxY + 60, { maxWidth: 120 });
-
       if (driver.signature?.startsWith("data:image")) {
         try { doc.addImage(driver.signature, "PNG", margin + 40, boxY + 78, 190, 50); } catch { /* ignore */ }
       }
@@ -680,11 +660,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   }
 
   renderFooters();
-
   const filename = `Contract_${contractNumber}_${(c?.full_name || "client").replace(/\s+/g, "_")}.pdf`;
-  if (options?.returnBlob) {
-    return doc.output("blob");
-  } else {
-    doc.save(filename);
-  }
+  if (options?.returnBlob) return doc.output("blob");
+  doc.save(filename);
 }
