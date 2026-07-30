@@ -1,0 +1,105 @@
+name: Fix new contract entry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-new-contract-entry.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Route all contract creation buttons to page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          contracts = Path('src/pages/Contracts.tsx')
+          source = contracts.read_text()
+
+          desktop_old = '''            <DialogTrigger asChild>
+              <Button size="sm" className="hidden gap-1.5 md:inline-flex">
+                <Plus className="h-4 w-4" />
+                New Contract
+              </Button>
+            </DialogTrigger>'''
+          desktop_new = '''            <Button
+              size="sm"
+              className="hidden gap-1.5 md:inline-flex"
+              onClick={() => navigate("/contracts/new")}
+            >
+              <Plus className="h-4 w-4" />
+              New Contract
+            </Button>'''
+          if desktop_old not in source:
+              raise SystemExit('Desktop new contract button anchor not found')
+          source = source.replace(desktop_old, desktop_new, 1)
+
+          mobile_old = '''            <DialogTrigger asChild>
+              <Button
+                size="icon"
+                className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
+                aria-label="New Contract"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+            </DialogTrigger>'''
+          mobile_new = '''            <Button
+              size="icon"
+              className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
+              aria-label="New Contract"
+              onClick={() => navigate("/contracts/new")}
+            >
+              <Plus className="h-5 w-5" />
+            </Button>'''
+          if mobile_old not in source:
+              raise SystemExit('Mobile new contract button anchor not found')
+          source = source.replace(mobile_old, mobile_new, 1)
+          contracts.write_text(source)
+
+          bottom_nav = Path('src/components/BottomNav.tsx')
+          nav_source = bottom_nav.read_text()
+          nav_anchor = '''export function BottomNav() {
+  const location = useLocation();
+  const isMoreActive = moreNav.some((item) => isActivePath(location.pathname, item.url));
+
+  return ('''
+          nav_replacement = '''export function BottomNav() {
+  const location = useLocation();
+  const isMoreActive = moreNav.some((item) => isActivePath(location.pathname, item.url));
+
+  if (location.pathname === "/contracts/new") return null;
+
+  return ('''
+          if nav_anchor not in nav_source:
+              raise SystemExit('BottomNav anchor not found')
+          nav_source = nav_source.replace(nav_anchor, nav_replacement, 1)
+          bottom_nav.write_text(nav_source)
+
+          new_contract = Path('src/pages/NewContract.tsx')
+          page = new_contract.read_text()
+          page = page.replace('''      <div className="-mx-4 -my-6 min-h-[calc(100dvh-3.5rem)] bg-slate-100 text-slate-950 md:-mx-8 md:-my-8">''', '''      <div className="-mx-4 -my-6 min-h-[calc(100dvh-3.5rem)] bg-white text-slate-950 md:-mx-8 md:-my-8">''', 1)
+          page = page.replace('''        <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">''', '''        <div className="sticky top-0 z-20 border-b border-cyan-700 bg-cyan-600 text-white">''', 1)
+          page = page.replace('''className="h-11 border-slate-300 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-blue-600"''', '''className="h-11 border-cyan-500 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-cyan-600"''')
+          new_contract.write_text(page)
+          PY
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/fix-new-contract-entry.yml
+
+      - name: Commit changes
+        run: |
+          git config user.name "fleetdesk-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/pages/Contracts.tsx src/pages/NewContract.tsx src/components/BottomNav.tsx .github/workflows/fix-new-contract-entry.yml
+          git commit -m "Open new contract as full page"
+          git push origin main
