@@ -22,94 +22,78 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
-          new_contract = Path('src/pages/NewContract.tsx')
-          source = new_contract.read_text()
+          p = Path('src/pages/NewContract.tsx')
+          s = p.read_text()
 
-          source = source.replace(
-            'const inputClass = "h-11 border-slate-300 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-blue-600";',
-            'const inputClass = "h-11 !border-cyan-500 !bg-white !text-slate-950 placeholder:!text-slate-400 focus-visible:!ring-cyan-600";'
-          )
-
-          source = source.replace(
-            'className="h-11 justify-between border-slate-300 bg-white text-slate-950"',
-            'className="h-11 justify-between !border-cyan-500 !bg-white !text-slate-950"'
-          )
-          source = source.replace(
-            'className="w-[var(--radix-popover-trigger-width)] border-slate-200 bg-white p-0 text-slate-950"',
-            'className="z-[80] w-[min(var(--radix-popover-trigger-width),calc(100vw-2rem))] !border-cyan-500 !bg-white p-0 !text-slate-950 shadow-xl" sideOffset={6} collisionPadding={16}'
-          )
-          source = source.replace(
-            '<Command className="bg-white"><CommandInput placeholder="Search client" value={clientSearch} onValueChange={setClientSearch} /><CommandList>',
-            '<Command className="!bg-white !text-slate-950"><CommandInput className="!text-slate-950 placeholder:!text-slate-400" placeholder="Search client" value={clientSearch} onValueChange={setClientSearch} /><CommandList className="max-h-64 !bg-white">'
-          )
-          source = source.replace(
-            '<Command className="bg-white"><CommandInput placeholder="Search plate or model" value={carSearch} onValueChange={setCarSearch} /><CommandList>',
-            '<Command className="!bg-white !text-slate-950"><CommandInput className="!text-slate-950 placeholder:!text-slate-400" placeholder="Search plate or model" value={carSearch} onValueChange={setCarSearch} /><CommandList className="max-h-64 !bg-white">'
-          )
-          source = source.replace(
-            '<CommandItem key={client.id} value={client.id}',
-            '<CommandItem className="!text-slate-950 data-[selected=true]:!bg-cyan-50" key={client.id} value={client.id}'
-          )
-          source = source.replace(
-            '<CommandItem key={car.id} value={car.id}',
-            '<CommandItem className="!text-slate-950 data-[selected=true]:!bg-cyan-50" key={car.id} value={car.id}'
+          s = re.sub(
+              r'const inputClass = "[^"]+";',
+              'const inputClass = "h-11 !border-2 !border-cyan-500 !bg-white !text-slate-950 placeholder:!text-slate-500 shadow-none focus-visible:!border-cyan-600 focus-visible:!ring-2 focus-visible:!ring-cyan-200";',
+              s,
+              count=1,
           )
 
-          old_dates = '''<div className="grid gap-4 md:grid-cols-4">
-                  <div className="grid gap-2"><Label className="text-slate-800">Start date *</Label><Input type="date" className={inputClass} value={form.start_date} onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))} /></div>
-                  <div className="grid gap-2"><Label className="text-slate-800">Start time *</Label><Input type="time" className={inputClass} value={form.start_time} onChange={(e) => setForm((p) => ({ ...p, start_time: e.target.value }))} /></div>
-                  <div className="grid gap-2"><Label className="text-slate-800">End date *</Label><Input type="date" className={inputClass} value={form.end_date} onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))} /></div>
-                  <div className="grid gap-2"><Label className="text-slate-800">End time *</Label><Input type="time" className={inputClass} value={form.end_time} onChange={(e) => setForm((p) => ({ ...p, end_time: e.target.value }))} /></div>
-                </div>'''
-          new_dates = '''<div className="space-y-3">
+          s = s.replace(
+              'className="h-11 justify-between border-slate-300 bg-white text-slate-950"',
+              'className="h-11 justify-between !border-2 !border-cyan-500 !bg-white !text-slate-950"',
+          )
+
+          s = s.replace(
+              'className="w-[var(--radix-popover-trigger-width)] border-slate-200 bg-white p-0 text-slate-950"',
+              'className="z-[100] w-[min(var(--radix-popover-trigger-width),calc(100vw-1.5rem))] !border-cyan-500 !bg-white p-0 !text-slate-950 shadow-xl" sideOffset={6} collisionPadding={12}',
+          )
+
+          s = s.replace('<Command className="bg-white">', '<Command className="!bg-white !text-slate-950">')
+          s = s.replace('<CommandList>', '<CommandList className="max-h-64 !bg-white">')
+          s = s.replace('<CommandItem key={client.id}', '<CommandItem className="!text-slate-950 data-[selected=true]:!bg-cyan-50" key={client.id}')
+          s = s.replace('<CommandItem key={car.id}', '<CommandItem className="!text-slate-950 data-[selected=true]:!bg-cyan-50" key={car.id}')
+
+          dates_pattern = re.compile(
+              r'<div className="grid gap-4 md:grid-cols-4">\s*'
+              r'<div className="grid gap-2"><Label className="text-slate-800">Start date \*</Label><Input type="date".*?</div>\s*'
+              r'<div className="grid gap-2"><Label className="text-slate-800">Start time \*</Label><Input type="time".*?</div>\s*'
+              r'<div className="grid gap-2"><Label className="text-slate-800">End date \*</Label><Input type="date".*?</div>\s*'
+              r'<div className="grid gap-2"><Label className="text-slate-800">End time \*</Label><Input type="time".*?</div>\s*'
+              r'</div>',
+              re.S,
+          )
+
+          replacement = '''<div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-2"><Label className="text-slate-800">Start date *</Label><Input type="date" className={inputClass} value={form.start_date} onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))} /></div>
-                    <div className="grid gap-2"><Label className="text-slate-800">End date *</Label><Input type="date" className={inputClass} value={form.end_date} onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))} /></div>
+                    <div className="grid min-w-0 gap-2"><Label className="text-slate-800">Start date *</Label><Input type="date" className={inputClass} value={form.start_date} onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))} /></div>
+                    <div className="grid min-w-0 gap-2"><Label className="text-slate-800">End date *</Label><Input type="date" className={inputClass} value={form.end_date} onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))} /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-2"><Label className="text-slate-800">Start time *</Label><Input type="time" className={inputClass} value={form.start_time} onChange={(e) => setForm((p) => ({ ...p, start_time: e.target.value }))} /></div>
-                    <div className="grid gap-2"><Label className="text-slate-800">End time *</Label><Input type="time" className={inputClass} value={form.end_time} onChange={(e) => setForm((p) => ({ ...p, end_time: e.target.value }))} /></div>
+                    <div className="grid min-w-0 gap-2"><Label className="text-slate-800">Start time *</Label><Input type="time" className={inputClass} value={form.start_time} onChange={(e) => setForm((p) => ({ ...p, start_time: e.target.value }))} /></div>
+                    <div className="grid min-w-0 gap-2"><Label className="text-slate-800">End time *</Label><Input type="time" className={inputClass} value={form.end_time} onChange={(e) => setForm((p) => ({ ...p, end_time: e.target.value }))} /></div>
                   </div>
                 </div>'''
-          if old_dates not in source:
-            raise SystemExit('Date block anchor not found')
-          source = source.replace(old_dates, new_dates, 1)
+          s, count = dates_pattern.subn(replacement, s, count=1)
+          if count == 0 and 'grid grid-cols-2 gap-3' not in s:
+              raise SystemExit('Could not patch date layout')
 
-          source = source.replace(
-            'className="sticky bottom-20 z-10 rounded-2xl border border-blue-200 bg-white p-4 shadow-xl md:bottom-4"',
-            'className="rounded-2xl border border-cyan-300 bg-white p-4 shadow-lg md:sticky md:bottom-4 md:z-10"'
-          )
-          source = source.replace(
-            'className="h-12 bg-blue-600 px-7 text-base font-bold text-white hover:bg-blue-700"',
-            'className="h-12 !bg-cyan-600 px-7 text-base font-bold !text-white hover:!bg-cyan-700"'
-          )
-          source = source.replace(
-            'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm',
-            'rounded-xl border border-slate-200 bg-white p-3 shadow-sm'
-          )
-          source = source.replace('className="space-y-5"', 'className="space-y-4"')
-          source = source.replace('px-4 py-6 md:px-8 md:py-8', 'px-3 py-4 md:px-8 md:py-8')
-          source = source.replace('text-2xl font-bold', 'text-xl font-bold')
+          s = s.replace('className="space-y-5"', 'className="space-y-4"')
+          s = s.replace('px-4 py-6 md:px-8 md:py-8', 'px-3 py-4 md:px-8 md:py-8')
+          s = s.replace('rounded-2xl border border-slate-200 bg-white p-4 shadow-sm', 'rounded-xl border border-slate-200 bg-white p-3 shadow-sm')
+          s = s.replace('className="sticky bottom-20 z-10 rounded-2xl border border-blue-200 bg-white p-4 shadow-xl md:bottom-4"', 'className="sticky bottom-3 z-10 rounded-xl border border-cyan-300 bg-white p-3 shadow-lg md:bottom-4"')
+          s = s.replace('className="h-12 bg-blue-600 px-7 text-base font-bold text-white hover:bg-blue-700"', 'className="h-12 !bg-cyan-600 px-7 text-base font-bold !text-white hover:!bg-cyan-700"')
 
-          new_contract.write_text(source)
+          p.write_text(s)
 
-          drivers = Path('src/components/AdditionalDriversField.tsx')
-          d = drivers.read_text()
+          dpath = Path('src/components/AdditionalDriversField.tsx')
+          d = dpath.read_text()
           d = d.replace('className="grid gap-2 rounded-lg border border-border p-3"', 'className="grid gap-2 rounded-lg border border-slate-300 bg-white p-3 text-slate-950"')
           d = d.replace('<Label>Additional drivers</Label>', '<Label className="text-slate-900">Additional drivers</Label>')
           d = d.replace('className="mt-0.5 text-xs text-muted-foreground"', 'className="mt-0.5 text-xs text-slate-500"')
           d = d.replace('className="gap-1.5"', 'className="gap-1.5 !border-cyan-500 !bg-white !text-slate-900"')
-          d = d.replace('className="w-[340px] p-0" align="end"', 'className="z-[90] w-[min(340px,calc(100vw-2rem))] !border-cyan-500 !bg-white p-0 !text-slate-950 shadow-xl" align="end" sideOffset={6} collisionPadding={16}')
+          d = d.replace('className="w-[340px] p-0" align="end"', 'className="z-[110] w-[min(340px,calc(100vw-1.5rem))] !border-cyan-500 !bg-white p-0 !text-slate-950 shadow-xl" align="end" sideOffset={6} collisionPadding={12}')
           d = d.replace('<Command>', '<Command className="!bg-white !text-slate-950">', 1)
-          d = d.replace('<CommandInput placeholder="Search existing client..." />', '<CommandInput className="!text-slate-950 placeholder:!text-slate-400" placeholder="Search existing client..." />')
           d = d.replace('<CommandList>', '<CommandList className="max-h-64 !bg-white">', 1)
           d = d.replace('className="items-start gap-2"', 'className="items-start gap-2 !text-slate-950 data-[selected=true]:!bg-cyan-50"')
           d = d.replace('disabled ? "text-destructive" : "text-muted-foreground"', 'disabled ? "text-red-600" : "text-slate-500"')
           d = d.replace('className="rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground"', 'className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-500"')
-          d = d.replace('className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"', 'className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2"')
-          d = d.replace('className="text-xs text-muted-foreground"', 'className="text-xs text-slate-500"')
-          drivers.write_text(d)
+          dpath.write_text(d)
           PY
 
       - name: Remove one-time workflow
@@ -120,5 +104,5 @@ jobs:
           git config user.name "fleetdesk-bot"
           git config user.email "actions@users.noreply.github.com"
           git add src/pages/NewContract.tsx src/components/AdditionalDriversField.tsx .github/workflows/fix-new-contract-mobile.yml
-          git commit -m "Polish new contract mobile form"
+          git commit -m "Apply contract mobile layout fixes"
           git push origin main
