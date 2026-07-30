@@ -18,9 +18,16 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [react()],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      {
+        find: "@/lib/contractPdf",
+        replacement: path.resolve(__dirname, "./src/lib/contractPdfWithDrivers.ts"),
+      },
+      {
+        find: "@",
+        replacement: path.resolve(__dirname, "./src"),
+      },
+    ],
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
   },
   define: {
