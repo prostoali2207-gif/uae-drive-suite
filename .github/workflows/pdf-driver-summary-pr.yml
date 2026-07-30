@@ -1,0 +1,56 @@
+name: PDF driver summary PR
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/pdf-driver-summary-pr.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: pdf-driver-summary-fix
+          fetch-depth: 0
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/lib/contractPdf.ts')
+          s=p.read_text()
+          s=s.replace('Signed by both parties - legally binding','Signed by all required parties - legally binding')
+          s=s.replace('summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Traffic Charges", "Per contract");','summaryTile(margin + 9 + (tileW + tileGap) * 3, financeY + 9, tileW, "Fines, parking & tolls", "Charged as incurred");')
+          s=s.replace('"By signing below, both parties confirm that they have read, understood, and agreed to all terms and conditions stated in this Car Rental Agreement."','"By signing below, all required parties confirm that they have read, understood, and agreed to all terms and conditions stated in this Car Rental Agreement."')
+          old='''  y = clientY + clientH + 34;
+  sectionTitle(3, "Rental Period");'''
+          new='''  const additionalDrivers = contract.contract_drivers ?? [];
+  y = clientY + clientH + 18;
+  if (additionalDrivers.length > 0) {
+    sectionTitle(3, "Authorized Additional Drivers");
+    const names = additionalDrivers.map((driver) => `${valueOrDash(driver.clients?.full_name)} · ${valueOrDash(driver.clients?.license_number)}`).join("   |   ");
+    fieldCard(margin, y, contentW, "Authorized drivers", names);
+    y += 58;
+  } else {
+    y += 16;
+  }
+  sectionTitle(additionalDrivers.length > 0 ? 4 : 3, "Rental Period");'''
+          if old not in s: raise SystemExit('anchor missing')
+          s=s.replace(old,new,1)
+          s=s.replace('sectionTitle(4, "Financial Summary");','sectionTitle(additionalDrivers.length > 0 ? 5 : 4, "Financial Summary");',1)
+          s=s.replace('sectionTitle(5, "Vehicle Condition at Pick-up");','sectionTitle(additionalDrivers.length > 0 ? 6 : 5, "Vehicle Condition at Pick-up");',1)
+          s=s.replace('sectionTitle(6, "Terms of Use");','sectionTitle(additionalDrivers.length > 0 ? 7 : 6, "Terms of Use");',1)
+          s=s.replace('doc.text("6.  TERMS OF USE — CONTINUED", margin, y);','doc.text(`${additionalDrivers.length > 0 ? 7 : 6}.  TERMS OF USE — CONTINUED`, margin, y);',1)
+          s=s.replace('sectionTitle(7, "Return Check-in");','sectionTitle(additionalDrivers.length > 0 ? 8 : 7, "Return Check-in");',1)
+          s=s.replace('sectionTitle(8, "Agreement & Signatures");','sectionTitle(additionalDrivers.length > 0 ? 9 : 8, "Agreement & Signatures");',1)
+          s=s.replace('  const additionalDrivers = contract.contract_drivers ?? [];\n  const driversPerPage = 3;','  const driversPerPage = 3;',1)
+          s=s.replace('sectionTitle(9, "Additional Drivers");','sectionTitle(additionalDrivers.length > 0 ? 10 : 9, "Additional Driver Signatures");',1)
+          p.write_text(s)
+          PY
+          npm ci
+          npm run build
+          rm .github/workflows/pdf-driver-summary-pr.yml
+          git config user.name fleetdesk-bot
+          git config user.email actions@users.noreply.github.com
+          git add src/lib/contractPdf.ts .github/workflows/pdf-driver-summary-pr.yml
+          git commit -m 'Improve contract PDF driver summary'
+          git push origin HEAD:pdf-driver-summary-fix
