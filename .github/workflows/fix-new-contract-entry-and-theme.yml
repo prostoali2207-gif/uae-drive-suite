@@ -1,0 +1,129 @@
+name: Fix contract creation entry and theme
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/fix-new-contract-entry-and-theme.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch contract creation flow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          # 1) All contract creation buttons open the full page, never the legacy modal.
+          path = Path('src/pages/Contracts.tsx')
+          source = path.read_text()
+
+          source = source.replace(
+              '<DialogTrigger asChild>\n              <Button size="sm" className="hidden gap-1.5 md:inline-flex">',
+              '<Button size="sm" className="hidden gap-1.5 md:inline-flex" onClick={() => navigate("/contracts/new")}>',
+              1,
+          )
+          source = source.replace(
+              '              </Button>\n            </DialogTrigger>\n            <DialogContent',
+              '              </Button>\n            <DialogContent',
+              1,
+          )
+
+          # Floating + button on the right: keep its visual design, change only behavior.
+          floating_pattern = re.compile(
+              r'<DialogTrigger asChild>\s*<Button\s+size="icon"\s+className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"\s+aria-label="New Contract"\s*>\s*<Plus className="h-5 w-5" />\s*</Button>\s*</DialogTrigger>',
+              re.S,
+          )
+          floating_replacement = '''<Button
+                size="icon"
+                className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 md:hidden"
+                aria-label="New Contract"
+                onClick={() => navigate("/contracts/new")}
+              >
+                <Plus className="h-5 w-5" />
+              </Button>'''
+          source, count = floating_pattern.subn(floating_replacement, source, count=1)
+          if count != 1:
+              raise SystemExit('Floating New Contract button was not patched')
+
+          path.write_text(source)
+
+          # 2) Hide global bottom navigation while the full-screen contract workflow is open.
+          path = Path('src/components/BottomNav.tsx')
+          source = path.read_text()
+          anchor = '  const isMoreActive = moreNav.some((item) => isActivePath(location.pathname, item.url));\n\n'
+          if 'location.pathname === "/contracts/new"' not in source:
+              if anchor not in source:
+                  raise SystemExit('BottomNav anchor not found')
+              source = source.replace(anchor, anchor + '  if (location.pathname === "/contracts/new") return null;\n\n', 1)
+          path.write_text(source)
+
+          # 3) Make the full-screen workflow consistently light and readable outdoors.
+          path = Path('src/pages/NewContract.tsx')
+          source = path.read_text()
+          source = source.replace(
+              'const inputClass = "h-11 border-slate-300 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-blue-600";',
+              'const inputClass = "h-11 border-2 border-cyan-500 bg-white text-slate-950 placeholder:text-slate-500 shadow-none focus-visible:border-cyan-600 focus-visible:ring-2 focus-visible:ring-cyan-200";',
+          )
+          source = source.replace(
+              '<div className="-mx-4 -my-6 min-h-[calc(100dvh-3.5rem)] bg-slate-100 text-slate-950 md:-mx-8 md:-my-8">',
+              '<div className="-mx-4 -my-6 min-h-[calc(100dvh-3.5rem)] bg-[#f5f7f9] text-slate-950 md:-mx-8 md:-my-8">',
+          )
+          source = source.replace(
+              '<div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">',
+              '<div className="sticky top-0 z-20 border-b border-cyan-700 bg-cyan-600 text-white shadow-sm">',
+          )
+          source = source.replace(
+              'className="h-11 px-2 text-slate-700 hover:bg-slate-100 hover:text-slate-950"',
+              'className="h-11 px-2 text-white hover:bg-white/15 hover:text-white"',
+          )
+          source = source.replace('className="text-sm font-bold text-blue-700"', 'className="text-sm font-bold text-white"')
+          source = source.replace('number <= step ? "bg-blue-600" : "bg-slate-200"', 'number <= step ? "bg-white" : "bg-white/35"')
+          source = source.replace('number === step ? "text-blue-700" : "text-slate-500"', 'number === step ? "text-white" : "text-white/75"')
+
+          # Make popovers explicitly light and high-contrast to avoid inherited dark-theme colors.
+          source = source.replace(
+              '<PopoverContent className="w-[var(--radix-popover-trigger-width)] border-slate-200 bg-white p-0 text-slate-950">',
+              '<PopoverContent className="z-[100] w-[var(--radix-popover-trigger-width)] border-2 border-cyan-500 bg-white p-0 text-slate-950 shadow-xl">',
+          )
+          source = source.replace('<Command className="bg-white">', '<Command className="bg-white text-slate-950">')
+          source = source.replace('<CommandInput placeholder="Search client"', '<CommandInput className="border-b border-slate-200 bg-white text-slate-950 placeholder:text-slate-500" placeholder="Search client"')
+          source = source.replace('<CommandInput placeholder="Search plate or model"', '<CommandInput className="border-b border-slate-200 bg-white text-slate-950 placeholder:text-slate-500" placeholder="Search plate or model"')
+          source = source.replace('<CommandList>', '<CommandList className="bg-white text-slate-950">')
+          source = source.replace('<CommandGroup>', '<CommandGroup className="bg-white text-slate-950">')
+          source = source.replace('<CommandItem key={client.id}', '<CommandItem className="text-slate-950 aria-selected:bg-cyan-50 aria-selected:text-slate-950" key={client.id}')
+          source = source.replace('<CommandItem key={car.id}', '<CommandItem className="text-slate-950 aria-selected:bg-cyan-50 aria-selected:text-slate-950" key={car.id}')
+
+          # Reduce the feeling of stacked modals/cards while keeping clear sections.
+          source = source.replace('rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6', 'rounded-xl border border-slate-200 bg-white p-4 md:p-5')
+          source = source.replace('rounded-2xl border border-blue-200 bg-white p-4 shadow-xl', 'rounded-xl border border-cyan-300 bg-white p-4 shadow-lg')
+          source = source.replace('bg-blue-600 px-7 text-base font-bold text-white hover:bg-blue-700', 'bg-cyan-600 px-7 text-base font-bold text-white hover:bg-cyan-700')
+          source = source.replace('bg-blue-600 px-7 text-white hover:bg-blue-700', 'bg-cyan-600 px-7 text-white hover:bg-cyan-700')
+          source = source.replace('text-blue-700', 'text-cyan-700')
+          source = source.replace('border-blue-200 bg-blue-50 text-cyan-700 hover:bg-blue-100', 'border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100')
+          source = source.replace('border-blue-300 bg-blue-50 text-cyan-700 hover:bg-blue-100', 'border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100')
+
+          path.write_text(source)
+          PY
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/fix-new-contract-entry-and-theme.yml
+
+      - name: Commit changes
+        run: |
+          git config user.name "fleetdesk-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/pages/Contracts.tsx src/pages/NewContract.tsx src/components/BottomNav.tsx .github/workflows/fix-new-contract-entry-and-theme.yml
+          git commit -m "Use one full-screen contract creation flow"
+          git push origin main
