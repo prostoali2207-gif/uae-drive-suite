@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Ban, CheckCircle2, ChevronDown, FileText, Gauge, MessageCircle, Wallet } from "lucide-react";
+import { CheckCircle2, ChevronDown, Circle, FileText, MessageCircle } from "lucide-react";
 import QRCode from "qrcode";
 import {
   Dialog,
@@ -145,6 +145,7 @@ interface CompanyProfile {
   companyPhone: string;
   companyEmail: string;
   termsEn: string;
+  termsKeyPoints: string;
   logoUrl: string | null;
 }
 
@@ -224,6 +225,24 @@ function getTermsBullets(termsEn: string): string[] {
     })
     .filter(Boolean)
     .map((bullet) => bullet.replace(/^(\(?\d+\)?[.)]?)\s*/, ""));
+}
+
+const defaultKeyTerms = [
+  "Security deposit: Refunded within 15 days after vehicle return, minus any unpaid fines or damage.",
+  "Mileage: 250 km/day or 5,000 km/month; excess is charged at AED 1/km.",
+  "Fines and Salik: The customer's responsibility, plus a 20 AED admin fee per fine.",
+  "Smoking/vaping: A AED 500 cleaning charge applies inside the vehicle.",
+  "Prohibited driving: Off-road driving, racing, or drifting may incur a contractual charge up to AED 100,000.",
+  "Excessive speeding: More than 20 km/h over the limit may result in remote disablement and an AED 10,000 charge.",
+];
+
+function getKeyTerms(termsKeyPoints: string): string[] {
+  const configuredTerms = termsKeyPoints
+    .split(/\r?\n/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+
+  return configuredTerms.length > 0 ? configuredTerms : defaultKeyTerms;
 }
 
 function SectionTitle({ num, title }: { num: number; title: string }) {
@@ -450,6 +469,7 @@ function ContractHtmlPreview({
   );
 
   const termsBullets = useMemo(() => getTermsBullets(company.termsEn), [company.termsEn]);
+  const keyTerms = useMemo(() => getKeyTerms(company.termsKeyPoints), [company.termsKeyPoints]);
   useEffect(() => {
     let cancelled = false;
     QRCode.toDataURL(`https://uae-drive-suite.vercel.app/inspection/${contract.id}`, { width: 120 })
@@ -576,30 +596,12 @@ function ContractHtmlPreview({
         <div className="mt-5 rounded border border-[#d6e0eb] bg-[#f9fbfd] p-4">
           <div className="text-[11px] font-bold uppercase tracking-wide text-[#005ab3]">Key Terms</div>
           <div className="mt-3 grid gap-3 text-[10px] leading-relaxed text-[#0f172a] sm:grid-cols-2">
-            <div className="flex items-start gap-2">
-              <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
-              <span><strong>Security deposit:</strong> Refunded within 15 days after vehicle return, minus any unpaid fines or damage.</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
-              <span><strong>Mileage:</strong> 250 km/day or 5,000 km/month; excess is charged at <span className="font-mono">AED 1/km</span>.</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
-              <span><strong>Fines and Salik:</strong> The customer's responsibility, plus a <span className="font-mono">20 AED</span> admin fee per fine.</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
-              <span><strong>Smoking/vaping:</strong> A <span className="font-mono">AED 500</span> cleaning charge applies inside the vehicle.</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
-              <span><strong>Prohibited driving:</strong> Off-road driving, racing, or drifting may incur a contractual charge up to <span className="font-mono">AED 100,000</span>.</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-[#005ab3]" />
-              <span><strong>Excessive speeding:</strong> More than 20 km/h over the limit may result in remote disablement and an <span className="font-mono">AED 10,000</span> charge.</span>
-            </div>
+            {keyTerms.map((term, index) => (
+              <div key={`${index}-${term.slice(0, 20)}`} className="flex items-start gap-2">
+                <Circle className="mt-1 h-2 w-2 shrink-0 fill-[#005ab3] text-[#005ab3]" />
+                <span>{term}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -793,13 +795,14 @@ export function SignContractModal({
           companyPhone: "",
           companyEmail: user?.email || "",
           termsEn: "",
+          termsKeyPoints: "",
           logoUrl: null,
         };
 
         if (user) {
           const { data: profileData } = await supabase
             .from("profiles")
-            .select("company_name, logo_url, phone_number, terms_en, email")
+            .select("company_name, logo_url, phone_number, terms_en, terms_key_points, email")
             .eq("id", user.id)
             .single();
 
@@ -821,6 +824,7 @@ export function SignContractModal({
               companyPhone: p.phone_number || "",
               companyEmail: p.email || user.email || "",
               termsEn: p.terms_en || "",
+              termsKeyPoints: (p as any).terms_key_points || "",
               logoUrl,
             };
           }
