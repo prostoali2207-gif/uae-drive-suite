@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: Read-only access to FleetDesk rental contracts and vehicle availability.
 servers:
-  - url: https://YOUR_FLEETDESK_DOMAIN
+  - url: https://uae-drive-suite.vercel.app
 paths:
   /api/fleetdesk/contracts:
     get:
