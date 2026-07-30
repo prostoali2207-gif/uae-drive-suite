@@ -1,0 +1,110 @@
+openapi: 3.1.0
+info:
+  title: FleetDesk API
+  version: 1.0.0
+  description: Read-only access to FleetDesk rental contracts and vehicle availability.
+servers:
+  - url: https://uae-drive-suite.vercel.app
+paths:
+  /api/fleetdesk/contracts:
+    get:
+      operationId: searchFleetDeskContracts
+      summary: Find FleetDesk rental contracts
+      description: Search recent contracts by contract ID, client name, phone, vehicle plate, make, or model.
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+            default: 10
+      responses:
+        '200':
+          description: Matching contracts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  contracts:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          description: Invalid API key
+  /api/fleetdesk/vehicles/availability:
+    get:
+      operationId: checkFleetDeskVehicleAvailability
+      summary: Check whether a vehicle is available
+      description: Checks both vehicle status and overlapping rental contracts.
+      parameters:
+        - name: plate
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: car_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: start
+          in: query
+          required: true
+          description: Requested rental start in ISO 8601 format.
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          required: true
+          description: Requested rental end in ISO 8601 format.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Availability result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  reason:
+                    type: string
+                  vehicle:
+                    type: object
+                  conflicting_contracts:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          description: Invalid request
+        '401':
+          description: Invalid API key
+        '404':
+          description: Vehicle not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
