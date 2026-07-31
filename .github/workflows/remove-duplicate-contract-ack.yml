@@ -3,7 +3,7 @@ name: Remove duplicate contract acknowledgement
 on:
   push:
     branches:
-      - fix/remove-duplicate-contract-ack
+      - main
     paths:
       - .github/workflows/remove-duplicate-contract-ack.yml
 
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/remove-duplicate-contract-ack
+          ref: main
 
       - uses: actions/setup-node@v4
         with:
@@ -69,4 +69,4 @@ jobs:
           git rm .github/workflows/remove-duplicate-contract-ack.yml
           git add src/lib/contractPdf.ts
           git commit -m "Remove duplicate contract acknowledgement"
-          git push origin HEAD:fix/remove-duplicate-contract-ack
+          git push origin HEAD:main
