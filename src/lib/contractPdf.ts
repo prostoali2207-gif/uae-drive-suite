@@ -479,23 +479,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   if (inspectionQr) doc.addImage(inspectionQr, "PNG", pageW - margin - 88, y + 14, 88, 88);
   y += 142;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.3);
-  doc.setTextColor(...navy);
-  doc.text("CUSTOMER ACKNOWLEDGEMENT", margin, y);
-  y += 20;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.2);
-  doc.setTextColor(...muted);
-  doc.text("The customer confirms that the vehicle condition and inspection record were available at handover.", margin, y, { maxWidth: contentW });
-  y += 42;
-  setStroke(line, 0.7);
-  doc.line(margin, y, margin + 210, y);
-  doc.line(pageW - margin - 150, y, pageW - margin, y);
-  doc.setFontSize(7.5);
-  doc.text("Customer signature", margin, y + 16);
-  doc.text("Date", pageW - margin - 150, y + 16);
-
   addTermsPage(false);
   drawTerms();
 
