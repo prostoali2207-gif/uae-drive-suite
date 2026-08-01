@@ -22,6 +22,10 @@ Read the relevant specialist before changing FleetDesk.
 ## Working rules
 
 - Solve the requested task completely with the smallest safe change.
+- Ali gives standing authorization to commit completed, verified FleetDesk changes, push them to `origin/main`, deploy through Vercel, and apply safe task-required Supabase migrations without asking again.
+- Do not pause for confirmation for ordinary code changes, commits, pushes, deployments, tests, or safe reversible database changes. Complete the task and report the result.
+- Ask Ali only before deleting data, destructive or irreversible actions, Authentication changes, routing changes, or when a genuinely important product decision cannot be inferred safely.
+- Platform-enforced approval prompts cannot be bypassed; do not create additional conversational approval requests when the standing authorization above applies.
 - Do not audit or refactor the whole project by default.
 - Verify database claims against live Supabase project `vlcxjizieelcfunausll`.
 - Protected files are not forbidden; edit only when required and never rewrite them wholesale.
