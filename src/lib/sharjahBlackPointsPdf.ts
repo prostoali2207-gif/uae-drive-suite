@@ -58,18 +58,18 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     page.drawText(output, { x, y, size, font: selectedFont, color: ink });
   };
 
-  write(values.contractNumber, 334, 647, { bold: false, maxWidth: 126 });
-  write(values.clientName, 313, 598, { bold: false, maxWidth: 150 });
-  write(values.licenseNumber, 313, 581, { bold: false, maxWidth: 150 });
+  write(values.contractNumber, 334, 650, { size: 8, bold: true, maxWidth: 126 });
+  write(values.clientName, 313, 602, { size: 8, bold: true, maxWidth: 150 });
+  write(values.licenseNumber, 313, 585, { size: 8, bold: true, maxWidth: 150 });
   write(values.licenseSource, 313, 565, { maxWidth: 150 });
   write(values.trafficFileNumber, 313, 548, { maxWidth: 150 });
   write(values.unifiedNumber, 313, 532, { maxWidth: 150 });
-  write(values.plateNumber, 313, 492, { bold: false, maxWidth: 150 });
-  write(values.plateCode, 313, 475, { maxWidth: 150 });
+  write(values.plateNumber, 313, 496, { size: 8, bold: true, maxWidth: 150 });
+  write(values.plateCode, 313, 479, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateSource, 313, 459, { maxWidth: 150 });
-  write(values.vehicleType, 313, 442, { maxWidth: 150 });
-  write(values.fineNumber, 143, 582, { bold: false, maxWidth: 96 });
-  write(values.fineDate, 30, 582, { bold: false, maxWidth: 100 });
+  write(values.vehicleType, 313, 446, { size: 8, bold: true, maxWidth: 150 });
+  write(values.fineNumber, 143, 585, { size: 8, bold: true, maxWidth: 96 });
+  write(values.fineDate, 30, 585, { size: 8, bold: true, maxWidth: 100 });
 
   const start = splitDateTime(values.rentalStart);
   const end = splitDateTime(values.rentalEnd);
@@ -82,20 +82,20 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     write(period.minute, 43, periodY[index], { bold: true });
   });
 
-  write(values.requestDate, 373, 271, { maxWidth: 80 });
-  write(values.phone, 245, 271, { maxWidth: 90 });
+  write(values.requestDate, 373, 271, { size: 8, bold: true, maxWidth: 80 });
+  write(values.phone, 245, 271, { size: 8, bold: true, maxWidth: 90 });
 
   if (stampPng?.length) {
     const stamp = await pdf.embedPng(stampPng);
     const natural = stamp.scale(1);
-    const maxWidth = 72;
-    const maxHeight = 48;
+    const maxWidth = 60;
+    const maxHeight = 36;
     const scale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
     const width = natural.width * scale;
     const height = natural.height * scale;
     page.drawImage(stamp, {
       x: 166 - width / 2,
-      y: 220,
+      y: 245,
       width,
       height,
     });
