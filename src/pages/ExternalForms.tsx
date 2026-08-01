@@ -393,7 +393,7 @@ const ExternalForms = () => {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData.user?.id;
       const { data: profile, error: profileError } = userId
-        ? await supabase.from("profiles").select("stamp_url").eq("id", userId).maybeSingle()
+        ? await supabase.from("profiles").select("stamp_url, phone_number").eq("id", userId).maybeSingle()
         : { data: null, error: null };
       if (profileError) throw new Error(`Company stamp could not be loaded: ${profileError.message}`);
 
@@ -420,7 +420,7 @@ const ExternalForms = () => {
         fineDate: new Date(selectedFine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
         rentalStart: start,
         rentalEnd: end,
-        phone: selectedFine.clients.phone,
+        phone: profile?.phone_number?.trim() ?? "",
         requestDate: new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
       }, stampPng);
       const url = URL.createObjectURL(blob);
