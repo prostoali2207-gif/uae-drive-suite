@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 
 export type SharjahBlackPointsValues = {
   contractNumber: string;
@@ -44,18 +44,33 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   const [background] = await pdf.embedPdf(templateBytes, [0]);
   const page = pdf.addPage([pageWidth, pageHeight]);
   page.drawPage(background, { x: 0, y: 0, width: pageWidth, height: pageHeight });
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const ink = rgb(0.05, 0.05, 0.05);
+
+  // Render completed values as one high-resolution image layer. Some mobile PDF
+  // viewers incorrectly apply character spacing to pdf-lib's subset fonts. A
+  // canvas layer keeps normal word spacing and looks identical in every viewer.
+  const scale = 4;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(pageWidth * scale);
+  canvas.height = Math.round(pageHeight * scale);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("PDF text layer could not be prepared");
+  context.fillStyle = "#0d0d0d";
+  context.textBaseline = "alphabetic";
 
   const write = (text: string, x: number, y: number, options: { size?: number; maxWidth?: number; bold?: boolean } = {}) => {
-    let size = options.size ?? 9;
-    const selectedFont = options.bold ? bold : font;
     const output = (text || "").trim();
+    if (!output) return;
+    let size = options.size ?? 9;
+    const weight = options.bold ? 600 : 500;
+    const setFont = () => { context.font = `${weight} ${size * scale}px Arial, sans-serif`; };
+    setFont();
     if (options.maxWidth) {
-      while (size > 6.5 && selectedFont.widthOfTextAtSize(output, size) > options.maxWidth) size -= 0.25;
+      while (size > 6.5 && context.measureText(output).width > options.maxWidth * scale) {
+        size -= 0.25;
+        setFont();
+      }
     }
-    page.drawText(output, { x, y, size, font: selectedFont, color: ink });
+    context.fillText(output, x * scale, (pageHeight - y) * scale);
   };
 
   write(values.contractNumber, 334, 650, { size: 8, bold: true, maxWidth: 126 });
@@ -85,17 +100,23 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   write(values.requestDate, 373, 271, { size: 8, bold: true, maxWidth: 80 });
   write(values.phone, 245, 271, { size: 8, bold: true, maxWidth: 90 });
 
+  const overlayBlob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("PDF text layer could not be prepared")), "image/png");
+  });
+  const overlay = await pdf.embedPng(await overlayBlob.arrayBuffer());
+  page.drawImage(overlay, { x: 0, y: 0, width: pageWidth, height: pageHeight });
+
   if (stampPng?.length) {
     const stamp = await pdf.embedPng(stampPng);
     const natural = stamp.scale(1);
-    const maxWidth = 60;
-    const maxHeight = 36;
+    const maxWidth = 74;
+    const maxHeight = 44;
     const scale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
     const width = natural.width * scale;
     const height = natural.height * scale;
     page.drawImage(stamp, {
       x: 166 - width / 2,
-      y: 245,
+      y: 258,
       width,
       height,
     });
