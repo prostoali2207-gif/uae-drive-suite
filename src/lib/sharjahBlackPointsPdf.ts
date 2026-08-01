@@ -36,34 +36,40 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   const response = await fetch(TEMPLATE_URL);
   if (!response.ok) throw new Error("Blank form template could not be loaded");
 
-  const pdf = await PDFDocument.load(await response.arrayBuffer());
-  const page = pdf.getPages()[0];
+  const templateBytes = await response.arrayBuffer();
+  const template = await PDFDocument.load(templateBytes);
+  const templatePage = template.getPages()[0];
+  const { width: pageWidth, height: pageHeight } = templatePage.getSize();
+  const pdf = await PDFDocument.create();
+  const [background] = await pdf.embedPdf(templateBytes, [0]);
+  const page = pdf.addPage([pageWidth, pageHeight]);
+  page.drawPage(background, { x: 0, y: 0, width: pageWidth, height: pageHeight });
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const ink = rgb(0.05, 0.05, 0.05);
 
   const write = (text: string, x: number, y: number, options: { size?: number; maxWidth?: number; bold?: boolean } = {}) => {
-    const size = options.size ?? 8.5;
-    const selectedFont = options.bold === false ? font : bold;
-    let output = text || "";
+    let size = options.size ?? 9;
+    const selectedFont = options.bold ? bold : font;
+    const output = (text || "").trim();
     if (options.maxWidth) {
-      while (output.length > 2 && selectedFont.widthOfTextAtSize(output, size) > options.maxWidth) output = output.slice(0, -1);
+      while (size > 6.5 && selectedFont.widthOfTextAtSize(output, size) > options.maxWidth) size -= 0.25;
     }
     page.drawText(output, { x, y, size, font: selectedFont, color: ink });
   };
 
-  write(values.contractNumber, 334, 647, { bold: true, maxWidth: 126 });
-  write(values.clientName, 313, 598, { bold: true, maxWidth: 150 });
-  write(values.licenseNumber, 313, 581, { maxWidth: 150 });
+  write(values.contractNumber, 334, 647, { bold: false, maxWidth: 126 });
+  write(values.clientName, 313, 598, { bold: false, maxWidth: 150 });
+  write(values.licenseNumber, 313, 581, { bold: false, maxWidth: 150 });
   write(values.licenseSource, 313, 565, { maxWidth: 150 });
   write(values.trafficFileNumber, 313, 548, { maxWidth: 150 });
   write(values.unifiedNumber, 313, 532, { maxWidth: 150 });
-  write(values.plateNumber, 313, 492, { bold: true, maxWidth: 150 });
+  write(values.plateNumber, 313, 492, { bold: false, maxWidth: 150 });
   write(values.plateCode, 313, 475, { maxWidth: 150 });
   write(values.plateSource, 313, 459, { maxWidth: 150 });
   write(values.vehicleType, 313, 442, { maxWidth: 150 });
-  write(values.fineNumber, 143, 582, { bold: true, maxWidth: 96 });
-  write(values.fineDate, 30, 582, { maxWidth: 100 });
+  write(values.fineNumber, 143, 582, { bold: false, maxWidth: 96 });
+  write(values.fineDate, 30, 582, { bold: false, maxWidth: 100 });
 
   const start = splitDateTime(values.rentalStart);
   const end = splitDateTime(values.rentalEnd);
@@ -82,14 +88,14 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   if (stampPng?.length) {
     const stamp = await pdf.embedPng(stampPng);
     const natural = stamp.scale(1);
-    const maxWidth = 78;
-    const maxHeight = 58;
+    const maxWidth = 72;
+    const maxHeight = 48;
     const scale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
     const width = natural.width * scale;
     const height = natural.height * scale;
     page.drawImage(stamp, {
       x: 166 - width / 2,
-      y: 264,
+      y: 220,
       width,
       height,
     });
