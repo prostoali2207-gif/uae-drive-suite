@@ -32,7 +32,7 @@ const splitDateTime = (value: string) => {
   return { day: get("day"), month: get("month"), year: get("year"), hour: get("hour"), minute: get("minute") };
 };
 
-export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValues): Promise<Blob> {
+export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValues, stampPng?: Uint8Array): Promise<Blob> {
   const response = await fetch(TEMPLATE_URL);
   if (!response.ok) throw new Error("Blank form template could not be loaded");
 
@@ -43,8 +43,8 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   const ink = rgb(0.05, 0.05, 0.05);
 
   const write = (text: string, x: number, y: number, options: { size?: number; maxWidth?: number; bold?: boolean } = {}) => {
-    const size = options.size ?? 8;
-    const selectedFont = options.bold ? bold : font;
+    const size = options.size ?? 8.5;
+    const selectedFont = options.bold === false ? font : bold;
     let output = text || "";
     if (options.maxWidth) {
       while (output.length > 2 && selectedFont.widthOfTextAtSize(output, size) > options.maxWidth) output = output.slice(0, -1);
@@ -78,6 +78,22 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
 
   write(values.requestDate, 373, 271, { maxWidth: 80 });
   write(values.phone, 245, 271, { maxWidth: 90 });
+
+  if (stampPng?.length) {
+    const stamp = await pdf.embedPng(stampPng);
+    const natural = stamp.scale(1);
+    const maxWidth = 78;
+    const maxHeight = 58;
+    const scale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
+    const width = natural.width * scale;
+    const height = natural.height * scale;
+    page.drawImage(stamp, {
+      x: 166 - width / 2,
+      y: 264,
+      width,
+      height,
+    });
+  }
 
   const bytes = await pdf.save();
   return new Blob([bytes], { type: "application/pdf" });
