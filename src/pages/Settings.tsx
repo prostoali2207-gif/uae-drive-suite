@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Building2, FileBadge, Landmark, Stamp, Upload } from "lucide-react";
+import { Building2, ExternalLink, FileBadge, FileText, Landmark, Stamp, Upload } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,7 @@ interface Profile {
   company_name_ar?: string | null;
   logo_url: string | null;
   stamp_url?: string | null;
+  company_license_url?: string | null;
   phone_number?: string | null;
   trn?: string | null;
   address?: string | null;
@@ -43,7 +44,7 @@ interface Profile {
 }
 
 type ServiceFeeType = "fixed" | "percentage";
-type ProfileStoragePathUpdate = Pick<Profile, "logo_url" | "stamp_url">;
+type ProfileStoragePathUpdate = Pick<Profile, "logo_url" | "stamp_url" | "company_license_url">;
 type SupabaseErrorLike = { message: string };
 
 const Settings = () => {
@@ -75,12 +76,16 @@ const Settings = () => {
   const [logoSignedUrl, setLogoSignedUrl] = useState<string | null>(null);
   const [stampUrl, setStampUrl] = useState<string | null>(null);
   const [stampSignedUrl, setStampSignedUrl] = useState<string | null>(null);
+  const [companyLicenseUrl, setCompanyLicenseUrl] = useState<string | null>(null);
+  const [companyLicenseSignedUrl, setCompanyLicenseSignedUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingStamp, setUploadingStamp] = useState(false);
+  const [uploadingCompanyLicense, setUploadingCompanyLicense] = useState(false);
   const logoFileInput = useRef<HTMLInputElement>(null);
   const stampFileInput = useRef<HTMLInputElement>(null);
+  const companyLicenseFileInput = useRef<HTMLInputElement>(null);
 
   const loadStoragePreview = async (path: string | null, setSignedUrl: (url: string | null) => void) => {
     if (!path) {
@@ -144,8 +149,10 @@ const Settings = () => {
       setTermsKeyPoints((p as any).terms_key_points || "");
       setLogoUrl(p.logo_url);
       setStampUrl(p.stamp_url || null);
+      setCompanyLicenseUrl(p.company_license_url || null);
       loadStoragePreview(p.logo_url, setLogoSignedUrl);
       loadStoragePreview(p.stamp_url || null, setStampSignedUrl);
+      loadStoragePreview(p.company_license_url || null, setCompanyLicenseSignedUrl);
     }
     setLoading(false);
   };
@@ -264,6 +271,49 @@ const Settings = () => {
     }
   };
 
+  const handleCompanyLicenseUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Please select a PDF file");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("PDF must be 10 MB or smaller");
+      e.target.value = "";
+      return;
+    }
+
+    setUploadingCompanyLicense(true);
+    try {
+      const path = `${user.id}/company-license.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("company-logos")
+        .upload(path, file, { upsert: true, contentType: "application/pdf" });
+
+      if (uploadError) {
+        toast.error("Upload failed: " + uploadError.message);
+        return;
+      }
+
+      const { error: profileError } = await updateProfileStoragePath({ company_license_url: path });
+      if (profileError) {
+        toast.error("Saved file but failed to update profile: " + profileError.message);
+        return;
+      }
+
+      setCompanyLicenseUrl(path);
+      await loadStoragePreview(path, setCompanyLicenseSignedUrl);
+      toast.success("Company license uploaded");
+    } finally {
+      setUploadingCompanyLicense(false);
+      e.target.value = "";
+    }
+  };
+
   return (
     <DashboardLayout title="Settings" subtitle="Manage your company profile">
       <div className="max-w-4xl">
@@ -281,7 +331,8 @@ const Settings = () => {
               </TabsList>
 
               <TabsContent value="company" className="mt-6">
-                <Card>
+                <div className="flex flex-col gap-6">
+                  <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Building2 className="h-4 w-4" />
@@ -373,7 +424,66 @@ const Settings = () => {
                   </div>
                 </div>
               </CardContent>
-                </Card>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <FileText className="h-4 w-4" />
+                        Company License
+                      </CardTitle>
+                      <CardDescription>Upload the current company license in PDF format.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
+                            <FileText className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">
+                              {companyLicenseUrl ? "Company license.pdf" : "No license uploaded"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">PDF only, maximum 10 MB.</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {companyLicenseSignedUrl && (
+                            <Button type="button" variant="outline" size="sm" asChild>
+                              <a href={companyLicenseSignedUrl} target="_blank" rel="noreferrer">
+                                <ExternalLink className="h-4 w-4" />
+                                Open PDF
+                              </a>
+                            </Button>
+                          )}
+                          <input
+                            ref={companyLicenseFileInput}
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            className="hidden"
+                            onChange={handleCompanyLicenseUpload}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => companyLicenseFileInput.current?.click()}
+                            disabled={uploadingCompanyLicense}
+                            className="gap-1.5"
+                          >
+                            <Upload className="h-4 w-4" />
+                            {uploadingCompanyLicense
+                              ? "Uploading..."
+                              : companyLicenseUrl
+                                ? "Replace PDF"
+                                : "Upload PDF"}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </TabsContent>
 
               <TabsContent value="finance" className="mt-6">
@@ -685,7 +795,10 @@ const Settings = () => {
             </Tabs>
 
             <div className="flex justify-end pb-2">
-              <Button onClick={handleSave} disabled={saving || uploadingLogo || uploadingStamp}>
+              <Button
+                onClick={handleSave}
+                disabled={saving || uploadingLogo || uploadingStamp || uploadingCompanyLicense}
+              >
                 {saving ? "Saving..." : "Save changes"}
               </Button>
             </div>
