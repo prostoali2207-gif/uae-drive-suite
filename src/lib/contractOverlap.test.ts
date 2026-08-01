@@ -33,6 +33,14 @@ describe("contract overlap protection", () => {
     expect(overlap("2026-06-14", "09:00", "2026-06-18", "10:00")).toBe(baseContract);
   });
 
+  it("blocks a draft contract because it already reserves the vehicle period", () => {
+    const draft = { ...baseContract, status: "Draft" };
+    const newStart = parseContractDateTime("2026-06-10", "10:00");
+    const newEnd = parseContractDateTime("2026-06-15", "10:00");
+
+    expect(findOverlappingContract([draft], newStart, newEnd)).toBe(draft);
+  });
+
   it("allows back-to-back contracts when one ends before the other starts", () => {
     expect(overlap("2026-06-15", "10:00", "2026-06-18", "10:00")).toBeNull();
   });

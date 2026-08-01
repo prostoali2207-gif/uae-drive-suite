@@ -43,7 +43,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
-import { findVehicleContractOverlap, formatContractOverlapMessage } from "@/lib/contractOverlap";
+import {
+  findOverlappingContract,
+  findVehicleContractOverlap,
+  formatContractOverlapMessage,
+  parseContractDateTime,
+} from "@/lib/contractOverlap";
 import { formatMonthlyBillingPeriod, getRateUnits } from "@/lib/contractPricing";
 import { diffCalendarDays, parseDateInput, parseDateTimeInput } from "@/lib/dateUtils";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
@@ -906,6 +911,36 @@ const Contracts = () => {
     [cars],
   );
 
+  const periodConflictingCarIds = useMemo(() => {
+    const conflicts = new Set<string>();
+    if (!form.start_date || !form.start_time || !form.end_date || !form.end_time) return conflicts;
+
+    const newStart = parseContractDateTime(form.start_date, form.start_time);
+    const newEnd = parseContractDateTime(form.end_date, form.end_time);
+    if (Number.isNaN(newStart.getTime()) || Number.isNaN(newEnd.getTime()) || newEnd <= newStart) return conflicts;
+
+    availableCars.forEach((car) => {
+      const conflict = findOverlappingContract(
+        contracts
+          .filter((contract) => contract.car_id === car.id)
+          .map((contract) => ({
+            ...contract,
+            end_date: contract.effective_end_date ?? contract.end_date,
+          })),
+        newStart,
+        newEnd,
+      );
+      if (conflict) conflicts.add(car.id);
+    });
+
+    return conflicts;
+  }, [availableCars, contracts, form.end_date, form.end_time, form.start_date, form.start_time]);
+
+  const carsAvailableForPeriod = useMemo(
+    () => availableCars.filter((car) => !periodConflictingCarIds.has(car.id)),
+    [availableCars, periodConflictingCarIds],
+  );
+
   const days = useMemo(
     () => getBillingDays(form.start_date, form.start_time, form.end_date, form.end_time),
     [form.start_date, form.start_time, form.end_date, form.end_time],
@@ -952,17 +987,17 @@ const Contracts = () => {
 
   const filteredAvailableCars = useMemo(() => {
     const q = carSearch.trim().toLowerCase();
-    if (!q) return availableCars;
-    return availableCars.filter((car) => {
+    if (!q) return carsAvailableForPeriod;
+    return carsAvailableForPeriod.filter((car) => {
       const label = `${car.plate} ${car.make} ${car.model}`.toLowerCase();
       return label.includes(q);
     });
-  }, [availableCars, carSearch]);
+  }, [carSearch, carsAvailableForPeriod]);
 
   const selectedCarLabel = useMemo(() => {
-    const selected = availableCars.find((car) => car.id === form.car_id);
+    const selected = cars.find((car) => car.id === form.car_id);
     return selected ? `${selected.plate} — ${selected.make} ${selected.model}` : "";
-  }, [availableCars, form.car_id]);
+  }, [cars, form.car_id]);
 
   const filtered = useMemo(() => {
     const byDashboardFilter = contracts.filter((contract) =>
@@ -1474,7 +1509,7 @@ const Contracts = () => {
                   </div>
                 )}
                 <div className="grid gap-1.5">
-                  <Label>Car (Available only)</Label>
+                  <Label>Car (Available for selected period)</Label>
                   <Popover open={carSelectOpen} onOpenChange={setCarSelectOpen}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
@@ -1492,7 +1527,7 @@ const Contracts = () => {
                           onValueChange={setCarSearch}
                         />
                         <CommandList>
-                          <CommandEmpty>No available car found.</CommandEmpty>
+                          <CommandEmpty>No available car for selected period.</CommandEmpty>
                           <CommandGroup>
                             {filteredAvailableCars.map((c) => (
                               <CommandItem
