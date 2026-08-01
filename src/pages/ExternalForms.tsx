@@ -305,18 +305,40 @@ const ExternalForms = () => {
     setFillTemplate(template);
     setSelectedFineId("");
     setLoadingFines(true);
-    const { data, error } = await supabase
+    const { data: fines, error: finesError } = await supabase
       .from("fines")
-      .select("id, fine_number, fine_date, black_points, source, contract_id, clients(full_name, phone, license_number, nationality), cars(plate, make, model), contracts(id, start_date, start_time, end_date, end_time)")
+      .select("id, fine_number, fine_date, black_points, source, contract_id, clients(full_name, phone, license_number, nationality), cars(plate, make, model)")
       .gt("black_points", 0)
       .order("fine_date", { ascending: false })
       .limit(200);
-    if (error) {
-      toast.error(`Could not load fines: ${error.message}`);
+
+    if (finesError) {
+      toast.error(`Could not load fines: ${finesError.message}`);
       setFineOptions([]);
-    } else {
-      setFineOptions((data ?? []) as unknown as FineOption[]);
+      setLoadingFines(false);
+      return;
     }
+
+    const contractIds = [...new Set((fines ?? []).map((fine) => fine.contract_id).filter((id): id is string => Boolean(id)))];
+    const { data: contracts, error: contractsError } = contractIds.length > 0
+      ? await supabase
+        .from("contracts")
+        .select("id, start_date, start_time, end_date, end_time")
+        .in("id", contractIds)
+      : { data: [], error: null };
+
+    if (contractsError) {
+      toast.error(`Could not load contracts: ${contractsError.message}`);
+      setFineOptions([]);
+      setLoadingFines(false);
+      return;
+    }
+
+    const contractsById = new Map((contracts ?? []).map((contract) => [contract.id, contract]));
+    setFineOptions((fines ?? []).map((fine) => ({
+      ...fine,
+      contracts: fine.contract_id ? contractsById.get(fine.contract_id) ?? null : null,
+    })) as unknown as FineOption[]);
     setLoadingFines(false);
   };
 
