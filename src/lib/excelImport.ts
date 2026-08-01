@@ -2,6 +2,10 @@ import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  findTimelineContract,
+  vehicleBelongsToContractOnDate,
+} from "@/lib/contractVehicleTimeline";
 
 export interface ImportSummary {
   totalRows: number;
@@ -293,30 +297,17 @@ function getField(row: Record<string, unknown>, ...keys: string[]): unknown {
   return "";
 }
 
-function getDatePart(value: string): string {
-  return value.slice(0, 10);
-}
-
-function matchesVehiclePeriod(
-  vehicle: ContractVehicleRow,
-  carId: string,
-  dateIso: string,
-  todayIso: string,
-): boolean {
-  const startedAt = getDatePart(vehicle.started_at);
-  const endedAt = vehicle.ended_at ? getDatePart(vehicle.ended_at) : todayIso;
-  return vehicle.car_id === carId && startedAt <= dateIso && endedAt >= dateIso;
-}
-
 function matchesContractVehicle(
+  contracts: ContractRow[],
   contractVehicles: ContractVehicleRow[],
   contractId: string,
   carId: string,
   dateIso: string,
 ): boolean {
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const contract = contracts.find((item) => item.id === contractId);
+  if (!contract) return false;
   return contractVehicles.some(
-    (vehicle) => vehicle.contract_id === contractId && matchesVehiclePeriod(vehicle, carId, dateIso, todayIso),
+    (vehicle) => vehicleBelongsToContractOnDate(contract, vehicle, carId, dateIso),
   );
 }
 
@@ -326,26 +317,12 @@ function findContract(
   carId: string,
   dateIso: string,
 ): ContractRow | undefined {
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const timelineVehicle = contractVehicles
-    .filter((vehicle) => matchesVehiclePeriod(vehicle, carId, dateIso, todayIso))
-    .sort((a, b) => getDatePart(b.started_at).localeCompare(getDatePart(a.started_at)))[0];
-
-  if (timelineVehicle) {
-    return contracts.find((contract) => contract.id === timelineVehicle.contract_id);
-  }
-
-  const contractsWithVehicleHistory = new Set(contractVehicles.map((vehicle) => vehicle.contract_id));
-  return contracts.find(
-    (c) => !contractsWithVehicleHistory.has(c.id)
-      && c.car_id === carId
-      && c.start_date <= dateIso
-      && c.end_date >= dateIso,
-  );
+  return findTimelineContract(contracts, contractVehicles, carId, dateIso);
 }
 
 async function unlinkInvalidFineTimelineLinks(
   ownerId: string,
+  contracts: ContractRow[],
   contractVehicles: ContractVehicleRow[],
 ): Promise<string | null> {
   const contractsWithVehicleHistory = new Set(contractVehicles.map((vehicle) => vehicle.contract_id));
@@ -363,7 +340,7 @@ async function unlinkInvalidFineTimelineLinks(
   const updates = ((data || []) as LinkedFineRow[])
     .map((fine) => {
       if (!fine.car_id || !fine.contract_id || !contractsWithVehicleHistory.has(fine.contract_id)) return null;
-      if (matchesContractVehicle(contractVehicles, fine.contract_id, fine.car_id, fine.fine_date)) return null;
+      if (matchesContractVehicle(contracts, contractVehicles, fine.contract_id, fine.car_id, fine.fine_date)) return null;
       return supabase
         .from("fines")
         .update({ contract_id: null, client_id: null })
@@ -380,6 +357,7 @@ async function unlinkInvalidFineTimelineLinks(
 
 async function unlinkInvalidSalikTimelineLinks(
   ownerId: string,
+  contracts: ContractRow[],
   contractVehicles: ContractVehicleRow[],
 ): Promise<string | null> {
   const contractsWithVehicleHistory = new Set(contractVehicles.map((vehicle) => vehicle.contract_id));
@@ -397,7 +375,7 @@ async function unlinkInvalidSalikTimelineLinks(
   const updates = ((data || []) as LinkedSalikRow[])
     .map((charge) => {
       if (!charge.car_id || !charge.contract_id || !contractsWithVehicleHistory.has(charge.contract_id)) return null;
-      if (matchesContractVehicle(contractVehicles, charge.contract_id, charge.car_id, charge.charge_date)) return null;
+      if (matchesContractVehicle(contracts, contractVehicles, charge.contract_id, charge.car_id, charge.charge_date)) return null;
       return supabase
         .from("salik")
         .update({ contract_id: null, client_id: null })
@@ -506,10 +484,10 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
   const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
+  const unlinkError = await unlinkInvalidFineTimelineLinks(user.id, contracts, contractVehicles);
+  if (unlinkError) summary.errors.push(`Unlink invalid fine timeline links: ${unlinkError}`);
   const relinkError = await relinkUnlinkedFines(user.id, contracts, contractVehicles);
   if (relinkError) summary.errors.push(`Relink existing fines: ${relinkError}`);
-  const unlinkError = await unlinkInvalidFineTimelineLinks(user.id, contractVehicles);
-  if (unlinkError) summary.errors.push(`Unlink invalid fine timeline links: ${unlinkError}`);
 
   const carByPlate = new Map<string, CarRow>();
   for (const c of cars) carByPlate.set(normPlate(c.plate), c);
@@ -608,10 +586,10 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   const cars = (carsRes.data || []) as CarRow[];
   const contracts = (contractsRes.data || []) as ContractRow[];
   const contractVehicles = (contractVehiclesRes.data || []) as ContractVehicleRow[];
+  const unlinkError = await unlinkInvalidSalikTimelineLinks(user.id, contracts, contractVehicles);
+  if (unlinkError) summary.errors.push(`Unlink invalid Salik timeline links: ${unlinkError}`);
   const relinkError = await relinkUnlinkedSalik(user.id, contracts, contractVehicles);
   if (relinkError) summary.errors.push(`Relink existing Salik: ${relinkError}`);
-  const unlinkError = await unlinkInvalidSalikTimelineLinks(user.id, contractVehicles);
-  if (unlinkError) summary.errors.push(`Unlink invalid Salik timeline links: ${unlinkError}`);
 
   const carByPlate = new Map<string, CarRow>();
   const carByTag = new Map<string, CarRow>();
