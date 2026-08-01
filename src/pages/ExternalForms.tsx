@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Download, FilePlus2, FileText, Loader2, RefreshCw, Search, Upload } from "lucide-react";
+import { Download, FilePlus2, FileText, Loader2, Pencil, RefreshCw, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
@@ -78,6 +78,8 @@ const ExternalForms = () => {
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<ExternalFormTemplate | null>(null);
+  const [editForm, setEditForm] = useState(initialForm);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -242,6 +244,46 @@ const ExternalForms = () => {
     setBusyId(null);
   };
 
+  const openEditDialog = (template: ExternalFormTemplate) => {
+    setEditForm({
+      name: template.name,
+      category: template.category,
+      emirate: template.emirate ?? "",
+      authority: template.authority ?? "",
+      recipientEmail: template.recipient_email ?? "",
+    });
+    setEditingTemplate(template);
+  };
+
+  const handleEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingTemplate) return;
+
+    setSaving(true);
+    const { error } = await formsClient
+      .from("external_form_templates")
+      .update({
+        name: editForm.name.trim(),
+        category: editForm.category,
+        emirate: editForm.emirate.trim() || null,
+        authority: editForm.authority.trim() || null,
+        recipient_email: editForm.recipientEmail.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", editingTemplate.id);
+
+    if (error) {
+      toast.error(`Could not update template: ${error.message}`);
+      setSaving(false);
+      return;
+    }
+
+    toast.success("Template details updated");
+    setSaving(false);
+    setEditingTemplate(null);
+    await loadTemplates();
+  };
+
   return (
     <DashboardLayout title="External Forms" subtitle="Reusable forms from police and other authorities">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
@@ -313,6 +355,46 @@ const ExternalForms = () => {
           </Select>
         </div>
 
+        <Dialog open={editingTemplate !== null} onOpenChange={(open) => { if (!open && !saving) setEditingTemplate(null); }}>
+          <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit form details</DialogTitle>
+              <DialogDescription>Update how this form is identified and where the completed PDF should be sent.</DialogDescription>
+            </DialogHeader>
+            <form className="grid gap-4" onSubmit={handleEdit}>
+              <div className="grid gap-1.5">
+                <Label htmlFor="edit-form-name">Form name</Label>
+                <Input id="edit-form-name" required maxLength={160} value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label>Category</Label>
+                  <Select value={editForm.category} onValueChange={(value: Category) => setEditForm({ ...editForm, category: value })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{Object.entries(categories).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="edit-emirate">Emirate</Label>
+                  <Input id="edit-emirate" value={editForm.emirate} onChange={(event) => setEditForm({ ...editForm, emirate: event.target.value })} />
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="edit-authority">Authority</Label>
+                <Input id="edit-authority" value={editForm.authority} onChange={(event) => setEditForm({ ...editForm, authority: event.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="edit-recipient-email">Recipient email <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Input id="edit-recipient-email" type="email" dir="ltr" value={editForm.recipientEmail} onChange={(event) => setEditForm({ ...editForm, recipientEmail: event.target.value })} />
+              </div>
+              <Button type="submit" disabled={saving} className="min-h-10 gap-2">
+                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                {saving ? "Saving..." : "Save changes"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
         {loading ? (
           <div className="grid gap-3">{[0, 1].map((item) => <Skeleton key={item} className="h-36 w-full" />)}</div>
         ) : loadError ? (
@@ -339,6 +421,7 @@ const ExternalForms = () => {
                   </div>
                   <div className="flex flex-wrap gap-2 sm:shrink-0">
                     <Button variant="outline" size="sm" disabled={busyId === template.id} onClick={() => void handleDownload(template)} className="min-h-10 gap-1.5"><Download className="h-4 w-4" />Download</Button>
+                    <Button variant="outline" size="sm" disabled={busyId === template.id} onClick={() => openEditDialog(template)} className="min-h-10 gap-1.5"><Pencil className="h-4 w-4" />Edit details</Button>
                     <Button asChild variant="outline" size="sm" disabled={busyId === template.id} className="min-h-10 gap-1.5">
                       <label><RefreshCw className="h-4 w-4" />Replace<input className="sr-only" type="file" accept="application/pdf,.pdf" onChange={(event) => void handleReplace(template, event)} /></label>
                     </Button>
