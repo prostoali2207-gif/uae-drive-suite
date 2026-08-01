@@ -18,11 +18,15 @@ export async function prepareImageForStorageUpload(file: File): Promise<File> {
       if (!context) return file;
 
       context.drawImage(image, 0, 0, width, height);
-      const blob = await canvasToJpegBlob(canvas);
+
+      const preserveTransparency = file.type === "image/png" || file.type === "image/webp";
+      const blob = preserveTransparency
+        ? await canvasToBlob(canvas, "image/png")
+        : await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
       if (!blob) return file;
 
-      return new File([blob], withJpegExtension(file.name), {
-        type: "image/jpeg",
+      return new File([blob], preserveTransparency ? withPngExtension(file.name) : withJpegExtension(file.name), {
+        type: preserveTransparency ? "image/png" : "image/jpeg",
         lastModified: file.lastModified,
       });
     } finally {
@@ -64,13 +68,18 @@ function getResizedDimensions(width: number, height: number): { width: number; h
   };
 }
 
-function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+function canvasToBlob(canvas: HTMLCanvasElement, type: "image/jpeg" | "image/png", quality?: number): Promise<Blob | null> {
   return new Promise((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY);
+    canvas.toBlob(resolve, type, quality);
   });
 }
 
 function withJpegExtension(fileName: string): string {
   const baseName = fileName.replace(/\.[^.]+$/, "");
   return `${baseName || "image"}.jpg`;
+}
+
+function withPngExtension(fileName: string): string {
+  const baseName = fileName.replace(/\.[^.]+$/, "");
+  return `${baseName || "image"}.png`;
 }
