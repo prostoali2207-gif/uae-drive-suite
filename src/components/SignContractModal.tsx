@@ -143,6 +143,7 @@ interface SignContractModalProps {
   contractId: string;
   clientName: string;
   open: boolean;
+  onActivate: () => Promise<boolean>;
   onComplete: () => void;
 }
 
@@ -169,7 +170,7 @@ function SummaryItem({ label, value, accent }: { label: string; value: React.Rea
   );
 }
 
-export function SignContractModal({ contractId, clientName, open, onComplete }: SignContractModalProps) {
+export function SignContractModal({ contractId, clientName, open, onActivate, onComplete }: SignContractModalProps) {
   const [step, setStep] = useState<FlowStep>("review");
   const [loaded, setLoaded] = useState<LoadedContract | null>(null);
   const [loading, setLoading] = useState(false);
@@ -353,8 +354,10 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
       if (uploadError) throw uploadError;
       const publicUrl = supabase.storage.from("contract-pdfs").getPublicUrl(filePath).data.publicUrl;
       setPdfUrl(publicUrl);
+      const activated = await onActivate();
+      if (!activated) return;
       setStep("success");
-      toast.success("All signatures saved");
+      toast.success("Contract signed and activated");
     } catch (saveError) {
       toast.error(saveError instanceof Error ? saveError.message : "Could not save signatures");
     } finally {
@@ -513,8 +516,8 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
           {!loading && !error && loaded && step === "success" && (
             <div className="mx-auto max-w-xl py-10 text-center">
               <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-10 w-10" /></div>
-              <h2 className="mt-5 text-2xl font-bold">Contract signed by all participants</h2>
-              <p className="mt-2 text-sm text-slate-600">Customer, additional drivers and company representative signatures are saved in the contract and PDF.</p>
+              <h2 className="mt-5 text-2xl font-bold">Contract is active</h2>
+              <p className="mt-2 text-sm text-slate-600">All signatures are saved, the PDF is ready and the vehicle is marked as rented.</p>
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => generateContractPdf({ ...loaded.data, client_signature: signatures.customer, manager_signature: signatures.company, contract_drivers: loaded.drivers.map((driver) => ({ ...driver, signature: signatures[`driver-${driver.id}`] })) })}>Download PDF</Button>
                 <Button className="h-12 gap-2 bg-green-600 text-white hover:bg-green-700" onClick={() => {
@@ -536,14 +539,14 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
             </Button>
             {step === "review" && <Button className="h-11 bg-cyan-600 px-6 font-bold text-white hover:bg-cyan-700" onClick={() => setStep("terms")}>Continue to terms</Button>}
             {step === "terms" && <Button className="h-11 bg-cyan-600 px-6 font-bold text-white hover:bg-cyan-700" disabled={!termsAccepted} onClick={() => setStep("sign")}><PenLine className="mr-2 h-4 w-4" />Start signing</Button>}
-            {step === "sign" && <Button className="h-11 bg-cyan-600 px-6 font-bold text-white hover:bg-cyan-700" disabled={signedCount !== signers.length || saving} onClick={completeSigning}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{saving ? "Saving..." : "Save signed contract"}</Button>}
+            {step === "sign" && <Button className="h-11 bg-cyan-600 px-6 font-bold text-white hover:bg-cyan-700" disabled={signedCount !== signers.length || saving} onClick={completeSigning}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{saving ? "Saving..." : "Save & activate contract"}</Button>}
           </div>
         </footer>
       )}
 
       {step === "success" && (
         <footer className="shrink-0 border-t border-slate-200 bg-white px-3 py-3">
-          <div className="mx-auto max-w-5xl"><Button className="h-12 w-full bg-cyan-600 font-bold text-white hover:bg-cyan-700" onClick={onComplete}>Finish and open contract</Button></div>
+          <div className="mx-auto max-w-5xl"><Button className="h-12 w-full bg-cyan-600 font-bold text-white hover:bg-cyan-700" onClick={onComplete}>Open contract</Button></div>
         </footer>
       )}
 
