@@ -331,8 +331,7 @@ const Settings = () => {
               </TabsList>
 
               <TabsContent value="company" className="mt-6">
-                <div className="flex flex-col gap-6">
-                  <Card>
+                <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Building2 className="h-4 w-4" />
@@ -424,66 +423,7 @@ const Settings = () => {
                   </div>
                 </div>
               </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <FileText className="h-4 w-4" />
-                        Company License
-                      </CardTitle>
-                      <CardDescription>Upload the current company license in PDF format.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
-                            <FileText className="h-6 w-6 text-muted-foreground" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">
-                              {companyLicenseUrl ? "Company license.pdf" : "No license uploaded"}
-                            </p>
-                            <p className="text-xs text-muted-foreground">PDF only, maximum 10 MB.</p>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {companyLicenseSignedUrl && (
-                            <Button type="button" variant="outline" size="sm" asChild>
-                              <a href={companyLicenseSignedUrl} target="_blank" rel="noreferrer">
-                                <ExternalLink className="h-4 w-4" />
-                                Open PDF
-                              </a>
-                            </Button>
-                          )}
-                          <input
-                            ref={companyLicenseFileInput}
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            className="hidden"
-                            onChange={handleCompanyLicenseUpload}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => companyLicenseFileInput.current?.click()}
-                            disabled={uploadingCompanyLicense}
-                            className="gap-1.5"
-                          >
-                            <Upload className="h-4 w-4" />
-                            {uploadingCompanyLicense
-                              ? "Uploading..."
-                              : companyLicenseUrl
-                                ? "Replace PDF"
-                                : "Upload PDF"}
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                </Card>
               </TabsContent>
 
               <TabsContent value="finance" className="mt-6">
@@ -701,6 +641,64 @@ const Settings = () => {
 
               <TabsContent value="documents" className="mt-6">
                 <div className="flex flex-col gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <FileText className="h-4 w-4" />
+                        Company License
+                      </CardTitle>
+                      <CardDescription>Upload the current company license in PDF format.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
+                            <FileText className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">
+                              {companyLicenseUrl ? "Company license.pdf" : "No license uploaded"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">PDF only, maximum 10 MB.</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {companyLicenseSignedUrl && (
+                            <Button type="button" variant="outline" size="sm" asChild>
+                              <a href={companyLicenseSignedUrl} target="_blank" rel="noreferrer">
+                                <ExternalLink className="h-4 w-4" />
+                                Open PDF
+                              </a>
+                            </Button>
+                          )}
+                          <input
+                            ref={companyLicenseFileInput}
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            className="hidden"
+                            onChange={handleCompanyLicenseUpload}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => companyLicenseFileInput.current?.click()}
+                            disabled={uploadingCompanyLicense}
+                            className="gap-1.5"
+                          >
+                            <Upload className="h-4 w-4" />
+                            {uploadingCompanyLicense
+                              ? "Uploading..."
+                              : companyLicenseUrl
+                                ? "Replace PDF"
+                                : "Upload PDF"}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
                   <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
