@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { createSharjahBlackPointsPdf } from "@/lib/sharjahBlackPointsPdf";
 
 const BUCKET = "external-form-templates";
 const BUNDLED_PREFIX = "bundled:";
@@ -24,6 +25,18 @@ const categories = {
 } as const;
 
 type Category = keyof typeof categories;
+
+type FineOption = {
+  id: string;
+  fine_number: string | null;
+  fine_date: string;
+  black_points: number | null;
+  source: string;
+  contract_id: string | null;
+  clients: { full_name: string; phone: string; license_number: string | null; nationality: string | null } | null;
+  cars: { plate: string; make: string; model: string } | null;
+  contracts: { id: string; start_date: string; start_time: string | null; end_date: string; end_time: string | null } | null;
+};
 
 type ExternalFormTemplate = {
   id: string;
@@ -80,6 +93,15 @@ const ExternalForms = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ExternalFormTemplate | null>(null);
   const [editForm, setEditForm] = useState(initialForm);
+  const [fillTemplate, setFillTemplate] = useState<ExternalFormTemplate | null>(null);
+  const [fineOptions, setFineOptions] = useState<FineOption[]>([]);
+  const [selectedFineId, setSelectedFineId] = useState("");
+  const [trafficFileNumber, setTrafficFileNumber] = useState("");
+  const [unifiedNumber, setUnifiedNumber] = useState("");
+  const [licenseSource, setLicenseSource] = useState("");
+  const [plateCode, setPlateCode] = useState("");
+  const [plateSource, setPlateSource] = useState("");
+  const [loadingFines, setLoadingFines] = useState(false);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -284,6 +306,88 @@ const ExternalForms = () => {
     await loadTemplates();
   };
 
+  const openFillDialog = async (template: ExternalFormTemplate) => {
+    setFillTemplate(template);
+    setSelectedFineId("");
+    setTrafficFileNumber("");
+    setUnifiedNumber("");
+    setLicenseSource("");
+    setPlateCode("");
+    setPlateSource("");
+    setLoadingFines(true);
+    const { data, error } = await supabase
+      .from("fines")
+      .select("id, fine_number, fine_date, black_points, source, contract_id, clients(full_name, phone, license_number, nationality), cars(plate, make, model), contracts(id, start_date, start_time, end_date, end_time)")
+      .gt("black_points", 0)
+      .order("fine_date", { ascending: false })
+      .limit(200);
+    if (error) {
+      toast.error(`Could not load fines: ${error.message}`);
+      setFineOptions([]);
+    } else {
+      setFineOptions((data ?? []) as unknown as FineOption[]);
+    }
+    setLoadingFines(false);
+  };
+
+  const selectedFine = fineOptions.find((fine) => fine.id === selectedFineId) ?? null;
+  const missingFillData = selectedFine ? [
+    !selectedFine.contract_id || !selectedFine.contracts ? "linked contract" : null,
+    !selectedFine.clients ? "client" : null,
+    !selectedFine.clients?.license_number ? "driving licence number" : null,
+    !selectedFine.cars?.plate ? "vehicle plate" : null,
+    !selectedFine.fine_number ? "fine number" : null,
+    !trafficFileNumber.trim() ? "Traffic File Number" : null,
+    !unifiedNumber.trim() ? "Unified Number" : null,
+    !licenseSource.trim() ? "licence source" : null,
+    !plateCode.trim() ? "plate code" : null,
+    !plateSource.trim() ? "plate source" : null,
+  ].filter(Boolean) as string[] : [];
+
+  const handleFill = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedFine || !selectedFine.contracts || !selectedFine.clients || !selectedFine.cars || missingFillData.length > 0) {
+      toast.error("Complete all required information first");
+      return;
+    }
+    setSaving(true);
+    try {
+      const contract = selectedFine.contracts;
+      const start = `${contract.start_date}T${contract.start_time ?? "00:00"}:00+04:00`;
+      const end = `${contract.end_date}T${contract.end_time ?? "23:59"}:00+04:00`;
+      const blob = await createSharjahBlackPointsPdf({
+        contractNumber: `CTR-${contract.id.slice(0, 8).toUpperCase()}`,
+        clientName: selectedFine.clients.full_name,
+        licenseNumber: selectedFine.clients.license_number ?? "",
+        licenseSource: licenseSource.trim(),
+        trafficFileNumber: trafficFileNumber.trim(),
+        unifiedNumber: unifiedNumber.trim(),
+        plateNumber: selectedFine.cars.plate,
+        plateCode: plateCode.trim(),
+        plateSource: plateSource.trim(),
+        vehicleType: `${selectedFine.cars.make} ${selectedFine.cars.model}`.trim(),
+        fineNumber: selectedFine.fine_number ?? "",
+        fineDate: new Date(selectedFine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
+        rentalStart: start,
+        rentalEnd: end,
+        phone: selectedFine.clients.phone,
+        requestDate: new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `Black_Points_Form_${selectedFine.fine_number}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success("Filled form downloaded");
+      setFillTemplate(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create filled form");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <DashboardLayout title="External Forms" subtitle="Reusable forms from police and other authorities">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
@@ -395,6 +499,43 @@ const ExternalForms = () => {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={fillTemplate !== null} onOpenChange={(open) => { if (!open && !saving) setFillTemplate(null); }}>
+          <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Fill black points form</DialogTitle>
+              <DialogDescription>Select the fine. FleetDesk will use its linked client, vehicle and contract.</DialogDescription>
+            </DialogHeader>
+            <form className="grid gap-4" onSubmit={handleFill}>
+              <div className="grid gap-1.5">
+                <Label>Fine</Label>
+                <Select value={selectedFineId} onValueChange={setSelectedFineId} disabled={loadingFines}>
+                  <SelectTrigger className="min-h-10"><SelectValue placeholder={loadingFines ? "Loading fines..." : "Select a fine with black points"} /></SelectTrigger>
+                  <SelectContent>
+                    {fineOptions.map((fine) => <SelectItem key={fine.id} value={fine.id}>{fine.fine_number || "No number"} · {fine.cars?.plate || "No car"} · {fine.black_points || 0} BP</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedFine && (
+                <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                  <p className="font-medium">{selectedFine.clients?.full_name || "Client missing"}</p>
+                  <p className="mt-1 text-muted-foreground">{selectedFine.cars?.plate || "Vehicle missing"} · {selectedFine.contract_id ? `CTR-${selectedFine.contract_id.slice(0, 8).toUpperCase()}` : "Contract missing"}</p>
+                </div>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5"><Label htmlFor="traffic-file-number">Traffic File Number</Label><Input id="traffic-file-number" dir="ltr" required value={trafficFileNumber} onChange={(event) => setTrafficFileNumber(event.target.value)} /></div>
+                <div className="grid gap-1.5"><Label htmlFor="unified-number">Unified Number</Label><Input id="unified-number" dir="ltr" required value={unifiedNumber} onChange={(event) => setUnifiedNumber(event.target.value)} /></div>
+                <div className="grid gap-1.5"><Label htmlFor="license-source">Licence source</Label><Input id="license-source" required value={licenseSource} onChange={(event) => setLicenseSource(event.target.value)} placeholder="e.g. International" /></div>
+                <div className="grid gap-1.5"><Label htmlFor="plate-code">Plate code</Label><Input id="plate-code" required value={plateCode} onChange={(event) => setPlateCode(event.target.value)} placeholder="e.g. Private" /></div>
+                <div className="grid gap-1.5 sm:col-span-2"><Label htmlFor="plate-source">Plate source</Label><Input id="plate-source" required value={plateSource} onChange={(event) => setPlateSource(event.target.value)} placeholder="e.g. Ajman" /></div>
+              </div>
+              {selectedFine && missingFillData.length > 0 && <p className="text-sm text-destructive">Missing: {missingFillData.join(", ")}.</p>}
+              <Button type="submit" disabled={saving || !selectedFine || missingFillData.length > 0} className="min-h-10 gap-2">
+                {saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? "Creating PDF..." : "Create filled PDF"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
         {loading ? (
           <div className="grid gap-3">{[0, 1].map((item) => <Skeleton key={item} className="h-36 w-full" />)}</div>
         ) : loadError ? (
@@ -425,7 +566,7 @@ const ExternalForms = () => {
                     <Button asChild variant="outline" size="sm" disabled={busyId === template.id} className="min-h-10 gap-1.5">
                       <label><RefreshCw className="h-4 w-4" />Replace<input className="sr-only" type="file" accept="application/pdf,.pdf" onChange={(event) => void handleReplace(template, event)} /></label>
                     </Button>
-                    <Button size="sm" disabled className="min-h-10">Fill — next step</Button>
+                    <Button size="sm" disabled={busyId === template.id} onClick={() => void openFillDialog(template)} className="min-h-10">Fill</Button>
                   </div>
                 </CardContent>
               </Card>
