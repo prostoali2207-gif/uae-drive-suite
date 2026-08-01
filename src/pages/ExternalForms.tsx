@@ -38,6 +38,33 @@ type FineOption = {
   contracts: { id: string; start_date: string; start_time: string | null; end_date: string; end_time: string | null } | null;
 };
 
+const toDubaiDateTime = (date: string, time: string | null, fallback: string) => {
+  const normalizedTime = (time || fallback).slice(0, 5);
+  return `${date}T${normalizedTime}:00+04:00`;
+};
+
+const splitPlate = (plate: string) => {
+  const match = plate.trim().match(/^([A-Za-z]+)\s*[- ]?\s*(\d+)$/);
+  return match ? { code: match[1].toUpperCase(), number: match[2] } : { code: "", number: plate };
+};
+
+const imageUrlToPng = async (url: string): Promise<Uint8Array> => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Company stamp could not be loaded");
+  const bitmap = await createImageBitmap(await response.blob());
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Company stamp could not be prepared");
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const png = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Company stamp could not be prepared")), "image/png");
+  });
+  return new Uint8Array(await png.arrayBuffer());
+};
+
 type ExternalFormTemplate = {
   id: string;
   owner_id: string;
@@ -360,8 +387,24 @@ const ExternalForms = () => {
     setSaving(true);
     try {
       const contract = selectedFine.contracts;
-      const start = `${contract.start_date}T${contract.start_time ?? "00:00"}:00+04:00`;
-      const end = `${contract.end_date}T${contract.end_time ?? "23:59"}:00+04:00`;
+      const start = toDubaiDateTime(contract.start_date, contract.start_time, "00:00");
+      const end = toDubaiDateTime(contract.end_date, contract.end_time, "23:59");
+      const plate = splitPlate(selectedFine.cars.plate);
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      const { data: profile, error: profileError } = userId
+        ? await supabase.from("profiles").select("stamp_url").eq("id", userId).maybeSingle()
+        : { data: null, error: null };
+      if (profileError) throw new Error(`Company stamp could not be loaded: ${profileError.message}`);
+
+      let stampPng: Uint8Array | undefined;
+      if (profile?.stamp_url) {
+        const { data: signedStamp, error: stampError } = await supabase.storage
+          .from("company-logos")
+          .createSignedUrl(profile.stamp_url, 60);
+        if (stampError || !signedStamp?.signedUrl) throw new Error("Company stamp could not be loaded");
+        stampPng = await imageUrlToPng(signedStamp.signedUrl);
+      }
       const blob = await createSharjahBlackPointsPdf({
         contractNumber: `CTR-${contract.id.slice(0, 8).toUpperCase()}`,
         clientName: selectedFine.clients.full_name,
@@ -369,8 +412,8 @@ const ExternalForms = () => {
         licenseSource: "",
         trafficFileNumber: "",
         unifiedNumber: "",
-        plateNumber: selectedFine.cars.plate,
-        plateCode: "",
+        plateNumber: plate.number,
+        plateCode: plate.code,
         plateSource: "",
         vehicleType: `${selectedFine.cars.make} ${selectedFine.cars.model}`.trim(),
         fineNumber: selectedFine.fine_number ?? "",
@@ -379,7 +422,7 @@ const ExternalForms = () => {
         rentalEnd: end,
         phone: selectedFine.clients.phone,
         requestDate: new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
-      });
+      }, stampPng);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
