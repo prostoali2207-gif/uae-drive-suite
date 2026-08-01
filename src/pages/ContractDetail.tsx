@@ -4873,6 +4873,12 @@ const ContractDetail = () => {
   const handleCloseContract = async () => {
     if (!contract) return;
 
+    const [actualReturnDate, actualReturnTime] = closeReturnDate.split("T");
+    if (!actualReturnDate || !actualReturnTime) {
+      toast.error("Please enter the return date and time");
+      return;
+    }
+
     if (closeFinalMileage.trim() === "") {
       toast.error("Please enter final mileage");
       return;
@@ -5011,7 +5017,12 @@ const ContractDetail = () => {
     const [contractRes, vehicleRes] = await Promise.all([
       supabase
         .from("contracts")
-        .update({ status: "Closed", notes: updatedNotes } as never)
+        .update({
+          status: "Closed",
+          end_date: actualReturnDate,
+          end_time: formatTimeForDb(actualReturnTime),
+          notes: updatedNotes,
+        } as never)
         .eq("id", contract.id),
       supabase
         .from("cars")
