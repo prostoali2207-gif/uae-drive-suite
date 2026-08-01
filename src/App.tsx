@@ -26,6 +26,7 @@ import ExternalForms from "./pages/ExternalForms.tsx";
 import InspectionView from "./pages/InspectionView.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import ClientRegisterV2 from "./pages/ClientRegisterV2";
+import PublicContractSign from "./pages/PublicContractSign";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ const App = () => (
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/external-forms" element={<ProtectedRoute><ExternalForms /></ProtectedRoute>} />
               <Route path="/client-register" element={<ClientRegisterV2 />} />
+              <Route path="/sign/:token" element={<PublicContractSign />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

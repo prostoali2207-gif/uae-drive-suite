@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, ChevronDown, FileText, Loader2, MessageCircle, PenLine } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, ChevronDown, Copy, FileText, Link2, Loader2, MessageCircle, PenLine, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { generateContractPdf } from "@/lib/contractPdf";
@@ -17,7 +17,7 @@ interface SigRef {
   clear: () => void;
 }
 
-const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(function SignatureCanvas({ onStroke }, ref) {
+const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void; large?: boolean }>(function SignatureCanvas({ onStroke, large }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
@@ -56,7 +56,8 @@ const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(function S
     if (!canvas || !ctx) return;
     const next = point(event);
     ctx.strokeStyle = "#111827";
-    ctx.lineWidth = 4;
+    const distance = Math.hypot(next.x - last.current.x, next.y - last.current.y);
+    ctx.lineWidth = Math.max(2.5, Math.min(6, 7 - distance * 0.12));
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
@@ -84,7 +85,27 @@ const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(function S
       }
       return true;
     },
-    getDataUrl: () => canvasRef.current?.toDataURL("image/png") || "",
+    getDataUrl: () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return "";
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let left = canvas.width, right = 0, top = canvas.height, bottom = 0;
+      for (let y = 0; y < canvas.height; y += 1) for (let x = 0; x < canvas.width; x += 1) {
+        const i = (y * canvas.width + x) * 4;
+        if (pixels.data[i] < 245 || pixels.data[i + 1] < 245 || pixels.data[i + 2] < 245) {
+          left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+        }
+      }
+      if (right <= left || bottom <= top) return "";
+      const pad = 24;
+      const sx = Math.max(0, left - pad), sy = Math.max(0, top - pad);
+      const sw = Math.min(canvas.width - sx, right - left + pad * 2), sh = Math.min(canvas.height - sy, bottom - top + pad * 2);
+      const output = document.createElement("canvas"); output.width = sw; output.height = sh;
+      const out = output.getContext("2d"); if (!out) return "";
+      out.fillStyle = "#ffffff"; out.fillRect(0, 0, sw, sh); out.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      return output.toDataURL("image/png");
+    },
     clear: reset,
   }));
 
@@ -93,7 +114,7 @@ const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void }>(function S
       ref={canvasRef}
       width={900}
       height={300}
-      className="h-44 w-full touch-none rounded-xl border-2 border-cyan-400 bg-white"
+      className={cn("w-full touch-none rounded-xl border-2 border-cyan-400 bg-white", large ? "h-[52dvh]" : "h-44")}
       onMouseDown={start}
       onMouseMove={move}
       onMouseUp={stop}
@@ -160,6 +181,9 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
   const [signatures, setSignatures] = useState<Record<string, string>>({});
   const [canvasHasContent, setCanvasHasContent] = useState(false);
   const [pdfUrl, setPdfUrl] = useState("");
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [creatingLink, setCreatingLink] = useState(false);
+  const [clientLink, setClientLink] = useState("");
   const signatureRef = useRef<SigRef>(null);
 
   useEffect(() => {
@@ -173,6 +197,8 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
     setActiveSigner(0);
     setSignatures({});
     setPdfUrl("");
+    setSignatureOpen(false);
+    setClientLink("");
     setLoading(true);
 
     const load = async () => {
@@ -255,9 +281,29 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
     }
     const dataUrl = signatureRef.current.getDataUrl();
     setSignatures((current) => ({ ...current, [signer.key]: dataUrl }));
+    setSignatureOpen(false);
     signatureRef.current.clear();
     setCanvasHasContent(false);
     if (activeSigner < signers.length - 1) setActiveSigner((current) => current + 1);
+  };
+
+  const createClientLink = async () => {
+    setCreatingLink(true);
+    try {
+      const { data, error: linkError } = await supabase.rpc(
+        "create_contract_signing_link" as never,
+        { p_contract_id: contractId, p_valid_days: 7 } as never,
+      );
+      if (linkError) throw linkError;
+      const link = `${window.location.origin}/sign/${String(data)}`;
+      setClientLink(link);
+      await navigator.clipboard.writeText(link);
+      toast.success("Client link copied");
+    } catch (linkError) {
+      toast.error(linkError instanceof Error ? linkError.message : "Could not create client link");
+    } finally {
+      setCreatingLink(false);
+    }
   };
 
   const completeSigning = async () => {
@@ -370,6 +416,14 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
                   <SummaryItem label="Fuel" value={contract.fuel_level || "—"} />
                 </div>
               </section>
+              <section className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+                <div className="font-bold text-cyan-950">Customer can sign on their phone</div>
+                <p className="mt-1 text-sm text-cyan-800">The private link works for 7 days and lets the customer sign only their permitted fields.</p>
+                <Button type="button" className="mt-3 h-11 w-full bg-cyan-600 text-white hover:bg-cyan-700" disabled={creatingLink} onClick={createClientLink}>
+                  {creatingLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}{clientLink ? "Create a new link" : "Create client link"}
+                </Button>
+                {clientLink && <button type="button" className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-cyan-300 bg-white px-3 text-sm font-semibold text-cyan-800" onClick={async () => { await navigator.clipboard.writeText(clientLink); toast.success("Link copied"); }}><Copy className="h-4 w-4" />Copy link again</button>}
+              </section>
 
               <section className="rounded-xl border border-slate-200 bg-white p-4">
                 <div className="text-sm font-bold">Authorized additional drivers ({loaded.drivers.length})</div>
@@ -449,11 +503,7 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
                   </div>
                 ) : (
                   <div className="mt-4">
-                    <SignatureCanvas ref={signatureRef} onStroke={() => setCanvasHasContent(true)} />
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <Button type="button" variant="outline" className="h-11 border-slate-300" onClick={() => { signatureRef.current?.clear(); setCanvasHasContent(false); }}>Clear</Button>
-                      <Button type="button" className="h-11 bg-cyan-600 font-bold text-white hover:bg-cyan-700" disabled={!canvasHasContent} onClick={saveCurrentSignature}>Save signature</Button>
-                    </div>
+                    <button type="button" className="flex h-36 w-full items-center justify-center rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50 text-base font-bold text-cyan-800" onClick={() => setSignatureOpen(true)}><PenLine className="mr-2 h-5 w-5" />Sign in full screen</button>
                   </div>
                 )}
               </section>
@@ -495,6 +545,20 @@ export function SignContractModal({ contractId, clientName, open, onComplete }: 
         <footer className="shrink-0 border-t border-slate-200 bg-white px-3 py-3">
           <div className="mx-auto max-w-5xl"><Button className="h-12 w-full bg-cyan-600 font-bold text-white hover:bg-cyan-700" onClick={onComplete}>Finish and open contract</Button></div>
         </footer>
+      )}
+
+      {signatureOpen && signer && (
+        <div className="fixed inset-0 z-[120] flex h-[100dvh] flex-col bg-slate-100 p-3">
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 py-2">
+            <div><div className="text-xs font-bold uppercase text-cyan-700">{signer.label}</div><div className="font-bold">{signer.name}</div></div>
+            <Button type="button" size="icon" variant="outline" className="h-11 w-11" onClick={() => setSignatureOpen(false)}><X className="h-5 w-5" /></Button>
+          </div>
+          <div className="mx-auto mt-2 w-full max-w-5xl flex-1"><SignatureCanvas ref={signatureRef} large onStroke={() => setCanvasHasContent(true)} /></div>
+          <div className="mx-auto grid w-full max-w-5xl grid-cols-2 gap-3 pb-2 pt-3">
+            <Button type="button" variant="outline" className="h-12" onClick={() => { signatureRef.current?.clear(); setCanvasHasContent(false); }}>Clear</Button>
+            <Button type="button" className="h-12 bg-cyan-600 font-bold text-white hover:bg-cyan-700" disabled={!canvasHasContent} onClick={saveCurrentSignature}>Done</Button>
+          </div>
+        </div>
       )}
     </div>
   );
