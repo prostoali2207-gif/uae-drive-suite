@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Building2, ExternalLink, FileBadge, FileText, Landmark, Stamp, Upload } from "lucide-react";
+import { Building2, ExternalLink, FileBadge, FileText, Landmark, Stamp, Upload, Users } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { toast } from "sonner";
+import { StaffSettings } from "@/components/settings/StaffSettings";
 
 interface Profile {
   id: string;
@@ -41,6 +42,7 @@ interface Profile {
   salik_fee_value?: number | null;
   terms_en?: string | null;
   terms_ar?: string | null;
+  terms_key_points?: string | null;
 }
 
 type ServiceFeeType = "fixed" | "percentage";
@@ -146,7 +148,7 @@ const Settings = () => {
       setSalikFeeValue(p.salik_fee_value ?? 1);
       setTermsEn(p.terms_en || "");
       setTermsAr(p.terms_ar || "");
-      setTermsKeyPoints((p as any).terms_key_points || "");
+      setTermsKeyPoints(p.terms_key_points || "");
       setLogoUrl(p.logo_url);
       setStampUrl(p.stamp_url || null);
       setCompanyLicenseUrl(p.company_license_url || null);
@@ -190,7 +192,7 @@ const Settings = () => {
       terms_en: termsEn.trim() || null,
       terms_ar: termsAr.trim() || null,
       terms_key_points: termsKeyPoints.trim() || null,
-    } as any;
+    };
 
     const { data, error } = await supabase.from("profiles").upsert(profileData).select();
     setSaving(false);
@@ -324,10 +326,11 @@ const Settings = () => {
         ) : (
           <div className="flex flex-col gap-6">
             <Tabs defaultValue="company" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
                 <TabsTrigger value="company">Company</TabsTrigger>
                 <TabsTrigger value="finance">Finance</TabsTrigger>
                 <TabsTrigger value="documents">Documents</TabsTrigger>
+                <TabsTrigger value="staff" className="gap-1.5"><Users className="h-4 w-4" /> Staff</TabsTrigger>
               </TabsList>
 
               <TabsContent value="company" className="mt-6">
@@ -789,6 +792,10 @@ const Settings = () => {
               </CardContent>
                   </Card>
                 </div>
+              </TabsContent>
+
+              <TabsContent value="staff" className="mt-6">
+                <StaffSettings />
               </TabsContent>
             </Tabs>
 
