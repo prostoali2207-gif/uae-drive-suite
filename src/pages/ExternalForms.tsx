@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 
 const BUCKET = "external-form-templates";
+const BUNDLED_PREFIX = "bundled:";
 
 const categories = {
   fines: "Fines",
@@ -175,6 +176,15 @@ const ExternalForms = () => {
 
   const handleDownload = async (template: ExternalFormTemplate) => {
     setBusyId(template.id);
+    if (template.storage_path.startsWith(BUNDLED_PREFIX)) {
+      const anchor = document.createElement("a");
+      anchor.href = template.storage_path.slice(BUNDLED_PREFIX.length);
+      anchor.download = template.original_file_name;
+      anchor.rel = "noopener";
+      anchor.click();
+      setBusyId(null);
+      return;
+    }
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(template.storage_path, 60);
     if (error || !data?.signedUrl) {
       toast.error(`Could not open PDF: ${error?.message ?? "Unknown error"}`);
@@ -198,10 +208,21 @@ const ExternalForms = () => {
     }
 
     setBusyId(template.id);
-    const { error: uploadError } = await supabase.storage.from(BUCKET).update(template.storage_path, replacement, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
+    let replacementPath = template.storage_path;
+    const isBundled = template.storage_path.startsWith(BUNDLED_PREFIX);
+    if (isBundled) {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) {
+        toast.error("Your session expired. Sign in again.");
+        setBusyId(null);
+        return;
+      }
+      replacementPath = `${authData.user.id}/${crypto.randomUUID()}.pdf`;
+    }
+    const storageOperation = isBundled
+      ? supabase.storage.from(BUCKET).upload(replacementPath, replacement, { contentType: "application/pdf", upsert: false })
+      : supabase.storage.from(BUCKET).update(replacementPath, replacement, { contentType: "application/pdf", upsert: true });
+    const { error: uploadError } = await storageOperation;
     if (uploadError) {
       toast.error(`Replacement failed: ${uploadError.message}`);
       setBusyId(null);
@@ -210,7 +231,7 @@ const ExternalForms = () => {
 
     const { error: updateError } = await formsClient
       .from("external_form_templates")
-      .update({ original_file_name: replacement.name, updated_at: new Date().toISOString() })
+      .update({ storage_path: replacementPath, original_file_name: replacement.name, updated_at: new Date().toISOString() })
       .eq("id", template.id);
     if (updateError) {
       toast.error(`PDF replaced, but filename was not updated: ${updateError.message}`);
