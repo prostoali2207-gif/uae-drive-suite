@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Car,
   FileText,
+  Files,
   Plus,
   Users,
   AlertTriangle,
@@ -34,6 +35,7 @@ const items = [
   { title: "Fines & Salik", url: "/fines", icon: AlertTriangle },
   { title: "Payments", url: "/payments", icon: CreditCard },
   { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "External Forms", url: "/external-forms", icon: Files },
   { title: "Settings", url: "/settings", icon: SettingsIcon },
 ];
 

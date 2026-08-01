@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { BarChart3, Car, CreditCard, FileText, LayoutDashboard, MoreHorizontal, Settings, TriangleAlert, Users } from "lucide-react";
+import { BarChart3, Car, CreditCard, FileText, Files, LayoutDashboard, MoreHorizontal, Settings, TriangleAlert, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,7 @@ const moreNav = [
   { title: "Payments", url: "/payments", icon: CreditCard },
   { title: "Fines & Salik", url: "/fines", icon: TriangleAlert },
   { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "External Forms", url: "/external-forms", icon: Files },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

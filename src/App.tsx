@@ -22,6 +22,7 @@ import Fines from "./pages/Fines.tsx";
 import Payments from "./pages/Payments.tsx";
 import Reports from "./pages/Reports.tsx";
 import Settings from "./pages/Settings.tsx";
+import ExternalForms from "./pages/ExternalForms.tsx";
 import InspectionView from "./pages/InspectionView.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import ClientRegisterV2 from "./pages/ClientRegisterV2";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
               <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/external-forms" element={<ProtectedRoute><ExternalForms /></ProtectedRoute>} />
               <Route path="/client-register" element={<ClientRegisterV2 />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
