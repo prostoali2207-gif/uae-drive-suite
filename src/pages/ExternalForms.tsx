@@ -96,11 +96,6 @@ const ExternalForms = () => {
   const [fillTemplate, setFillTemplate] = useState<ExternalFormTemplate | null>(null);
   const [fineOptions, setFineOptions] = useState<FineOption[]>([]);
   const [selectedFineId, setSelectedFineId] = useState("");
-  const [trafficFileNumber, setTrafficFileNumber] = useState("");
-  const [unifiedNumber, setUnifiedNumber] = useState("");
-  const [licenseSource, setLicenseSource] = useState("");
-  const [plateCode, setPlateCode] = useState("");
-  const [plateSource, setPlateSource] = useState("");
   const [loadingFines, setLoadingFines] = useState(false);
 
   const loadTemplates = useCallback(async () => {
@@ -309,11 +304,6 @@ const ExternalForms = () => {
   const openFillDialog = async (template: ExternalFormTemplate) => {
     setFillTemplate(template);
     setSelectedFineId("");
-    setTrafficFileNumber("");
-    setUnifiedNumber("");
-    setLicenseSource("");
-    setPlateCode("");
-    setPlateSource("");
     setLoadingFines(true);
     const { data, error } = await supabase
       .from("fines")
@@ -337,11 +327,6 @@ const ExternalForms = () => {
     !selectedFine.clients?.license_number ? "driving licence number" : null,
     !selectedFine.cars?.plate ? "vehicle plate" : null,
     !selectedFine.fine_number ? "fine number" : null,
-    !trafficFileNumber.trim() ? "Traffic File Number" : null,
-    !unifiedNumber.trim() ? "Unified Number" : null,
-    !licenseSource.trim() ? "licence source" : null,
-    !plateCode.trim() ? "plate code" : null,
-    !plateSource.trim() ? "plate source" : null,
   ].filter(Boolean) as string[] : [];
 
   const handleFill = async (event: FormEvent) => {
@@ -359,12 +344,12 @@ const ExternalForms = () => {
         contractNumber: `CTR-${contract.id.slice(0, 8).toUpperCase()}`,
         clientName: selectedFine.clients.full_name,
         licenseNumber: selectedFine.clients.license_number ?? "",
-        licenseSource: licenseSource.trim(),
-        trafficFileNumber: trafficFileNumber.trim(),
-        unifiedNumber: unifiedNumber.trim(),
+        licenseSource: "",
+        trafficFileNumber: "",
+        unifiedNumber: "",
         plateNumber: selectedFine.cars.plate,
-        plateCode: plateCode.trim(),
-        plateSource: plateSource.trim(),
+        plateCode: "",
+        plateSource: "",
         vehicleType: `${selectedFine.cars.make} ${selectedFine.cars.model}`.trim(),
         fineNumber: selectedFine.fine_number ?? "",
         fineDate: new Date(selectedFine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
@@ -521,13 +506,6 @@ const ExternalForms = () => {
                   <p className="mt-1 text-muted-foreground">{selectedFine.cars?.plate || "Vehicle missing"} · {selectedFine.contract_id ? `CTR-${selectedFine.contract_id.slice(0, 8).toUpperCase()}` : "Contract missing"}</p>
                 </div>
               )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-1.5"><Label htmlFor="traffic-file-number">Traffic File Number</Label><Input id="traffic-file-number" dir="ltr" required value={trafficFileNumber} onChange={(event) => setTrafficFileNumber(event.target.value)} /></div>
-                <div className="grid gap-1.5"><Label htmlFor="unified-number">Unified Number</Label><Input id="unified-number" dir="ltr" required value={unifiedNumber} onChange={(event) => setUnifiedNumber(event.target.value)} /></div>
-                <div className="grid gap-1.5"><Label htmlFor="license-source">Licence source</Label><Input id="license-source" required value={licenseSource} onChange={(event) => setLicenseSource(event.target.value)} placeholder="e.g. International" /></div>
-                <div className="grid gap-1.5"><Label htmlFor="plate-code">Plate code</Label><Input id="plate-code" required value={plateCode} onChange={(event) => setPlateCode(event.target.value)} placeholder="e.g. Private" /></div>
-                <div className="grid gap-1.5 sm:col-span-2"><Label htmlFor="plate-source">Plate source</Label><Input id="plate-source" required value={plateSource} onChange={(event) => setPlateSource(event.target.value)} placeholder="e.g. Ajman" /></div>
-              </div>
               {selectedFine && missingFillData.length > 0 && <p className="text-sm text-destructive">Missing: {missingFillData.join(", ")}.</p>}
               <Button type="submit" disabled={saving || !selectedFine || missingFillData.length > 0} className="min-h-10 gap-2">
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? "Creating PDF..." : "Create filled PDF"}

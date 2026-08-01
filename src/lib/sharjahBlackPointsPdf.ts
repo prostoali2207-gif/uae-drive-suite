@@ -19,7 +19,7 @@ export type SharjahBlackPointsValues = {
   requestDate: string;
 };
 
-const TEMPLATE_URL = "/external-forms/Sharjah_Black_Points_Blank_Template.pdf";
+const TEMPLATE_URL = "/templates/Sharjah_Black_Points_Blank_Template.pdf";
 
 const splitDateTime = (value: string) => {
   const date = new Date(value);
