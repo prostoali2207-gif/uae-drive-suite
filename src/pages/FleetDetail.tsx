@@ -649,7 +649,7 @@ const FleetDetail = () => {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-muted-foreground" />
-                      <div className="text-sm font-semibold text-foreground">Mulkiya PDF</div>
+                      <div className="text-sm font-semibold text-foreground">Vehicle Registration Card (Mulkiya)</div>
                     </div>
                     <p id="mulkiya-pdf-status" className="mt-1 text-xs text-muted-foreground">
                       {car.mulkiya_pdf_path ? "PDF uploaded" : "No PDF uploaded"}
