@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Pencil, Save, Wrench } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileText, Loader2, Pencil, Save, Wrench } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -57,6 +57,7 @@ type Car = {
   status: CarStatus;
   insurance_expiry: string | null;
   mulkiya_expiry: string | null;
+  mulkiya_pdf_path: string | null;
   tag_number: string | null;
   owner_id: string;
 };
@@ -200,6 +201,8 @@ const FleetDetail = () => {
   const [savingCar, setSavingCar] = useState(false);
   const [markingSold, setMarkingSold] = useState(false);
   const [savingMaintenance, setSavingMaintenance] = useState(false);
+  const [uploadingMulkiya, setUploadingMulkiya] = useState(false);
+  const [openingMulkiya, setOpeningMulkiya] = useState(false);
   const [editCarOpen, setEditCarOpen] = useState(false);
   const [confirmSoldOpen, setConfirmSoldOpen] = useState(false);
   const [editMaintenanceOpen, setEditMaintenanceOpen] = useState(false);
@@ -224,7 +227,7 @@ const FleetDetail = () => {
     const [carResult, maintenanceResult, contractsResult, swapsResult] = await Promise.all([
       db
         .from("cars")
-        .select("id, plate, make, model, year, color, status, insurance_expiry, mulkiya_expiry, tag_number, owner_id")
+        .select("id, plate, make, model, year, color, status, insurance_expiry, mulkiya_expiry, mulkiya_pdf_path, tag_number, owner_id")
         .eq("id", id)
         .eq("owner_id", user.id)
         .maybeSingle(),
@@ -361,6 +364,91 @@ const FleetDetail = () => {
     ],
     [maintenance],
   );
+
+  const handleMulkiyaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+
+    if (!file || !id || !ownerId) return;
+
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      toast.error("Mulkiya must be uploaded as a PDF");
+      input.value = "";
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Mulkiya PDF must be 10 MB or smaller");
+      input.value = "";
+      return;
+    }
+
+    setUploadingMulkiya(true);
+    const objectPath = `${ownerId}/${id}/mulkiya.pdf`;
+    const hadExistingFile = Boolean(car?.mulkiya_pdf_path);
+
+    const { error: uploadError } = await supabase.storage
+      .from("vehicle-documents")
+      .upload(objectPath, file, {
+        upsert: true,
+        contentType: "application/pdf",
+      });
+
+    if (uploadError) {
+      toast.error(`Failed to upload Mulkiya: ${uploadError.message}`);
+      setUploadingMulkiya(false);
+      input.value = "";
+      return;
+    }
+
+    const { error: updateError } = await db
+      .from("cars")
+      .update({ mulkiya_pdf_path: objectPath })
+      .eq("id", id)
+      .eq("owner_id", ownerId);
+
+    if (updateError) {
+      if (!hadExistingFile) {
+        await supabase.storage.from("vehicle-documents").remove([objectPath]);
+      }
+      toast.error(`Mulkiya was uploaded but could not be linked: ${updateError.message}`);
+      setUploadingMulkiya(false);
+      input.value = "";
+      return;
+    }
+
+    setCar((current) => (current ? { ...current, mulkiya_pdf_path: objectPath } : current));
+    toast.success(hadExistingFile ? "Mulkiya PDF replaced" : "Mulkiya PDF uploaded");
+    setUploadingMulkiya(false);
+    input.value = "";
+  };
+
+  const handleOpenMulkiya = async () => {
+    if (!car?.mulkiya_pdf_path) return;
+
+    const previewTab = window.open("", "_blank");
+    setOpeningMulkiya(true);
+
+    const { data, error } = await supabase.storage
+      .from("vehicle-documents")
+      .createSignedUrl(car.mulkiya_pdf_path, 60);
+
+    setOpeningMulkiya(false);
+
+    if (error || !data?.signedUrl) {
+      previewTab?.close();
+      toast.error(`Failed to open Mulkiya: ${error?.message ?? "Signed link was not created"}`);
+      return;
+    }
+
+    if (previewTab) {
+      previewTab.opener = null;
+      previewTab.location.href = data.signedUrl;
+    } else {
+      window.location.assign(data.signedUrl);
+    }
+  };
 
   const handleCarSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -554,6 +642,54 @@ const FleetDetail = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="mt-3 rounded-lg border border-border bg-card p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <div className="text-sm font-semibold text-foreground">Mulkiya PDF</div>
+                    </div>
+                    <p id="mulkiya-pdf-status" className="mt-1 text-xs text-muted-foreground">
+                      {car.mulkiya_pdf_path ? "PDF uploaded" : "No PDF uploaded"}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    {car.mulkiya_pdf_path && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-10 gap-2"
+                        disabled={openingMulkiya}
+                        onClick={handleOpenMulkiya}
+                      >
+                        {openingMulkiya ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ExternalLink className="h-4 w-4" />
+                        )}
+                        View PDF
+                      </Button>
+                    )}
+                    <Input
+                      id="mulkiya_pdf"
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      aria-describedby="mulkiya-pdf-status"
+                      disabled={uploadingMulkiya}
+                      onChange={handleMulkiyaUpload}
+                      className="min-h-10 cursor-pointer sm:max-w-[260px]"
+                    />
+                  </div>
+                </div>
+                {uploadingMulkiya && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Uploading PDF...
+                  </div>
+                )}
               </div>
             </TabsContent>
 
