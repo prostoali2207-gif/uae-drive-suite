@@ -391,7 +391,7 @@ export function StaffSettings() {
               <div className="mx-auto mt-3 flex min-h-0 w-full max-w-5xl flex-1 flex-col">
                 <SmoothSignatureCanvas ref={signatureRef} className="min-h-0 flex-1" onStroke={() => setSignatureHasInk(true)} onClear={() => setSignatureHasInk(false)} />
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold disabled:opacity-40" disabled={!signatureHasInk} onClick={() => signatureRef.current?.undo()}><Undo2 className="mr-2 h-4 w-4" />Undo stroke</button>
+                  <button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold disabled:opacity-40" disabled={!signatureHasInk} onClick={() => signatureRef.current?.undo()}><Undo2 className="mr-2 h-4 w-4" />Back</button>
                   <button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold disabled:opacity-40" disabled={!signatureHasInk} onClick={() => signatureRef.current?.clear()}><Trash2 className="mr-2 h-4 w-4" />Clear</button>
                 </div>
               </div>
