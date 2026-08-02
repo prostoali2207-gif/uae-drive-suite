@@ -84,7 +84,7 @@ describe("NewContract searchable dropdowns", () => {
     expect(carSearch.closest("[cmdk-root]")).toHaveClass("!bg-white", "!text-slate-950");
   });
 
-  it("stacks rental dates and times and keeps the total card non-sticky on narrow screens", async () => {
+  it("keeps rental dates and times compact while preventing narrow-screen overflow", async () => {
     render(
       <MemoryRouter initialEntries={["/contracts/new"]}>
         <NewContract />
@@ -97,10 +97,10 @@ describe("NewContract searchable dropdowns", () => {
     const timeGrid = screen.getByText("Start time *").parentElement?.parentElement;
     const totalCard = screen.getByText("Contract total").parentElement?.parentElement?.parentElement;
 
-    expect(dateGrid).toHaveClass("grid", "gap-3", "sm:grid-cols-2");
-    expect(dateGrid).not.toHaveClass("grid-cols-2");
-    expect(timeGrid).toHaveClass("grid", "gap-3", "sm:grid-cols-2");
-    expect(timeGrid).not.toHaveClass("grid-cols-2");
+    expect(dateGrid).toHaveClass("grid", "grid-cols-2", "gap-3", "max-[340px]:gap-2");
+    expect(timeGrid).toHaveClass("grid", "grid-cols-2", "gap-3", "max-[340px]:gap-2");
+    expect(dateGrid?.querySelector('input[type="date"]')).toHaveClass("min-w-0", "max-[340px]:px-2", "max-[340px]:text-xs");
+    expect(timeGrid?.querySelector('input[type="time"]')).toHaveClass("min-w-0", "max-[340px]:px-2", "max-[340px]:text-xs");
     expect(totalCard).toHaveClass("md:sticky", "md:bottom-4", "md:z-10");
     expect(totalCard).not.toHaveClass("sticky", "bottom-20", "z-10");
   });
