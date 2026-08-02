@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, CheckCircle2, ChevronDown, Copy, FileText, Link2, Loader2, MessageCircle, PenLine, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,126 +10,7 @@ import {
 } from "@/lib/contractDrivers";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
-interface SigRef {
-  isEmpty: () => boolean;
-  getDataUrl: () => string;
-  clear: () => void;
-}
-
-const SignatureCanvas = forwardRef<SigRef, { onStroke?: () => void; large?: boolean }>(function SignatureCanvas({ onStroke, large }, ref) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-  const last = useRef<{ x: number; y: number } | null>(null);
-  const lastMidpoint = useRef<{ x: number; y: number } | null>(null);
-
-  const reset = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  };
-
-  useEffect(reset, []);
-
-  const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: (event.clientX - rect.left) * (canvas.width / rect.width),
-      y: (event.clientY - rect.top) * (canvas.height / rect.height),
-    };
-  };
-
-  const start = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drawing.current = true;
-    last.current = point(event);
-    lastMidpoint.current = last.current;
-  };
-
-  const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current || !last.current) return;
-    event.preventDefault();
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    const next = point(event);
-    ctx.strokeStyle = "#111827";
-    const distance = Math.hypot(next.x - last.current.x, next.y - last.current.y);
-    ctx.lineWidth = Math.max(3.25, Math.min(7, 8 - distance * 0.1));
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    const midpoint = { x: (last.current.x + next.x) / 2, y: (last.current.y + next.y) / 2 };
-    ctx.beginPath();
-    ctx.moveTo(lastMidpoint.current?.x ?? last.current.x, lastMidpoint.current?.y ?? last.current.y);
-    ctx.quadraticCurveTo(last.current.x, last.current.y, midpoint.x, midpoint.y);
-    ctx.stroke();
-    lastMidpoint.current = midpoint;
-    last.current = next;
-  };
-
-  const stop = () => {
-    if (!drawing.current) return;
-    drawing.current = false;
-    last.current = null;
-    lastMidpoint.current = null;
-    onStroke?.();
-  };
-
-  useImperativeHandle(ref, () => ({
-    isEmpty: () => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (!canvas || !ctx) return true;
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      for (let index = 0; index < data.length; index += 4) {
-        if (data[index] !== 255 || data[index + 1] !== 255 || data[index + 2] !== 255) return false;
-      }
-      return true;
-    },
-    getDataUrl: () => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (!canvas || !ctx) return "";
-      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let left = canvas.width, right = 0, top = canvas.height, bottom = 0;
-      for (let y = 0; y < canvas.height; y += 1) for (let x = 0; x < canvas.width; x += 1) {
-        const i = (y * canvas.width + x) * 4;
-        if (pixels.data[i] < 245 || pixels.data[i + 1] < 245 || pixels.data[i + 2] < 245) {
-          left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
-        }
-      }
-      if (right <= left || bottom <= top) return "";
-      const pad = 24;
-      const sx = Math.max(0, left - pad), sy = Math.max(0, top - pad);
-      const sw = Math.min(canvas.width - sx, right - left + pad * 2), sh = Math.min(canvas.height - sy, bottom - top + pad * 2);
-      const output = document.createElement("canvas"); output.width = sw; output.height = sh;
-      const out = output.getContext("2d"); if (!out) return "";
-      out.fillStyle = "#ffffff"; out.fillRect(0, 0, sw, sh); out.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-      return output.toDataURL("image/png");
-    },
-    clear: reset,
-  }));
-
-  return (
-    <div className={cn("relative overflow-hidden rounded-2xl bg-white", large ? "h-[52dvh] min-h-72" : "h-44")}>
-      <div className="pointer-events-none absolute inset-x-10 top-[68%] border-t border-dashed border-slate-300" />
-      <canvas
-        ref={canvasRef}
-        width={1200}
-        height={480}
-        className="relative h-full w-full touch-none bg-transparent"
-        onPointerDown={start}
-        onPointerMove={move}
-        onPointerUp={stop}
-        onPointerCancel={stop}
-      />
-    </div>
-  );
-});
+import { SmoothSignatureCanvas, type SmoothSignatureCanvasRef } from "@/components/SmoothSignatureCanvas";
 
 type ContractForPdf = Parameters<typeof generateContractPdf>[0];
 type FlowStep = "review" | "terms" | "sign" | "success";
@@ -191,7 +72,7 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
   const [clientLink, setClientLink] = useState("");
-  const signatureRef = useRef<SigRef>(null);
+  const signatureRef = useRef<SmoothSignatureCanvasRef>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -564,7 +445,7 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
             <div className="min-w-0 flex-1 text-center"><div className="truncate text-xs font-semibold text-slate-400">{signer.label}</div><div className="truncate font-bold">{signer.name}</div></div>
             <button type="button" className="h-11 rounded-full bg-white px-5 font-bold text-slate-950 disabled:opacity-40" disabled={!canvasHasContent} onClick={saveCurrentSignature}>Done</button>
           </div>
-          <div className="mx-auto mt-2 w-full max-w-5xl flex-1"><SignatureCanvas ref={signatureRef} large onStroke={() => setCanvasHasContent(true)} /></div>
+          <div className="mx-auto mt-2 w-full max-w-5xl flex-1"><SmoothSignatureCanvas ref={signatureRef} onStroke={() => setCanvasHasContent(true)} /></div>
           <div className="mx-auto w-full max-w-5xl pb-2 pt-3">
             <button type="button" className="h-12 w-full rounded-xl bg-[#222631] font-semibold text-white hover:bg-[#2b303d]" onClick={() => { signatureRef.current?.clear(); setCanvasHasContent(false); }}>Clear signature</button>
           </div>

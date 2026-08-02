@@ -34,7 +34,7 @@ export function BottomNav() {
   const location = useLocation();
   const isMoreActive = moreNav.some((item) => isActivePath(location.pathname, item.url));
 
-  if (location.pathname === "/contracts/new") return null;
+  if (location.pathname === "/contracts/new" || location.pathname.startsWith("/sign/")) return null;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 w-full max-w-[100vw] border-t border-border bg-background px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 shadow-lg md:hidden">

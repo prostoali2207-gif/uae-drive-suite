@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, FileText, Loader2, PenLine, Trash2, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { SmoothSignatureCanvas, type SmoothSignatureCanvasRef } from "@/components/SmoothSignatureCanvas";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -17,30 +18,16 @@ type Payload = {
 };
 
 function SignaturePad({ onSave, onCancel, signerName }: { onSave: (value: string) => Promise<void>; onCancel: () => void; signerName: string }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-  const last = useRef<{ x: number; y: number } | null>(null);
-  const lastMidpoint = useRef<{ x: number; y: number } | null>(null);
+  const ref = useRef<SmoothSignatureCanvasRef>(null);
   const [hasInk, setHasInk] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const clear = () => {
-    const canvas = ref.current, ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
-    ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height); setHasInk(false);
+    ref.current?.clear();
+    setHasInk(false);
   };
-  useEffect(clear, []);
-  const point = (event: React.PointerEvent<HTMLCanvasElement>) => { const rect = event.currentTarget.getBoundingClientRect(); return { x: (event.clientX - rect.left) * 1200 / rect.width, y: (event.clientY - rect.top) * 480 / rect.height }; };
-  const start = (event: React.PointerEvent<HTMLCanvasElement>) => { event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; last.current = point(event); lastMidpoint.current = last.current; };
-  const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current || !last.current) return; const ctx = ref.current?.getContext("2d"); if (!ctx) return;
-    const next = point(event), distance = Math.hypot(next.x - last.current.x, next.y - last.current.y);
-    ctx.strokeStyle = "#111827"; ctx.lineWidth = Math.max(3.25, Math.min(7, 8 - distance * .1)); ctx.lineCap = "round"; ctx.lineJoin = "round";
-    const midpoint = { x: (last.current.x + next.x) / 2, y: (last.current.y + next.y) / 2 };
-    ctx.beginPath(); ctx.moveTo(lastMidpoint.current?.x ?? last.current.x, lastMidpoint.current?.y ?? last.current.y); ctx.quadraticCurveTo(last.current.x, last.current.y, midpoint.x, midpoint.y); ctx.stroke(); lastMidpoint.current = midpoint; last.current = next; setHasInk(true);
-  };
-  const stop = () => { drawing.current = false; last.current = null; lastMidpoint.current = null; };
-  const submit = async () => { const value = ref.current?.toDataURL("image/png"); if (!value) return; setSaving(true); try { await onSave(value); } finally { setSaving(false); } };
-  return <div><div className="flex items-center gap-3"><button type="button" aria-label="Close signature without saving" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10" onClick={onCancel}><X className="h-8 w-8" /></button><div className="min-w-0 flex-1 text-center"><div className="text-xs font-semibold text-slate-400">Signature</div><div className="truncate font-bold">{signerName}</div></div><button type="button" className="h-11 rounded-full bg-white px-5 font-bold text-slate-950 disabled:opacity-40" disabled={!hasInk || saving} onClick={submit}>{saving && <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />}Done</button></div><div className="mt-4"><div className="relative h-[52dvh] min-h-72 overflow-hidden rounded-2xl bg-white"><div className="pointer-events-none absolute inset-x-10 top-[68%] border-t border-dashed border-slate-300" /><canvas ref={ref} width={1200} height={480} className="relative h-full w-full touch-none bg-transparent" onPointerDown={start} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} /></div><button type="button" className="mt-3 h-12 w-full rounded-xl bg-[#222631] font-semibold text-white" onClick={clear}><Trash2 className="mr-2 inline h-4 w-4" />Clear signature</button></div></div>;
+  const submit = async () => { const value = ref.current?.getDataUrl(); if (!value) return; setSaving(true); try { await onSave(value); } finally { setSaving(false); } };
+  return <div><div className="flex items-center gap-3"><button type="button" aria-label="Close signature without saving" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10" onClick={onCancel}><X className="h-8 w-8" /></button><div className="min-w-0 flex-1 text-center"><div className="text-xs font-semibold text-slate-400">Signature</div><div className="truncate font-bold">{signerName}</div></div><button type="button" className="h-11 rounded-full bg-white px-5 font-bold text-slate-950 disabled:opacity-40" disabled={!hasInk || saving} onClick={submit}>{saving && <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />}Done</button></div><div className="mt-4"><SmoothSignatureCanvas ref={ref} onStroke={() => setHasInk(true)} /><button type="button" className="mt-3 h-12 w-full rounded-xl bg-[#222631] font-semibold text-white" onClick={clear}><Trash2 className="mr-2 inline h-4 w-4" />Clear signature</button></div></div>;
 }
 
 export default function PublicContractSign() {
