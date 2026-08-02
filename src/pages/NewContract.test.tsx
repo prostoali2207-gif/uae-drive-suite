@@ -83,4 +83,25 @@ describe("NewContract searchable dropdowns", () => {
     expect(await screen.findByText(/73556.*Toyota Corolla/)).toBeInTheDocument();
     expect(carSearch.closest("[cmdk-root]")).toHaveClass("!bg-white", "!text-slate-950");
   });
+
+  it("stacks rental dates and times and keeps the total card non-sticky on narrow screens", async () => {
+    render(
+      <MemoryRouter initialEntries={["/contracts/new"]}>
+        <NewContract />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: /select client/i });
+
+    const dateGrid = screen.getByText("Start date *").parentElement?.parentElement;
+    const timeGrid = screen.getByText("Start time *").parentElement?.parentElement;
+    const totalCard = screen.getByText("Contract total").parentElement?.parentElement?.parentElement;
+
+    expect(dateGrid).toHaveClass("grid", "gap-3", "sm:grid-cols-2");
+    expect(dateGrid).not.toHaveClass("grid-cols-2");
+    expect(timeGrid).toHaveClass("grid", "gap-3", "sm:grid-cols-2");
+    expect(timeGrid).not.toHaveClass("grid-cols-2");
+    expect(totalCard).toHaveClass("md:sticky", "md:bottom-4", "md:z-10");
+    expect(totalCard).not.toHaveClass("sticky", "bottom-20", "z-10");
+  });
 });
