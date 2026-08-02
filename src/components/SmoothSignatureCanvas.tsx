@@ -32,8 +32,6 @@ function croppedDataUrl(canvas: HTMLCanvasElement) {
   output.width = width; output.height = height;
   const outputContext = output.getContext("2d");
   if (!outputContext) return "";
-  outputContext.fillStyle = "#ffffff";
-  outputContext.fillRect(0, 0, width, height);
   outputContext.drawImage(canvas, sx, sy, width, height, 0, 0, width, height);
   return output.toDataURL("image/png");
 }

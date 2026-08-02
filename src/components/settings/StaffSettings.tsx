@@ -90,6 +90,21 @@ function nullable(value: string) {
   return value.trim() || null;
 }
 
+function formatEmiratesId(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 15);
+  return [digits.slice(0, 3), digits.slice(3, 7), digits.slice(7, 14), digits.slice(14, 15)]
+    .filter(Boolean)
+    .join("-");
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidEmiratesId(value: string) {
+  return /^784-\d{4}-\d{7}-\d$/.test(value);
+}
+
 export function StaffSettings() {
   const { user } = useAuth();
   const [members, setMembers] = useState<StaffMember[]>([]);
@@ -103,6 +118,14 @@ export function StaffSettings() {
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [signatureHasInk, setSignatureHasInk] = useState(false);
   const signatureRef = useRef<SmoothSignatureCanvasRef>(null);
+  const initialFormRef = useRef<StaffForm>(emptyForm);
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
+
+  const requestDialogChange = (open: boolean) => {
+    if (!open && !saving && isDirty && !window.confirm("Discard the changes you entered?")) return;
+    if (!saving) setDialogOpen(open);
+  };
 
   const loadMembers = async () => {
     if (!user) return;
@@ -141,7 +164,9 @@ export function StaffSettings() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm);
+    const nextForm = { ...emptyForm };
+    setForm(nextForm);
+    initialFormRef.current = nextForm;
     setDialogOpen(true);
   };
 
@@ -159,7 +184,9 @@ export function StaffSettings() {
 
   const openEdit = (member: StaffMember) => {
     setEditing(member);
-    setForm(asForm(member));
+    const nextForm = asForm(member);
+    setForm(nextForm);
+    initialFormRef.current = nextForm;
     setDialogOpen(true);
   };
 
@@ -167,6 +194,14 @@ export function StaffSettings() {
     if (!user || saving) return;
     if (!form.full_name.trim()) {
       toast.error("Employee name is required");
+      return;
+    }
+    if (form.email.trim() && !isValidEmail(form.email.trim())) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    if (form.emirates_id.trim() && !isValidEmiratesId(form.emirates_id.trim())) {
+      toast.error("Emirates ID must contain 15 digits");
       return;
     }
 
@@ -183,7 +218,7 @@ export function StaffSettings() {
       license_expiry: form.role === "driver" ? nullable(form.license_expiry) : null,
       signature: nullable(form.signature),
       notes: nullable(form.notes),
-      status: form.status,
+      status: editing ? form.status : "active",
     };
 
     const result = editing
@@ -275,11 +310,12 @@ export function StaffSettings() {
         )}
       </CardContent>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => !saving && setDialogOpen(open)}>
-        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+      <Dialog open={dialogOpen} onOpenChange={requestDialogChange}>
+        <DialogContent className="flex max-h-[92dvh] max-w-2xl flex-col overflow-hidden p-0">
+          <div className="min-h-0 overflow-y-auto px-4 pb-2 pt-6 sm:px-6">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit employee" : "Add employee"}</DialogTitle>
-            <DialogDescription>Only the name and role are required. Salary is not part of this record.</DialogDescription>
+            <DialogDescription>Only the name and role are required.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-5 py-2">
@@ -297,27 +333,31 @@ export function StaffSettings() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-1.5">
-                <Label>Status</Label>
-                <Select value={form.status} onValueChange={(status: StaffStatus) => setForm({ ...form, status })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {editing ? (
+                <div className="grid gap-1.5">
+                  <Label>Status</Label>
+                  <Select value={form.status} onValueChange={(status: StaffStatus) => setForm({ ...form, status })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <div className="grid gap-1.5">
                 <Label htmlFor="staff-phone">Phone</Label>
                 <Input id="staff-phone" inputMode="tel" dir="ltr" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+971 50 000 0000" />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="staff-email">Email</Label>
-                <Input id="staff-email" type="email" dir="ltr" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                <Input id="staff-email" type="email" dir="ltr" aria-invalid={Boolean(form.email.trim()) && !isValidEmail(form.email.trim())} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                {form.email.trim() && !isValidEmail(form.email.trim()) ? <p className="text-xs text-destructive">Enter a valid email address</p> : null}
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="staff-eid">Emirates ID</Label>
-                <Input id="staff-eid" dir="ltr" value={form.emirates_id} onChange={(event) => setForm({ ...form, emirates_id: event.target.value })} placeholder="784-0000-0000000-0" />
+                <Input id="staff-eid" dir="ltr" inputMode="numeric" aria-invalid={Boolean(form.emirates_id) && !isValidEmiratesId(form.emirates_id)} value={form.emirates_id} onChange={(event) => setForm({ ...form, emirates_id: formatEmiratesId(event.target.value) })} placeholder="784-0000-0000000-0" />
+                {form.emirates_id && !isValidEmiratesId(form.emirates_id) ? <p className="text-xs text-destructive">Enter all 15 digits</p> : null}
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="staff-passport">Passport number</Label>
@@ -367,10 +407,11 @@ export function StaffSettings() {
               <Textarea id="staff-notes" rows={3} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Optional internal note" />
             </div>
           </div>
+          </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button type="button" disabled={saving || !form.full_name.trim()} onClick={() => void save()}>
+          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-3 sm:gap-2 sm:px-6">
+            <Button type="button" variant="outline" disabled={saving} onClick={() => requestDialogChange(false)}>Cancel</Button>
+            <Button type="button" disabled={saving || !form.full_name.trim() || (Boolean(form.email.trim()) && !isValidEmail(form.email.trim())) || (Boolean(form.emirates_id) && !isValidEmiratesId(form.emirates_id))} onClick={() => void save()}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {saving ? "Saving..." : editing ? "Save employee" : "Add employee"}
             </Button>
