@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, ChevronDown, Copy, FileText, Link2, Loader2, MessageCircle, PenLine, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, ChevronDown, Copy, FileText, Link2, Loader2, MessageCircle, PenLine, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { generateContractPdf } from "@/lib/contractPdf";
@@ -445,9 +445,10 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
             <div className="min-w-0 flex-1 text-center"><div className="truncate text-xs font-semibold text-slate-400">{signer.label}</div><div className="truncate font-bold">{signer.name}</div></div>
             <button type="button" className="h-11 rounded-full bg-white px-5 font-bold text-slate-950 disabled:opacity-40" disabled={!canvasHasContent} onClick={saveCurrentSignature}>Done</button>
           </div>
-          <div className="mx-auto mt-2 w-full max-w-5xl flex-1"><SmoothSignatureCanvas ref={signatureRef} onStroke={() => setCanvasHasContent(true)} /></div>
-          <div className="mx-auto w-full max-w-5xl pb-2 pt-3">
-            <button type="button" className="h-12 w-full rounded-xl bg-[#222631] font-semibold text-white hover:bg-[#2b303d]" onClick={() => { signatureRef.current?.clear(); setCanvasHasContent(false); }}>Clear signature</button>
+          <div className="mx-auto mt-2 w-full max-w-5xl flex-1"><SmoothSignatureCanvas ref={signatureRef} onStroke={() => setCanvasHasContent(true)} onClear={() => setCanvasHasContent(false)} /></div>
+          <div className="mx-auto grid w-full max-w-5xl grid-cols-2 gap-2 pb-2 pt-3">
+            <button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold text-white hover:bg-[#2b303d] disabled:opacity-40" disabled={!canvasHasContent} onClick={() => signatureRef.current?.undo()}><Undo2 className="mr-2 h-4 w-4" />Undo stroke</button>
+            <button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold text-white hover:bg-[#2b303d] disabled:opacity-40" disabled={!canvasHasContent} onClick={() => signatureRef.current?.clear()}><Trash2 className="mr-2 h-4 w-4" />Clear</button>
           </div>
         </div>
       )}

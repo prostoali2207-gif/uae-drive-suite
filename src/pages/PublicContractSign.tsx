@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, FileText, Loader2, PenLine, Trash2, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, FileText, Loader2, PenLine, Trash2, Undo2, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { SmoothSignatureCanvas, type SmoothSignatureCanvasRef } from "@/components/SmoothSignatureCanvas";
@@ -27,7 +27,7 @@ function SignaturePad({ onSave, onCancel, signerName }: { onSave: (value: string
     setHasInk(false);
   };
   const submit = async () => { const value = ref.current?.getDataUrl(); if (!value) return; setSaving(true); try { await onSave(value); } finally { setSaving(false); } };
-  return <div><div className="flex items-center gap-3"><button type="button" aria-label="Close signature without saving" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10" onClick={onCancel}><X className="h-8 w-8" /></button><div className="min-w-0 flex-1 text-center"><div className="text-xs font-semibold text-slate-400">Signature</div><div className="truncate font-bold">{signerName}</div></div><button type="button" className="h-11 rounded-full bg-white px-5 font-bold text-slate-950 disabled:opacity-40" disabled={!hasInk || saving} onClick={submit}>{saving && <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />}Done</button></div><div className="mt-4"><SmoothSignatureCanvas ref={ref} onStroke={() => setHasInk(true)} /><button type="button" className="mt-3 h-12 w-full rounded-xl bg-[#222631] font-semibold text-white" onClick={clear}><Trash2 className="mr-2 inline h-4 w-4" />Clear signature</button></div></div>;
+  return <div><div className="flex items-center gap-3"><button type="button" aria-label="Close signature without saving" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10" onClick={onCancel}><X className="h-8 w-8" /></button><div className="min-w-0 flex-1 text-center"><div className="text-xs font-semibold text-slate-400">Signature</div><div className="truncate font-bold">{signerName}</div></div><button type="button" className="h-11 rounded-full bg-white px-5 font-bold text-slate-950 disabled:opacity-40" disabled={!hasInk || saving} onClick={submit}>{saving && <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />}Done</button></div><div className="mt-4"><SmoothSignatureCanvas ref={ref} onStroke={() => setHasInk(true)} onClear={() => setHasInk(false)} /><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold text-white disabled:opacity-40" disabled={!hasInk} onClick={() => ref.current?.undo()}><Undo2 className="mr-2 h-4 w-4" />Undo stroke</button><button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold text-white disabled:opacity-40" disabled={!hasInk} onClick={clear}><Trash2 className="mr-2 h-4 w-4" />Clear</button></div></div></div>;
 }
 
 export default function PublicContractSign() {

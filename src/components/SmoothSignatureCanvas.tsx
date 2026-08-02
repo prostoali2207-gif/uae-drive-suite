@@ -6,6 +6,7 @@ export interface SmoothSignatureCanvasRef {
   isEmpty: () => boolean;
   getDataUrl: () => string;
   clear: () => void;
+  undo: () => void;
 }
 
 function croppedDataUrl(canvas: HTMLCanvasElement) {
@@ -37,12 +38,14 @@ function croppedDataUrl(canvas: HTMLCanvasElement) {
   return output.toDataURL("image/png");
 }
 
-export const SmoothSignatureCanvas = forwardRef<SmoothSignatureCanvasRef, { className?: string; onStroke?: () => void }>(
-  function SmoothSignatureCanvas({ className, onStroke }, ref) {
+export const SmoothSignatureCanvas = forwardRef<SmoothSignatureCanvasRef, { className?: string; onStroke?: () => void; onClear?: () => void }>(
+  function SmoothSignatureCanvas({ className, onStroke, onClear }, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const padRef = useRef<SignaturePad | null>(null);
     const onStrokeRef = useRef(onStroke);
+    const onClearRef = useRef(onClear);
     onStrokeRef.current = onStroke;
+    onClearRef.current = onClear;
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -50,11 +53,12 @@ export const SmoothSignatureCanvas = forwardRef<SmoothSignatureCanvasRef, { clas
       const pad = new SignaturePad(canvas, {
         penColor: "#111827",
         backgroundColor: "rgba(255,255,255,0)",
-        minWidth: 1.35,
-        maxWidth: 4.2,
-        throttle: 8,
-        minDistance: 1,
-        velocityFilterWeight: 0.68,
+        minWidth: 1.15,
+        maxWidth: 4.6,
+        dotSize: 2.25,
+        throttle: 0,
+        minDistance: 0.5,
+        velocityFilterWeight: 0.72,
       });
       pad.addEventListener("endStroke", () => onStrokeRef.current?.());
       padRef.current = pad;
@@ -78,13 +82,25 @@ export const SmoothSignatureCanvas = forwardRef<SmoothSignatureCanvasRef, { clas
     useImperativeHandle(ref, () => ({
       isEmpty: () => padRef.current?.isEmpty() ?? true,
       getDataUrl: () => canvasRef.current ? croppedDataUrl(canvasRef.current) : "",
-      clear: () => padRef.current?.clear(),
+      clear: () => {
+        padRef.current?.clear();
+        onClearRef.current?.();
+      },
+      undo: () => {
+        const pad = padRef.current;
+        if (!pad) return;
+        const strokes = pad.toData();
+        if (strokes.length === 0) return;
+        strokes.pop();
+        pad.fromData(strokes);
+        if (strokes.length === 0) onClearRef.current?.();
+      },
     }), []);
 
     return (
       <div className={cn("relative h-[52dvh] min-h-72 overflow-hidden rounded-2xl bg-white", className)}>
         <div className="pointer-events-none absolute inset-x-10 top-[68%] border-t border-dashed border-slate-300" />
-        <canvas ref={canvasRef} className="relative h-full w-full touch-none bg-transparent" />
+        <canvas ref={canvasRef} aria-label="Draw signature" className="relative h-full w-full cursor-crosshair touch-none select-none bg-transparent" />
       </div>
     );
   },
