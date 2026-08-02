@@ -33,7 +33,7 @@ type FineOption = {
   black_points: number | null;
   source: string;
   contract_id: string | null;
-  clients: { full_name: string; phone: string; license_number: string | null; nationality: string | null } | null;
+  clients: { full_name: string; phone: string; license_number: string | null; nationality: string | null; unified_number: string | null; license_type: "uae" | "foreign" | "international" | null; license_issuing_country: string | null; traffic_file_number: string | null } | null;
   cars: { plate: string; make: string; model: string } | null;
   contracts: { id: string; start_date: string; start_time: string | null; end_date: string; end_time: string | null } | null;
 };
@@ -334,7 +334,7 @@ const ExternalForms = () => {
     setLoadingFines(true);
     const { data: fines, error: finesError } = await supabase
       .from("fines")
-      .select("id, fine_number, fine_date, black_points, source, contract_id, clients(full_name, phone, license_number, nationality), cars(plate, make, model)")
+      .select("id, fine_number, fine_date, black_points, source, contract_id, clients(full_name, phone, license_number, nationality, unified_number, license_type, license_issuing_country, traffic_file_number), cars(plate, make, model)")
       .gt("black_points", 0)
       .order("fine_date", { ascending: false })
       .limit(200);
@@ -374,6 +374,9 @@ const ExternalForms = () => {
     !selectedFine.contract_id || !selectedFine.contracts ? "linked contract" : null,
     !selectedFine.clients ? "client" : null,
     !selectedFine.clients?.license_number ? "driving licence number" : null,
+    !selectedFine.clients?.license_type ? "driving licence type" : null,
+    selectedFine.clients?.license_type === "uae" && !selectedFine.clients.traffic_file_number ? "Traffic File Number" : null,
+    (selectedFine.clients?.license_type === "foreign" || selectedFine.clients?.license_type === "international") && !selectedFine.clients.unified_number ? "Unified Number (UID)" : null,
     !selectedFine.cars?.plate ? "vehicle plate" : null,
     !selectedFine.fine_number ? "fine number" : null,
   ].filter(Boolean) as string[] : [];
@@ -409,9 +412,9 @@ const ExternalForms = () => {
         contractNumber: `CTR-${contract.id.slice(0, 8).toUpperCase()}`,
         clientName: selectedFine.clients.full_name,
         licenseNumber: selectedFine.clients.license_number ?? "",
-        licenseSource: "",
-        trafficFileNumber: "",
-        unifiedNumber: "",
+        licenseSource: selectedFine.clients.license_type === "uae" ? "UAE" : selectedFine.clients.license_issuing_country ?? "",
+        trafficFileNumber: selectedFine.clients.license_type === "uae" ? selectedFine.clients.traffic_file_number ?? "" : "",
+        unifiedNumber: selectedFine.clients.license_type === "uae" ? "" : selectedFine.clients.unified_number ?? "",
         plateNumber: plate.number,
         plateCode: plate.code,
         plateSource: "",
@@ -569,6 +572,8 @@ const ExternalForms = () => {
                 <div className="rounded-md border bg-muted/40 p-3 text-sm">
                   <p className="font-medium">{selectedFine.clients?.full_name || "Client missing"}</p>
                   <p className="mt-1 text-muted-foreground">{selectedFine.cars?.plate || "Vehicle missing"} · {selectedFine.contract_id ? `CTR-${selectedFine.contract_id.slice(0, 8).toUpperCase()}` : "Contract missing"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{selectedFine.clients?.license_type === "uae" ? "UAE Licence" : selectedFine.clients?.license_type === "foreign" ? "Foreign Licence" : selectedFine.clients?.license_type === "international" ? "International Permit" : "Licence type missing"}</p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground" dir="ltr">{selectedFine.clients?.license_type === "uae" ? `Traffic file: ${selectedFine.clients.traffic_file_number || "Missing"}` : `UID: ${selectedFine.clients?.unified_number || "Missing"}`}</p>
                 </div>
               )}
               {selectedFine && missingFillData.length > 0 && <p className="text-sm text-destructive">Missing: {missingFillData.join(", ")}.</p>}

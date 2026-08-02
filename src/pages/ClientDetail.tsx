@@ -28,9 +28,13 @@ interface ClientRecord {
   email: string | null;
   license_number: string;
   license_expiry: string | null;
+  license_type: "uae" | "foreign" | "international" | null;
+  license_issuing_country: string | null;
+  traffic_file_number: string | null;
   passport_number: string | null;
   passport_expiry: string | null;
   date_of_birth: string | null;
+  unified_number: string | null;
   passport_photo_url: string | null;
   eid_front_url: string | null;
   eid_back_url: string | null;
@@ -265,8 +269,11 @@ const ClientDetail = () => {
             <InfoRow label="Nationality" value={client.nationality} />
             <InfoRow label="Emirates ID" value={client.emirates_id} />
             <InfoRow label="License Number" value={client.license_number} />
+            <InfoRow label="Licence Type" value={client.license_type === "uae" ? "UAE Licence" : client.license_type === "foreign" ? "Foreign Licence" : client.license_type === "international" ? "International Permit" : null} />
+            {client.license_type === "uae" ? <InfoRow label="Traffic File Number" value={client.traffic_file_number} /> : <InfoRow label="Issuing Country" value={client.license_issuing_country} />}
             <InfoRow label="License Expiry" value={formatDate(client.license_expiry)} />
             <InfoRow label="Passport Number" value={client.passport_number} />
+            <InfoRow label="Unified Number (UID)" value={client.unified_number} />
           </div>
         </div>
 

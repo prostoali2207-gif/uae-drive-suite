@@ -28,9 +28,13 @@ export interface EditableClient {
   email: string | null;
   license_number: string;
   license_expiry: string | null;
+  license_type: "uae" | "foreign" | "international" | null;
+  license_issuing_country: string | null;
+  traffic_file_number: string | null;
   passport_number: string | null;
   passport_expiry: string | null;
   date_of_birth: string | null;
+  unified_number: string | null;
   passport_photo_url: string | null;
   eid_front_url: string | null;
   eid_back_url: string | null;
@@ -57,6 +61,7 @@ const getForm = (client: EditableClient) => ({
   phone: client.phone,
   client_type: client.client_type === "Tourist" ? "Tourist" : "Resident",
   date_of_birth: client.date_of_birth ?? "",
+  unified_number: client.unified_number ?? "",
   emirates_id: client.emirates_id ?? "",
   emirates_id_expiry: client.emirates_id_expiry ?? "",
   passport_number: client.passport_number ?? "",
@@ -65,6 +70,9 @@ const getForm = (client: EditableClient) => ({
   email: client.email ?? "",
   license_number: client.license_number ?? "",
   license_expiry: client.license_expiry ?? "",
+  license_type: client.license_type ?? "",
+  license_issuing_country: client.license_issuing_country ?? "",
+  traffic_file_number: client.traffic_file_number ?? "",
   passport_photo_url: client.passport_photo_url ?? "",
   eid_front_url: client.eid_front_url ?? "",
   eid_back_url: client.eid_back_url ?? "",
@@ -118,6 +126,7 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
       phone: form.phone.trim(),
       client_type: form.client_type,
       date_of_birth: form.date_of_birth || null,
+      unified_number: form.unified_number.trim() || null,
       emirates_id: form.client_type === "Resident" ? form.emirates_id.trim() : "",
       emirates_id_expiry: form.client_type === "Resident" ? form.emirates_id_expiry || null : null,
       passport_number: form.client_type === "Tourist" ? form.passport_number.trim() : "",
@@ -126,6 +135,9 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
       email: form.email.trim() || null,
       license_number: form.license_number.trim(),
       license_expiry: form.license_expiry || null,
+      license_type: form.license_type || null,
+      license_issuing_country: form.license_type === "uae" ? null : form.license_issuing_country.trim() || null,
+      traffic_file_number: form.license_type === "uae" ? form.traffic_file_number.trim() || null : null,
       passport_photo_url: form.passport_photo_url || null,
       eid_front_url: form.eid_front_url || null,
       eid_back_url: form.eid_back_url || null,
@@ -209,6 +221,37 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
               />
             </div>
           </div>
+
+          <div className="grid gap-1.5">
+            <Label>Driving Licence Type</Label>
+            <Tabs value={form.license_type} onValueChange={(license_type) => setForm({ ...form, license_type: license_type as typeof form.license_type })}>
+              <TabsList className="grid h-auto w-full grid-cols-1 gap-1 sm:grid-cols-3">
+                <TabsTrigger value="uae" className="min-h-10">UAE Licence</TabsTrigger>
+                <TabsTrigger value="foreign" className="min-h-10">Foreign Licence</TabsTrigger>
+                <TabsTrigger value="international" className="min-h-10">International Permit</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {form.license_type === "uae" && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="detail-traffic-file">Traffic File Number</Label>
+              <Input id="detail-traffic-file" dir="ltr" inputMode="numeric" value={form.traffic_file_number} onChange={(event) => setForm({ ...form, traffic_file_number: event.target.value.replace(/\D/g, "") })} />
+            </div>
+          )}
+
+          {(form.license_type === "foreign" || form.license_type === "international") && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="detail-license-country">Issuing Country</Label>
+                <Input id="detail-license-country" value={form.license_issuing_country} onChange={(event) => setForm({ ...form, license_issuing_country: event.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="detail-client-uid">Unified Number (UID)</Label>
+                <Input id="detail-client-uid" dir="ltr" inputMode="numeric" placeholder="UAE unified number" value={form.unified_number} onChange={(event) => setForm({ ...form, unified_number: event.target.value.replace(/\D/g, "") })} />
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-1.5">
             <Label>Client Type</Label>
