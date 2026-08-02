@@ -49,21 +49,26 @@ export const NationalityCombobox = ({ value, onChange, id }: NationalityCombobox
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command shouldFilter={false}>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] !border-slate-200 !bg-white p-0 !text-slate-950 shadow-xl"
+        align="start"
+      >
+        <Command shouldFilter={false} className="!bg-white !text-slate-950">
           <CommandInput
+            className="!text-slate-950 placeholder:!text-slate-500"
             placeholder="Search country..."
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList>
-            <CommandEmpty>No country found.</CommandEmpty>
+          <CommandList className="!bg-white">
+            <CommandEmpty className="!text-slate-500">No country found.</CommandEmpty>
             {common.length > 0 && (
               <CommandGroup heading="Common">
                 {common.map((c) => (
                   <CommandItem
                     key={c}
                     value={c}
+                    className="!text-slate-950 data-[selected=true]:!bg-blue-50 data-[selected=true]:!text-slate-950"
                     onSelect={() => {
                       onChange(c);
                       setOpen(false);
@@ -82,6 +87,7 @@ export const NationalityCombobox = ({ value, onChange, id }: NationalityCombobox
                   <CommandItem
                     key={c}
                     value={c}
+                    className="!text-slate-950 data-[selected=true]:!bg-blue-50 data-[selected=true]:!text-slate-950"
                     onSelect={() => {
                       onChange(c);
                       setOpen(false);
