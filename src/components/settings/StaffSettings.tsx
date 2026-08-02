@@ -1,5 +1,5 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { BriefcaseBusiness, Check, Loader2, Pencil, PenLine, Plus, Search, UserRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { BriefcaseBusiness, Check, Loader2, Pencil, PenLine, Plus, Search, Trash2, Undo2, UserRound, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { SmoothSignatureCanvas, type SmoothSignatureCanvasRef } from "@/components/SmoothSignatureCanvas";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -47,10 +48,6 @@ interface StaffForm {
   status: StaffStatus;
 }
 
-interface SignaturePadRef {
-  clear: () => void;
-}
-
 const emptyForm: StaffForm = {
   full_name: "",
   role: "manager",
@@ -72,98 +69,6 @@ const roleLabels: Record<StaffRole, string> = {
   cleaner: "Cleaner",
   other: "Other",
 };
-
-const SignaturePad = forwardRef<SignaturePadRef, { initialValue: string; onChange: (value: string) => void }>(
-  function SignaturePad({ initialValue, onChange }, ref) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const drawing = useRef(false);
-    const previousPoint = useRef<{ x: number; y: number } | null>(null);
-
-    const reset = () => {
-      const canvas = canvasRef.current;
-      const context = canvas?.getContext("2d");
-      if (!canvas || !context) return;
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      if (initialValue) {
-        const image = new Image();
-        image.onload = () => context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        image.src = initialValue;
-      }
-    };
-
-    useEffect(reset, [initialValue]);
-
-    const getPoint = (event: React.MouseEvent | React.TouchEvent) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return null;
-      const rect = canvas.getBoundingClientRect();
-      const source = "touches" in event ? event.touches[0] : event;
-      return {
-        x: (source.clientX - rect.left) * (canvas.width / rect.width),
-        y: (source.clientY - rect.top) * (canvas.height / rect.height),
-      };
-    };
-
-    const start = (event: React.MouseEvent | React.TouchEvent) => {
-      event.preventDefault();
-      drawing.current = true;
-      previousPoint.current = getPoint(event);
-    };
-
-    const move = (event: React.MouseEvent | React.TouchEvent) => {
-      if (!drawing.current || !previousPoint.current) return;
-      event.preventDefault();
-      const nextPoint = getPoint(event);
-      const context = canvasRef.current?.getContext("2d");
-      if (!nextPoint || !context) return;
-      context.strokeStyle = "#111827";
-      context.lineWidth = 4;
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.beginPath();
-      context.moveTo(previousPoint.current.x, previousPoint.current.y);
-      context.lineTo(nextPoint.x, nextPoint.y);
-      context.stroke();
-      previousPoint.current = nextPoint;
-    };
-
-    const stop = () => {
-      if (!drawing.current) return;
-      drawing.current = false;
-      previousPoint.current = null;
-      onChange(canvasRef.current?.toDataURL("image/png") ?? "");
-    };
-
-    useImperativeHandle(ref, () => ({
-      clear: () => {
-        const canvas = canvasRef.current;
-        const context = canvas?.getContext("2d");
-        if (!canvas || !context) return;
-        context.fillStyle = "#ffffff";
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        onChange("");
-      },
-    }));
-
-    return (
-      <canvas
-        ref={canvasRef}
-        width={900}
-        height={260}
-        className="h-36 w-full touch-none rounded-lg border bg-white"
-        aria-label="Employee signature pad"
-        onMouseDown={start}
-        onMouseMove={move}
-        onMouseUp={stop}
-        onMouseLeave={stop}
-        onTouchStart={start}
-        onTouchMove={move}
-        onTouchEnd={stop}
-      />
-    );
-  },
-);
 
 function asForm(member: StaffMember): StaffForm {
   return {
@@ -195,7 +100,9 @@ export function StaffSettings() {
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [form, setForm] = useState<StaffForm>(emptyForm);
   const [saving, setSaving] = useState(false);
-  const signatureRef = useRef<SignaturePadRef>(null);
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signatureHasInk, setSignatureHasInk] = useState(false);
+  const signatureRef = useRef<SmoothSignatureCanvasRef>(null);
 
   const loadMembers = async () => {
     if (!user) return;
@@ -236,6 +143,18 @@ export function StaffSettings() {
     setEditing(null);
     setForm(emptyForm);
     setDialogOpen(true);
+  };
+
+  const openSignature = () => {
+    setSignatureHasInk(false);
+    setSignatureOpen(true);
+  };
+
+  const saveSignature = () => {
+    const signature = signatureRef.current?.getDataUrl() ?? "";
+    if (!signature) return;
+    setForm((current) => ({ ...current, signature }));
+    setSignatureOpen(false);
   };
 
   const openEdit = (member: StaffMember) => {
@@ -424,14 +343,23 @@ export function StaffSettings() {
             ) : null}
 
             <section className="grid gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <Label className="flex items-center gap-1.5"><PenLine className="h-4 w-4" /> Employee signature</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">Optional. Draw with a finger, mouse or stylus.</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => signatureRef.current?.clear()}>Clear</Button>
+              <div>
+                <Label className="flex items-center gap-1.5"><PenLine className="h-4 w-4" /> Employee signature</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Optional. Used on company documents.</p>
               </div>
-              <SignaturePad ref={signatureRef} initialValue={form.signature} onChange={(signature) => setForm((current) => ({ ...current, signature }))} />
+              {form.signature ? (
+                <div className="rounded-lg border bg-white p-3">
+                  <img src={form.signature} alt="Employee signature" className="mx-auto h-20 max-w-full object-contain" />
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" onClick={openSignature}><PenLine className="mr-2 h-4 w-4" /> Replace</Button>
+                    <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, signature: "" }))}><Trash2 className="mr-2 h-4 w-4" /> Remove</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button type="button" variant="outline" className="h-12 w-full border-dashed" onClick={openSignature}>
+                  <PenLine className="mr-2 h-5 w-5" /> Add signature
+                </Button>
+              )}
             </section>
 
             <div className="grid gap-1.5">
@@ -447,6 +375,28 @@ export function StaffSettings() {
               {saving ? "Saving..." : editing ? "Save employee" : "Add employee"}
             </Button>
           </DialogFooter>
+
+          {signatureOpen ? (
+            <div className="fixed inset-0 z-[70] flex h-[100dvh] flex-col overflow-hidden bg-[#191b20] p-3 text-white sm:p-5">
+              <div className="mx-auto flex w-full max-w-5xl items-center gap-3">
+                <button type="button" aria-label="Close signature without saving" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-white/10" onClick={() => setSignatureOpen(false)}>
+                  <X className="h-8 w-8" />
+                </button>
+                <div className="min-w-0 flex-1 text-center">
+                  <p className="text-xs font-semibold text-slate-400">Employee signature</p>
+                  <p className="truncate font-bold">{form.full_name.trim() || "New employee"}</p>
+                </div>
+                <button type="button" className="h-11 shrink-0 rounded-full bg-white px-5 font-bold text-slate-950 disabled:opacity-40" disabled={!signatureHasInk} onClick={saveSignature}>Done</button>
+              </div>
+              <div className="mx-auto mt-3 flex min-h-0 w-full max-w-5xl flex-1 flex-col">
+                <SmoothSignatureCanvas ref={signatureRef} className="min-h-0 flex-1" onStroke={() => setSignatureHasInk(true)} onClear={() => setSignatureHasInk(false)} />
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold disabled:opacity-40" disabled={!signatureHasInk} onClick={() => signatureRef.current?.undo()}><Undo2 className="mr-2 h-4 w-4" />Undo stroke</button>
+                  <button type="button" className="flex h-12 items-center justify-center rounded-xl bg-[#222631] font-semibold disabled:opacity-40" disabled={!signatureHasInk} onClick={() => signatureRef.current?.clear()}><Trash2 className="mr-2 h-4 w-4" />Clear</button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </Card>
