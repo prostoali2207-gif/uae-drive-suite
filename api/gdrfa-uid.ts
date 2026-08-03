@@ -133,7 +133,14 @@ async function fillLookupForm(page: Page, payload: Required<Pick<LookupPayload, 
   await passport.fill(payload.passportNumber);
   await selectNationality(page, payload.nationality);
   await fillDateOfBirth(page, payload.dateOfBirth);
-  await page.locator(payload.gender === "male" ? "#edit-gender-1" : "#edit-gender-2").check({ force: true });
+
+  const selector = payload.gender === "male" ? "#edit-gender-1" : "#edit-gender-2";
+  await page.locator(selector).evaluate((element) => {
+    const input = element as HTMLInputElement;
+    input.checked = true;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 }
 
 async function waitForCaptcha(page: Page) {
