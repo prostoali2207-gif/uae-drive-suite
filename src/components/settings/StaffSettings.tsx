@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-type StaffRole = "manager" | "driver" | "accountant" | "cleaner" | "other";
+type StaffRole = "owner" | "manager" | "driver" | "accountant" | "cleaner" | "other";
 type StaffStatus = "active" | "inactive";
 
 interface StaffMember {
@@ -63,9 +63,10 @@ const emptyForm: StaffForm = {
 };
 
 const roleLabels: Record<StaffRole, string> = {
+  owner: "Owner",
   manager: "Manager",
-  driver: "Driver",
   accountant: "Accountant",
+  driver: "Driver",
   cleaner: "Cleaner",
   other: "Other",
 };
