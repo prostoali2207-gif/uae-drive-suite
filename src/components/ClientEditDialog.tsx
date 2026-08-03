@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, IdCard } from "lucide-react";
+import { ExternalLink, FileText, IdCard, Search } from "lucide-react";
 import { toast } from "sonner";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/lib/supabase";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
+
+const GDRFA_UID_URL = "https://www.gdrfad.gov.ae/en/unified-number-inquiry-service";
 
 export interface EditableClient {
   id: string;
@@ -111,6 +113,31 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
     } finally {
       setUploadingField(null);
     }
+  };
+
+  const handleFindUid = async () => {
+    const passportNumber = form.passport_number.trim();
+    const nationality = form.nationality.trim();
+
+    if (!passportNumber || !nationality || !form.date_of_birth) {
+      toast.error("Passport number, nationality and date of birth are required");
+      return;
+    }
+
+    const lookupDetails = [
+      `Passport: ${passportNumber}`,
+      `Nationality: ${nationality}`,
+      `Date of birth: ${form.date_of_birth}`,
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(lookupDetails);
+    } catch {
+      // Clipboard access can be blocked by some mobile browsers. The GDRFA page still opens.
+    }
+
+    window.open(GDRFA_UID_URL, "_blank", "noopener,noreferrer");
+    toast.info("GDRFA opened. Complete gender and security check, then paste the UID here.");
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -248,7 +275,14 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="detail-client-uid">Unified Number (UID)</Label>
-                <Input id="detail-client-uid" dir="ltr" inputMode="numeric" placeholder="UAE unified number" value={form.unified_number} onChange={(event) => setForm({ ...form, unified_number: event.target.value.replace(/\D/g, "") })} />
+                <div className="grid gap-2">
+                  <Input id="detail-client-uid" dir="ltr" inputMode="numeric" placeholder="UAE unified number" value={form.unified_number} onChange={(event) => setForm({ ...form, unified_number: event.target.value.replace(/\D/g, "") })} />
+                  <Button type="button" variant="outline" className="w-full justify-center gap-2" onClick={handleFindUid}>
+                    <Search className="h-4 w-4" />
+                    Find UID on GDRFA
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}
