@@ -1,4 +1,5 @@
 import { PDFDocument } from "pdf-lib";
+import { supabase } from "@/integrations/supabase/client";
 
 export type SharjahBlackPointsValues = {
   contractNumber: string;
@@ -35,6 +36,33 @@ const splitDateTime = (value: string) => {
 export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValues, stampPng?: Uint8Array): Promise<Blob> {
   const response = await fetch(TEMPLATE_URL);
   if (!response.ok) throw new Error("Blank form template could not be loaded");
+
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData.user?.id;
+  const [{ data: client }, { data: owner }] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("license_type, license_issuing_country")
+      .eq("license_number", values.licenseNumber)
+      .maybeSingle(),
+    userId
+      ? supabase
+        .from("staff")
+        .select("signature")
+        .eq("owner_id", userId)
+        .eq("role", "owner")
+        .eq("status", "active")
+        .not("signature", "is", null)
+        .limit(1)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  const licenseSource = client?.license_type === "international"
+    ? "International"
+    : client?.license_type === "uae"
+      ? "UAE"
+      : client?.license_issuing_country?.trim() || values.licenseSource;
 
   const templateBytes = await response.arrayBuffer();
   const template = await PDFDocument.load(templateBytes);
@@ -76,7 +104,7 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   write(values.contractNumber, 334, 650, { size: 8, bold: true, maxWidth: 126 });
   write(values.clientName, 313, 602, { size: 8, bold: true, maxWidth: 150 });
   write(values.licenseNumber, 313, 585, { size: 8, bold: true, maxWidth: 150 });
-  write(values.licenseSource, 313, 565, { maxWidth: 150 });
+  write(licenseSource, 313, 565, { maxWidth: 150 });
   write(values.trafficFileNumber, 313, 548, { maxWidth: 150 });
   write(values.unifiedNumber, 313, 540, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateNumber, 313, 496, { size: 8, bold: true, maxWidth: 150 });
@@ -117,6 +145,22 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     page.drawImage(stamp, {
       x: 166 - width / 2,
       y: 252,
+      width,
+      height,
+    });
+  }
+
+  if (owner?.signature?.startsWith("data:image/png")) {
+    const signature = await pdf.embedPng(owner.signature);
+    const natural = signature.scale(1);
+    const maxWidth = 94;
+    const maxHeight = 30;
+    const signatureScale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
+    const width = natural.width * signatureScale;
+    const height = natural.height * signatureScale;
+    page.drawImage(signature, {
+      x: 166 - width / 2,
+      y: 274,
       width,
       height,
     });
