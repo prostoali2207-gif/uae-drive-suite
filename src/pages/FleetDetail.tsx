@@ -377,24 +377,31 @@ const FleetDetail = () => {
     const file = input.files?.[0];
     if (!file || !id || !ownerId) return;
 
-    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
-      toast.error("Mulkiya must be uploaded as a PDF");
+    const fileName = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || fileName.endsWith(".pdf");
+    const isJpeg = file.type === "image/jpeg" || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
+    const isPng = file.type === "image/png" || fileName.endsWith(".png");
+
+    if (!isPdf && !isJpeg && !isPng) {
+      toast.error("Mulkiya must be a JPG, PNG or PDF file");
       input.value = "";
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("Mulkiya PDF must be 10 MB or smaller");
+      toast.error("Mulkiya file must be 10 MB or smaller");
       input.value = "";
       return;
     }
 
+    const extension = isPdf ? "pdf" : isPng ? "png" : "jpg";
+    const contentType = isPdf ? "application/pdf" : isPng ? "image/png" : "image/jpeg";
+    const objectPath = `${ownerId}/${id}/mulkiya.${extension}`;
+    const previousPath = car?.mulkiya_pdf_path ?? null;
+
     setUploadingMulkiya(true);
-    const objectPath = `${ownerId}/${id}/mulkiya.pdf`;
-    const hadExistingFile = Boolean(car?.mulkiya_pdf_path);
     const { error: uploadError } = await supabase.storage.from("vehicle-documents").upload(objectPath, file, {
       upsert: true,
-      contentType: "application/pdf",
+      contentType,
     });
 
     if (uploadError) {
@@ -406,15 +413,19 @@ const FleetDetail = () => {
 
     const { error: updateError } = await db.from("cars").update({ mulkiya_pdf_path: objectPath }).eq("id", id).eq("owner_id", ownerId);
     if (updateError) {
-      if (!hadExistingFile) await supabase.storage.from("vehicle-documents").remove([objectPath]);
+      if (objectPath !== previousPath) await supabase.storage.from("vehicle-documents").remove([objectPath]);
       toast.error(`Mulkiya was uploaded but could not be linked: ${updateError.message}`);
       setUploadingMulkiya(false);
       input.value = "";
       return;
     }
 
+    if (previousPath && previousPath !== objectPath) {
+      await supabase.storage.from("vehicle-documents").remove([previousPath]);
+    }
+
     setCar((current) => (current ? { ...current, mulkiya_pdf_path: objectPath } : current));
-    toast.success(hadExistingFile ? "Mulkiya PDF replaced" : "Mulkiya PDF uploaded");
+    toast.success(previousPath ? "Mulkiya document replaced" : "Mulkiya document uploaded");
     setUploadingMulkiya(false);
     input.value = "";
   };
@@ -556,13 +567,13 @@ const FleetDetail = () => {
               </div>
               <div className="mt-3 rounded-lg border border-border bg-card p-4">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0"><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" /><div className="text-sm font-semibold text-foreground">Vehicle Registration Card (Mulkiya)</div></div><p id="mulkiya-pdf-status" className="mt-1 text-xs text-muted-foreground">{car.mulkiya_pdf_path ? "PDF uploaded" : "No PDF uploaded"}</p></div>
+                  <div className="min-w-0"><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" /><div className="text-sm font-semibold text-foreground">Vehicle Registration Card (Mulkiya)</div></div><p id="mulkiya-document-status" className="mt-1 text-xs text-muted-foreground">{car.mulkiya_pdf_path ? "Document uploaded" : "No document uploaded"}</p></div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    {car.mulkiya_pdf_path && <Button type="button" variant="outline" className="min-h-10 gap-2" disabled={openingMulkiya} onClick={handleOpenMulkiya}>{openingMulkiya ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}View PDF</Button>}
-                    <Input id="mulkiya_pdf" type="file" accept="application/pdf,.pdf" aria-describedby="mulkiya-pdf-status" disabled={uploadingMulkiya} onChange={handleMulkiyaUpload} className="min-h-10 cursor-pointer sm:max-w-[260px]" />
+                    {car.mulkiya_pdf_path && <Button type="button" variant="outline" className="min-h-10 gap-2" disabled={openingMulkiya} onClick={handleOpenMulkiya}>{openingMulkiya ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}View Document</Button>}
+                    <Input id="mulkiya_document" type="file" accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" aria-describedby="mulkiya-document-status" disabled={uploadingMulkiya} onChange={handleMulkiyaUpload} className="min-h-10 cursor-pointer sm:max-w-[260px]" />
                   </div>
                 </div>
-                {uploadingMulkiya && <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Uploading PDF...</div>}
+                {uploadingMulkiya && <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Uploading document...</div>}
               </div>
             </TabsContent>
 
