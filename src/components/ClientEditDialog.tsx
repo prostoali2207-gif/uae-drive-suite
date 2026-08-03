@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, FileText, IdCard, Search } from "lucide-react";
+import { FileText, IdCard, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/lib/supabase";
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
-
-const GDRFA_UID_URL = "https://www.gdrfad.gov.ae/en/unified-number-inquiry-service";
 
 export interface EditableClient {
   id: string;
@@ -37,6 +35,7 @@ export interface EditableClient {
   passport_expiry: string | null;
   date_of_birth: string | null;
   unified_number: string | null;
+  gender: "male" | "female" | null;
   passport_photo_url: string | null;
   eid_front_url: string | null;
   eid_back_url: string | null;
@@ -64,6 +63,7 @@ const getForm = (client: EditableClient) => ({
   client_type: client.client_type === "Tourist" ? "Tourist" : "Resident",
   date_of_birth: client.date_of_birth ?? "",
   unified_number: client.unified_number ?? "",
+  gender: client.gender ?? "",
   emirates_id: client.emirates_id ?? "",
   emirates_id_expiry: client.emirates_id_expiry ?? "",
   passport_number: client.passport_number ?? "",
@@ -85,6 +85,7 @@ const getForm = (client: EditableClient) => ({
 export function ClientEditDialog({ client, open, onOpenChange, onSaved }: ClientEditDialogProps) {
   const [form, setForm] = useState(() => getForm(client));
   const [saving, setSaving] = useState(false);
+  const [findingUid, setFindingUid] = useState(false);
   const [uploadingField, setUploadingField] = useState<ClientDocumentField | null>(null);
 
   useEffect(() => {
@@ -115,29 +116,69 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
     }
   };
 
+  const callUidApi = async (token: string, body: Record<string, unknown>) => {
+    const response = await fetch("/api/gdrfa-uid", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = (await response.json()) as { uid?: string; sessionId?: string; liveUrl?: string | null; error?: string };
+    if (!response.ok) throw new Error(data.error || "UID lookup failed");
+    return data;
+  };
+
   const handleFindUid = async () => {
     const passportNumber = form.passport_number.trim();
     const nationality = form.nationality.trim();
 
-    if (!passportNumber || !nationality || !form.date_of_birth) {
-      toast.error("Passport number, nationality and date of birth are required");
+    if (!passportNumber || !nationality || !form.date_of_birth || !form.gender) {
+      toast.error("Passport number, nationality, date of birth and gender are required");
       return;
     }
 
-    const lookupDetails = [
-      `Passport: ${passportNumber}`,
-      `Nationality: ${nationality}`,
-      `Date of birth: ${form.date_of_birth}`,
-    ].join("\n");
+    setFindingUid(true);
+    let liveWindow: Window | null = null;
 
     try {
-      await navigator.clipboard.writeText(lookupDetails);
-    } catch {
-      // Clipboard access can be blocked by some mobile browsers. The GDRFA page still opens.
-    }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Please sign in again");
 
-    window.open(GDRFA_UID_URL, "_blank", "noopener,noreferrer");
-    toast.info("GDRFA opened. Complete gender and security check, then paste the UID here.");
+      liveWindow = window.open("about:blank", "fleetdesk-gdrfa-uid");
+      const started = await callUidApi(token, { action: "start" });
+      if (!started.sessionId) throw new Error("Browser session was not created");
+
+      if (started.liveUrl && liveWindow) {
+        liveWindow.location.href = started.liveUrl;
+      } else if (liveWindow) {
+        liveWindow.close();
+        liveWindow = null;
+      }
+
+      toast.info("Searching GDRFA. If CAPTCHA needs you, use the opened browser window.");
+
+      const result = await callUidApi(token, {
+        action: "run",
+        sessionId: started.sessionId,
+        passportNumber,
+        nationality,
+        dateOfBirth: form.date_of_birth,
+        gender: form.gender,
+      });
+
+      if (!result.uid) throw new Error("GDRFA did not return a UID");
+
+      setForm((current) => ({ ...current, unified_number: result.uid ?? "" }));
+      toast.success(`UID found: ${result.uid}`);
+      liveWindow?.close();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "UID lookup failed");
+    } finally {
+      setFindingUid(false);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -154,6 +195,7 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
       client_type: form.client_type,
       date_of_birth: form.date_of_birth || null,
       unified_number: form.unified_number.trim() || null,
+      gender: form.gender || null,
       emirates_id: form.client_type === "Resident" ? form.emirates_id.trim() : "",
       emirates_id_expiry: form.client_type === "Resident" ? form.emirates_id_expiry || null : null,
       passport_number: form.client_type === "Tourist" ? form.passport_number.trim() : "",
@@ -220,33 +262,28 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
         <form onSubmit={handleSubmit} className="grid gap-4 py-2">
           <div className="grid gap-1.5">
             <Label htmlFor="detail-client-name">Full Name</Label>
-            <Input
-              id="detail-client-name"
-              required
-              value={form.full_name}
-              onChange={(event) => setForm({ ...form, full_name: event.target.value })}
-            />
+            <Input id="detail-client-name" required value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="detail-client-phone">Phone</Label>
-              <Input
-                id="detail-client-phone"
-                required
-                value={form.phone}
-                onChange={(event) => setForm({ ...form, phone: event.target.value })}
-              />
+              <Input id="detail-client-phone" required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="detail-client-dob">Date of Birth</Label>
-              <Input
-                id="detail-client-dob"
-                type="date"
-                value={form.date_of_birth}
-                onChange={(event) => setForm({ ...form, date_of_birth: event.target.value })}
-              />
+              <Input id="detail-client-dob" type="date" value={form.date_of_birth} onChange={(event) => setForm({ ...form, date_of_birth: event.target.value })} />
             </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label>Gender</Label>
+            <Tabs value={form.gender} onValueChange={(gender) => setForm({ ...form, gender: gender as typeof form.gender })}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="male">Male</TabsTrigger>
+                <TabsTrigger value="female">Female</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           <div className="grid gap-1.5">
@@ -277,10 +314,9 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
                 <Label htmlFor="detail-client-uid">Unified Number (UID)</Label>
                 <div className="grid gap-2">
                   <Input id="detail-client-uid" dir="ltr" inputMode="numeric" placeholder="UAE unified number" value={form.unified_number} onChange={(event) => setForm({ ...form, unified_number: event.target.value.replace(/\D/g, "") })} />
-                  <Button type="button" variant="outline" className="w-full justify-center gap-2" onClick={handleFindUid}>
-                    <Search className="h-4 w-4" />
-                    Find UID on GDRFA
-                    <ExternalLink className="h-3.5 w-3.5" />
+                  <Button type="button" variant="outline" className="w-full justify-center gap-2" onClick={handleFindUid} disabled={findingUid}>
+                    {findingUid ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    {findingUid ? "Searching GDRFA..." : "Find UID automatically"}
                   </Button>
                 </div>
               </div>
@@ -289,10 +325,7 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
 
           <div className="grid gap-1.5">
             <Label>Client Type</Label>
-            <Tabs
-              value={form.client_type}
-              onValueChange={(client_type) => setForm({ ...form, client_type })}
-            >
+            <Tabs value={form.client_type} onValueChange={(client_type) => setForm({ ...form, client_type })}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="Resident">Resident</TabsTrigger>
                 <TabsTrigger value="Tourist">Tourist</TabsTrigger>
@@ -305,44 +338,22 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
               <>
                 <div className="grid gap-1.5">
                   <Label htmlFor="detail-client-eid">Emirates ID</Label>
-                  <Input
-                    id="detail-client-eid"
-                    required
-                    value={form.emirates_id}
-                    onChange={(event) => setForm({ ...form, emirates_id: event.target.value })}
-                  />
+                  <Input id="detail-client-eid" required value={form.emirates_id} onChange={(event) => setForm({ ...form, emirates_id: event.target.value })} />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="detail-client-eid-expiry">Emirates ID Expiry</Label>
-                  <Input
-                    id="detail-client-eid-expiry"
-                    type="date"
-                    required
-                    value={form.emirates_id_expiry}
-                    onChange={(event) => setForm({ ...form, emirates_id_expiry: event.target.value })}
-                  />
+                  <Input id="detail-client-eid-expiry" type="date" required value={form.emirates_id_expiry} onChange={(event) => setForm({ ...form, emirates_id_expiry: event.target.value })} />
                 </div>
               </>
             ) : (
               <>
                 <div className="grid gap-1.5">
                   <Label htmlFor="detail-client-passport">Passport Number</Label>
-                  <Input
-                    id="detail-client-passport"
-                    required
-                    value={form.passport_number}
-                    onChange={(event) => setForm({ ...form, passport_number: event.target.value })}
-                  />
+                  <Input id="detail-client-passport" required value={form.passport_number} onChange={(event) => setForm({ ...form, passport_number: event.target.value })} />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="detail-client-passport-expiry">Passport Expiry</Label>
-                  <Input
-                    id="detail-client-passport-expiry"
-                    type="date"
-                    required
-                    value={form.passport_expiry}
-                    onChange={(event) => setForm({ ...form, passport_expiry: event.target.value })}
-                  />
+                  <Input id="detail-client-passport-expiry" type="date" required value={form.passport_expiry} onChange={(event) => setForm({ ...form, passport_expiry: event.target.value })} />
                 </div>
               </>
             )}
@@ -351,42 +362,22 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="detail-client-nationality">Nationality</Label>
-              <NationalityCombobox
-                id="detail-client-nationality"
-                value={form.nationality}
-                onChange={(nationality) => setForm({ ...form, nationality })}
-              />
+              <NationalityCombobox id="detail-client-nationality" value={form.nationality} onChange={(nationality) => setForm({ ...form, nationality })} />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="detail-client-email">Email</Label>
-              <Input
-                id="detail-client-email"
-                type="email"
-                value={form.email}
-                onChange={(event) => setForm({ ...form, email: event.target.value })}
-              />
+              <Input id="detail-client-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="detail-client-license">License Number</Label>
-              <Input
-                id="detail-client-license"
-                required
-                value={form.license_number}
-                onChange={(event) => setForm({ ...form, license_number: event.target.value })}
-              />
+              <Input id="detail-client-license" required value={form.license_number} onChange={(event) => setForm({ ...form, license_number: event.target.value })} />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="detail-client-license-expiry">License Expiry</Label>
-              <Input
-                id="detail-client-license-expiry"
-                type="date"
-                required
-                value={form.license_expiry}
-                onChange={(event) => setForm({ ...form, license_expiry: event.target.value })}
-              />
+              <Input id="detail-client-license-expiry" type="date" required value={form.license_expiry} onChange={(event) => setForm({ ...form, license_expiry: event.target.value })} />
             </div>
           </div>
 
@@ -407,12 +398,8 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
           </div>
 
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving || uploadingField !== null}>
-              {saving ? "Saving..." : "Save Changes"}
-            </Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving || findingUid || uploadingField !== null}>{saving ? "Saving..." : "Save Changes"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
