@@ -70,26 +70,61 @@ function waitForCapturedPdf(timeout = 30000) {
 
 async function findSearchInput() {
   for (let i = 0; i < 20; i += 1) {
-    const inputs = [...document.querySelectorAll('input[placeholder*="Search" i], input[type="search"]')];
+    const inputs = [...document.querySelectorAll('input[placeholder*="Search" i], input[type="search"]')]
+      .filter((input) => input.offsetParent !== null && !input.disabled);
     if (inputs.length) return inputs[inputs.length - 1];
     await sleep(500);
   }
   throw new Error("TAMM vehicle search was not found");
 }
 
+function setNativeInputValue(input, value) {
+  const prototype = Object.getPrototypeOf(input);
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set
+    || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (setter) setter.call(input, value);
+  else input.value = value;
+  input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function waitForVehicleRow(plate, timeout = 5000) {
+  const wanted = normalizePlate(plate);
+  const digits = String(plate || "").replace(/\D/g, "");
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const rows = [...document.querySelectorAll("tr")].filter((row) => row.offsetParent !== null);
+    const match = rows.find((row) => {
+      const normalized = normalizePlate(row.innerText);
+      return normalized.includes(wanted) || (digits.length >= 4 && normalized.includes(digits));
+    });
+    if (match) return match;
+    await sleep(250);
+  }
+  return null;
+}
+
 async function searchPlate(plate) {
   const input = await findSearchInput();
   input.focus();
-  input.value = "";
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  await sleep(200);
-  input.value = plate;
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-  await sleep(1400);
+  setNativeInputValue(input, "");
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+  await sleep(350);
 
-  const wanted = normalizePlate(plate);
-  return [...document.querySelectorAll("tr")].find((row) => normalizePlate(row.innerText).includes(wanted)) || null;
+  const digits = String(plate || "").replace(/\D/g, "");
+  setNativeInputValue(input, digits || plate);
+  input.dispatchEvent(new KeyboardEvent("keyup", { key: (digits || plate).slice(-1), bubbles: true }));
+  await sleep(900);
+
+  let row = await waitForVehicleRow(plate, 4500);
+  if (row) return row;
+
+  if (digits && digits !== plate) {
+    setNativeInputValue(input, plate);
+    await sleep(900);
+    row = await waitForVehicleRow(plate, 3500);
+  }
+  return row;
 }
 
 async function openRegistration(row) {
