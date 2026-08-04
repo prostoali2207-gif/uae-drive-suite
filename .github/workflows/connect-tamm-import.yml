@@ -1,0 +1,71 @@
+name: Connect TAMM import
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/connect-tamm-import.yml
+
+permissions:
+  contents: write
+
+jobs:
+  connect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Connect TAMM import to Fleet
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pages/Fleet.tsx')
+          text = path.read_text()
+
+          import_anchor = 'import { DashboardLayout } from "@/components/DashboardLayout";\n'
+          import_line = 'import { TammMulkiyaImport } from "@/components/TammMulkiyaImport";\n'
+          if import_line not in text:
+              if import_anchor not in text:
+                  raise SystemExit('DashboardLayout import anchor not found')
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+
+          ui_anchor = '          <Dialog open={importOpen} onOpenChange={(v) => { setImportOpen(v); if (!v) setImportPreview(null); }}>\n'
+          ui_line = '          <TammMulkiyaImport />\n\n'
+          if ui_line not in text:
+              if ui_anchor not in text:
+                  raise SystemExit('Fleet import dialog anchor not found')
+              text = text.replace(ui_anchor, ui_line + ui_anchor, 1)
+
+          if text.count(import_line) != 1:
+              raise SystemExit('TAMM import statement count is not 1')
+          if text.count('<TammMulkiyaImport />') != 1:
+              raise SystemExit('TAMM component count is not 1')
+
+          path.write_text(text)
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/connect-tamm-import.yml
+
+      - name: Commit result
+        run: |
+          git config user.name "FleetDesk Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/pages/Fleet.tsx .github/workflows/connect-tamm-import.yml
+          git commit -m "Connect TAMM Mulkiya import to fleet page"
+          git push origin main
