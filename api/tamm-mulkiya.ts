@@ -1,21 +1,13 @@
-import {
-  type ApiRequest,
-  type ApiResponse,
-  connectBrowserAgent,
-  createBrowserAgentSession,
-  getAgentPage,
-  getBrowserAgentLiveUrl,
-  requireFleetDeskUser,
-} from "./_browser-agent.js";
+import { type ApiRequest, type ApiResponse, requireFleetDeskUser } from "./_browser-agent.js";
 
-export const config = { maxDuration: 300 };
+export const config = { maxDuration: 120 };
 
-const TAMM_VEHICLES_URL = "https://www.tamm.abudhabi/wb/adp/services-dashboard/vehicles";
 const VEHICLE_DOCUMENTS_BUCKET = "vehicle-documents";
 
 type TammPayload = {
-  action?: "start" | "import";
-  sessionId?: string;
+  action?: "targets" | "upload";
+  carId?: string;
+  pdfBase64?: string;
 };
 
 type FleetCar = {
@@ -23,13 +15,6 @@ type FleetCar = {
   plate: string;
   status: string;
   mulkiya_pdf_path: string | null;
-};
-
-type ImportItem = {
-  id: string;
-  plate: string;
-  status: "imported" | "skipped" | "not_found" | "failed";
-  message?: string;
 };
 
 const readBearerToken = (request: ApiRequest) => {
@@ -77,7 +62,34 @@ async function getActiveFleetCars(request: ApiRequest): Promise<FleetCar[]> {
   return response.json() as Promise<FleetCar[]>;
 }
 
-async function uploadMulkiya(request: ApiRequest, userId: string, car: FleetCar, bytes: Buffer) {
+async function getCar(request: ApiRequest, carId: string): Promise<FleetCar> {
+  const { token, url, anonKey } = getSupabaseConfig(request);
+  const params = new URLSearchParams({
+    select: "id,plate,status,mulkiya_pdf_path",
+    id: `eq.${carId}`,
+    limit: "1",
+  });
+  const response = await fetch(`${url}/rest/v1/cars?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}`, apikey: anonKey },
+  });
+  if (!response.ok) throw new Error(`Could not verify vehicle (${response.status})`);
+  const rows = (await response.json()) as FleetCar[];
+  const car = rows[0];
+  if (!car) throw new Error("Vehicle is not available to this FleetDesk account");
+  if (car.status === "Sold") throw new Error("Sold vehicles cannot receive Mulkiya imports");
+  return car;
+}
+
+async function uploadMulkiya(request: ApiRequest, carId: string, pdfBase64: string) {
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(pdfBase64)) throw new Error("Invalid PDF data");
+  const bytes = Buffer.from(pdfBase64, "base64");
+  if (bytes.length < 100 || bytes.length > 10 * 1024 * 1024) throw new Error("PDF file size is invalid");
+  if (bytes.subarray(0, 4).toString("ascii") !== "%PDF") throw new Error("Downloaded document is not a PDF");
+
+  const car = await getCar(request, carId);
+  if (car.mulkiya_pdf_path) return { status: "skipped", plate: car.plate, message: "Mulkiya already exists" };
+
+  const userId = await getCurrentUserId(request);
   const { token, url, anonKey } = getSupabaseConfig(request);
   const safePlate = normalizePlate(car.plate) || car.id;
   const path = `${userId}/cars/${car.id}/mulkiya-${safePlate}.pdf`;
@@ -89,7 +101,7 @@ async function uploadMulkiya(request: ApiRequest, userId: string, car: FleetCar,
       Authorization: `Bearer ${token}`,
       apikey: anonKey,
       "Content-Type": "application/pdf",
-      "x-upsert": "true",
+      "x-upsert": "false",
     },
     body: bytes,
   });
@@ -109,131 +121,8 @@ async function uploadMulkiya(request: ApiRequest, userId: string, car: FleetCar,
     body: JSON.stringify({ mulkiya_pdf_path: path }),
   });
   if (!updateResponse.ok) throw new Error(`Could not link Mulkiya to vehicle (${updateResponse.status})`);
-  return path;
-}
 
-async function startTammSession() {
-  const session = await createBrowserAgentSession("fleetdesk-tamm-mulkiya");
-  const browser = await connectBrowserAgent(session.id);
-  try {
-    const page = await getAgentPage(browser);
-    await page.goto(TAMM_VEHICLES_URL, { waitUntil: "domcontentloaded", timeout: 45_000 });
-  } finally {
-    await browser.close().catch(() => undefined);
-  }
-  return { sessionId: session.id, liveUrl: await getBrowserAgentLiveUrl(session.id) };
-}
-
-async function ensureCompanyVehiclesPage(page: Awaited<ReturnType<typeof getAgentPage>>) {
-  if (!page.url().includes("/services-dashboard/vehicles")) {
-    await page.goto(TAMM_VEHICLES_URL, { waitUntil: "domcontentloaded", timeout: 45_000 });
-  }
-  await page.waitForTimeout(2_500);
-  const text = await page.locator("body").innerText().catch(() => "");
-  if (/uae\s*pass|sign\s*in|log\s*in/i.test(text) && !/vehicles\s*&\s*plates|vehicle services/i.test(text)) {
-    throw new Error("UAE Pass login is not complete yet");
-  }
-  if (/change traffic profile/i.test(text) && !/al musafir car rental/i.test(text)) {
-    throw new Error("Select the Al Musafir Car Rental traffic profile in the TAMM window, then retry");
-  }
-}
-
-async function clearAndSearchPlate(page: Awaited<ReturnType<typeof getAgentPage>>, plate: string) {
-  const search = page.getByPlaceholder(/search/i).last();
-  if (!(await search.count())) return false;
-  await search.fill(plate);
-  await page.waitForTimeout(1_200);
-  const body = normalizePlate(await page.locator("body").innerText().catch(() => ""));
-  return body.includes(normalizePlate(plate));
-}
-
-async function downloadVehicleRegistration(page: Awaited<ReturnType<typeof getAgentPage>>, plate: string) {
-  const normalized = normalizePlate(plate);
-  const row = page.locator("tr").filter({ hasText: plate }).first();
-  const rowExists = await row.count();
-
-  if (rowExists) {
-    const menuButton = row.locator("button").last();
-    await menuButton.click();
-  } else {
-    const bodyText = normalizePlate(await page.locator("body").innerText().catch(() => ""));
-    if (!bodyText.includes(normalized)) return null;
-    const buttons = page.locator("button");
-    const count = await buttons.count();
-    if (!count) return null;
-    await buttons.nth(count - 1).click();
-  }
-
-  const registration = page.getByText(/vehicle registration/i, { exact: true }).last();
-  await registration.waitFor({ state: "visible", timeout: 10_000 });
-  await registration.click();
-
-  const downloadButton = page.getByRole("button", { name: /^download$/i }).last();
-  await downloadButton.waitFor({ state: "visible", timeout: 15_000 });
-  const downloadPromise = page.waitForEvent("download", { timeout: 30_000 });
-  await downloadButton.click();
-  const download = await downloadPromise;
-  const stream = await download.createReadStream();
-  if (!stream) throw new Error("TAMM did not return a downloadable file");
-
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  await page.keyboard.press("Escape").catch(() => undefined);
-  return Buffer.concat(chunks);
-}
-
-async function importMulkiya(request: ApiRequest, sessionId: string) {
-  const fleetCars = await getActiveFleetCars(request);
-  const userId = await getCurrentUserId(request);
-  const results: ImportItem[] = [];
-  const browser = await connectBrowserAgent(sessionId);
-
-  try {
-    const page = await getAgentPage(browser);
-    await ensureCompanyVehiclesPage(page);
-
-    for (const car of fleetCars) {
-      if (car.mulkiya_pdf_path) {
-        results.push({ id: car.id, plate: car.plate, status: "skipped", message: "Mulkiya already exists" });
-        continue;
-      }
-
-      try {
-        const found = await clearAndSearchPlate(page, car.plate);
-        if (!found) {
-          results.push({ id: car.id, plate: car.plate, status: "not_found" });
-          continue;
-        }
-
-        const bytes = await downloadVehicleRegistration(page, car.plate);
-        if (!bytes?.length) {
-          results.push({ id: car.id, plate: car.plate, status: "not_found" });
-          continue;
-        }
-
-        await uploadMulkiya(request, userId, car, bytes);
-        results.push({ id: car.id, plate: car.plate, status: "imported" });
-      } catch (error) {
-        results.push({
-          id: car.id,
-          plate: car.plate,
-          status: "failed",
-          message: error instanceof Error ? error.message : "Import failed",
-        });
-      }
-    }
-
-    return {
-      totalFleetVehicles: fleetCars.length,
-      imported: results.filter((item) => item.status === "imported").length,
-      skipped: results.filter((item) => item.status === "skipped").length,
-      notFound: results.filter((item) => item.status === "not_found").length,
-      failed: results.filter((item) => item.status === "failed").length,
-      results,
-    };
-  } finally {
-    await browser.close().catch(() => undefined);
-  }
+  return { status: "imported", plate: car.plate, path };
 }
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
@@ -249,21 +138,32 @@ export default async function handler(request: ApiRequest, response: ApiResponse
 
   const payload = (request.body ?? {}) as TammPayload;
   try {
-    if (payload.action === "start") {
-      response.status(200).json(await startTammSession());
+    if (payload.action === "targets") {
+      const cars = await getActiveFleetCars(request);
+      response.status(200).json({
+        total: cars.length,
+        targets: cars
+          .filter((car) => !car.mulkiya_pdf_path)
+          .map(({ id, plate }) => ({ id, plate })),
+        skipped: cars
+          .filter((car) => Boolean(car.mulkiya_pdf_path))
+          .map(({ id, plate }) => ({ id, plate })),
+      });
       return;
     }
-    if (payload.action === "import") {
-      if (!payload.sessionId) {
-        response.status(400).json({ error: "Browser session is required" });
+
+    if (payload.action === "upload") {
+      if (!payload.carId || !payload.pdfBase64) {
+        response.status(400).json({ error: "Vehicle and PDF are required" });
         return;
       }
-      response.status(200).json(await importMulkiya(request, payload.sessionId));
+      response.status(200).json(await uploadMulkiya(request, payload.carId, payload.pdfBase64));
       return;
     }
+
     response.status(400).json({ error: "Unknown action" });
   } catch (error) {
-    console.error("TAMM Mulkiya agent failed", error);
-    response.status(500).json({ error: error instanceof Error ? error.message : "TAMM Mulkiya agent failed" });
+    console.error("TAMM local helper API failed", error);
+    response.status(500).json({ error: error instanceof Error ? error.message : "TAMM import failed" });
   }
 }
