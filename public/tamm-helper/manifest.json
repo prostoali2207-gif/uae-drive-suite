@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "FleetDesk TAMM Helper",
+  "version": "1.0.0",
+  "description": "Imports Mulkiya documents from TAMM into FleetDesk using your normal Chrome session.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://www.tamm.abudhabi/*",
+    "https://uae-drive-suite.vercel.app/*",
+    "https://*.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://uae-drive-suite.vercel.app/*", "https://*.vercel.app/*"],
+      "js": ["fleetdesk-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.tamm.abudhabi/*"],
+      "js": ["tamm-agent.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-hook.js"],
+      "matches": ["https://www.tamm.abudhabi/*"]
+    }
+  ],
+  "action": {
+    "default_title": "FleetDesk TAMM Helper"
+  }
+}
