@@ -14,7 +14,7 @@ export type ApiResponse = {
 
 type BrowserbaseSession = {
   id: string;
-  connectUrl?: string;
+  connectUrl: string;
 };
 
 const readBearerToken = (request: ApiRequest) => {
@@ -50,14 +50,6 @@ const browserbaseHeaders = () => ({
   "Content-Type": "application/json",
   "x-bb-api-key": process.env.BROWSERBASE_API_KEY ?? "",
 });
-
-const buildBrowserbaseConnectUrl = (sessionId: string) => {
-  const apiKey = process.env.BROWSERBASE_API_KEY;
-  if (!apiKey) throw new Error("Browserbase API key is missing");
-
-  const params = new URLSearchParams({ apiKey, sessionId });
-  return `wss://connect.browserbase.com?${params.toString()}`;
-};
 
 export async function createBrowserAgentSession(purpose: string) {
   ensureBrowserbaseConfigured();
@@ -108,13 +100,18 @@ export async function getBrowserAgentLiveUrl(sessionId: string) {
 
 export async function connectBrowserAgent(sessionId: string): Promise<Browser> {
   const session = await getBrowserAgentSession(sessionId);
-  const connectUrl = session.connectUrl || buildBrowserbaseConnectUrl(sessionId);
+  const browser = await chromium.connectOverCDP(session.connectUrl);
 
-  if (!connectUrl) {
-    throw new Error("Browserbase did not provide a connection URL");
-  }
+  // Calling browser.close() on a Browserbase CDP connection terminates the
+  // remote session. The TAMM workflow needs the same session to stay alive
+  // while the manager completes UAE Pass and selects the company profile.
+  // Let the serverless connection drop naturally instead of ending the session.
+  Object.defineProperty(browser, "close", {
+    configurable: true,
+    value: async () => undefined,
+  });
 
-  return chromium.connectOverCDP(connectUrl);
+  return browser;
 }
 
 export async function getAgentPage(browser: Browser): Promise<Page> {
