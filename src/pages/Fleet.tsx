@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Search, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { TammMulkiyaImport } from "@/components/TammMulkiyaImport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -390,6 +391,8 @@ const Fleet = () => {
               <span className="ml-1.5 opacity-60">{counts.Sold}</span>
             </button>
           </div>
+
+          <TammMulkiyaImport />
 
           <Dialog open={importOpen} onOpenChange={(v) => { setImportOpen(v); if (!v) setImportPreview(null); }}>
             <DialogTrigger asChild>
