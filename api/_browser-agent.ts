@@ -14,7 +14,7 @@ export type ApiResponse = {
 
 type BrowserbaseSession = {
   id: string;
-  connectUrl: string;
+  connectUrl?: string;
 };
 
 const readBearerToken = (request: ApiRequest) => {
@@ -50,6 +50,14 @@ const browserbaseHeaders = () => ({
   "Content-Type": "application/json",
   "x-bb-api-key": process.env.BROWSERBASE_API_KEY ?? "",
 });
+
+const buildBrowserbaseConnectUrl = (sessionId: string) => {
+  const apiKey = process.env.BROWSERBASE_API_KEY;
+  if (!apiKey) throw new Error("Browserbase API key is missing");
+
+  const params = new URLSearchParams({ apiKey, sessionId });
+  return `wss://connect.browserbase.com?${params.toString()}`;
+};
 
 export async function createBrowserAgentSession(purpose: string) {
   ensureBrowserbaseConfigured();
@@ -100,7 +108,13 @@ export async function getBrowserAgentLiveUrl(sessionId: string) {
 
 export async function connectBrowserAgent(sessionId: string): Promise<Browser> {
   const session = await getBrowserAgentSession(sessionId);
-  return chromium.connectOverCDP(session.connectUrl);
+  const connectUrl = session.connectUrl || buildBrowserbaseConnectUrl(sessionId);
+
+  if (!connectUrl) {
+    throw new Error("Browserbase did not provide a connection URL");
+  }
+
+  return chromium.connectOverCDP(connectUrl);
 }
 
 export async function getAgentPage(browser: Browser): Promise<Page> {
