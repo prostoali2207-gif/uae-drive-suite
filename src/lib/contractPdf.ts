@@ -57,9 +57,32 @@ interface ContractPdfData {
   } | null;
 }
 
+const DEFAULT_KEY_CONDITIONS = [
+  "Driver must meet the legal age and licence requirements.",
+  "A valid driving licence is required before handover.",
+  "The rental starts only after the required payment is received.",
+  "Additional drivers require prior company approval.",
+  "Insurance is subject to policy terms and applicable excess.",
+  "Return the vehicle with the same fuel level as supplied.",
+  "Excess mileage is charged under the agreed rental rate.",
+  "The renter is responsible for Salik, parking and traffic fines.",
+  "Any refundable deposit is handled separately from rent.",
+  "Late return may result in an additional rental charge.",
+  "Accidents must be reported immediately with a police report.",
+  "The renter is responsible for uninsured loss or damage.",
+  "Smoking and pets are prohibited unless approved.",
+  "Off-road driving, racing and illegal use are prohibited.",
+  "This agreement is governed by applicable UAE law.",
+  "Signing confirms acceptance of the full agreement.",
+];
+
 function fmtDate(iso: string): string {
   if (!iso) return "-";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function fmtDateTime(date: string, time?: string | null): string {
@@ -68,6 +91,17 @@ function fmtDateTime(date: string, time?: string | null): string {
   const [hours, minutes] = time.split(":");
   if (!hours || !minutes) return formattedDate;
   return `${formattedDate} ${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+}
+
+function getKeyConditions(terms: string): string[] {
+  const parsed = terms
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:\(?\d{1,2}\)?[.)-]?|[-•])\s*/, "").trim())
+    .filter(Boolean);
+
+  if (parsed.length < 8) return DEFAULT_KEY_CONDITIONS;
+  return [...parsed.slice(0, 16), ...DEFAULT_KEY_CONDITIONS].slice(0, 16);
 }
 
 async function loadImage(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
@@ -91,7 +125,10 @@ async function loadImage(url: string): Promise<{ dataUrl: string; w: number; h: 
   }
 }
 
-export async function generateContractPdf(contract: ContractPdfData, options?: { returnBlob?: boolean }): Promise<Blob | void> {
+export async function generateContractPdf(
+  contract: ContractPdfData,
+  options?: { returnBlob?: boolean },
+): Promise<Blob | void> {
   const { data: { user } } = await supabase.auth.getUser();
   let companyName = "Rental Company";
   let companyPhone = "";
@@ -135,7 +172,9 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const today = fmtDate(new Date().toISOString());
   const c = contract.clients;
   const car = contract.cars;
-  const additionalDrivers = contract.contract_drivers ?? [];
+  const additionalDrivers = [...(contract.contract_drivers ?? [])].sort((a, b) => a.position - b.position);
+  const firstAdditionalDriver = additionalDrivers[0];
+  const keyConditions = getKeyConditions(termsEn);
 
   const navy: [number, number, number] = [20, 34, 55];
   const blue: [number, number, number] = [20, 91, 160];
@@ -144,7 +183,8 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const soft: [number, number, number] = [246, 248, 251];
   const green: [number, number, number] = [28, 122, 79];
 
-  const valueOrDash = (value?: string | number | null) => value === null || value === undefined || value === "" ? "-" : String(value);
+  const valueOrDash = (value?: string | number | null) =>
+    value === null || value === undefined || value === "" ? "-" : String(value);
   const firstValue = (...values: Array<string | number | null | undefined>) => {
     const value = values.find((item) => item !== null && item !== undefined && String(item).trim() !== "");
     return value === null || value === undefined ? "" : String(value);
@@ -154,15 +194,27 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const idLabel = c?.client_type === "Tourist" ? "Passport Number" : "Emirates ID";
   const idValue = c?.client_type === "Tourist" ? valueOrDash(c?.passport_number) : valueOrDash(c?.emirates_id);
   const licenseNumber = firstValue(
-    c?.license_number, c?.driver_license_number, c?.driving_license_number, c?.licenseNo,
-    c?.drivingLicenseNo, c?.drivers_license, c?.license, c?.driving_license,
-    c?.client_license_number, c?.driverLicenseNumber,
-    (contract as any)?.license_number, (contract as any)?.driver_license_number,
+    c?.license_number,
+    c?.driver_license_number,
+    c?.driving_license_number,
+    c?.licenseNo,
+    c?.drivingLicenseNo,
+    c?.drivers_license,
+    c?.license,
+    c?.driving_license,
+    c?.client_license_number,
+    c?.driverLicenseNumber,
+    (contract as any)?.license_number,
+    (contract as any)?.driver_license_number,
     (contract as any)?.driving_license_number,
   );
   const vehicleColor = firstValue(
-    car?.color, car?.vehicle_color, car?.car_color, car?.colour,
-    (contract as any)?.color, (contract as any)?.vehicle_color,
+    car?.color,
+    car?.vehicle_color,
+    car?.car_color,
+    car?.colour,
+    (contract as any)?.color,
+    (contract as any)?.vehicle_color,
   );
 
   let logoImage: { dataUrl: string; w: number; h: number } | null = null;
@@ -171,14 +223,19 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   if (logoUrl) {
     let fetchUrl = logoUrl;
     if (!logoUrl.startsWith("http")) {
-      const { data: signed } = await supabase.storage.from("company-logos").createSignedUrl(logoUrl, 60);
+      const { data: signed } = await supabase.storage
+        .from("company-logos")
+        .createSignedUrl(logoUrl, 60);
       if (signed?.signedUrl) fetchUrl = signed.signedUrl;
     }
     logoImage = await loadImage(fetchUrl);
   }
 
   try {
-    inspectionQr = await QRCode.toDataURL(`https://uae-drive-suite.vercel.app/inspection/${contract.id}`, { width: 120 });
+    inspectionQr = await QRCode.toDataURL(
+      `https://uae-drive-suite.vercel.app/inspection/${contract.id}`,
+      { width: 120 },
+    );
   } catch {
     inspectionQr = null;
   }
@@ -220,58 +277,163 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   const drawBrandHeader = () => {
     const logoY = margin - 4;
     if (logoImage) {
-      const h = 34;
-      const w = Math.min((logoImage.w / logoImage.h) * h, 52);
+      const h = 30;
+      const w = Math.min((logoImage.w / logoImage.h) * h, 48);
       try {
         doc.addImage(logoImage.dataUrl, "PNG", margin, logoY, w, h);
       } catch {
-        try { doc.addImage(logoImage.dataUrl, "JPEG", margin, logoY, w, h); } catch { /* ignore */ }
+        try {
+          doc.addImage(logoImage.dataUrl, "JPEG", margin, logoY, w, h);
+        } catch {
+          // ignore unsupported image
+        }
       }
     } else {
       doc.setFillColor(...navy);
-      doc.roundedRect(margin, logoY, 34, 34, 6, 6, "F");
+      doc.roundedRect(margin, logoY, 30, 30, 5, 5, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
+      doc.setFontSize(13);
       doc.setTextColor(255, 255, 255);
-      doc.text(companyName.charAt(0).toUpperCase(), margin + 17, logoY + 22, { align: "center" });
+      doc.text(companyName.charAt(0).toUpperCase(), margin + 15, logoY + 20, { align: "center" });
     }
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setTextColor(...navy);
-    doc.text(companyName, margin + 62, logoY + 14, { maxWidth: 245 });
+    doc.text(companyName, margin + 56, logoY + 12, { maxWidth: 235 });
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(...muted);
-    doc.text("Car Rental", margin + 62, logoY + 29);
-    if (companyPhone) doc.text(companyPhone, pageW - margin, logoY + 12, { align: "right" });
-    if (companyEmail) doc.text(companyEmail, pageW - margin, logoY + 27, { align: "right" });
-    y = 92;
+    doc.text("Car Rental", margin + 56, logoY + 26);
+    if (companyPhone) doc.text(companyPhone, pageW - margin, logoY + 10, { align: "right" });
+    if (companyEmail) doc.text(companyEmail, pageW - margin, logoY + 24, { align: "right" });
+    y = 82;
     setStroke(line, 0.7);
     doc.line(margin, y, pageW - margin, y);
-    y += 27;
+    y += 20;
   };
 
   const drawTitle = () => {
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(21);
+    doc.setFontSize(18);
     doc.setTextColor(...navy);
     doc.text("CAR RENTAL AGREEMENT", margin, y);
-    const badgeW = 116;
+    const badgeW = 112;
     doc.setFillColor(236, 248, 241);
     doc.setDrawColor(189, 225, 204);
-    doc.roundedRect(pageW - margin - badgeW, y - 16, badgeW, 25, 12, 12, "FD");
+    doc.roundedRect(pageW - margin - badgeW, y - 15, badgeW, 23, 11, 11, "FD");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
+    doc.setFontSize(7.2);
     doc.setTextColor(...green);
-    doc.text("SIGNED & BINDING", pageW - margin - badgeW / 2, y, { align: "center" });
-    y += 25;
+    doc.text("SIGNED & BINDING", pageW - margin - badgeW / 2, y - 1, { align: "center" });
+    y += 20;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
+    doc.setFontSize(7.8);
     doc.setTextColor(...muted);
     doc.text(`Document ID: ${contractNumber}`, margin, y);
     doc.text(`Date of Issue: ${today}`, pageW - margin, y, { align: "right" });
-    y += 28;
+    y += 18;
+  };
+
+  const compactHeader = (title: string, x: number, headerY: number, w: number) => {
+    doc.setFillColor(...navy);
+    doc.roundedRect(x, headerY, w, 19, 4, 4, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.2);
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, x + 10, headerY + 13);
+  };
+
+  const compactPanel = (
+    x: number,
+    panelY: number,
+    w: number,
+    title: string,
+    rows: [string, string][],
+  ) => {
+    const rowH = 22;
+    const h = 19 + rows.length * rowH + 5;
+    setStroke(line, 0.6);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(x, panelY, w, h, 4, 4, "FD");
+    compactHeader(title, x, panelY, w);
+    rows.forEach(([label, value], index) => {
+      const rowY = panelY + 19 + index * rowH;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.3);
+      doc.setTextColor(...muted);
+      doc.text(label, x + 9, rowY + 9);
+      doc.setFont(/AED|\d/.test(value) ? "courier" : "helvetica", "bold");
+      doc.setFontSize(7.8);
+      doc.setTextColor(...navy);
+      doc.text(valueOrDash(value), x + w * 0.43, rowY + 9, { maxWidth: w * 0.53 });
+      if (index < rows.length - 1) {
+        setStroke(line, 0.35);
+        doc.line(x + 9, rowY + 16, x + w - 9, rowY + 16);
+      }
+    });
+    return h;
+  };
+
+  const compactFieldRow = (
+    rowY: number,
+    title: string,
+    fields: Array<[string, string]>,
+    height = 48,
+  ) => {
+    compactHeader(title, margin, rowY, contentW);
+    const bodyY = rowY + 19;
+    const fieldW = contentW / fields.length;
+    setStroke(line, 0.55);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(margin, bodyY, contentW, height - 19, "FD");
+    fields.forEach(([label, value], index) => {
+      const x = margin + index * fieldW;
+      if (index > 0) doc.line(x, bodyY, x, bodyY + height - 19);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.1);
+      doc.setTextColor(...muted);
+      doc.text(label, x + fieldW / 2, bodyY + 10, { align: "center", maxWidth: fieldW - 8 });
+      doc.setFont(/AED|\d/.test(value) ? "courier" : "helvetica", "bold");
+      doc.setFontSize(7.7);
+      doc.setTextColor(...navy);
+      doc.text(valueOrDash(value), x + fieldW / 2, bodyY + 24, { align: "center", maxWidth: fieldW - 8 });
+    });
+    return height;
+  };
+
+  const drawCompactSignature = (
+    x: number,
+    sigY: number,
+    w: number,
+    title: string,
+    signer: string,
+    sig?: string | null,
+  ) => {
+    setStroke(line, 0.6);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(x, sigY, w, 66, 4, 4, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.7);
+    doc.setTextColor(...blue);
+    doc.text(title, x + 9, sigY + 13);
+    if (sig?.startsWith("data:image")) {
+      try {
+        doc.addImage(sig, "PNG", x + 15, sigY + 17, w - 30, 25);
+      } catch {
+        // ignore invalid signature image
+      }
+    }
+    setStroke(line, 0.45);
+    doc.line(x + 12, sigY + 45, x + w - 12, sigY + 45);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.8);
+    doc.setTextColor(...navy);
+    doc.text(valueOrDash(signer), x + 12, sigY + 56, { maxWidth: w - 24 });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5.8);
+    doc.setTextColor(...muted);
+    doc.text(today, x + w - 12, sigY + 56, { align: "right" });
   };
 
   const sectionTitle = (num: number, title: string) => {
@@ -283,30 +445,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     setStroke(line, 0.55);
     doc.line(margin, y, pageW - margin, y);
     y += 14;
-  };
-
-  const infoPanel = (x: number, panelY: number, w: number, rows: [string, string][]) => {
-    const rowH = 34;
-    const h = rows.length * rowH + 10;
-    doc.setFillColor(255, 255, 255);
-    setStroke(line, 0.65);
-    doc.roundedRect(x, panelY, w, h, 5, 5, "FD");
-    rows.forEach(([label, value], index) => {
-      const itemY = panelY + 10 + index * rowH;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.8);
-      doc.setTextColor(...muted);
-      doc.text(label, x + 12, itemY + 8);
-      doc.setFont(/AED|\d/.test(value) ? "courier" : "helvetica", "bold");
-      doc.setFontSize(8.7);
-      doc.setTextColor(...navy);
-      doc.text(valueOrDash(value), x + 12, itemY + 22, { maxWidth: w - 24 });
-      if (index < rows.length - 1) {
-        setStroke(line, 0.4);
-        doc.line(x + 12, itemY + 29, x + w - 12, itemY + 29);
-      }
-    });
-    return h;
   };
 
   const keyField = (x: number, fieldY: number, w: number, label: string, value: string) => {
@@ -323,20 +461,6 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
     doc.text(valueOrDash(value), x + 12, fieldY + 32, { maxWidth: w - 24 });
   };
 
-  const amountBlock = (x: number, blockY: number, w: number, label: string, value: string, primary = false) => {
-    doc.setFillColor(primary ? 240 : 255, primary ? 246 : 255, primary ? 252 : 255);
-    setStroke(primary ? blue : line, primary ? 0.9 : 0.6);
-    doc.roundedRect(x, blockY, w, 64, 5, 5, "FD");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.2);
-    doc.setTextColor(primary ? blue[0] : muted[0], primary ? blue[1] : muted[1], primary ? blue[2] : muted[2]);
-    doc.text(label, x + 12, blockY + 20, { maxWidth: w - 24 });
-    doc.setFont("courier", "bold");
-    doc.setFontSize(primary ? 13 : 11);
-    doc.setTextColor(...navy);
-    doc.text(value, x + 12, blockY + 45, { maxWidth: w - 24 });
-  };
-
   const addTermsPage = (continued = false) => {
     addPage();
     doc.setFont("helvetica", "bold");
@@ -347,7 +471,8 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   };
 
   const drawTerms = () => {
-    const termsText = termsEn.replace(/\r\n?/g, "\n").trim() ||
+    const termsText =
+      termsEn.replace(/\r\n?/g, "\n").trim() ||
       "The renter agrees to return the vehicle in the same condition as received.\n\nAny traffic fines, Salik charges, or damages incurred during the rental period are the responsibility of the renter.\n\nThe deposit will be refunded after inspection upon vehicle return.";
     const paragraphs = termsText.split("\n");
     const lineHeight = 12.2;
@@ -377,88 +502,111 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   drawBrandHeader();
   drawTitle();
 
-  const gap = 18;
+  const gap = 12;
   const colW = (contentW - gap) / 2;
-  const detailsTop = y;
-  sectionTitle(1, "Client Details");
-  const clientPanelY = y;
-  const clientH = infoPanel(margin, clientPanelY, colW, [
+  const detailsY = y;
+  const clientH = compactPanel(margin, detailsY, colW, "CLIENT / DRIVER DETAILS", [
     ["Full Name", valueOrDash(c?.full_name)],
     ["Phone", valueOrDash(c?.phone)],
     ["Nationality", valueOrDash(c?.nationality)],
-    ["License Number", valueOrDash(licenseNumber)],
+    ["Licence Number", valueOrDash(licenseNumber)],
     [idLabel, idValue],
   ]);
-
-  y = detailsTop;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
-  doc.setTextColor(...blue);
-  doc.text("2. VEHICLE DETAILS", margin + colW + gap, y);
-  y += 11;
-  setStroke(line, 0.55);
-  doc.line(margin + colW + gap, y, pageW - margin, y);
-  y += 14;
-  infoPanel(margin + colW + gap, y, colW, [
+  compactPanel(margin + colW + gap, detailsY, colW, "VEHICLE DETAILS", [
     ["Plate Number", valueOrDash(car?.plate)],
     ["Make & Model", car ? `${car.make} ${car.model}` : "-"],
-    ["Year", car ? String(car.year) : "-"],
-    ["Color", valueOrDash(vehicleColor)],
+    ["Year / Color", car ? `${car.year} / ${valueOrDash(vehicleColor)}` : "-"],
+    ["Initial Mileage", km(contract.initial_mileage)],
+    ["Fuel Level", valueOrDash(contract.fuel_level)],
   ]);
+  y = detailsY + clientH + 10;
 
-  y = clientPanelY + clientH + 20;
-  if (additionalDrivers.length > 0) {
-    sectionTitle(3, "Authorized Additional Drivers");
-    const driverH = 42;
-    doc.setFillColor(...soft);
-    setStroke(line, 0.55);
-    doc.roundedRect(margin, y, contentW, additionalDrivers.length * driverH + 8, 5, 5, "FD");
-    additionalDrivers.forEach((driver, index) => {
-      const rowY = y + 8 + index * driverH;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7.2);
-      doc.setTextColor(...muted);
-      doc.text(`DRIVER ${driver.position}`, margin + 12, rowY + 10);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(...navy);
-      doc.text(valueOrDash(driver.clients?.full_name), margin + 12, rowY + 26, { maxWidth: 250 });
-      doc.setFont("courier", "normal");
-      doc.setFontSize(8.3);
-      doc.text(`Licence ${valueOrDash(driver.clients?.license_number)}`, pageW - margin - 12, rowY + 26, { align: "right" });
-      if (index < additionalDrivers.length - 1) {
-        setStroke(line, 0.4);
-        doc.line(margin + 12, rowY + 35, pageW - margin - 12, rowY + 35);
-      }
-    });
-    y += additionalDrivers.length * driverH + 28;
+  y += compactFieldRow(y, "RENTAL SUMMARY", [
+    ["Start", fmtDateTime(contract.start_date, contract.start_time)],
+    ["End", fmtDateTime(contract.end_date, contract.end_time)],
+    ["Rate Type", contract.rate_type],
+    ["Rental Rate", money(contract.rate_amount)],
+    ["Total Rental", money(contract.total_amount)],
+  ]);
+  y += 10;
+
+  compactHeader("16 KEY CONDITIONS — FULL TERMS CONTINUE ON THE FOLLOWING PAGES", margin, y, contentW);
+  const conditionsTop = y + 25;
+  const conditionsGap = 12;
+  const conditionsColW = (contentW - conditionsGap) / 2;
+  const conditionLineH = 8.9;
+  let maxConditionBottom = conditionsTop;
+
+  keyConditions.forEach((condition, index) => {
+    const column = index < 8 ? 0 : 1;
+    const row = index % 8;
+    const x = margin + column * (conditionsColW + conditionsGap);
+    const itemY = conditionsTop + row * 30;
+    const lines = doc.splitTextToSize(condition, conditionsColW - 28).slice(0, 2);
+    doc.setFillColor(...navy);
+    doc.circle(x + 8, itemY + 5, 7, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.2);
+    doc.setTextColor(255, 255, 255);
+    doc.text(String(index + 1), x + 8, itemY + 7, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.7);
+    doc.setTextColor(...navy);
+    doc.text(lines, x + 20, itemY + 3, { lineHeightFactor: 1.15 });
+    maxConditionBottom = Math.max(maxConditionBottom, itemY + lines.length * conditionLineH + 6);
+  });
+
+  y = maxConditionBottom + 8;
+  const signatureCount = firstAdditionalDriver ? 3 : 2;
+  const signatureGap = 10;
+  const signatureW = (contentW - signatureGap * (signatureCount - 1)) / signatureCount;
+  drawCompactSignature(
+    margin,
+    y,
+    signatureW,
+    "CUSTOMER",
+    c?.full_name || "",
+    contract.client_signature,
+  );
+
+  if (firstAdditionalDriver) {
+    drawCompactSignature(
+      margin + signatureW + signatureGap,
+      y,
+      signatureW,
+      `ADDITIONAL DRIVER ${firstAdditionalDriver.position}`,
+      firstAdditionalDriver.clients?.full_name || "",
+      firstAdditionalDriver.signature,
+    );
+    drawCompactSignature(
+      margin + (signatureW + signatureGap) * 2,
+      y,
+      signatureW,
+      "COMPANY REPRESENTATIVE",
+      companyName,
+      contract.manager_signature,
+    );
+  } else {
+    drawCompactSignature(
+      margin + signatureW + signatureGap,
+      y,
+      signatureW,
+      "COMPANY REPRESENTATIVE",
+      companyName,
+      contract.manager_signature,
+    );
   }
 
-  sectionTitle(additionalDrivers.length > 0 ? 4 : 3, "Rental Period");
-  const periodW = (contentW - 20) / 3;
-  keyField(margin, y, periodW, "Start", fmtDateTime(contract.start_date, contract.start_time));
-  keyField(margin + periodW + 10, y, periodW, "End", fmtDateTime(contract.end_date, contract.end_time));
-  keyField(margin + (periodW + 10) * 2, y, periodW, "Rate Type", contract.rate_type);
-  y += 66;
-
-  sectionTitle(additionalDrivers.length > 0 ? 5 : 4, "Financial Summary");
-  const amountGap = 10;
-  const amountW = (contentW - amountGap * 2) / 3;
-  amountBlock(margin, y, amountW, `${contract.rate_type} Rate`, money(contract.rate_amount));
-  amountBlock(margin + amountW + amountGap, y, amountW, "Total Rental Amount", money(contract.total_amount), true);
-  amountBlock(margin + (amountW + amountGap) * 2, y, amountW, "Deposit Held", money(contract.deposit_amount), true);
-  y += 77;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.8);
-  doc.setTextColor(...muted);
-  doc.text("Fines, parking and toll charges are billed separately as incurred.", margin, y);
-
   addPage();
-  sectionTitle(additionalDrivers.length > 0 ? 6 : 5, "Vehicle Condition at Pick-up");
+  sectionTitle(6, "Vehicle Condition at Pick-up");
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.setTextColor(...muted);
-  doc.text("Recorded at vehicle handover. Inspection photos remain linked to this agreement.", margin, y);
+  doc.text(
+    "Recorded at vehicle handover. Inspection photos remain linked to this agreement.",
+    margin,
+    y,
+  );
   y += 24;
   const conditionW = (contentW - 12) / 2;
   keyField(margin, y, conditionW, "Initial Mileage", km(contract.initial_mileage));
@@ -475,7 +623,12 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.setTextColor(...muted);
-  doc.text("Scan the QR code to open the vehicle inspection record and photos.", margin + 18, y + 52, { maxWidth: contentW - 130 });
+  doc.text(
+    "Scan the QR code to open the vehicle inspection record and photos.",
+    margin + 18,
+    y + 52,
+    { maxWidth: contentW - 130 },
+  );
   if (inspectionQr) doc.addImage(inspectionQr, "PNG", pageW - margin - 88, y + 14, 88, 88);
   y += 142;
 
@@ -483,7 +636,7 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   drawTerms();
 
   addPage();
-  sectionTitle(additionalDrivers.length > 0 ? 8 : 7, "Return Check-in");
+  sectionTitle(8, "Return Check-in");
   doc.setFillColor(...soft);
   setStroke(line, 0.65);
   doc.roundedRect(margin, y, contentW, 92, 6, 6, "FD");
@@ -494,59 +647,44 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.setTextColor(...muted);
-  doc.text("Return mileage, fuel level, damage notes and return photos will be recorded during check-in.", margin + 18, y + 52, { maxWidth: contentW - 36 });
+  doc.text(
+    "Return mileage, fuel level, damage notes and return photos will be recorded during check-in.",
+    margin + 18,
+    y + 52,
+    { maxWidth: contentW - 36 },
+  );
   y += 122;
 
-  sectionTitle(additionalDrivers.length > 0 ? 9 : 8, "Agreement & Signatures");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.setTextColor(...blue);
+  doc.text("SIGNATURES ARE RECORDED ON PAGE 1", margin, y);
+  y += 18;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
-  doc.setTextColor(...navy);
-  doc.text("By signing below, all required parties confirm that they have read, understood and accepted this Car Rental Agreement.", margin, y, { maxWidth: contentW });
-  y += 34;
+  doc.setTextColor(...muted);
+  doc.text(
+    "The signed first page forms part of this complete agreement and applies to all following pages.",
+    margin,
+    y,
+    { maxWidth: contentW },
+  );
 
-  const sigGap = 14;
-  const sigW = (contentW - sigGap) / 2;
-  const sigH = 126;
-  const sigY = y;
-  const drawSignatureBox = (x: number, title: string, signer: string, sig?: string | null) => {
-    doc.setFillColor(255, 255, 255);
-    setStroke(line, 0.7);
-    doc.roundedRect(x, sigY, sigW, sigH, 6, 6, "FD");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.8);
-    doc.setTextColor(...blue);
-    doc.text(title, x + 16, sigY + 21);
-    if (sig?.startsWith("data:image")) {
-      try { doc.addImage(sig, "PNG", x + 32, sigY + 31, sigW - 64, 43); } catch { /* ignore */ }
-    }
-    setStroke(line, 0.55);
-    doc.line(x + 24, sigY + 78, x + sigW - 24, sigY + 78);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...navy);
-    doc.text(valueOrDash(signer), x + 24, sigY + 96, { maxWidth: sigW - 48 });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.6);
-    doc.setTextColor(...muted);
-    doc.text(`Date: ${today}`, x + 24, sigY + 114);
-  };
-
-  drawSignatureBox(margin, "CUSTOMER", c?.full_name || "", contract.client_signature);
-  drawSignatureBox(margin + sigW + sigGap, "COMPANY REPRESENTATIVE", companyName, contract.manager_signature);
-  y = sigY + sigH + 22;
-  const finalW = (contentW - 12) / 2;
-  amountBlock(margin, y, finalW, "Total Rental Amount", money(contract.total_amount), true);
-  amountBlock(margin + finalW + 12, y, finalW, "Deposit Held", money(contract.deposit_amount), true);
-
+  const remainingDrivers = firstAdditionalDriver ? additionalDrivers.slice(1) : additionalDrivers;
   const driversPerPage = 3;
-  for (let offset = 0; offset < additionalDrivers.length; offset += driversPerPage) {
-    const pageDrivers = additionalDrivers.slice(offset, offset + driversPerPage);
+  for (let offset = 0; offset < remainingDrivers.length; offset += driversPerPage) {
+    const pageDrivers = remainingDrivers.slice(offset, offset + driversPerPage);
     addPage();
     sectionTitle(10, "Additional Driver Signatures");
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.2);
     doc.setTextColor(...muted);
-    doc.text("Each driver confirms that their driving documents are valid and accepts the driving obligations in this agreement.", margin, y, { maxWidth: contentW });
+    doc.text(
+      "Each driver confirms that their driving documents are valid and accepts the driving obligations in this agreement.",
+      margin,
+      y,
+      { maxWidth: contentW },
+    );
     y += 30;
 
     pageDrivers.forEach((driver) => {
@@ -577,7 +715,11 @@ export async function generateContractPdf(contract: ContractPdfData, options?: {
         doc.text(value, fieldX, boxY + 64, { maxWidth: driverColW - 12 });
       });
       if (driver.signature?.startsWith("data:image")) {
-        try { doc.addImage(driver.signature, "PNG", margin + 34, boxY + 82, 190, 44); } catch { /* ignore */ }
+        try {
+          doc.addImage(driver.signature, "PNG", margin + 34, boxY + 82, 190, 44);
+        } catch {
+          // ignore invalid signature image
+        }
       }
       setStroke(line, 0.55);
       doc.line(margin + 28, boxY + 130, margin + 250, boxY + 130);
