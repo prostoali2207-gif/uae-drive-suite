@@ -169,7 +169,6 @@ export async function generateContractPdf(
   let y = margin;
 
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
-  const today = fmtDate(new Date().toISOString());
   const c = contract.clients;
   const car = contract.cars;
   const additionalDrivers = [...(contract.contract_drivers ?? [])].sort((a, b) => a.position - b.position);
@@ -331,7 +330,6 @@ export async function generateContractPdf(
     doc.setFontSize(7.8);
     doc.setTextColor(...muted);
     doc.text(`Document ID: ${contractNumber}`, margin, y);
-    doc.text(`Date of Issue: ${today}`, pageW - margin, y, { align: "right" });
     y += 18;
   };
 
@@ -430,10 +428,6 @@ export async function generateContractPdf(
     doc.setFontSize(6.8);
     doc.setTextColor(...navy);
     doc.text(valueOrDash(signer), x + 12, sigY + 56, { maxWidth: w - 24 });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(5.8);
-    doc.setTextColor(...muted);
-    doc.text(today, x + w - 12, sigY + 56, { align: "right" });
   };
 
   const sectionTitle = (num: number, title: string) => {
@@ -723,10 +717,6 @@ export async function generateContractPdf(
       }
       setStroke(line, 0.55);
       doc.line(margin + 28, boxY + 130, margin + 250, boxY + 130);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7.6);
-      doc.setTextColor(...muted);
-      doc.text(`Date: ${today}`, margin + 28, boxY + 149);
       y = boxY + 182;
     });
   }
