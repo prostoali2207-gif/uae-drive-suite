@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Loader2, Pencil, Search } from "lucide-react";
 import { ClientEditDialog } from "@/components/ClientEditDialog";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ interface ClientRecord {
   passport_expiry: string | null;
   date_of_birth: string | null;
   unified_number: string | null;
+  gender: "male" | "female" | null;
   passport_photo_url: string | null;
   eid_front_url: string | null;
   eid_back_url: string | null;
@@ -122,6 +123,7 @@ const ClientDetail = () => {
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [findingUid, setFindingUid] = useState(false);
   const [clientRefreshKey, setClientRefreshKey] = useState(0);
   const [documentPreviews, setDocumentPreviews] = useState<Record<string, DocumentPreviewState>>({});
   const [openingDocument, setOpeningDocument] = useState<string | null>(null);
@@ -202,6 +204,78 @@ const ClientDetail = () => {
     }
   };
 
+  const callUidApi = async (token: string, body: Record<string, unknown>) => {
+    const response = await fetch("/api/gdrfa-uid", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = (await response.json()) as { uid?: string; sessionId?: string; liveUrl?: string | null; error?: string };
+    if (!response.ok) throw new Error(data.error || "UID lookup failed");
+    return data;
+  };
+
+  const handleFindUid = async () => {
+    if (!client) return;
+    const passportNumber = client.passport_number?.trim() ?? "";
+    const nationality = client.nationality.trim();
+
+    if (!passportNumber || !nationality || !client.date_of_birth || !client.gender) {
+      toast.error("Passport number, nationality, date of birth and gender are required");
+      return;
+    }
+
+    setFindingUid(true);
+    let liveWindow: Window | null = null;
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Please sign in again");
+
+      liveWindow = window.open("about:blank", "fleetdesk-gdrfa-uid");
+      const started = await callUidApi(token, { action: "start" });
+      if (!started.sessionId) throw new Error("Browser session was not created");
+
+      if (started.liveUrl && liveWindow) {
+        liveWindow.location.href = started.liveUrl;
+      } else if (liveWindow) {
+        liveWindow.close();
+        liveWindow = null;
+      }
+
+      toast.info("Searching GDRFA. If CAPTCHA needs you, use the opened browser window.");
+
+      const result = await callUidApi(token, {
+        action: "run",
+        sessionId: started.sessionId,
+        passportNumber,
+        nationality,
+        dateOfBirth: client.date_of_birth,
+        gender: client.gender,
+      });
+
+      if (!result.uid) throw new Error("GDRFA did not return a UID");
+
+      const { error } = await supabase
+        .from("clients")
+        .update({ unified_number: result.uid } as never)
+        .eq("id", client.id);
+      if (error) throw error;
+
+      setClient((current) => current ? { ...current, unified_number: result.uid ?? null } : current);
+      toast.success(`UID found: ${result.uid}`);
+      liveWindow?.close();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "UID lookup failed");
+    } finally {
+      setFindingUid(false);
+    }
+  };
+
   const totals = useMemo(() => {
     const totalBilled = contracts.reduce((s, c) => s + Number(c.total_amount), 0);
     const totalPaid = contracts
@@ -273,7 +347,23 @@ const ClientDetail = () => {
             {client.license_type === "uae" ? <InfoRow label="Traffic File Number" value={client.traffic_file_number} /> : <InfoRow label="Issuing Country" value={client.license_issuing_country} />}
             <InfoRow label="License Expiry" value={formatDate(client.license_expiry)} />
             <InfoRow label="Passport Number" value={client.passport_number} />
-            <InfoRow label="Unified Number (UID)" value={client.unified_number} />
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">Unified Number (UID)</span>
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 text-sm font-medium text-foreground">{client.unified_number || "—"}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="hidden h-8 shrink-0 gap-1.5 px-2.5 md:inline-flex"
+                  onClick={handleFindUid}
+                  disabled={findingUid}
+                >
+                  {findingUid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                  {findingUid ? "Searching..." : "Find UID"}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 
