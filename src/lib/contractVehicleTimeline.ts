@@ -13,7 +13,16 @@ export interface TimelineVehicle {
   ended_at: string | null;
 }
 
-const datePart = (value: string): string => value.slice(0, 10);
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const DUBAI_OFFSET = "+04:00";
+
+function toTimestamp(value: string, endOfDay = false): number {
+  if (DATE_ONLY.test(value)) {
+    const time = endOfDay ? "23:59:59.999" : "00:00:00.000";
+    return new Date(`${value}T${time}${DUBAI_OFFSET}`).getTime();
+  }
+  return new Date(value).getTime();
+}
 
 export function vehicleBelongsToContractOnDate(
   contract: TimelineContract,
@@ -23,12 +32,19 @@ export function vehicleBelongsToContractOnDate(
 ): boolean {
   if (vehicle.contract_id !== contract.id || vehicle.car_id !== carId) return false;
 
-  const startedAt = datePart(vehicle.started_at);
-  const endedAt = vehicle.ended_at
-    ? [datePart(vehicle.ended_at), contract.end_date].sort()[0]
-    : contract.end_date;
+  const eventAt = toTimestamp(dateIso);
+  const contractStart = toTimestamp(contract.start_date);
+  const contractEnd = toTimestamp(contract.end_date, true);
+  const vehicleStart = toTimestamp(vehicle.started_at);
+  const vehicleEnd = vehicle.ended_at
+    ? Math.min(toTimestamp(vehicle.ended_at), contractEnd)
+    : contractEnd;
 
-  return dateIso >= contract.start_date && dateIso >= startedAt && dateIso <= endedAt;
+  if ([eventAt, contractStart, contractEnd, vehicleStart, vehicleEnd].some(Number.isNaN)) return false;
+
+  return eventAt >= contractStart
+    && eventAt >= vehicleStart
+    && eventAt <= vehicleEnd;
 }
 
 export function findTimelineContract<T extends TimelineContract>(
@@ -43,15 +59,15 @@ export function findTimelineContract<T extends TimelineContract>(
       const contract = contractsById.get(vehicle.contract_id);
       return contract ? vehicleBelongsToContractOnDate(contract, vehicle, carId, dateIso) : false;
     })
-    .sort((a, b) => datePart(b.started_at).localeCompare(datePart(a.started_at)))[0];
+    .sort((a, b) => toTimestamp(b.started_at) - toTimestamp(a.started_at))[0];
 
   if (timelineVehicle) return contractsById.get(timelineVehicle.contract_id);
 
   const contractsWithVehicleHistory = new Set(contractVehicles.map((vehicle) => vehicle.contract_id));
-  return contracts.find(
-    (contract) => !contractsWithVehicleHistory.has(contract.id)
-      && contract.car_id === carId
-      && contract.start_date <= dateIso
-      && contract.end_date >= dateIso,
-  );
+  const eventAt = toTimestamp(dateIso);
+
+  return contracts.find((contract) => !contractsWithVehicleHistory.has(contract.id)
+    && contract.car_id === carId
+    && eventAt >= toTimestamp(contract.start_date)
+    && eventAt <= toTimestamp(contract.end_date, true));
 }
