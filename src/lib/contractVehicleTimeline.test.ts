@@ -41,4 +41,27 @@ describe("contract vehicle timeline", () => {
   it("keeps legacy contracts without vehicle history working", () => {
     expect(findTimelineContract([oldContract], [], "car-1", "2026-06-15")?.id).toBe("old");
   });
+
+  it("does not assign a fine after a same-day vehicle replacement", () => {
+    const contract = {
+      id: "contract-1",
+      car_id: "car-2",
+      client_id: "client-1",
+      start_date: "2026-07-14",
+      end_date: "2026-08-14",
+    };
+    const oldVehicle = {
+      contract_id: "contract-1",
+      car_id: "car-1",
+      started_at: "2026-07-14T22:00:00+04:00",
+      ended_at: "2026-07-22T16:30:00+04:00",
+    };
+
+    expect(vehicleBelongsToContractOnDate(
+      contract,
+      oldVehicle,
+      "car-1",
+      "2026-07-22T17:43:30+04:00",
+    )).toBe(false);
+  });
 });
