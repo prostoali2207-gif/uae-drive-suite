@@ -1,0 +1,134 @@
+name: Add parking service fee setting
+
+on:
+  push:
+    paths:
+      - .github/workflows/add-parking-service-fee-setting.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch Settings
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/pages/Settings.tsx")
+          text = path.read_text()
+
+          replacements = [
+              (
+                  '  salik_fee_type?: ServiceFeeType | null;\n  salik_fee_value?: number | null;\n',
+                  '  salik_fee_type?: ServiceFeeType | null;\n  salik_fee_value?: number | null;\n  parking_fee_type?: ServiceFeeType | null;\n  parking_fee_value?: number | null;\n',
+              ),
+              (
+                  '  const [salikFeeType, setSalikFeeType] = useState<ServiceFeeType>("fixed");\n  const [salikFeeValue, setSalikFeeValue] = useState(1);\n',
+                  '  const [salikFeeType, setSalikFeeType] = useState<ServiceFeeType>("fixed");\n  const [salikFeeValue, setSalikFeeValue] = useState(1);\n  const [parkingFeeType, setParkingFeeType] = useState<ServiceFeeType>("fixed");\n  const [parkingFeeValue, setParkingFeeValue] = useState(0);\n',
+              ),
+              (
+                  '      setSalikFeeType(p.salik_fee_type || "fixed");\n      setSalikFeeValue(p.salik_fee_value ?? 1);\n',
+                  '      setSalikFeeType(p.salik_fee_type || "fixed");\n      setSalikFeeValue(p.salik_fee_value ?? 1);\n      setParkingFeeType(p.parking_fee_type || "fixed");\n      setParkingFeeValue(p.parking_fee_value ?? 0);\n',
+              ),
+              (
+                  '      salik_fee_type: salikFeeType,\n      salik_fee_value: salikFeeValue,\n',
+                  '      salik_fee_type: salikFeeType,\n      salik_fee_value: salikFeeValue,\n      parking_fee_type: parkingFeeType,\n      parking_fee_value: parkingFeeValue,\n',
+              ),
+              (
+                  '<CardDescription>Default service fees applied when importing fines and Salik charges.</CardDescription>',
+                  '<CardDescription>Default service fees applied when importing fines, Salik and parking charges.</CardDescription>',
+              ),
+              (
+                  '<CardContent className="grid gap-6 md:grid-cols-2">\n                <div className="grid gap-3">\n                  <Label>Fine Service Fee</Label>',
+                  '<CardContent className="grid gap-6 md:grid-cols-3">\n                <div className="grid gap-3">\n                  <Label>Fine Service Fee</Label>',
+              ),
+          ]
+
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f"Expected Settings.tsx block not found: {old[:100]!r}")
+              text = text.replace(old, new, 1)
+
+          salik_block = '''                <div className="grid gap-3">
+                  <Label>Salik Service Fee</Label>
+                  <RadioGroup
+                    value={salikFeeType}
+                    onValueChange={(value) => setSalikFeeType(value as ServiceFeeType)}
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="fixed" />
+                      Fixed (AED)
+                    </Label>
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="percentage" />
+                      Percentage (%)
+                    </Label>
+                  </RadioGroup>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="salik-fee-value">Value</Label>
+                    <Input
+                      id="salik-fee-value"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={salikFeeValue}
+                      onChange={(e) => setSalikFeeValue(Number(e.target.value))}
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+'''
+
+          parking_block = '''
+                <div className="grid gap-3">
+                  <Label>Parking Service Fee</Label>
+                  <RadioGroup
+                    value={parkingFeeType}
+                    onValueChange={(value) => setParkingFeeType(value as ServiceFeeType)}
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="fixed" />
+                      Fixed (AED)
+                    </Label>
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="percentage" />
+                      Percentage (%)
+                    </Label>
+                  </RadioGroup>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="parking-fee-value">Value</Label>
+                    <Input
+                      id="parking-fee-value"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={parkingFeeValue}
+                      onChange={(e) => setParkingFeeValue(Number(e.target.value))}
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+'''
+
+          if salik_block not in text:
+              raise SystemExit("Salik fee UI block not found")
+          text = text.replace(salik_block, salik_block + parking_block, 1)
+          path.write_text(text)
+
+      - name: Commit change and remove helper workflow
+        run: |
+          rm .github/workflows/add-parking-service-fee-setting.yml
+          git config user.name "FleetDesk Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/pages/Settings.tsx .github/workflows/add-parking-service-fee-setting.yml
+          git commit -m "Add parking service fee setting"
+          git push
