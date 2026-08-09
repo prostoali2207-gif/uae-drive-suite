@@ -27,6 +27,11 @@ type ContractRow = {
   start_time: string | null;
   end_time: string | null;
 };
+type ServiceFeeType = "fixed" | "percentage";
+type ParkingFeeSettings = {
+  parking_fee_type: ServiceFeeType | null;
+  parking_fee_value: number | null;
+};
 
 type ParsedParking = {
   parkingDate: string;
@@ -41,6 +46,13 @@ type ParsedParking = {
 const normPlate = (value: unknown) => String(value ?? "").replace(/\D+/g, "");
 const normTag = (value: unknown) => String(value ?? "").replace(/\D+/g, "");
 const money = (value: string) => Number(value.replace(/,/g, ""));
+
+function calculateServiceFee(baseAmount: number, type: ServiceFeeType, value: number): number {
+  if (type === "percentage") {
+    return Math.round((baseAmount * value / 100) * 100) / 100;
+  }
+  return value;
+}
 
 function parseSalikDate(date: string, time: string, meridiem: string): string {
   const months: Record<string, number> = {
@@ -152,13 +164,31 @@ export async function importParkingPdf(file: File): Promise<ParkingImportSummary
   }
   if (summary.errors.length) return summary;
 
-  const [carsRes, contractsRes, existingRes] = await Promise.all([
+  const [carsRes, contractsRes, existingRes, feeSettingsRes] = await Promise.all([
     supabase.from("cars").select("id, plate, tag_number"),
     supabase.from("contracts").select("id, car_id, client_id, start_date, end_date, start_time, end_time"),
     (supabase as any).from("parking_charges").select("source_key"),
+    (supabase.from("profiles") as any)
+      .select("parking_fee_type, parking_fee_value")
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
-  if (carsRes.error || contractsRes.error || existingRes.error) {
-    summary.errors.push(carsRes.error?.message || contractsRes.error?.message || existingRes.error?.message || "Failed to load matching data");
+  if (carsRes.error || contractsRes.error || existingRes.error || feeSettingsRes.error) {
+    summary.errors.push(
+      carsRes.error?.message
+      || contractsRes.error?.message
+      || existingRes.error?.message
+      || feeSettingsRes.error?.message
+      || "Failed to load matching data",
+    );
+    return summary;
+  }
+
+  const feeSettings = (feeSettingsRes.data || {}) as ParkingFeeSettings;
+  const parkingFeeType: ServiceFeeType = feeSettings.parking_fee_type === "percentage" ? "percentage" : "fixed";
+  const parkingFeeValue = Number(feeSettings.parking_fee_value ?? 0);
+  if (!Number.isFinite(parkingFeeValue) || parkingFeeValue < 0) {
+    summary.errors.push("Parking service fee setting is invalid");
     return summary;
   }
 
@@ -184,6 +214,7 @@ export async function importParkingPdf(file: File): Promise<ParkingImportSummary
     }
     const contract = contractAt(contracts, car.id, row.parkingDate);
     if (!contract) summary.unmatchedContracts += 1;
+    const serviceFee = calculateServiceFee(row.amount, parkingFeeType, parkingFeeValue);
     inserts.push({
       owner_id: user.id,
       car_id: car.id,
@@ -194,7 +225,9 @@ export async function importParkingPdf(file: File): Promise<ParkingImportSummary
       tag_number: row.tagNumber,
       location: row.location,
       parking_zone: row.zone,
-      amount: row.amount,
+      original_amount: row.amount,
+      service_fee: serviceFee,
+      amount: row.amount + serviceFee,
       status: "Unpaid",
       source: "Salik Statement PDF",
       source_key: row.sourceKey,
