@@ -29,27 +29,21 @@ jobs:
               s = s.replace(old, new, count)
               p.write_text(s)
 
-          # SignContractModal: signing finishes as Signed, never Active.
           path = 'src/components/SignContractModal.tsx'
-          replace(path,
-          '''interface SignContractModalProps {
+          replace(path, '''interface SignContractModalProps {
             contractId: string;
             clientName: string;
             open: boolean;
             onActivate: () => Promise<boolean>;
             onComplete: () => void;
-          }''',
-          '''interface SignContractModalProps {
+          }''', '''interface SignContractModalProps {
             contractId: string;
             clientName: string;
             open: boolean;
             onComplete: () => void;
           }''')
-          replace(path,
-          'export function SignContractModal({ contractId, clientName, open, onActivate, onComplete }: SignContractModalProps) {',
-          'export function SignContractModal({ contractId, clientName, open, onComplete }: SignContractModalProps) {')
-          replace(path,
-          '''        if (!cancelled) {
+          replace(path, 'export function SignContractModal({ contractId, clientName, open, onActivate, onComplete }: SignContractModalProps) {', 'export function SignContractModal({ contractId, clientName, open, onComplete }: SignContractModalProps) {')
+          replace(path, '''        if (!cancelled) {
           setLoaded({
             data: contractResult.data as unknown as ContractForPdf,
             drivers,
@@ -58,8 +52,7 @@ jobs:
             termsEn,
             keyTerms,
           });
-        }''',
-          '''        if (!cancelled) {
+        }''', '''        if (!cancelled) {
           setLoaded({
             data: contractResult.data as unknown as ContractForPdf,
             drivers,
@@ -77,22 +70,17 @@ jobs:
           });
           setSignatures(existing);
         }''')
-          replace(path,
-          '.update({ client_signature: customerSignature, manager_signature: companySignature })',
-          '.update({ client_signature: customerSignature, manager_signature: companySignature, status: "Signed" })')
-          replace(path,
-          '''      const activated = await onActivate();
+          replace(path, '.update({ client_signature: customerSignature, manager_signature: companySignature })', '.update({ client_signature: customerSignature, manager_signature: companySignature, status: "Signed" })')
+          replace(path, '''      const activated = await onActivate();
       if (!activated) return;
       setStep("success");
-      toast.success("Contract signed and activated");''',
-          '''      setStep("success");
+      toast.success("Contract signed and activated");''', '''      setStep("success");
       toast.success("Contract signed and ready to start");''')
           replace(path, '<h2 className="mt-5 text-2xl font-bold">Contract is active</h2>', '<h2 className="mt-5 text-2xl font-bold">Contract is signed</h2>')
           replace(path, '<p className="mt-2 text-sm text-slate-600">All signatures are saved, the PDF is ready and the vehicle is marked as rented.</p>', '<p className="mt-2 text-sm text-slate-600">All signatures are saved and the PDF is ready. Start the rental when the vehicle is actually handed over.</p>')
 
-          # NewContract: keep Draft as booking, signing only makes it Signed.
           path = 'src/pages/NewContract.tsx'
-          old_activate = '''  const activateSignedContract = async () => {
+          replace(path, '''  const activateSignedContract = async () => {
     const { error } = await supabase.from("contracts").update({ status: "Active" }).eq("id", contractId).eq("owner_id", userId);
     if (error) { toast.error("Signatures were saved, but the contract could not be activated."); return false; }
     try {
@@ -104,60 +92,41 @@ jobs:
     return true;
   };
 
-'''
-          replace(path, old_activate, '')
+''', '')
           replace(path, 'import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";\n', '')
           replace(path, 'The draft becomes active after every required signature is saved.', 'The booking becomes signed after every required signature is saved. Start the rental only when the vehicle is handed over.')
           replace(path, '            onActivate={activateSignedContract}\n', '')
           replace(path, '<h2 className="text-2xl font-bold text-emerald-900">Contract signed</h2><p className="mt-2 text-sm text-emerald-800">The contract is active and the vehicle status has been updated.</p>', '<h2 className="text-2xl font-bold text-emerald-900">Contract signed</h2><p className="mt-2 text-sm text-emerald-800">The booking is signed. Start the rental from Contract Details when the vehicle is handed over.</p>')
           replace(path, 'toast.success("Contract draft created")', 'toast.success("Booking created")')
 
-          # ContractDetail imports and typing.
           path = 'src/pages/ContractDetail.tsx'
-          replace(path,
-          'import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";\n',
-          'import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";\nimport { SignContractModal } from "@/components/SignContractModal";\n')
-          replace(path,
-          'import { generateContractPdf } from "@/lib/contractPdf";\n',
-          'import { generateContractPdf } from "@/lib/contractPdf";\nimport { getContractDrivers } from "@/lib/contractDrivers";\nimport { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";\n')
-          replace(path,
-          '''  payment_status: string;
-  created_at: string;''',
-          '''  payment_status: string;
+          replace(path, 'import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";\n', 'import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";\nimport { SignContractModal } from "@/components/SignContractModal";\n')
+          replace(path, 'import { generateContractPdf } from "@/lib/contractPdf";\n', 'import { generateContractPdf } from "@/lib/contractPdf";\nimport { getContractDrivers } from "@/lib/contractDrivers";\nimport { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";\n')
+          replace(path, '''  payment_status: string;
+  created_at: string;''', '''  payment_status: string;
   client_signature?: string | null;
   manager_signature?: string | null;
   created_at: string;''')
-          replace(path,
-          '''    case "Active":
-      return "bg-tint-blue text-tint-blue-foreground border-tint-blue-foreground/20";''',
-          '''    case "Draft":
+          replace(path, '''    case "Active":
+      return "bg-tint-blue text-tint-blue-foreground border-tint-blue-foreground/20";''', '''    case "Draft":
       return "bg-tint-amber text-tint-amber-foreground border-tint-amber-foreground/20";
     case "Signed":
       return "bg-tint-green text-tint-green-foreground border-tint-green-foreground/20";
     case "Active":
       return "bg-tint-blue text-tint-blue-foreground border-tint-blue-foreground/20";''')
-          replace(path,
-          'const contractNumberLabel = (id: string) => `CTR-${id.slice(0, 8).toUpperCase()}`;\n',
-          'const contractNumberLabel = (id: string) => `CTR-${id.slice(0, 8).toUpperCase()}`;\nconst contractStatusLabel = (status: string) => status.trim().toLowerCase() === "draft" ? "Booking" : status;\n')
-          replace(path,
-          '  const [generatingInvoice, setGeneratingInvoice] = useState(false);\n',
-          '  const [generatingInvoice, setGeneratingInvoice] = useState(false);\n  const [showSignModal, setShowSignModal] = useState(false);\n  const [isStartingRental, setIsStartingRental] = useState(false);\n')
-
-          # Booking edit: current car + available cars only, and signature invalidation on material changes.
-          replace(path,
-          '''    const { data } = await supabase
+          replace(path, 'const contractNumberLabel = (id: string) => `CTR-${id.slice(0, 8).toUpperCase()}`;\n', 'const contractNumberLabel = (id: string) => `CTR-${id.slice(0, 8).toUpperCase()}`;\nconst contractStatusLabel = (status: string) => status.trim().toLowerCase() === "draft" ? "Booking" : status;\n')
+          replace(path, '  const [generatingInvoice, setGeneratingInvoice] = useState(false);\n', '  const [generatingInvoice, setGeneratingInvoice] = useState(false);\n  const [showSignModal, setShowSignModal] = useState(false);\n  const [isStartingRental, setIsStartingRental] = useState(false);\n')
+          replace(path, '''    const { data } = await supabase
       .from("cars")
       .select("id, plate, make, model, year, status")
       .eq("status", "Available")
       .order("plate");
-    setAvailableCars((data as AvailableCarRow[]) ?? []);''',
-          '''    const { data } = await supabase
+    setAvailableCars((data as AvailableCarRow[]) ?? []);''', '''    const { data } = await supabase
       .from("cars")
       .select("id, plate, make, model, year, status")
       .order("plate");
     setAvailableCars(((data as AvailableCarRow[]) ?? []).filter((car) => car.status === "Available" || car.id === contract.car_id));''')
-          replace(path,
-          '''    const { error } = await supabase
+          replace(path, '''    const { error } = await supabase
       .from("contracts")
       .update({
         start_date: editStartDate,
@@ -166,8 +135,7 @@ jobs:
         end_time: formatTimeForDb(editEndTime),
         car_id: editCarId,
       } as never)
-      .eq("id", contract.id);''',
-          '''    const materialChanged =
+      .eq("id", contract.id);''', '''    const materialChanged =
       editStartDate !== contract.start_date ||
       formatTimeForDb(editStartTime) !== formatTimeForDb(contract.start_time) ||
       editEndDate !== contract.end_date ||
@@ -187,13 +155,11 @@ jobs:
         ...(invalidatesSignature ? { status: "Draft", client_signature: null, manager_signature: null } : {}),
       } as never)
       .eq("id", contract.id);''')
-          replace(path,
-          '''    if (error) {
+          replace(path, '''    if (error) {
       toast.error("Failed to save changes");
       return;
     }
-    toast.success("Contract updated");''',
-          '''    if (error) {
+    toast.success("Contract updated");''', '''    if (error) {
       toast.error("Failed to save changes");
       return;
     }
@@ -213,9 +179,7 @@ jobs:
     } else {
       toast.success("Booking updated");
     }''')
-
-          # Add explicit start-rental transition with final checks.
-          marker = '''  const handleAddFee = async (fee: AddFeeInlineFee) => {'''
+          marker = '  const handleAddFee = async (fee: AddFeeInlineFee) => {'
           insert = '''  const handleStartRental = async () => {
     if (!contract || isStartingRental) return;
     setIsStartingRental(true);
@@ -226,18 +190,12 @@ jobs:
         toast.error("All required signatures must be saved before starting the rental.");
         return;
       }
-
-      const { data: car, error: carError } = await supabase
-        .from("cars")
-        .select("status")
-        .eq("id", contract.car_id)
-        .maybeSingle();
+      const { data: car, error: carError } = await supabase.from("cars").select("status").eq("id", contract.car_id).maybeSingle();
       if (carError) throw carError;
       if (!car || String(car.status).trim().toLowerCase() !== "available") {
         toast.error(`Vehicle cannot be handed over while its status is ${car?.status || "unknown"}.`);
         return;
       }
-
       const conflict = await findVehicleContractOverlap(supabase, {
         carId: contract.car_id,
         startDate: contract.start_date,
@@ -251,12 +209,7 @@ jobs:
         toast.error(formatContractOverlapMessage(conflict));
         return;
       }
-
-      const { error } = await supabase
-        .from("contracts")
-        .update({ status: "Active" } as never)
-        .eq("id", contract.id)
-        .eq("owner_id", contract.owner_id);
+      const { error } = await supabase.from("contracts").update({ status: "Active" } as never).eq("id", contract.id).eq("owner_id", contract.owner_id);
       if (error) throw error;
       await syncVehicleStatusesWithContracts();
       toast.success("Rental started");
@@ -270,12 +223,8 @@ jobs:
 
 '''
           replace(path, marker, insert + marker)
-
-          # Status booleans and UI lifecycle actions.
-          replace(path,
-          '''  const isContractClosed = contract.status.toLowerCase() === "closed";
-  const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());''',
-          '''  const normalizedContractStatus = contract.status.trim().toLowerCase();
+          replace(path, '''  const isContractClosed = contract.status.toLowerCase() === "closed";
+  const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());''', '''  const normalizedContractStatus = contract.status.trim().toLowerCase();
   const isContractClosed = normalizedContractStatus === "closed";
   const isBooking = normalizedContractStatus === "draft";
   const isSigned = normalizedContractStatus === "signed";
@@ -284,39 +233,25 @@ jobs:
   const canExtendContract = isActiveRental;''')
           replace(path, '{contract.status}\n                </span>', '{contractStatusLabel(contract.status)}\n                </span>')
           replace(path, '{!isContractClosed && (\n                  <Button', '{isActiveRental && (\n                  <Button')
-          replace(path,
-          '''                <Button size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
+          replace(path, '''                <Button size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
-                </Button>''',
-          '''                {isPreRental && (
+                </Button>''', '''                {isPreRental && (
                   <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
                     <Pencil className="h-3.5 w-3.5" />
                     Edit Booking
                   </Button>
                 )}
-                {isBooking && (
-                  <Button size="sm" className="h-8 gap-1.5" onClick={() => setShowSignModal(true)}>
-                    Review & Sign
-                  </Button>
-                )}
-                {isSigned && (
-                  <Button size="sm" className="h-8 gap-1.5" disabled={isStartingRental} onClick={() => void handleStartRental()}>
-                    {isStartingRental ? "Starting..." : "Start Rental"}
-                  </Button>
-                )}''')
-          replace(path,
-          '''              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
+                {isBooking && <Button size="sm" className="h-8 gap-1.5" onClick={() => setShowSignModal(true)}>Review & Sign</Button>}
+                {isSigned && <Button size="sm" className="h-8 gap-1.5" disabled={isStartingRental} onClick={() => void handleStartRental()}>{isStartingRental ? "Starting..." : "Start Rental"}</Button>}''')
+          replace(path, '''              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Details
-              </Button>''',
-          '''              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={!isPreRental} onClick={isPreRental ? handleOpenEditModal : undefined}>
+              </Button>''', '''              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={!isPreRental} onClick={isPreRental ? handleOpenEditModal : undefined}>
                 <Pencil className="h-3.5 w-3.5" />
                 {isPreRental ? "Edit Booking" : "Edit Details"}
               </Button>''')
           replace(path, 'disabled={contract.status === "Closed"}', 'disabled={!isActiveRental}')
-
-          # Complete booking edit form: dates, times, vehicle.
           edit_anchor = '''            <div className="grid gap-1.5">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                 Start Time
@@ -331,75 +266,44 @@ jobs:
 
           </div>'''
           edit_insert = '''            <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Start Time
-              </Label>
-              <input
-                type="time"
-                value={editStartTime}
-                onChange={(e) => setEditStartTime(e.target.value)}
-                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
-              />
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Start Time</Label>
+              <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm" />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">End Date</Label>
-                <input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} className="flex h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">End Time</Label>
-                <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="flex h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm" />
-              </div>
+              <div className="grid gap-1.5"><Label className="text-xs uppercase tracking-wide text-muted-foreground">End Date</Label><input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} className="flex h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm" /></div>
+              <div className="grid gap-1.5"><Label className="text-xs uppercase tracking-wide text-muted-foreground">End Time</Label><input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="flex h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm" /></div>
             </div>
             <div className="grid gap-1.5">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">Vehicle</Label>
-              <Select value={editCarId} onValueChange={setEditCarId}>
-                <SelectTrigger className="h-11 md:h-9"><SelectValue placeholder="Select vehicle" /></SelectTrigger>
-                <SelectContent>
-                  {availableCars.map((car) => (
-                    <SelectItem key={car.id} value={car.id}>{car.plate} — {car.make} {car.model}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Select value={editCarId} onValueChange={setEditCarId}><SelectTrigger className="h-11 md:h-9"><SelectValue placeholder="Select vehicle" /></SelectTrigger><SelectContent>{availableCars.map((car) => <SelectItem key={car.id} value={car.id}>{car.plate} — {car.make} {car.model}</SelectItem>)}</SelectContent></Select>
             </div>
             {isSigned && <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Changing vehicle or rental time will invalidate the saved signatures and require signing again.</p>}
 
           </div>'''
           replace(path, edit_anchor, edit_insert)
-
-          # Mount signing flow in details so a booking can be signed later from its own page.
-          close_marker = '''      <Dialog open={showCloseModal} onOpenChange={(v) => !v && setShowCloseModal(false)}>'''
+          close_marker = '      <Dialog open={showCloseModal} onOpenChange={(v) => !v && setShowCloseModal(false)}>'
           sign_modal = '''      <SignContractModal
         contractId={contract.id}
         clientName={contract.clients?.full_name || "Client"}
         open={showSignModal}
-        onComplete={() => {
-          setShowSignModal(false);
-          void fetchData();
-        }}
+        onComplete={() => { setShowSignModal(false); void fetchData(); }}
       />
 
 '''
           replace(path, close_marker, sign_modal + close_marker)
 
-          # Contracts list: show Booking/Signed correctly instead of treating every non-closed row as Active on mobile.
           path = 'src/pages/Contracts.tsx'
-          replace(path,
-          '''const statusClasses: Record<string, string> = {
-  Active: "bg-tint-green text-tint-green-foreground",''',
-          '''const statusClasses: Record<string, string> = {
+          replace(path, '''const statusClasses: Record<string, string> = {
+  Active: "bg-tint-green text-tint-green-foreground",''', '''const statusClasses: Record<string, string> = {
   Draft: "bg-tint-amber text-tint-amber-foreground",
   Signed: "bg-tint-blue text-tint-blue-foreground",
   Active: "bg-tint-green text-tint-green-foreground",''')
-          replace(path,
-          '''function getMobileCardStatus(contract: ContractRow): { label: string; className: string; isClosed: boolean } {
-  if (isClosedContract(contract.status)) {''',
-          '''function getMobileCardStatus(contract: ContractRow): { label: string; className: string; isClosed: boolean } {
+          replace(path, '''function getMobileCardStatus(contract: ContractRow): { label: string; className: string; isClosed: boolean } {
+  if (isClosedContract(contract.status)) {''', '''function getMobileCardStatus(contract: ContractRow): { label: string; className: string; isClosed: boolean } {
   const normalized = contract.status.trim().toLowerCase();
   if (normalized === "draft") return { label: "Booking", className: "bg-tint-amber text-tint-amber-foreground", isClosed: false };
   if (normalized === "signed") return { label: "Signed", className: "bg-tint-blue text-tint-blue-foreground", isClosed: false };
   if (isClosedContract(contract.status)) {''')
-
           PY
       - run: npm ci
       - name: Focused overlap regression test
