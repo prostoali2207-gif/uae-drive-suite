@@ -185,10 +185,7 @@ const BlackPointRequestsTab = () => {
         .gt("black_points", 0)
         .order("fine_date", { ascending: false })
         .limit(300),
-      submissionsClient
-        .from("external_form_submissions")
-        .select("*")
-        .order("created_at", { ascending: false }),
+      submissionsClient.from("external_form_submissions").select("*").order("created_at", { ascending: false }),
     ]);
 
     if (finesResult.error || submissionsResult.error) {
@@ -284,6 +281,7 @@ const BlackPointRequestsTab = () => {
     const contract = fine.contracts;
     if (!client || !car || !contract || !fine.contract_id || !fine.fine_number || !car.mulkiya_pdf_path) return;
 
+    const rebuilding = submissionByFine.has(fine.id);
     setPreparing(true);
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -375,9 +373,7 @@ const BlackPointRequestsTab = () => {
         companyLicense: companyLicenseBlob,
         stampPng,
       });
-      if (packageBlob.size > 18 * 1024 * 1024) {
-        throw new Error("Prepared package is too large for email. Keep it under 18 MB.");
-      }
+      if (packageBlob.size > 18 * 1024 * 1024) throw new Error("Prepared package is too large for email. Keep it under 18 MB.");
 
       const fileName = `Black_Points_${fine.fine_number}_${car.plate.replace(/\s+/g, "-")}.pdf`;
       const storagePath = `${user.id}/${fine.id}/black-points-package.pdf`;
@@ -413,7 +409,7 @@ const BlackPointRequestsTab = () => {
       setPrepareFine(null);
       setFineScreenshot(null);
       await loadData();
-      toast.success("Black Point package is ready");
+      toast.success(rebuilding ? "Black Point package rebuilt" : "Black Point package is ready");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not prepare Black Point package");
     } finally {
@@ -453,7 +449,6 @@ const BlackPointRequestsTab = () => {
     try {
       const downloaded = await downloadPackage(submission);
       if (!downloaded) return;
-
       const subject = "Transfer Blackpoints";
       const body = "Please find attached documents for transfer blackpoints.";
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(submission.recipient_email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -469,36 +464,24 @@ const BlackPointRequestsTab = () => {
     setFineScreenshot(event.target.files?.[0] ?? null);
   };
 
+  const rebuildingCurrent = prepareFine ? submissionByFine.has(prepareFine.id) : false;
+
   return (
     <div className="grid gap-4">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search fine, client or plate"
-          className="min-h-10 pl-9"
-        />
+        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search fine, client or plate" className="min-h-10 pl-9" />
       </div>
 
       {loading ? (
         <div className="grid gap-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-28 w-full" />)}</div>
       ) : loadError ? (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-6">
-            <p className="text-sm text-destructive">Could not load Black Point requests: {loadError}</p>
-            <Button variant="outline" onClick={() => void loadData()} className="gap-2">
-              <RefreshCw className="h-4 w-4" />Retry
-            </Button>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="flex flex-col items-start gap-3 py-6">
+          <p className="text-sm text-destructive">Could not load Black Point requests: {loadError}</p>
+          <Button variant="outline" onClick={() => void loadData()} className="gap-2"><RefreshCw className="h-4 w-4" />Retry</Button>
+        </CardContent></Card>
       ) : filteredFines.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center">
-            <FileCheck2 className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 font-medium">No Black Point fines found</p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="py-10 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-medium">No Black Point fines found</p></CardContent></Card>
       ) : (
         <div className="grid gap-3">
           {filteredFines.map((fine) => {
@@ -510,37 +493,18 @@ const BlackPointRequestsTab = () => {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium">Fine {fine.fine_number || "—"}</p>
-                      <Badge variant={submission?.status === "failed" ? "destructive" : "secondary"}>
-                        {submission ? statusLabel[submission.status] : missing.length ? "Missing data" : "Not prepared"}
-                      </Badge>
+                      <Badge variant={submission?.status === "failed" ? "destructive" : "secondary"}>{submission ? statusLabel[submission.status] : missing.length ? "Missing data" : "Not prepared"}</Badge>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {fine.clients?.full_name || "Client missing"} · {fine.cars?.plate || "Vehicle missing"} · {fine.black_points || 0} BP
-                    </p>
-                    {submission?.sent_at && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Sent {new Date(submission.sent_at).toLocaleString("en-GB", { timeZone: "Asia/Dubai" })}
-                      </p>
-                    )}
+                    <p className="mt-1 text-sm text-muted-foreground">{fine.clients?.full_name || "Client missing"} · {fine.cars?.plate || "Vehicle missing"} · {fine.black_points || 0} BP</p>
+                    {submission?.sent_at && <p className="mt-1 text-xs text-muted-foreground">Sent {new Date(submission.sent_at).toLocaleString("en-GB", { timeZone: "Asia/Dubai" })}</p>}
                     {submission?.last_error && <p className="mt-1 text-xs text-destructive">{submission.last_error}</p>}
-                    {!submission && missing.length > 0 && <p className="mt-1 text-xs text-destructive">Missing: {missing.join(", ")}</p>}
+                    {missing.length > 0 && <p className="mt-1 text-xs text-destructive">Missing: {missing.join(", ")}</p>}
                   </div>
                   <div className="flex flex-wrap gap-2 sm:shrink-0">
-                    {submission && (
-                      <Button variant="outline" size="sm" className="min-h-10 gap-1.5" onClick={() => void downloadPackage(submission)}>
-                        <Download className="h-4 w-4" />PDF
-                      </Button>
-                    )}
-                    {submission && (
-                      <Button variant="outline" size="sm" className="min-h-10" onClick={() => setReviewSubmission(submission)}>
-                        Review
-                      </Button>
-                    )}
-                    {!submission && (
-                      <Button size="sm" className="min-h-10" disabled={missing.length > 0} onClick={() => openPrepare(fine)}>
-                        Prepare
-                      </Button>
-                    )}
+                    {submission && <Button variant="outline" size="sm" className="min-h-10 gap-1.5" onClick={() => void downloadPackage(submission)}><Download className="h-4 w-4" />PDF</Button>}
+                    {submission && <Button variant="outline" size="sm" className="min-h-10" onClick={() => setReviewSubmission(submission)}>Review</Button>}
+                    {submission && <Button size="sm" className="min-h-10" disabled={missing.length > 0} onClick={() => openPrepare(fine)}>Rebuild</Button>}
+                    {!submission && <Button size="sm" className="min-h-10" disabled={missing.length > 0} onClick={() => openPrepare(fine)}>Prepare</Button>}
                   </div>
                 </CardContent>
               </Card>
@@ -549,34 +513,28 @@ const BlackPointRequestsTab = () => {
         </div>
       )}
 
-      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) setPrepareFine(null); }}>
+      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) { setPrepareFine(null); setFineScreenshot(null); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Prepare Black Point package</DialogTitle>
+            <DialogTitle>{rebuildingCurrent ? "Rebuild Black Point package" : "Prepare Black Point package"}</DialogTitle>
             <DialogDescription>
-              FleetDesk will add the filled form, contract, passport, driving licence, Mulkiya and company Trade License automatically. Add only the fine screenshot.
+              {rebuildingCurrent
+                ? "FleetDesk will rebuild the package from the current contract and documents. The previous PDF stays unchanged until the new package is created successfully. Add the correct fine screenshot again."
+                : "FleetDesk will add the filled form, contract, passport, driving licence, Mulkiya and company Trade License automatically. Add only the fine screenshot."}
             </DialogDescription>
           </DialogHeader>
-          {prepareFine && (
-            <div className="rounded-md border bg-muted/40 p-3 text-sm">
-              <p className="font-medium">{prepareFine.clients?.full_name}</p>
-              <p className="mt-1 text-muted-foreground">Fine {prepareFine.fine_number} · {prepareFine.cars?.plate} · {prepareFine.black_points || 0} BP</p>
-            </div>
-          )}
+          {prepareFine && <div className="rounded-md border bg-muted/40 p-3 text-sm">
+            <p className="font-medium">{prepareFine.clients?.full_name}</p>
+            <p className="mt-1 text-muted-foreground">Fine {prepareFine.fine_number} · {prepareFine.cars?.plate} · {prepareFine.black_points || 0} BP</p>
+          </div>}
           <div className="grid gap-1.5">
             <Label htmlFor="fine-screenshot">Fine screenshot</Label>
-            <Input
-              id="fine-screenshot"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"
-              onChange={onScreenshotChange}
-              disabled={preparing}
-            />
-            <p className="text-xs text-muted-foreground">Image or PDF, up to 10 MB.</p>
+            <Input id="fine-screenshot" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" onChange={onScreenshotChange} disabled={preparing} />
+            <p className="text-xs text-muted-foreground">Image or PDF, up to 10 MB. The screenshot is used only for this package and is not stored separately.</p>
           </div>
           <Button className="min-h-10 gap-2" disabled={!fineScreenshot || preparing} onClick={() => void preparePackage()}>
             {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-            {preparing ? "Preparing package..." : "Prepare package"}
+            {preparing ? (rebuildingCurrent ? "Rebuilding package..." : "Preparing package...") : (rebuildingCurrent ? "Rebuild package" : "Prepare package")}
           </Button>
         </DialogContent>
       </Dialog>
@@ -587,39 +545,21 @@ const BlackPointRequestsTab = () => {
             <DialogTitle>Open in Gmail</DialogTitle>
             <DialogDescription>FleetDesk will download the prepared PDF and open a Gmail message with the recipient and text already filled.</DialogDescription>
           </DialogHeader>
-          {reviewSubmission && (
-            <div className="grid gap-3">
-              <div className="rounded-md border p-3 text-sm">
-                <div className="flex items-start gap-2">
-                  <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">To</p>
-                    <p className="break-all font-medium" dir="ltr">{reviewSubmission.recipient_email}</p>
-                  </div>
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">Subject</p>
-                <p className="font-medium">Transfer Blackpoints</p>
-                <p className="mt-3 text-xs text-muted-foreground">Attachment</p>
-                <p className="font-medium">{reviewSubmission.package_file_name}</p>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button variant="outline" className="min-h-10 flex-1" onClick={() => void openPackage(reviewSubmission)}>
-                  Preview PDF
-                </Button>
-                <Button
-                  className="min-h-10 flex-1 gap-2"
-                  disabled={openingGmailId === reviewSubmission.id}
-                  onClick={() => void openInGmail(reviewSubmission)}
-                >
-                  {openingGmailId === reviewSubmission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                  {openingGmailId === reviewSubmission.id ? "Opening Gmail..." : "Open in Gmail"}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Gmail cannot receive a local attachment from a normal web link. The PDF is downloaded automatically; attach that one file in Gmail and send.
-              </p>
+          {reviewSubmission && <div className="grid gap-3">
+            <div className="rounded-md border p-3 text-sm">
+              <div className="flex items-start gap-2"><Mail className="mt-0.5 h-4 w-4 text-muted-foreground" /><div className="min-w-0"><p className="text-xs text-muted-foreground">To</p><p className="break-all font-medium" dir="ltr">{reviewSubmission.recipient_email}</p></div></div>
+              <p className="mt-3 text-xs text-muted-foreground">Subject</p><p className="font-medium">Transfer Blackpoints</p>
+              <p className="mt-3 text-xs text-muted-foreground">Attachment</p><p className="font-medium">{reviewSubmission.package_file_name}</p>
             </div>
-          )}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="outline" className="min-h-10 flex-1" onClick={() => void openPackage(reviewSubmission)}>Preview PDF</Button>
+              <Button className="min-h-10 flex-1 gap-2" disabled={openingGmailId === reviewSubmission.id} onClick={() => void openInGmail(reviewSubmission)}>
+                {openingGmailId === reviewSubmission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                {openingGmailId === reviewSubmission.id ? "Opening Gmail..." : "Open in Gmail"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Gmail cannot receive a local attachment from a normal web link. The PDF is downloaded automatically; attach that one file in Gmail and send.</p>
+          </div>}
         </DialogContent>
       </Dialog>
     </div>
