@@ -18,8 +18,8 @@ type BuildBlackPointPackageInput = {
 };
 
 const A4 = { width: 595.28, height: 841.89 };
-const STAMP_MAX_WIDTH = 128;
-const STAMP_MAX_HEIGHT = 72;
+const STAMP_MAX_WIDTH = 165;
+const STAMP_MAX_HEIGHT = 95;
 
 const toPngBlob = async (blob: Blob): Promise<Blob> => {
   if (blob.type === "image/png") return blob;
@@ -76,6 +76,44 @@ const appendPart = async (target: PDFDocument, part: PackagePart) => {
   throw new Error(`Unsupported document type: ${part.blob.type || "unknown"}`);
 };
 
+const appendMulkiya = async (target: PDFDocument, blob: Blob) => {
+  if (blob.type !== "application/pdf") {
+    await appendPart(target, { blob });
+    return;
+  }
+
+  const source = await PDFDocument.load(await blob.arrayBuffer());
+  const pageCount = source.getPageCount();
+  if (pageCount < 2) {
+    const [page] = await target.copyPages(source, [0]);
+    target.addPage(page);
+    return;
+  }
+
+  const [front, back] = await target.embedPdf(await blob.arrayBuffer(), [0, 1]);
+  const page = target.addPage([A4.width, A4.height]);
+  const margin = 28;
+  const gap = 16;
+  const slotHeight = (A4.height - margin * 2 - gap) / 2;
+  const slotWidth = A4.width - margin * 2;
+
+  const drawSide = (embedded: typeof front, y: number) => {
+    const natural = embedded.scale(1);
+    const scale = Math.min(slotWidth / natural.width, slotHeight / natural.height);
+    const width = natural.width * scale;
+    const height = natural.height * scale;
+    page.drawPage(embedded, {
+      x: (A4.width - width) / 2,
+      y: y + (slotHeight - height) / 2,
+      width,
+      height,
+    });
+  };
+
+  drawSide(front, margin + slotHeight + gap);
+  drawSide(back, margin);
+};
+
 const stampPages = async (target: PDFDocument, stampPng?: Uint8Array, skipFirstPages = 0) => {
   if (!stampPng?.length) return;
   const image = await target.embedPng(stampPng);
@@ -118,7 +156,7 @@ export const buildBlackPointSubmissionPackage = async ({
   if (passport) await appendPart(target, { blob: passport });
   if (licenseFront) await appendPart(target, { blob: licenseFront });
   if (licenseBack) await appendPart(target, { blob: licenseBack });
-  await appendPart(target, { blob: mulkiya });
+  await appendMulkiya(target, mulkiya);
   await appendPart(target, { blob: fineScreenshot });
   await appendPart(target, { blob: companyLicense });
   await stampPages(target, stampPng, formPageCount);
