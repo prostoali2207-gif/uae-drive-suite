@@ -36,6 +36,7 @@ import { VehicleTimelineSheet } from "@/components/VehicleTimelineSheet";
 import SalikModal from "@/components/SalikModal";
 import SalikDetailModal from "@/components/SalikDetailModal";
 import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";
+import { SignContractModal } from "@/components/SignContractModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,6 +96,8 @@ import {
 } from "@/lib/contractOverlap";
 import { addDaysToDateInputValue, diffCalendarDays } from "@/lib/dateUtils";
 import { generateContractPdf } from "@/lib/contractPdf";
+import { getContractDrivers } from "@/lib/contractDrivers";
+import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -115,6 +118,8 @@ interface ContractRecord {
   fuel_level: string;
   status: string;
   payment_status: string;
+  client_signature?: string | null;
+  manager_signature?: string | null;
   created_at: string;
   notes?: string | null;
   clients: {
@@ -324,6 +329,10 @@ const loadPdfImage = async (url: string): Promise<PdfImage | null> => {
 
 const statusBadgeClass = (status: string) => {
   switch (status) {
+    case "Draft":
+      return "bg-tint-amber text-tint-amber-foreground border-tint-amber-foreground/20";
+    case "Signed":
+      return "bg-tint-green text-tint-green-foreground border-tint-green-foreground/20";
     case "Active":
       return "bg-tint-blue text-tint-blue-foreground border-tint-blue-foreground/20";
     case "Expiring Soon":
@@ -444,6 +453,7 @@ function addDaysToDateInput(value: string, daysToAdd: number): string {
 
 const fmtAed = (n: number) => `AED ${Number(n).toLocaleString()}`;
 const contractNumberLabel = (id: string) => `CTR-${id.slice(0, 8).toUpperCase()}`;
+const contractStatusLabel = (status: string) => status.trim().toLowerCase() === "draft" ? "Booking" : status;
 
 const RENTAL_EXTENSION_LABEL = "Rental Extension";
 const RENTAL_EXTENSION_CATEGORY: FeeCategory = "other";
@@ -3800,6 +3810,8 @@ const ContractDetail = () => {
   const [savingAmountEdit, setSavingAmountEdit] = useState(false);
   const [markingDepositReturned, setMarkingDepositReturned] = useState(false);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [isStartingRental, setIsStartingRental] = useState(false);
 
   const navigate = useNavigate();
 
@@ -5456,9 +5468,8 @@ const ContractDetail = () => {
     const { data } = await supabase
       .from("cars")
       .select("id, plate, make, model, year, status")
-      .eq("status", "Available")
       .order("plate");
-    setAvailableCars((data as AvailableCarRow[]) ?? []);
+    setAvailableCars(((data as AvailableCarRow[]) ?? []).filter((car) => car.status === "Available" || car.id === contract.car_id));
     setShowEditModal(true);
   };
 
@@ -5486,6 +5497,15 @@ const ContractDetail = () => {
       toast.error(message);
       return;
     }
+    const materialChanged =
+      editStartDate !== contract.start_date ||
+      formatTimeForDb(editStartTime) !== formatTimeForDb(contract.start_time) ||
+      editEndDate !== contract.end_date ||
+      formatTimeForDb(editEndTime) !== formatTimeForDb(contract.end_time) ||
+      editCarId !== contract.car_id;
+    const invalidatesSignature = materialChanged &&
+      (contract.status.trim().toLowerCase() === "signed" || Boolean(contract.client_signature) || Boolean(contract.manager_signature));
+
     const { error } = await supabase
       .from("contracts")
       .update({
@@ -5494,6 +5514,7 @@ const ContractDetail = () => {
         end_date: editEndDate,
         end_time: formatTimeForDb(editEndTime),
         car_id: editCarId,
+        ...(invalidatesSignature ? { status: "Draft", client_signature: null, manager_signature: null } : {}),
       } as never)
       .eq("id", contract.id);
     setIsSavingEdit(false);
@@ -5501,9 +5522,76 @@ const ContractDetail = () => {
       toast.error("Failed to save changes");
       return;
     }
-    toast.success("Contract updated");
+    if (invalidatesSignature) {
+      const { error: driverSignatureError } = await (supabase as any)
+        .from("contract_drivers")
+        .update({ signature: null, signed_at: null })
+        .eq("contract_id", contract.id);
+      if (driverSignatureError) {
+        toast.error("Booking changed, but additional-driver signatures could not be reset.");
+        await fetchData();
+        return;
+      }
+      const { error: pdfDeleteError } = await supabase.storage.from("contract-pdfs").remove([`${contract.id}.pdf`]);
+      if (pdfDeleteError) console.info("Old signed PDF could not be removed; it will be overwritten after re-signing.");
+      toast.success("Booking updated — signatures need to be collected again");
+    } else {
+      toast.success("Booking updated");
+    }
     setShowEditModal(false);
     fetchData();
+  };
+
+  const handleStartRental = async () => {
+    if (!contract || isStartingRental) return;
+    setIsStartingRental(true);
+    try {
+      const drivers = await getContractDrivers(contract.id);
+      const missingDriverSignature = drivers.find((driver) => !driver.signature);
+      if (!contract.client_signature || !contract.manager_signature || missingDriverSignature) {
+        toast.error("All required signatures must be saved before starting the rental.");
+        return;
+      }
+
+      const { data: car, error: carError } = await supabase
+        .from("cars")
+        .select("status")
+        .eq("id", contract.car_id)
+        .maybeSingle();
+      if (carError) throw carError;
+      if (!car || String(car.status).trim().toLowerCase() !== "available") {
+        toast.error(`Vehicle cannot be handed over while its status is ${car?.status || "unknown"}.`);
+        return;
+      }
+
+      const conflict = await findVehicleContractOverlap(supabase, {
+        carId: contract.car_id,
+        startDate: contract.start_date,
+        startTime: contract.start_time,
+        endDate: contract.end_date,
+        endTime: contract.end_time,
+        excludeContractId: contract.id,
+        operation: "contract-start-rental",
+      });
+      if (conflict) {
+        toast.error(formatContractOverlapMessage(conflict));
+        return;
+      }
+
+      const { error } = await supabase
+        .from("contracts")
+        .update({ status: "Active" } as never)
+        .eq("id", contract.id)
+        .eq("owner_id", contract.owner_id);
+      if (error) throw error;
+      await syncVehicleStatusesWithContracts();
+      toast.success("Rental started");
+      await fetchData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not start rental");
+    } finally {
+      setIsStartingRental(false);
+    }
   };
 
   const handleAddFee = async (fee: AddFeeInlineFee) => {
@@ -5563,8 +5651,13 @@ const ContractDetail = () => {
   }
 
   const contractNumber = `CTR-${contract.id.slice(0, 8).toUpperCase()}`;
-  const isContractClosed = contract.status.toLowerCase() === "closed";
-  const canExtendContract = ["active", "expiring soon", "overdue"].includes(contract.status.toLowerCase());
+  const normalizedContractStatus = contract.status.trim().toLowerCase();
+  const isContractClosed = normalizedContractStatus === "closed";
+  const isBooking = normalizedContractStatus === "draft";
+  const isSigned = normalizedContractStatus === "signed";
+  const isPreRental = isBooking || isSigned;
+  const isActiveRental = ["active", "expiring soon", "overdue"].includes(normalizedContractStatus);
+  const canExtendContract = isActiveRental;
   const InvoiceButton = (
     <Button
       variant="outline"
@@ -5806,7 +5899,7 @@ const ContractDetail = () => {
                     statusBadgeClass(contract.status),
                   )}
                 >
-                  {contract.status}
+                  {contractStatusLabel(contract.status)}
                 </span>
               </div>
             </div>
@@ -5830,7 +5923,7 @@ const ContractDetail = () => {
                   <FileDown className="h-3.5 w-3.5" />
                   Contract
                 </Button>
-                {!isContractClosed && (
+                {isActiveRental && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -5864,10 +5957,22 @@ const ContractDetail = () => {
                     Reopen Contract
                   </Button>
                 )}
-                <Button size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit
-                </Button>
+                {isPreRental && (
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={handleOpenEditModal}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit Booking
+                  </Button>
+                )}
+                {isBooking && (
+                  <Button size="sm" className="h-8 gap-1.5" onClick={() => setShowSignModal(true)}>
+                    Review & Sign
+                  </Button>
+                )}
+                {isSigned && (
+                  <Button size="sm" className="h-8 gap-1.5" disabled={isStartingRental} onClick={() => void handleStartRental()}>
+                    {isStartingRental ? "Starting..." : "Start Rental"}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -5907,16 +6012,16 @@ const ContractDetail = () => {
           {/* OVERVIEW */}
           <TabsContent value="overview" className="mt-4 max-w-full min-w-0 space-y-3">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={!isPreRental} onClick={isPreRental ? handleOpenEditModal : undefined}>
                 <Pencil className="h-3.5 w-3.5" />
-                Edit Details
+                {isPreRental ? "Edit Booking" : "Edit Details"}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1.5"
                 onClick={() => navigate(`/contracts/${contract.id}/replace-vehicle`)}
-                disabled={contract.status === "Closed"}
+                disabled={!isActiveRental}
               >
                 Replace Vehicle
               </Button>
@@ -6687,6 +6792,28 @@ const ContractDetail = () => {
                 className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">End Date</Label>
+                <input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} className="flex h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">End Time</Label>
+                <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="flex h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm" />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Vehicle</Label>
+              <Select value={editCarId} onValueChange={setEditCarId}>
+                <SelectTrigger className="h-11 md:h-9"><SelectValue placeholder="Select vehicle" /></SelectTrigger>
+                <SelectContent>
+                  {availableCars.map((car) => (
+                    <SelectItem key={car.id} value={car.id}>{car.plate} — {car.make} {car.model}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {isSigned && <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Changing vehicle or rental time will invalidate the saved signatures and require signing again.</p>}
 
           </div>
 
@@ -6703,6 +6830,16 @@ const ContractDetail = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SignContractModal
+        contractId={contract.id}
+        clientName={contract.clients?.full_name || "Client"}
+        open={showSignModal}
+        onComplete={() => {
+          setShowSignModal(false);
+          void fetchData();
+        }}
+      />
 
       <Dialog open={showCloseModal} onOpenChange={(v) => !v && setShowCloseModal(false)}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-[520px]">

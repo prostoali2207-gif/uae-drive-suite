@@ -131,6 +131,8 @@ function toSupabaseMessage(error: { code?: string; message?: string } | null): s
 }
 
 const statusClasses: Record<string, string> = {
+  Draft: "bg-tint-amber text-tint-amber-foreground",
+  Signed: "bg-tint-blue text-tint-blue-foreground",
   Active: "bg-tint-green text-tint-green-foreground",
   "Expiring Soon": "bg-tint-amber text-tint-amber-foreground",
   Overdue: "bg-tint-rose text-tint-rose-foreground",
@@ -265,6 +267,9 @@ function matchesDashboardContractFilter(
 }
 
 function getMobileCardStatus(contract: ContractRow): { label: string; className: string; isClosed: boolean } {
+  const normalized = contract.status.trim().toLowerCase();
+  if (normalized === "draft") return { label: "Booking", className: "bg-tint-amber text-tint-amber-foreground", isClosed: false };
+  if (normalized === "signed") return { label: "Signed", className: "bg-tint-blue text-tint-blue-foreground", isClosed: false };
   if (isClosedContract(contract.status)) {
     return { label: "Closed", className: "bg-muted text-muted-foreground", isClosed: true };
   }
