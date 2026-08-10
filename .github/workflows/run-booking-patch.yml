@@ -15,30 +15,96 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Normalize compact NewContract anchors
+      - name: Harden signature invalidation order
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('scripts/booking_workflow_patch.py')
+          p = Path('src/pages/ContractDetail.tsx')
           s = p.read_text()
-          s = s.replace("replace(path, '            onActivate={activateSignedContract}\\n', '')", "replace(path, ' onActivate={activateSignedContract}', '')")
-          old = '''replace(\n    path,\n    '<h2 className=\"text-2xl font-bold text-emerald-900\">Contract signed</h2><p className=\"mt-2 text-sm text-emerald-800\">The contract is active and the vehicle status has been updated.</p>',\n    '<h2 className=\"text-2xl font-bold text-emerald-900\">Contract signed</h2><p className=\"mt-2 text-sm text-emerald-800\">The booking is signed. Start the rental from Contract Details when the vehicle is handed over.</p>',\n)'''
-          new = '''replace(path, 'The contract is active and the vehicle status has been updated.', 'The booking is signed. Start the rental from Contract Details when the vehicle is handed over.')'''
-          s = s.replace(old, new)
-          p.write_text(s)
+          old = '''    const { error } = await supabase
+      .from("contracts")
+      .update({
+        start_date: editStartDate,
+        start_time: formatTimeForDb(editStartTime),
+        end_date: editEndDate,
+        end_time: formatTimeForDb(editEndTime),
+        car_id: editCarId,
+        ...(invalidatesSignature ? { status: "Draft", client_signature: null, manager_signature: null } : {}),
+      } as never)
+      .eq("id", contract.id);
+    setIsSavingEdit(false);
+    if (error) {
+      toast.error("Failed to save changes");
+      return;
+    }
+    if (invalidatesSignature) {
+      const { error: driverSignatureError } = await (supabase as any)
+        .from("contract_drivers")
+        .update({ signature: null, signed_at: null })
+        .eq("contract_id", contract.id);
+      if (driverSignatureError) {
+        toast.error("Booking changed, but additional-driver signatures could not be reset.");
+        await fetchData();
+        return;
+      }
+      const { error: pdfDeleteError } = await supabase.storage.from("contract-pdfs").remove([`${contract.id}.pdf`]);
+      if (pdfDeleteError) console.info("Old signed PDF could not be removed; it will be overwritten after re-signing.");
+      toast.success("Booking updated — signatures need to be collected again");
+    } else {
+      toast.success("Booking updated");
+    }'''
+          new = '''    if (invalidatesSignature) {
+      const { error: driverSignatureError } = await (supabase as any)
+        .from("contract_drivers")
+        .update({ signature: null, signed_at: null })
+        .eq("contract_id", contract.id);
+      if (driverSignatureError) {
+        setIsSavingEdit(false);
+        toast.error("Could not reset additional-driver signatures. Booking was not changed.");
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("contracts")
+      .update({
+        start_date: editStartDate,
+        start_time: formatTimeForDb(editStartTime),
+        end_date: editEndDate,
+        end_time: formatTimeForDb(editEndTime),
+        car_id: editCarId,
+        ...(invalidatesSignature ? { status: "Draft", client_signature: null, manager_signature: null } : {}),
+      } as never)
+      .eq("id", contract.id);
+    setIsSavingEdit(false);
+    if (error) {
+      toast.error(
+        invalidatesSignature
+          ? "Booking was not changed. Additional-driver signatures were cleared and must be collected again."
+          : "Failed to save changes",
+      );
+      await fetchData();
+      return;
+    }
+    toast.success(
+      invalidatesSignature
+        ? "Booking updated — signatures need to be collected again"
+        : "Booking updated",
+    );'''
+          if old not in s:
+              raise SystemExit('Signature invalidation block not found')
+          p.write_text(s.replace(old, new, 1))
           PY
-      - name: Apply minimal booking workflow patch
-        run: python scripts/booking_workflow_patch.py
       - run: npm ci
       - name: Focused overlap regression test
         run: npm test -- src/lib/contractOverlap.test.ts
       - name: Production build
         run: npm run build
-      - name: Commit verified source changes to isolated branch
+      - name: Commit hardened verified change
         run: |
           git config user.name "FleetDesk Agent"
           git config user.email "actions@users.noreply.github.com"
-          git rm -f .github/workflows/apply-booking-workflow.yml scripts/booking_workflow_patch.py .booking-workflow-trigger
-          git add src/components/SignContractModal.tsx src/pages/NewContract.tsx src/pages/ContractDetail.tsx src/pages/Contracts.tsx
-          git commit -m "Add safe booking-to-rental workflow"
+          git rm -f .booking-hardening-trigger
+          git add src/pages/ContractDetail.tsx
+          git commit -m "Harden booking signature invalidation"
           git push origin fleetdesk-booking-workflow
