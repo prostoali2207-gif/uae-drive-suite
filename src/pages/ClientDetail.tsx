@@ -344,7 +344,8 @@ const ClientDetail = () => {
             <InfoRow label="Emirates ID" value={client.emirates_id} />
             <InfoRow label="License Number" value={client.license_number} />
             <InfoRow label="Licence Type" value={client.license_type === "uae" ? "UAE Licence" : client.license_type === "foreign" ? "Foreign Licence" : client.license_type === "international" ? "International Permit" : null} />
-            {client.license_type === "uae" ? <InfoRow label="Traffic File Number" value={client.traffic_file_number} /> : <InfoRow label="Issuing Country" value={client.license_issuing_country} />}
+            <InfoRow label="Traffic File Number" value={client.traffic_file_number} />
+            {client.license_type !== "uae" && <InfoRow label="Issuing Country" value={client.license_issuing_country} />}
             <InfoRow label="License Expiry" value={formatDate(client.license_expiry)} />
             <InfoRow label="Passport Number" value={client.passport_number} />
             <div className="flex flex-col gap-1.5">
