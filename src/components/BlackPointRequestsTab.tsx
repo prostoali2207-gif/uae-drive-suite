@@ -17,6 +17,7 @@ import { createSharjahBlackPointsPdf } from "@/lib/sharjahBlackPointsPdf";
 
 const SUBMISSIONS_BUCKET = "external-form-submissions";
 const COMPANY_BUCKET = "company-logos";
+const VEHICLE_DOCUMENTS_BUCKET = "vehicle-documents";
 
 type ClientSummary = {
   id: string;
@@ -39,10 +40,12 @@ type ClientSummary = {
 type CarSummary = {
   id: string;
   plate: string;
+  plate_emirate: string | null;
   make: string;
   model: string;
   year: number;
   color: string | null;
+  mulkiya_pdf_path: string | null;
 };
 
 type ContractSummary = {
@@ -174,10 +177,11 @@ const BlackPointRequestsTab = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
+
     const [finesResult, submissionsResult] = await Promise.all([
       supabase
         .from("fines")
-        .select("id, client_id, car_id, contract_id, fine_number, fine_date, black_points, source, clients(id, full_name, phone, client_type, emirates_id, passport_number, nationality, license_number, license_type, license_issuing_country, unified_number, traffic_file_number, passport_photo_url, license_front_url, license_back_url), cars(id, plate, make, model, year, color)")
+        .select("id, client_id, car_id, contract_id, fine_number, fine_date, black_points, source, clients(id, full_name, phone, client_type, emirates_id, passport_number, nationality, license_number, license_type, license_issuing_country, unified_number, traffic_file_number, passport_photo_url, license_front_url, license_back_url), cars(id, plate, plate_emirate, make, model, year, color, mulkiya_pdf_path)")
         .gt("black_points", 0)
         .order("fine_date", { ascending: false })
         .limit(300),
@@ -224,7 +228,10 @@ const BlackPointRequestsTab = () => {
     void loadData();
   }, [loadData]);
 
-  const submissionByFine = useMemo(() => new Map(submissions.map((submission) => [submission.fine_id, submission])), [submissions]);
+  const submissionByFine = useMemo(
+    () => new Map(submissions.map((submission) => [submission.fine_id, submission])),
+    [submissions],
+  );
 
   const filteredFines = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
@@ -247,6 +254,7 @@ const BlackPointRequestsTab = () => {
     (fine.clients?.license_type === "foreign" || fine.clients?.license_type === "international") && !fine.clients.unified_number ? "Unified Number (UID)" : null,
     !fine.clients?.passport_photo_url ? "passport image" : null,
     !fine.clients?.license_front_url ? "licence image" : null,
+    !fine.cars?.mulkiya_pdf_path ? "Mulkiya" : null,
   ].filter(Boolean) as string[];
 
   const openPrepare = (fine: FineRow) => {
@@ -274,7 +282,7 @@ const BlackPointRequestsTab = () => {
     const client = fine.clients;
     const car = fine.cars;
     const contract = fine.contracts;
-    if (!client || !car || !contract || !fine.contract_id || !fine.fine_number) return;
+    if (!client || !car || !contract || !fine.contract_id || !fine.fine_number || !car.mulkiya_pdf_path) return;
 
     setPreparing(true);
     try {
@@ -295,28 +303,30 @@ const BlackPointRequestsTab = () => {
       if (!template) throw new Error("Sharjah Black Points template is missing in External Forms");
       if (!template.recipient_email) throw new Error("Recipient email is missing in the Sharjah Black Points template");
       if (!profile?.company_license_url) throw new Error("Company Trade License is missing in Settings");
+      if (!profile.stamp_url) throw new Error("Company stamp is missing in Settings");
 
-      let stampPng: Uint8Array | undefined;
-      if (profile.stamp_url) {
-        const { data: stampUrl, error: stampError } = await supabase.storage.from(COMPANY_BUCKET).createSignedUrl(profile.stamp_url, 120);
-        if (stampError || !stampUrl?.signedUrl) throw new Error("Company stamp could not be loaded");
-        stampPng = await imageUrlToPng(stampUrl.signedUrl);
-      }
+      const [stampSigned, companyLicenseSigned, mulkiyaSigned] = await Promise.all([
+        supabase.storage.from(COMPANY_BUCKET).createSignedUrl(profile.stamp_url, 120),
+        supabase.storage.from(COMPANY_BUCKET).createSignedUrl(profile.company_license_url, 120),
+        supabase.storage.from(VEHICLE_DOCUMENTS_BUCKET).createSignedUrl(car.mulkiya_pdf_path, 120),
+      ]);
+      if (stampSigned.error || !stampSigned.data?.signedUrl) throw new Error("Company stamp could not be loaded");
+      if (companyLicenseSigned.error || !companyLicenseSigned.data?.signedUrl) throw new Error("Company Trade License could not be loaded");
+      if (mulkiyaSigned.error || !mulkiyaSigned.data?.signedUrl) throw new Error("Mulkiya could not be loaded");
 
-      const { data: licenseUrl, error: licenseError } = await supabase.storage.from(COMPANY_BUCKET).createSignedUrl(profile.company_license_url, 120);
-      if (licenseError || !licenseUrl?.signedUrl) throw new Error("Company Trade License could not be loaded");
-
+      const stampPng = await imageUrlToPng(stampSigned.data.signedUrl);
       const [passportUrl, licenceFrontUrl, licenceBackUrl] = await Promise.all([
         createClientDocumentSignedUrl(client.passport_photo_url),
         createClientDocumentSignedUrl(client.license_front_url),
         client.license_back_url ? createClientDocumentSignedUrl(client.license_back_url) : Promise.resolve(null),
       ]);
 
-      const [passportBlob, licenceFrontBlob, licenceBackBlob, companyLicenseBlob] = await Promise.all([
+      const [passportBlob, licenceFrontBlob, licenceBackBlob, mulkiyaBlob, companyLicenseBlob] = await Promise.all([
         fetchBlob(passportUrl, "Passport"),
         fetchBlob(licenceFrontUrl, "Driving licence"),
         licenceBackUrl ? fetchBlob(licenceBackUrl, "Driving licence back") : Promise.resolve(null),
-        fetchBlob(licenseUrl.signedUrl, "Company Trade License"),
+        fetchBlob(mulkiyaSigned.data.signedUrl, "Mulkiya"),
+        fetchBlob(companyLicenseSigned.data.signedUrl, "Company Trade License"),
       ]);
 
       const plate = splitPlate(car.plate);
@@ -329,7 +339,7 @@ const BlackPointRequestsTab = () => {
         unifiedNumber: client.license_type === "uae" ? "" : client.unified_number ?? "",
         plateNumber: plate.number,
         plateCode: plate.code,
-        plateSource: "",
+        plateSource: car.plate_emirate ?? "",
         vehicleType: `${car.make} ${car.model}`.trim(),
         fineNumber: fine.fine_number,
         fineDate: new Date(fine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
@@ -360,11 +370,14 @@ const BlackPointRequestsTab = () => {
         passport: passportBlob,
         licenseFront: licenceFrontBlob,
         licenseBack: licenceBackBlob,
+        mulkiya: mulkiyaBlob,
         fineScreenshot,
         companyLicense: companyLicenseBlob,
         stampPng,
       });
-      if (packageBlob.size > 18 * 1024 * 1024) throw new Error("Prepared package is too large for email. Keep it under 18 MB.");
+      if (packageBlob.size > 18 * 1024 * 1024) {
+        throw new Error("Prepared package is too large for email. Keep it under 18 MB.");
+      }
 
       const fileName = `Black_Points_${fine.fine_number}_${car.plate.replace(/\s+/g, "-")}.pdf`;
       const storagePath = `${user.id}/${fine.id}/black-points-package.pdf`;
@@ -374,8 +387,6 @@ const BlackPointRequestsTab = () => {
       });
       if (uploadError) throw new Error(`Package upload failed: ${uploadError.message}`);
 
-      const now = new Date().toISOString();
-      const subject = "Transfer Blackpoints";
       const { data: saved, error: saveError } = await submissionsClient
         .from("external_form_submissions")
         .upsert({
@@ -385,14 +396,14 @@ const BlackPointRequestsTab = () => {
           contract_id: fine.contract_id,
           client_id: fine.client_id,
           recipient_email: template.recipient_email,
-          email_subject: subject,
+          email_subject: "Transfer Blackpoints",
           status: "ready",
           package_storage_path: storagePath,
           package_file_name: fileName,
           sent_at: null,
           provider_message_id: null,
           last_error: null,
-          updated_at: now,
+          updated_at: new Date().toISOString(),
         } as SubmissionRow, { onConflict: "owner_id,template_id,fine_id" })
         .select("*")
         .single();
@@ -462,15 +473,32 @@ const BlackPointRequestsTab = () => {
     <div className="grid gap-4">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search fine, client or plate" className="min-h-10 pl-9" />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search fine, client or plate"
+          className="min-h-10 pl-9"
+        />
       </div>
 
       {loading ? (
         <div className="grid gap-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-28 w-full" />)}</div>
       ) : loadError ? (
-        <Card><CardContent className="flex flex-col items-start gap-3 py-6"><p className="text-sm text-destructive">Could not load Black Point requests: {loadError}</p><Button variant="outline" onClick={() => void loadData()} className="gap-2"><RefreshCw className="h-4 w-4" />Retry</Button></CardContent></Card>
+        <Card>
+          <CardContent className="flex flex-col items-start gap-3 py-6">
+            <p className="text-sm text-destructive">Could not load Black Point requests: {loadError}</p>
+            <Button variant="outline" onClick={() => void loadData()} className="gap-2">
+              <RefreshCw className="h-4 w-4" />Retry
+            </Button>
+          </CardContent>
+        </Card>
       ) : filteredFines.length === 0 ? (
-        <Card><CardContent className="py-10 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-medium">No Black Point fines found</p></CardContent></Card>
+        <Card>
+          <CardContent className="py-10 text-center">
+            <FileCheck2 className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 font-medium">No Black Point fines found</p>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-3">
           {filteredFines.map((fine) => {
@@ -482,17 +510,37 @@ const BlackPointRequestsTab = () => {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium">Fine {fine.fine_number || "—"}</p>
-                      <Badge variant={submission?.status === "failed" ? "destructive" : "secondary"}>{submission ? statusLabel[submission.status] : missing.length ? "Missing data" : "Not prepared"}</Badge>
+                      <Badge variant={submission?.status === "failed" ? "destructive" : "secondary"}>
+                        {submission ? statusLabel[submission.status] : missing.length ? "Missing data" : "Not prepared"}
+                      </Badge>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{fine.clients?.full_name || "Client missing"} · {fine.cars?.plate || "Vehicle missing"} · {fine.black_points || 0} BP</p>
-                    {submission?.sent_at && <p className="mt-1 text-xs text-muted-foreground">Sent {new Date(submission.sent_at).toLocaleString("en-GB", { timeZone: "Asia/Dubai" })}</p>}
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {fine.clients?.full_name || "Client missing"} · {fine.cars?.plate || "Vehicle missing"} · {fine.black_points || 0} BP
+                    </p>
+                    {submission?.sent_at && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Sent {new Date(submission.sent_at).toLocaleString("en-GB", { timeZone: "Asia/Dubai" })}
+                      </p>
+                    )}
                     {submission?.last_error && <p className="mt-1 text-xs text-destructive">{submission.last_error}</p>}
                     {!submission && missing.length > 0 && <p className="mt-1 text-xs text-destructive">Missing: {missing.join(", ")}</p>}
                   </div>
                   <div className="flex flex-wrap gap-2 sm:shrink-0">
-                    {submission && <Button variant="outline" size="sm" className="min-h-10 gap-1.5" onClick={() => void downloadPackage(submission)}><Download className="h-4 w-4" />PDF</Button>}
-                    {submission && <Button variant="outline" size="sm" className="min-h-10" onClick={() => setReviewSubmission(submission)}>Review</Button>}
-                    {!submission && <Button size="sm" className="min-h-10" disabled={missing.length > 0} onClick={() => openPrepare(fine)}>Prepare</Button>}
+                    {submission && (
+                      <Button variant="outline" size="sm" className="min-h-10 gap-1.5" onClick={() => void downloadPackage(submission)}>
+                        <Download className="h-4 w-4" />PDF
+                      </Button>
+                    )}
+                    {submission && (
+                      <Button variant="outline" size="sm" className="min-h-10" onClick={() => setReviewSubmission(submission)}>
+                        Review
+                      </Button>
+                    )}
+                    {!submission && (
+                      <Button size="sm" className="min-h-10" disabled={missing.length > 0} onClick={() => openPrepare(fine)}>
+                        Prepare
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -505,12 +553,25 @@ const BlackPointRequestsTab = () => {
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Prepare Black Point package</DialogTitle>
-            <DialogDescription>FleetDesk already has the form, client documents, contract and company Trade License. Add only the fine screenshot.</DialogDescription>
+            <DialogDescription>
+              FleetDesk will add the filled form, contract, passport, driving licence, Mulkiya and company Trade License automatically. Add only the fine screenshot.
+            </DialogDescription>
           </DialogHeader>
-          {prepareFine && <div className="rounded-md border bg-muted/40 p-3 text-sm"><p className="font-medium">{prepareFine.clients?.full_name}</p><p className="mt-1 text-muted-foreground">Fine {prepareFine.fine_number} · {prepareFine.cars?.plate} · {prepareFine.black_points || 0} BP</p></div>}
+          {prepareFine && (
+            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              <p className="font-medium">{prepareFine.clients?.full_name}</p>
+              <p className="mt-1 text-muted-foreground">Fine {prepareFine.fine_number} · {prepareFine.cars?.plate} · {prepareFine.black_points || 0} BP</p>
+            </div>
+          )}
           <div className="grid gap-1.5">
             <Label htmlFor="fine-screenshot">Fine screenshot</Label>
-            <Input id="fine-screenshot" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" onChange={onScreenshotChange} disabled={preparing} />
+            <Input
+              id="fine-screenshot"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"
+              onChange={onScreenshotChange}
+              disabled={preparing}
+            />
             <p className="text-xs text-muted-foreground">Image or PDF, up to 10 MB.</p>
           </div>
           <Button className="min-h-10 gap-2" disabled={!fineScreenshot || preparing} onClick={() => void preparePackage()}>
@@ -529,20 +590,34 @@ const BlackPointRequestsTab = () => {
           {reviewSubmission && (
             <div className="grid gap-3">
               <div className="rounded-md border p-3 text-sm">
-                <div className="flex items-start gap-2"><Mail className="mt-0.5 h-4 w-4 text-muted-foreground" /><div className="min-w-0"><p className="text-xs text-muted-foreground">To</p><p className="break-all font-medium" dir="ltr">{reviewSubmission.recipient_email}</p></div></div>
+                <div className="flex items-start gap-2">
+                  <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">To</p>
+                    <p className="break-all font-medium" dir="ltr">{reviewSubmission.recipient_email}</p>
+                  </div>
+                </div>
                 <p className="mt-3 text-xs text-muted-foreground">Subject</p>
                 <p className="font-medium">Transfer Blackpoints</p>
                 <p className="mt-3 text-xs text-muted-foreground">Attachment</p>
                 <p className="font-medium">{reviewSubmission.package_file_name}</p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Button variant="outline" className="min-h-10 flex-1" onClick={() => void openPackage(reviewSubmission)}>Preview PDF</Button>
-                <Button className="min-h-10 flex-1 gap-2" disabled={openingGmailId === reviewSubmission.id} onClick={() => void openInGmail(reviewSubmission)}>
+                <Button variant="outline" className="min-h-10 flex-1" onClick={() => void openPackage(reviewSubmission)}>
+                  Preview PDF
+                </Button>
+                <Button
+                  className="min-h-10 flex-1 gap-2"
+                  disabled={openingGmailId === reviewSubmission.id}
+                  onClick={() => void openInGmail(reviewSubmission)}
+                >
                   {openingGmailId === reviewSubmission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                   {openingGmailId === reviewSubmission.id ? "Opening Gmail..." : "Open in Gmail"}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">Gmail cannot receive a local attachment from a normal web link. The PDF is downloaded automatically; attach that one file in Gmail and send.</p>
+              <p className="text-xs text-muted-foreground">
+                Gmail cannot receive a local attachment from a normal web link. The PDF is downloaded automatically; attach that one file in Gmail and send.
+              </p>
             </div>
           )}
         </DialogContent>
