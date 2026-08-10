@@ -11,12 +11,15 @@ type BuildBlackPointPackageInput = {
   passport?: Blob | null;
   licenseFront?: Blob | null;
   licenseBack?: Blob | null;
+  mulkiya: Blob;
   fineScreenshot: Blob;
   companyLicense: Blob;
   stampPng?: Uint8Array;
 };
 
 const A4 = { width: 595.28, height: 841.89 };
+const STAMP_MAX_WIDTH = 128;
+const STAMP_MAX_HEIGHT = 72;
 
 const toPngBlob = async (blob: Blob): Promise<Blob> => {
   if (blob.type === "image/png") return blob;
@@ -74,12 +77,13 @@ const appendPart = async (target: PDFDocument, part: PackagePart) => {
 };
 
 const stampPages = async (target: PDFDocument, stampPng?: Uint8Array, skipFirstPages = 0) => {
-  if (!stampPng) return;
+  if (!stampPng?.length) return;
   const image = await target.embedPng(stampPng);
-  const desiredWidth = 92;
-  const scale = desiredWidth / image.width;
-  const width = image.width * scale;
-  const height = image.height * scale;
+  const natural = image.scale(1);
+  const scale = Math.min(STAMP_MAX_WIDTH / natural.width, STAMP_MAX_HEIGHT / natural.height);
+  const width = natural.width * scale;
+  const height = natural.height * scale;
+
   for (const [index, page] of target.getPages().entries()) {
     if (index < skipFirstPages) continue;
     const { width: pageWidth } = page.getSize();
@@ -88,7 +92,6 @@ const stampPages = async (target: PDFDocument, stampPng?: Uint8Array, skipFirstP
       y: 28,
       width,
       height,
-      opacity: 0.82,
     });
   }
 };
@@ -99,19 +102,24 @@ export const buildBlackPointSubmissionPackage = async ({
   passport,
   licenseFront,
   licenseBack,
+  mulkiya,
   fineScreenshot,
   companyLicense,
   stampPng,
 }: BuildBlackPointPackageInput): Promise<Blob> => {
   const target = await PDFDocument.create();
 
+  // Required authority order:
+  // form -> contract -> passport -> driving licence -> Mulkiya -> fine screenshot -> company Trade License.
+  // The form already receives its stamp while being filled, so package stamping starts after it.
   await appendPart(target, { blob: formPdf });
   const formPageCount = target.getPageCount();
+  await appendPart(target, { blob: contractPdf, firstPageOnly: true });
   if (passport) await appendPart(target, { blob: passport });
   if (licenseFront) await appendPart(target, { blob: licenseFront });
   if (licenseBack) await appendPart(target, { blob: licenseBack });
+  await appendPart(target, { blob: mulkiya });
   await appendPart(target, { blob: fineScreenshot });
-  await appendPart(target, { blob: contractPdf, firstPageOnly: true });
   await appendPart(target, { blob: companyLicense });
   await stampPages(target, stampPng, formPageCount);
 
