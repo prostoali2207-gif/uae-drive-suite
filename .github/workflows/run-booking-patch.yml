@@ -38,7 +38,7 @@ jobs:
         run: |
           git config user.name "FleetDesk Agent"
           git config user.email "actions@users.noreply.github.com"
-          git rm .github/workflows/apply-booking-workflow.yml scripts/booking_workflow_patch.py .booking-workflow-trigger
+          git rm -f .github/workflows/apply-booking-workflow.yml scripts/booking_workflow_patch.py .booking-workflow-trigger
           git add src/components/SignContractModal.tsx src/pages/NewContract.tsx src/pages/ContractDetail.tsx src/pages/Contracts.tsx
           git commit -m "Add safe booking-to-rental workflow"
           git push origin fleetdesk-booking-workflow
