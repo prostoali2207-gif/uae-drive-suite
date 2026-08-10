@@ -206,7 +206,7 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
       license_expiry: form.license_expiry || null,
       license_type: form.license_type || null,
       license_issuing_country: form.license_type === "uae" ? null : form.license_issuing_country.trim() || null,
-      traffic_file_number: form.license_type === "uae" ? form.traffic_file_number.trim() || null : null,
+      traffic_file_number: form.traffic_file_number.trim() || null,
       passport_photo_url: form.passport_photo_url || null,
       eid_front_url: form.eid_front_url || null,
       eid_back_url: form.eid_back_url || null,
@@ -297,12 +297,10 @@ export function ClientEditDialog({ client, open, onOpenChange, onSaved }: Client
             </Tabs>
           </div>
 
-          {form.license_type === "uae" && (
-            <div className="grid gap-1.5">
-              <Label htmlFor="detail-traffic-file">Traffic File Number</Label>
-              <Input id="detail-traffic-file" dir="ltr" inputMode="numeric" value={form.traffic_file_number} onChange={(event) => setForm({ ...form, traffic_file_number: event.target.value.replace(/\D/g, "") })} />
-            </div>
-          )}
+          <div className="grid gap-1.5">
+            <Label htmlFor="detail-traffic-file">Traffic File Number</Label>
+            <Input id="detail-traffic-file" dir="ltr" inputMode="numeric" value={form.traffic_file_number} onChange={(event) => setForm({ ...form, traffic_file_number: event.target.value.replace(/\D/g, "") })} />
+          </div>
 
           {(form.license_type === "foreign" || form.license_type === "international") && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
