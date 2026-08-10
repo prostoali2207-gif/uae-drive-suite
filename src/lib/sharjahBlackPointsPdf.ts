@@ -75,9 +75,6 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   const page = pdf.addPage([pageWidth, pageHeight]);
   page.drawPage(background, { x: 0, y: 0, width: pageWidth, height: pageHeight });
 
-  // Render completed values as one high-resolution image layer. Some mobile PDF
-  // viewers incorrectly apply character spacing to pdf-lib's subset fonts. A
-  // canvas layer keeps normal word spacing and looks identical in every viewer.
   const scale = 4;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(pageWidth * scale);
@@ -107,8 +104,9 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   write(values.clientName, 313, 602, { size: 8, bold: true, maxWidth: 150 });
   write(values.licenseNumber, 313, 585, { size: 8, bold: true, maxWidth: 150 });
   write(licenseSource, 313, 568, { size: 8, bold: true, maxWidth: 150 });
-  write(trafficFileNumber, 313, 550, { size: 8, bold: true, maxWidth: 150 });
-  write(unifiedNumber, 313, 532, { size: 8, bold: true, maxWidth: 150 });
+  // Keep all renter identifiers visually centered inside their own template rows.
+  write(trafficFileNumber, 313, 551, { size: 8, bold: true, maxWidth: 150 });
+  write(unifiedNumber, 313, 535, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateNumber, 313, 496, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateCode, 313, 479, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateSource, 313, 459, { maxWidth: 150 });
@@ -139,14 +137,14 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   if (stampPng?.length) {
     const stamp = await pdf.embedPng(stampPng);
     const natural = stamp.scale(1);
-    const maxWidth = 112;
-    const maxHeight = 62;
+    const maxWidth = 128;
+    const maxHeight = 72;
     const stampScale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
     const width = natural.width * stampScale;
     const height = natural.height * stampScale;
     page.drawImage(stamp, {
       x: 166 - width / 2,
-      y: 194,
+      y: 190,
       width,
       height,
     });
