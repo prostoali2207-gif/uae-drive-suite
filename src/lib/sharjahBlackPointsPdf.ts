@@ -143,14 +143,14 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   if (stampPng?.length) {
     const stamp = await pdf.embedPng(stampPng);
     const natural = stamp.scale(1);
-    const maxWidth = 128;
-    const maxHeight = 72;
+    const maxWidth = 165;
+    const maxHeight = 95;
     const stampScale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
     const width = natural.width * stampScale;
     const height = natural.height * stampScale;
     page.drawImage(stamp, {
       x: 166 - width / 2,
-      y: 190,
+      y: 180,
       width,
       height,
     });
