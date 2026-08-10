@@ -73,14 +73,15 @@ const appendPart = async (target: PDFDocument, part: PackagePart) => {
   throw new Error(`Unsupported document type: ${part.blob.type || "unknown"}`);
 };
 
-const stampPages = async (target: PDFDocument, stampPng?: Uint8Array) => {
+const stampPages = async (target: PDFDocument, stampPng?: Uint8Array, skipFirstPages = 0) => {
   if (!stampPng) return;
   const image = await target.embedPng(stampPng);
   const desiredWidth = 92;
   const scale = desiredWidth / image.width;
   const width = image.width * scale;
   const height = image.height * scale;
-  for (const page of target.getPages()) {
+  for (const [index, page] of target.getPages().entries()) {
+    if (index < skipFirstPages) continue;
     const { width: pageWidth } = page.getSize();
     page.drawImage(image, {
       x: pageWidth - width - 28,
@@ -105,13 +106,14 @@ export const buildBlackPointSubmissionPackage = async ({
   const target = await PDFDocument.create();
 
   await appendPart(target, { blob: formPdf });
+  const formPageCount = target.getPageCount();
   if (passport) await appendPart(target, { blob: passport });
   if (licenseFront) await appendPart(target, { blob: licenseFront });
   if (licenseBack) await appendPart(target, { blob: licenseBack });
   await appendPart(target, { blob: fineScreenshot });
   await appendPart(target, { blob: contractPdf, firstPageOnly: true });
   await appendPart(target, { blob: companyLicense });
-  await stampPages(target, stampPng);
+  await stampPages(target, stampPng, formPageCount);
 
   const bytes = await target.save();
   return new Blob([bytes], { type: "application/pdf" });
