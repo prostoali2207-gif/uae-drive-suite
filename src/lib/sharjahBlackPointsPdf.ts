@@ -104,9 +104,8 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   write(values.clientName, 313, 602, { size: 8, bold: true, maxWidth: 150 });
   write(values.licenseNumber, 313, 585, { size: 8, bold: true, maxWidth: 150 });
   write(licenseSource, 313, 568, { size: 8, bold: true, maxWidth: 150 });
-  // Keep all renter identifiers visually centered inside their own template rows.
-  write(trafficFileNumber, 313, 551, { size: 8, bold: true, maxWidth: 150 });
-  write(unifiedNumber, 313, 535, { size: 8, bold: true, maxWidth: 150 });
+  write(trafficFileNumber, 313, 553, { size: 8, bold: true, maxWidth: 150 });
+  write(unifiedNumber, 313, 541, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateNumber, 313, 496, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateCode, 313, 479, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateSource, 313, 459, { maxWidth: 150 });
