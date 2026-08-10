@@ -1,6 +1,6 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Download, FileCheck2, Loader2, Mail, RefreshCw, Search, Send } from "lucide-react";
+import { Download, FileCheck2, Loader2, Mail, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -169,7 +169,7 @@ const BlackPointRequestsTab = () => {
   const [fineScreenshot, setFineScreenshot] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [reviewSubmission, setReviewSubmission] = useState<SubmissionRow | null>(null);
-  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [openingGmailId, setOpeningGmailId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -375,7 +375,7 @@ const BlackPointRequestsTab = () => {
       if (uploadError) throw new Error(`Package upload failed: ${uploadError.message}`);
 
       const now = new Date().toISOString();
-      const subject = `Black Points Transfer - Fine ${fine.fine_number} - ${car.plate}`;
+      const subject = "Transfer Blackpoints";
       const { data: saved, error: saveError } = await submissionsClient
         .from("external_form_submissions")
         .upsert({
@@ -420,34 +420,37 @@ const BlackPointRequestsTab = () => {
   };
 
   const downloadPackage = async (submission: SubmissionRow) => {
-    const { data, error } = await supabase.storage.from(SUBMISSIONS_BUCKET).createSignedUrl(submission.package_storage_path, 120);
-    if (error || !data?.signedUrl) {
+    const { data, error } = await supabase.storage.from(SUBMISSIONS_BUCKET).download(submission.package_storage_path);
+    if (error || !data) {
       toast.error("Package could not be downloaded");
-      return;
+      return false;
     }
+    const url = URL.createObjectURL(data);
     const anchor = document.createElement("a");
-    anchor.href = data.signedUrl;
+    anchor.href = url;
     anchor.download = submission.package_file_name;
     anchor.rel = "noopener";
+    document.body.appendChild(anchor);
     anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
   };
 
-  const sendSubmission = async (submission: SubmissionRow) => {
-    setSendingId(submission.id);
+  const openInGmail = async (submission: SubmissionRow) => {
+    setOpeningGmailId(submission.id);
     try {
-      const { data, error } = await supabase.functions.invoke("send-black-point-submission", {
-        body: { submissionId: submission.id },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(String(data.error));
-      toast.success("Black Point request sent");
+      const downloaded = await downloadPackage(submission);
+      if (!downloaded) return;
+
+      const subject = "Transfer Blackpoints";
+      const body = "Please find attached documents for transfer blackpoints.";
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(submission.recipient_email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(gmailUrl, "_blank", "noopener,noreferrer");
+      toast.success("PDF downloaded. Gmail opened — attach the downloaded PDF and send.");
       setReviewSubmission(null);
-      await loadData();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Email could not be sent");
-      await loadData();
     } finally {
-      setSendingId(null);
+      setOpeningGmailId(null);
     }
   };
 
@@ -488,7 +491,7 @@ const BlackPointRequestsTab = () => {
                   </div>
                   <div className="flex flex-wrap gap-2 sm:shrink-0">
                     {submission && <Button variant="outline" size="sm" className="min-h-10 gap-1.5" onClick={() => void downloadPackage(submission)}><Download className="h-4 w-4" />PDF</Button>}
-                    {submission && submission.status !== "sent" && <Button variant="outline" size="sm" className="min-h-10" onClick={() => setReviewSubmission(submission)}>Review</Button>}
+                    {submission && <Button variant="outline" size="sm" className="min-h-10" onClick={() => setReviewSubmission(submission)}>Review</Button>}
                     {!submission && <Button size="sm" className="min-h-10" disabled={missing.length > 0} onClick={() => openPrepare(fine)}>Prepare</Button>}
                   </div>
                 </CardContent>
@@ -517,28 +520,29 @@ const BlackPointRequestsTab = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reviewSubmission !== null} onOpenChange={(open) => { if (!open && !sendingId) setReviewSubmission(null); }}>
+      <Dialog open={reviewSubmission !== null} onOpenChange={(open) => { if (!open && !openingGmailId) setReviewSubmission(null); }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Review before sending</DialogTitle>
-            <DialogDescription>The package is saved in FleetDesk. Check it once, then send it to Sharjah Police.</DialogDescription>
+            <DialogTitle>Open in Gmail</DialogTitle>
+            <DialogDescription>FleetDesk will download the prepared PDF and open a Gmail message with the recipient and text already filled.</DialogDescription>
           </DialogHeader>
           {reviewSubmission && (
             <div className="grid gap-3">
               <div className="rounded-md border p-3 text-sm">
                 <div className="flex items-start gap-2"><Mail className="mt-0.5 h-4 w-4 text-muted-foreground" /><div className="min-w-0"><p className="text-xs text-muted-foreground">To</p><p className="break-all font-medium" dir="ltr">{reviewSubmission.recipient_email}</p></div></div>
                 <p className="mt-3 text-xs text-muted-foreground">Subject</p>
-                <p className="font-medium">{reviewSubmission.email_subject}</p>
+                <p className="font-medium">Transfer Blackpoints</p>
                 <p className="mt-3 text-xs text-muted-foreground">Attachment</p>
                 <p className="font-medium">{reviewSubmission.package_file_name}</p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button variant="outline" className="min-h-10 flex-1" onClick={() => void openPackage(reviewSubmission)}>Preview PDF</Button>
-                <Button className="min-h-10 flex-1 gap-2" disabled={sendingId === reviewSubmission.id} onClick={() => void sendSubmission(reviewSubmission)}>
-                  {sendingId === reviewSubmission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  {sendingId === reviewSubmission.id ? "Sending..." : "Send"}
+                <Button className="min-h-10 flex-1 gap-2" disabled={openingGmailId === reviewSubmission.id} onClick={() => void openInGmail(reviewSubmission)}>
+                  {openingGmailId === reviewSubmission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  {openingGmailId === reviewSubmission.id ? "Opening Gmail..." : "Open in Gmail"}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">Gmail cannot receive a local attachment from a normal web link. The PDF is downloaded automatically; attach that one file in Gmail and send.</p>
             </div>
           )}
         </DialogContent>
