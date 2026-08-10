@@ -15,6 +15,18 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - name: Normalize compact NewContract anchors
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/booking_workflow_patch.py')
+          s = p.read_text()
+          s = s.replace("replace(path, '            onActivate={activateSignedContract}\\n', '')", "replace(path, ' onActivate={activateSignedContract}', '')")
+          old = '''replace(\n    path,\n    '<h2 className=\"text-2xl font-bold text-emerald-900\">Contract signed</h2><p className=\"mt-2 text-sm text-emerald-800\">The contract is active and the vehicle status has been updated.</p>',\n    '<h2 className=\"text-2xl font-bold text-emerald-900\">Contract signed</h2><p className=\"mt-2 text-sm text-emerald-800\">The booking is signed. Start the rental from Contract Details when the vehicle is handed over.</p>',\n)'''
+          new = '''replace(path, 'The contract is active and the vehicle status has been updated.', 'The booking is signed. Start the rental from Contract Details when the vehicle is handed over.')'''
+          s = s.replace(old, new)
+          p.write_text(s)
+          PY
       - name: Apply minimal booking workflow patch
         run: python scripts/booking_workflow_patch.py
       - run: npm ci
