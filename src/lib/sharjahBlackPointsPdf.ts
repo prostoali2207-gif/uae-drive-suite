@@ -39,11 +39,17 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
 
   const { data: authData } = await supabase.auth.getUser();
   const userId = authData.user?.id;
-  const [{ data: client }, { data: owner }] = await Promise.all([
+  const plate = `${values.plateCode} ${values.plateNumber}`.trim();
+  const [{ data: client }, { data: car }, { data: owner }] = await Promise.all([
     supabase
       .from("clients")
       .select("license_type, license_issuing_country, traffic_file_number, unified_number")
       .eq("license_number", values.licenseNumber)
+      .maybeSingle(),
+    supabase
+      .from("cars")
+      .select("plate_emirate")
+      .eq("plate", plate)
       .maybeSingle(),
     userId
       ? supabase
@@ -65,6 +71,7 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
       : client?.license_issuing_country?.trim() || values.licenseSource;
   const trafficFileNumber = client?.traffic_file_number?.trim() || values.trafficFileNumber;
   const unifiedNumber = client?.unified_number?.trim() || values.unifiedNumber;
+  const plateSource = car?.plate_emirate?.trim() || values.plateSource;
 
   const templateBytes = await response.arrayBuffer();
   const template = await PDFDocument.load(templateBytes);
@@ -108,7 +115,7 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   write(unifiedNumber, 313, 541, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateNumber, 313, 496, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateCode, 313, 479, { size: 8, bold: true, maxWidth: 150 });
-  write(values.plateSource, 313, 459, { maxWidth: 150 });
+  write(plateSource, 313, 459, { size: 8, bold: true, maxWidth: 150 });
   write(values.vehicleType, 313, 446, { size: 8, bold: true, maxWidth: 150 });
   write(values.fineNumber, 143, 585, { size: 8, bold: true, maxWidth: 96 });
   write(values.fineDate, 30, 585, { size: 8, bold: true, maxWidth: 100 });
