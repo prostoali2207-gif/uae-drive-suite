@@ -42,7 +42,7 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   const [{ data: client }, { data: owner }] = await Promise.all([
     supabase
       .from("clients")
-      .select("license_type, license_issuing_country")
+      .select("license_type, license_issuing_country, traffic_file_number, unified_number")
       .eq("license_number", values.licenseNumber)
       .maybeSingle(),
     userId
@@ -63,6 +63,8 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     : client?.license_type === "uae"
       ? "UAE"
       : client?.license_issuing_country?.trim() || values.licenseSource;
+  const trafficFileNumber = client?.traffic_file_number?.trim() || values.trafficFileNumber;
+  const unifiedNumber = client?.unified_number?.trim() || values.unifiedNumber;
 
   const templateBytes = await response.arrayBuffer();
   const template = await PDFDocument.load(templateBytes);
@@ -104,9 +106,9 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   write(values.contractNumber, 334, 650, { size: 8, bold: true, maxWidth: 126 });
   write(values.clientName, 313, 602, { size: 8, bold: true, maxWidth: 150 });
   write(values.licenseNumber, 313, 585, { size: 8, bold: true, maxWidth: 150 });
-  write(licenseSource, 313, 565, { maxWidth: 150 });
-  write(values.trafficFileNumber, 313, 548, { maxWidth: 150 });
-  write(values.unifiedNumber, 313, 540, { size: 8, bold: true, maxWidth: 150 });
+  write(licenseSource, 313, 568, { size: 8, bold: true, maxWidth: 150 });
+  write(trafficFileNumber, 313, 550, { size: 8, bold: true, maxWidth: 150 });
+  write(unifiedNumber, 313, 532, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateNumber, 313, 496, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateCode, 313, 479, { size: 8, bold: true, maxWidth: 150 });
   write(values.plateSource, 313, 459, { maxWidth: 150 });
@@ -137,14 +139,14 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   if (stampPng?.length) {
     const stamp = await pdf.embedPng(stampPng);
     const natural = stamp.scale(1);
-    const maxWidth = 92;
-    const maxHeight = 56;
+    const maxWidth = 112;
+    const maxHeight = 62;
     const stampScale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
     const width = natural.width * stampScale;
     const height = natural.height * stampScale;
     page.drawImage(stamp, {
       x: 166 - width / 2,
-      y: 252,
+      y: 194,
       width,
       height,
     });
@@ -160,7 +162,7 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     const height = natural.height * signatureScale;
     page.drawImage(signature, {
       x: 166 - width / 2,
-      y: 274,
+      y: 258,
       width,
       height,
     });
