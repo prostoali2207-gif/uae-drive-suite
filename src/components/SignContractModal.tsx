@@ -255,6 +255,10 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
 
   if (!open) return null;
 
+  const signedPdfUrl = contractId
+    ? supabase.storage.from("contract-pdfs").getPublicUrl(`${contractId}.pdf`).data.publicUrl
+    : "";
+
   const contract = loaded?.data as (ContractForPdf & {
     clients?: { full_name?: string | null; phone?: string | null; license_number?: string | null } | null;
     cars?: { plate?: string | null; make?: string | null; model?: string | null } | null;
@@ -407,10 +411,20 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
               <h2 className="mt-5 text-2xl font-bold">Contract is active</h2>
               <p className="mt-2 text-sm text-slate-600">All signatures are saved, the PDF is ready and the vehicle is marked as rented.</p>
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => generateContractPdf({ ...loaded.data, client_signature: signatures.customer, manager_signature: signatures.company, contract_drivers: loaded.drivers.map((driver) => ({ ...driver, signature: signatures[`driver-${driver.id}`] })) })}>Download PDF</Button>
+                <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => {
+                  if (!signedPdfUrl || !/^https?:\/\//i.test(signedPdfUrl)) {
+                    toast.error("Public PDF link is not available");
+                    return;
+                  }
+                  window.open(signedPdfUrl, "_blank", "noopener,noreferrer");
+                }}>Open PDF</Button>
                 <Button className="h-12 gap-2 bg-green-600 text-white hover:bg-green-700" onClick={() => {
+                  if (!signedPdfUrl || !/^https?:\/\//i.test(signedPdfUrl)) {
+                    toast.error("Public PDF link is not available");
+                    return;
+                  }
                   const phone = String((loaded.data as ContractForPdf & { clients?: { phone?: string | null } | null }).clients?.phone || "").replace(/[\s\-()]/g, "");
-                  const text = encodeURIComponent(pdfUrl ? `Your signed rental contract: ${pdfUrl}` : `Your rental contract is signed. Contract ID: ${contractId}`);
+                  const text = encodeURIComponent(`Your signed rental contract: ${signedPdfUrl}`);
                   window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
                 }}><MessageCircle className="h-4 w-4" />Send via WhatsApp</Button>
               </div>
