@@ -1,110 +1,72 @@
-name: Run isolated booking patch
+name: Verify contract PDF share fix
 on:
   pull_request:
     branches: [main]
 permissions:
   contents: write
 jobs:
-  patch-branch:
+  patch-and-verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fleetdesk-booking-workflow
+          ref: ${{ github.event.pull_request.head.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - name: Harden signature invalidation order
+      - name: Apply stable contract PDF share fix
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('src/pages/ContractDetail.tsx')
+          p = Path('src/components/SignContractModal.tsx')
           s = p.read_text()
-          old = '''    const { error } = await supabase
-      .from("contracts")
-      .update({
-        start_date: editStartDate,
-        start_time: formatTimeForDb(editStartTime),
-        end_date: editEndDate,
-        end_time: formatTimeForDb(editEndTime),
-        car_id: editCarId,
-        ...(invalidatesSignature ? { status: "Draft", client_signature: null, manager_signature: null } : {}),
-      } as never)
-      .eq("id", contract.id);
-    setIsSavingEdit(false);
-    if (error) {
-      toast.error("Failed to save changes");
-      return;
-    }
-    if (invalidatesSignature) {
-      const { error: driverSignatureError } = await (supabase as any)
-        .from("contract_drivers")
-        .update({ signature: null, signed_at: null })
-        .eq("contract_id", contract.id);
-      if (driverSignatureError) {
-        toast.error("Booking changed, but additional-driver signatures could not be reset.");
-        await fetchData();
-        return;
-      }
-      const { error: pdfDeleteError } = await supabase.storage.from("contract-pdfs").remove([`${contract.id}.pdf`]);
-      if (pdfDeleteError) console.info("Old signed PDF could not be removed; it will be overwritten after re-signing.");
-      toast.success("Booking updated — signatures need to be collected again");
-    } else {
-      toast.success("Booking updated");
-    }'''
-          new = '''    if (invalidatesSignature) {
-      const { error: driverSignatureError } = await (supabase as any)
-        .from("contract_drivers")
-        .update({ signature: null, signed_at: null })
-        .eq("contract_id", contract.id);
-      if (driverSignatureError) {
-        setIsSavingEdit(false);
-        toast.error("Could not reset additional-driver signatures. Booking was not changed.");
-        return;
-      }
-    }
 
-    const { error } = await supabase
-      .from("contracts")
-      .update({
-        start_date: editStartDate,
-        start_time: formatTimeForDb(editStartTime),
-        end_date: editEndDate,
-        end_time: formatTimeForDb(editEndTime),
-        car_id: editCarId,
-        ...(invalidatesSignature ? { status: "Draft", client_signature: null, manager_signature: null } : {}),
-      } as never)
-      .eq("id", contract.id);
-    setIsSavingEdit(false);
-    if (error) {
-      toast.error(
-        invalidatesSignature
-          ? "Booking was not changed. Additional-driver signatures were cleared and must be collected again."
-          : "Failed to save changes",
-      );
-      await fetchData();
-      return;
-    }
-    toast.success(
-      invalidatesSignature
-        ? "Booking updated — signatures need to be collected again"
-        : "Booking updated",
-    );'''
+          old = '''  const contract = loaded?.data as (ContractForPdf & {'''
+          new = '''  const signedPdfUrl = contractId
+    ? supabase.storage.from("contract-pdfs").getPublicUrl(`${contractId}.pdf`).data.publicUrl
+    : "";
+
+  const contract = loaded?.data as (ContractForPdf & {'''
           if old not in s:
-              raise SystemExit('Signature invalidation block not found')
-          p.write_text(s.replace(old, new, 1))
+              raise SystemExit('contract anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''                <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => generateContractPdf({ ...loaded.data, client_signature: signatures.customer, manager_signature: signatures.company, contract_drivers: loaded.drivers.map((driver) => ({ ...driver, signature: signatures[`driver-${driver.id}`] })) })}>Download PDF</Button>'''
+          new = '''                <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => {
+                  if (!signedPdfUrl || !/^https?:\\/\\//i.test(signedPdfUrl)) {
+                    toast.error("Public PDF link is not available");
+                    return;
+                  }
+                  window.open(signedPdfUrl, "_blank", "noopener,noreferrer");
+                }}>Open PDF</Button>'''
+          if old not in s:
+              raise SystemExit('download button anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''                  const text = encodeURIComponent(pdfUrl ? `Your signed rental contract: ${pdfUrl}` : `Your rental contract is signed. Contract ID: ${contractId}`);'''
+          new = '''                  if (!signedPdfUrl || !/^https?:\\/\\//i.test(signedPdfUrl)) {
+                    toast.error("Public PDF link is not available");
+                    return;
+                  }
+                  const text = encodeURIComponent(`Your signed rental contract: ${signedPdfUrl}`);'''
+          if old not in s:
+              raise SystemExit('WhatsApp URL anchor not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
           PY
       - run: npm ci
-      - name: Focused overlap regression test
-        run: npm test -- src/lib/contractOverlap.test.ts
       - name: Production build
         run: npm run build
-      - name: Commit hardened verified change
+      - name: Commit verified fix to PR branch
         run: |
           git config user.name "FleetDesk Agent"
           git config user.email "actions@users.noreply.github.com"
-          git rm -f .booking-hardening-trigger
-          git add src/pages/ContractDetail.tsx
-          git commit -m "Harden booking signature invalidation"
-          git push origin fleetdesk-booking-workflow
+          git add src/components/SignContractModal.tsx
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "Fix signed contract WhatsApp link"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
