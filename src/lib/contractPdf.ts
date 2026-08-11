@@ -400,6 +400,28 @@ export async function generateContractPdf(
     return height;
   };
 
+  const addContainedSignatureImage = (
+    sig: string,
+    boxX: number,
+    boxY: number,
+    boxW: number,
+    boxH: number,
+  ) => {
+    try {
+      const props = doc.getImageProperties(sig);
+      const naturalW = Number(props.width) || boxW;
+      const naturalH = Number(props.height) || boxH;
+      const scale = Math.min(boxW / naturalW, boxH / naturalH);
+      const renderW = naturalW * scale;
+      const renderH = naturalH * scale;
+      const renderX = boxX + (boxW - renderW) / 2;
+      const renderY = boxY + (boxH - renderH) / 2;
+      doc.addImage(sig, "PNG", renderX, renderY, renderW, renderH);
+    } catch {
+      // ignore invalid signature image
+    }
+  };
+
   const drawCompactSignature = (
     x: number,
     sigY: number,
@@ -416,11 +438,7 @@ export async function generateContractPdf(
     doc.setTextColor(...blue);
     doc.text(title, x + 9, sigY + 13);
     if (sig?.startsWith("data:image")) {
-      try {
-        doc.addImage(sig, "PNG", x + 15, sigY + 17, w - 30, 25);
-      } catch {
-        // ignore invalid signature image
-      }
+      addContainedSignatureImage(sig, x + 12, sigY + 16, w - 24, 27);
     }
     setStroke(line, 0.45);
     doc.line(x + 12, sigY + 45, x + w - 12, sigY + 45);
@@ -652,13 +670,19 @@ export async function generateContractPdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
   doc.setTextColor(...blue);
-  doc.text("SIGNATURES ARE RECORDED ON PAGE 1", margin, y);
+  doc.text(
+    additionalDrivers.length > 1 ? "SIGNATURES ARE RECORDED IN THIS AGREEMENT" : "SIGNATURES ARE RECORDED ON PAGE 1",
+    margin,
+    y,
+  );
   y += 18;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.setTextColor(...muted);
   doc.text(
-    "The signed first page forms part of this complete agreement and applies to all following pages.",
+    additionalDrivers.length > 1
+      ? "The customer, company representative and first additional driver sign on page 1. Further approved drivers sign on the additional driver signature pages."
+      : "The signed first page forms part of this complete agreement and applies to all following pages.",
     margin,
     y,
     { maxWidth: contentW },
@@ -709,11 +733,7 @@ export async function generateContractPdf(
         doc.text(value, fieldX, boxY + 64, { maxWidth: driverColW - 12 });
       });
       if (driver.signature?.startsWith("data:image")) {
-        try {
-          doc.addImage(driver.signature, "PNG", margin + 34, boxY + 82, 190, 44);
-        } catch {
-          // ignore invalid signature image
-        }
+        addContainedSignatureImage(driver.signature, margin + 28, boxY + 78, 222, 48);
       }
       setStroke(line, 0.55);
       doc.line(margin + 28, boxY + 130, margin + 250, boxY + 130);
