@@ -3252,16 +3252,28 @@ const FinancialsPanel = ({
                             </>
                           ) : null}
                           {transaction.contractFee ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Delete fee"
-                              className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
-                              onClick={() => onDeleteFee(transaction.contractFee!)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Edit fee amount"
+                                className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                                onClick={() => onEditFeeAmount(transaction.contractFee!)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Delete fee"
+                                className="h-8 w-8 text-muted-foreground hover:bg-transparent hover:text-destructive"
+                                onClick={() => onDeleteFee(transaction.contractFee!)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
                           ) : null}
                         </>
                       ) : null}
