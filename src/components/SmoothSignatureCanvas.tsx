@@ -51,9 +51,9 @@ export const SmoothSignatureCanvas = forwardRef<SmoothSignatureCanvasRef, { clas
       const pad = new SignaturePad(canvas, {
         penColor: "#111827",
         backgroundColor: "rgba(255,255,255,0)",
-        minWidth: 1.15,
-        maxWidth: 4.6,
-        dotSize: 2.25,
+        minWidth: 2,
+        maxWidth: 2,
+        dotSize: 2,
         throttle: 0,
         minDistance: 0.5,
         velocityFilterWeight: 0.72,
