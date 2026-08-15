@@ -1,0 +1,651 @@
+name: Apply parking contract charges
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Patch Parking into contract financials
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pages/ContractDetail.tsx')
+          text = path.read_text()
+
+          if 'interface ParkingRow {' in text:
+              print('Parking contract charges already applied')
+          else:
+              def rep(old, new):
+                  global text
+                  if old not in text:
+                      raise SystemExit(f'Expected ContractDetail block not found: {old[:140]!r}')
+                  text = text.replace(old, new, 1)
+
+              rep('interface PaymentRow {', '''interface ParkingRow {
+            id: string;
+            parking_date: string;
+            location: string;
+            parking_zone?: string | null;
+            amount: number;
+            status: string;
+            notes?: string | null;
+            car_id: string | null;
+            cars: {
+              plate: string;
+              make: string;
+              model: string;
+            } | null;
+          }
+
+          interface PaymentRow {''')
+
+              rep('''type ChargeImportEvidence = {
+            finesLastImportAt: string | null;
+            salikLastImportAt: string | null;
+          };''', '''type ChargeImportEvidence = {
+            finesLastImportAt: string | null;
+            salikLastImportAt: string | null;
+            parkingLastImportAt: string | null;
+          };''')
+
+              rep('type: "Rental" | "Salik" | "Payment" | "Fine" | "Deposit";', 'type: "Rental" | "Salik" | "Parking" | "Payment" | "Fine" | "Deposit";')
+
+              rep('''type SavedPaymentAllocations = {
+            rental?: number;
+            fines?: number;
+            salik?: number;
+            fees?: number;''', '''type SavedPaymentAllocations = {
+            rental?: number;
+            fines?: number;
+            salik?: number;
+            parking?: number;
+            fees?: number;''')
+              rep('category: "rental" | "fines" | "salik" | "fees";', 'category: "rental" | "fines" | "salik" | "parking" | "fees";')
+              rep('''    salik: Number(value.salik) || undefined,
+            fees: Number(value.fees) || undefined,''', '''    salik: Number(value.salik) || undefined,
+            parking: Number(value.parking) || undefined,
+            fees: Number(value.fees) || undefined,''')
+              rep('''  salik: "Salik",
+          };''', '''  salik: "Salik",
+            parking: "Parking",
+          };''')
+              rep('(["rental", "fees", "fines", "salik"] as const)', '(["rental", "fees", "fines", "salik", "parking"] as const)')
+              rep('''    if (line.id.startsWith("salik-")) {''', '''    if (line.id.startsWith("parking-")) label = "Parking";
+
+            if (line.id.startsWith("salik-")) {''')
+
+              rep('''  salik: SalikRow[];
+            chargeImportEvidence: ChargeImportEvidence;''', '''  salik: SalikRow[];
+            parking: ParkingRow[];
+            chargeImportEvidence: ChargeImportEvidence;''')
+              rep('''  salik,
+            chargeImportEvidence,''', '''  salik,
+            parking,
+            chargeImportEvidence,''')
+
+              rep('''    salik.forEach((charge) => {
+              lookup.set(`salik-${charge.id}`, {
+                category: "salik",
+                label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+              });
+            });
+
+            return lookup;''', '''    salik.forEach((charge) => {
+              lookup.set(`salik-${charge.id}`, {
+                category: "salik",
+                label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+              });
+            });
+
+            parking.forEach((charge) => {
+              lookup.set(`parking-${charge.id}`, {
+                category: "parking",
+                label: charge.location ? `Parking ${charge.location}` : "Parking",
+              });
+            });
+
+            return lookup;''')
+              rep('}, [contract.id, contractFees, fines, rentalExtensionCharges, rentalExtensions, salik]);', '}, [contract.id, contractFees, fines, parking, rentalExtensionCharges, rentalExtensions, salik]);')
+
+              rep('''  const salikVerificationLabel = getChargeVerificationLabel(salik.length, chargeImportEvidence.salikLastImportAt);
+            const hasUnverifiedAdditionalCharges =
+              (fines.length === 0 && !chargeImportEvidence.finesLastImportAt) ||
+              (salik.length === 0 && !chargeImportEvidence.salikLastImportAt);''', '''  const salikVerificationLabel = getChargeVerificationLabel(salik.length, chargeImportEvidence.salikLastImportAt);
+            const parkingVerificationLabel = getChargeVerificationLabel(parking.length, chargeImportEvidence.parkingLastImportAt);
+            const hasUnverifiedAdditionalCharges =
+              (fines.length === 0 && !chargeImportEvidence.finesLastImportAt) ||
+              (salik.length === 0 && !chargeImportEvidence.salikLastImportAt) ||
+              (parking.length === 0 && !chargeImportEvidence.parkingLastImportAt);''')
+
+              rep('''      if (line.category === "fines") {''', '''      if (line.category === "parking") {
+                groups.set("parking", {
+                  id: "parking",
+                  title: "Parking",
+                  detail: `${parking.filter((charge) => charge.status.toLowerCase() !== "paid").length} charges`,
+                  meta: parkingVerificationLabel,
+                  due: nextDue,
+                  icon: CarFront,
+                  iconTone: "violet",
+                });
+              }
+
+              if (line.category === "fines") {''')
+              rep('''    otherFees,
+            rentalExtensions,
+            salik,
+            salikVerificationLabel,''', '''    otherFees,
+            parking,
+            parkingVerificationLabel,
+            rentalExtensions,
+            salik,
+            salikVerificationLabel,''')
+
+              rep('''    const finesTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
+            const salikTotal = salik.reduce((sum, charge) => sum + Number(charge.amount), 0);''', '''    const latestParkingDate =
+              parking.reduce((latest, charge) => {
+                const currentTime = new Date(charge.parking_date).getTime() || 0;
+                const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
+                return currentTime > latestTime ? charge.parking_date : latest;
+              }, parking[0]?.parking_date ?? contract.start_date) || contract.start_date;
+            const finesTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
+            const salikTotal = salik.reduce((sum, charge) => sum + Number(charge.amount), 0);
+            const parkingTotal = parking.reduce((sum, charge) => sum + Number(charge.amount), 0);''')
+
+              rep('''      ...(salik.length > 0 ? [{
+                id: "salik-summary",
+                date: latestSalikDate,
+                group: "charges" as const,
+                type: "Salik",
+                description: "Salik Charges",
+                details: `${salikTripCount} ${salikTripCount === 1 ? "trip" : "trips"}`,
+                amount: salikTotal,
+                amountTone: "debit" as const,
+                reference: contractNumberLabel(contract.id),
+                icon: Route,
+                iconTone: "green" as const,
+              }] : []),''', '''      ...(salik.length > 0 ? [{
+                id: "salik-summary",
+                date: latestSalikDate,
+                group: "charges" as const,
+                type: "Salik",
+                description: "Salik Charges",
+                details: `${salikTripCount} ${salikTripCount === 1 ? "trip" : "trips"}`,
+                amount: salikTotal,
+                amountTone: "debit" as const,
+                reference: contractNumberLabel(contract.id),
+                icon: Route,
+                iconTone: "green" as const,
+              }] : []),
+              ...(parking.length > 0 ? [{
+                id: "parking-summary",
+                date: latestParkingDate,
+                group: "charges" as const,
+                type: "Parking",
+                description: "Parking",
+                details: `${parking.length} ${parking.length === 1 ? "charge" : "charges"}`,
+                amount: parkingTotal,
+                amountTone: "debit" as const,
+                reference: contractNumberLabel(contract.id),
+                icon: CarFront,
+                iconTone: "violet" as const,
+              }] : []),''')
+              rep('''    payments,
+            rentalExtensionCharges,
+            rentalExtensions,
+            salik,
+          ]);''', '''    payments,
+            parking,
+            rentalExtensionCharges,
+            rentalExtensions,
+            salik,
+          ]);''')
+              rep('if (transaction.type === "Salik") return "bg-emerald-950 text-emerald-300";', 'if (transaction.type === "Salik") return "bg-emerald-950 text-emerald-300";\n    if (transaction.type === "Parking") return "bg-violet-950 text-violet-300";')
+              rep('Fines/Salik import not verified. Review before returning deposit.', 'Fines/Salik/Parking import not verified. Review before returning deposit.')
+
+              rep('''  const [salik, setSalik] = useState<SalikRow[]>([]);
+            const [chargeImportEvidence, setChargeImportEvidence] = useState<ChargeImportEvidence>({
+              finesLastImportAt: null,
+              salikLastImportAt: null,
+            });''', '''  const [salik, setSalik] = useState<SalikRow[]>([]);
+            const [parking, setParking] = useState<ParkingRow[]>([]);
+            const [chargeImportEvidence, setChargeImportEvidence] = useState<ChargeImportEvidence>({
+              finesLastImportAt: null,
+              salikLastImportAt: null,
+              parkingLastImportAt: null,
+            });''')
+
+              rep('''        salikRes,
+                latestFinesImportRes,
+                latestSalikImportRes,
+                documentsRes,''', '''        salikRes,
+                parkingRes,
+                latestFinesImportRes,
+                latestSalikImportRes,
+                latestParkingImportRes,
+                documentsRes,''')
+              rep('''        supabase
+                  .from("salik")
+                  .select("id, charge_date, trip_time, transaction_id, toll_gate, direction, trips, amount, status, car_id, cars(plate, make, model)")
+                  .eq("contract_id", c.id)
+                  .order("charge_date", { ascending: false }),
+                supabase
+                  .from("fines")''', '''        supabase
+                  .from("salik")
+                  .select("id, charge_date, trip_time, transaction_id, toll_gate, direction, trips, amount, status, car_id, cars(plate, make, model)")
+                  .eq("contract_id", c.id)
+                  .order("charge_date", { ascending: false }),
+                (supabase as any)
+                  .from("parking_charges")
+                  .select("id, parking_date, location, parking_zone, amount, status, notes, car_id, cars(plate, make, model)")
+                  .eq("contract_id", c.id)
+                  .order("parking_date", { ascending: false }),
+                supabase
+                  .from("fines")''')
+              rep('''        supabase
+                  .from("salik")
+                  .select("created_at")
+                  .eq("owner_id", c.owner_id)
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+                (supabase as any)
+                  .from("contract_documents")''', '''        supabase
+                  .from("salik")
+                  .select("created_at")
+                  .eq("owner_id", c.owner_id)
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+                (supabase as any)
+                  .from("parking_charges")
+                  .select("created_at")
+                  .eq("owner_id", c.owner_id)
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+                (supabase as any)
+                  .from("contract_documents")''')
+              rep('''      if (!salikRes.error) setSalik(salikRes.data || []);
+            if (documentsRes.error)''', '''      if (!salikRes.error) setSalik(salikRes.data || []);
+            if (!parkingRes.error) setParking((parkingRes.data || []) as ParkingRow[]);
+            if (documentsRes.error)''')
+              rep('''        salikLastImportAt:
+                  !latestSalikImportRes.error && latestSalikImportRes.data
+                    ? (latestSalikImportRes.data as { created_at: string }).created_at
+                    : null,
+              });''', '''        salikLastImportAt:
+                  !latestSalikImportRes.error && latestSalikImportRes.data
+                    ? (latestSalikImportRes.data as { created_at: string }).created_at
+                    : null,
+                parkingLastImportAt:
+                  !latestParkingImportRes.error && latestParkingImportRes.data
+                    ? (latestParkingImportRes.data as { created_at: string }).created_at
+                    : null,
+              });''')
+              rep('''      setContractDocuments([]);
+              setChargeImportEvidence({ finesLastImportAt: null, salikLastImportAt: null });''', '''      setContractDocuments([]);
+              setParking([]);
+              setChargeImportEvidence({ finesLastImportAt: null, salikLastImportAt: null, parkingLastImportAt: null });''')
+
+              rep('''    salik.forEach((s) =>
+              entries.push({
+                id: `salik-${s.id}`,
+                date: s.charge_date,
+                type: "Salik",
+                description: `${s.trips} toll trips`,
+                debit: Number(s.amount),
+                credit: 0,
+                status: s.status,
+              }),
+            );
+            payments.forEach''', '''    salik.forEach((s) =>
+              entries.push({
+                id: `salik-${s.id}`,
+                date: s.charge_date,
+                type: "Salik",
+                description: `${s.trips} toll trips`,
+                debit: Number(s.amount),
+                credit: 0,
+                status: s.status,
+              }),
+            );
+            parking.forEach((p) =>
+              entries.push({
+                id: `parking-${p.id}`,
+                date: p.parking_date,
+                type: "Parking",
+                description: p.location ? `Parking · ${p.location}` : "Parking",
+                debit: Number(p.amount),
+                credit: 0,
+                status: p.status,
+              }),
+            );
+            payments.forEach''')
+              rep('}, [contract, fines, salik, payments, days]);', '}, [contract, fines, salik, parking, payments, days]);')
+
+              rep('''      const [profileRes, feesRes, finesRes, salikRes, paymentsRes] = await Promise.all([''', '''      const [profileRes, feesRes, finesRes, salikRes, parkingRes, paymentsRes] = await Promise.all([''')
+              rep('''        (supabase as any)
+                  .from("payments")
+                  .select("id, amount")''', '''        (supabase as any)
+                  .from("parking_charges")
+                  .select("id, amount")
+                  .eq("contract_id", contract.id),
+                (supabase as any)
+                  .from("payments")
+                  .select("id, amount")''')
+              rep('if (profileRes.error || feesRes.error || finesRes.error || salikRes.error || paymentsRes.error)', 'if (profileRes.error || feesRes.error || finesRes.error || salikRes.error || parkingRes.error || paymentsRes.error)')
+              rep('''            salikRes.error?.message ||
+                paymentsRes.error?.message ||''', '''            salikRes.error?.message ||
+                parkingRes.error?.message ||
+                paymentsRes.error?.message ||''')
+              rep('''      const fees = ((feesRes.data ?? []) as Array<{ id: string; label: string; amount: number }>)''', '''      const parkingCharges = ((parkingRes.data ?? []) as Array<{ id: string; amount: number }>).map((charge) => ({
+                ...charge,
+                amount: Number(charge.amount) || 0,
+              }));
+              const fees = ((feesRes.data ?? []) as Array<{ id: string; label: string; amount: number }>)''')
+              rep('''      const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
+              const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
+              const subtotal = rentalAmount + finesTotal + salikTotal + feeTotal;''', '''      const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
+              const parkingTotal = parkingCharges.reduce((sum, charge) => sum + charge.amount, 0);
+              const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
+              const subtotal = rentalAmount + finesTotal + salikTotal + parkingTotal + feeTotal;''')
+              rep('''      if (salikCharges.length > 0) {
+                rows.push(
+                  makeInvoiceRow(
+                    `Salik Charges\\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
+                    String(salikTrips),
+                    salikTotal,
+                  ),
+                );
+              }
+              fees.forEach''', '''      if (salikCharges.length > 0) {
+                rows.push(
+                  makeInvoiceRow(
+                    `Salik Charges\\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
+                    String(salikTrips),
+                    salikTotal,
+                  ),
+                );
+              }
+              if (parkingCharges.length > 0) {
+                rows.push(
+                  makeInvoiceRow(
+                    `Parking\\n${parkingCharges.length} ${parkingCharges.length === 1 ? "charge" : "charges"}`,
+                    String(parkingCharges.length),
+                    parkingTotal,
+                  ),
+                );
+              }
+              fees.forEach''')
+
+              rep('''    ...salik.map((charge) => ({
+                id: `salik-${charge.id}`,
+                category: "salik" as const,
+                label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+                due: Number(charge.amount),
+                overdueImmediately: true,
+              })),
+            ];''', '''    ...salik.map((charge) => ({
+                id: `salik-${charge.id}`,
+                category: "salik" as const,
+                label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+                due: Number(charge.amount),
+                overdueImmediately: true,
+              })),
+              ...parking.map((charge) => ({
+                id: `parking-${charge.id}`,
+                category: "parking" as const,
+                label: charge.location ? `Parking ${charge.location}` : "Parking",
+                due: Number(charge.amount),
+                overdueImmediately: true,
+              })),
+            ];''')
+              rep('''        (["rental", "fees", "fines", "salik"] as const).forEach((category) => {''', '''        (["rental", "fees", "fines", "salik", "parking"] as const).forEach((category) => {''')
+              rep('contract_fees, fines, and Salik do not carry due dates', 'contract_fees, fines, Salik, and Parking do not carry due dates')
+              rep('Record<"rental" | "fines" | "salik" | "fees", number>', 'Record<"rental" | "fines" | "salik" | "parking" | "fees", number>')
+              rep('''        salik: 0,
+                fees: 0,''', '''        salik: 0,
+                parking: 0,
+                fees: 0,''')
+
+              rep('''              salik={salik}
+                  chargeImportEvidence={chargeImportEvidence}''', '''              salik={salik}
+                  parking={parking}
+                  chargeImportEvidence={chargeImportEvidence}''')
+
+              path.write_text(text)
+
+          modal = Path('src/components/RecordPaymentModal.tsx')
+          m = modal.read_text()
+          if '"parking"' not in m.split('type AllocationCategory', 1)[1].split(';', 1)[0]:
+              def mrep(old, new):
+                  global m
+                  if old not in m:
+                      raise SystemExit(f'Expected RecordPaymentModal block not found: {old[:140]!r}')
+                  m = m.replace(old, new, 1)
+
+              mrep('type: "Rental" | "Salik" | "Payment" | "Fine" | "Deposit";', 'type: "Rental" | "Salik" | "Parking" | "Payment" | "Fine" | "Deposit";')
+              mrep('type AllocationCategory = "rental" | "fines" | "salik" | "fees";', 'type AllocationCategory = "rental" | "fines" | "salik" | "parking" | "fees";')
+              mrep('''    salik: number;
+                fees: number;''', '''    salik: number;
+                parking: number;
+                fees: number;''')
+              mrep('''      salik: unpaidEntries
+                .filter((entry) => entry.type === "Salik")
+                .reduce((sum, entry) => sum + Number(entry.amount), 0),
+              fees: 0,''', '''      salik: unpaidEntries
+                .filter((entry) => entry.type === "Salik")
+                .reduce((sum, entry) => sum + Number(entry.amount), 0),
+              parking: unpaidEntries
+                .filter((entry) => entry.type === "Parking")
+                .reduce((sum, entry) => sum + Number(entry.amount), 0),
+              fees: 0,''')
+              mrep('''      { id: "salik", category: "salik", label: "Salik", due: Number(dues.salik) },''', '''      { id: "salik", category: "salik", label: "Salik", due: Number(dues.salik) },
+              { id: "parking", category: "parking", label: "Parking", due: Number(dues.parking) },''')
+              mrep('''        salik: 0,
+                fees: 0,''', '''        salik: 0,
+                parking: 0,
+                fees: 0,''')
+              mrep('''        } else if (row.category === "salik" && row.id.startsWith("salik-")) {
+                  const dbId = row.id.replace(/^salik-/, "");
+                  const { error: updError } = await supabase
+                    .from("salik")
+                    .update({ status: "Paid" } as never)
+                    .eq("id", dbId);
+                  if (updError) console.error(`Failed to update salik ${dbId}:`, updError);
+                }''', '''        } else if (row.category === "salik" && row.id.startsWith("salik-")) {
+                  const dbId = row.id.replace(/^salik-/, "");
+                  const { error: updError } = await supabase
+                    .from("salik")
+                    .update({ status: "Paid" } as never)
+                    .eq("id", dbId);
+                  if (updError) console.error(`Failed to update salik ${dbId}:`, updError);
+                } else if (row.category === "parking" && row.id.startsWith("parking-")) {
+                  const dbId = row.id.replace(/^parking-/, "");
+                  const { error: updError } = await (supabase as any)
+                    .from("parking_charges")
+                    .update({ status: "Paid", paid_at: new Date().toISOString() })
+                    .eq("id", dbId);
+                  if (updError) console.error(`Failed to update parking ${dbId}:`, updError);
+                }''')
+              modal.write_text(m)
+
+          migration = Path('supabase/migrations/20260815094500_add_parking_contract_payment_allocations.sql')
+          if not migration.exists():
+              migration.write_text(r'''create or replace function public.validate_payment_allocations()
+          returns trigger
+          language plpgsql
+          security definer
+          set search_path = public
+          as $$
+          declare
+            allocation record;
+            item_id uuid;
+            target_amount numeric;
+            already_allocated numeric;
+            line_total numeric := 0;
+            rental_total numeric := 0;
+            fees_total numeric := 0;
+            fines_total numeric := 0;
+            salik_total numeric := 0;
+            parking_total numeric := 0;
+            category text;
+          begin
+            if lower(coalesce(new.status, '')) <> 'paid' then return new; end if;
+            if new.contract_id is null then raise exception 'Paid payment must belong to a contract'; end if;
+            if jsonb_typeof(coalesce(new.allocations -> 'lines', '{}'::jsonb)) <> 'object' then
+              raise exception 'Payment allocations.lines must be an object';
+            end if;
+
+            for allocation in select key, value from jsonb_each_text(coalesce(new.allocations -> 'lines', '{}'::jsonb)) loop
+              if coalesce(allocation.value::numeric, 0) <= 0 then raise exception 'Payment allocation must be greater than zero: %', allocation.key; end if;
+              line_total := line_total + allocation.value::numeric;
+
+              if allocation.key like 'rental-%' then
+                category := 'rental';
+                begin item_id := substring(allocation.key from 8)::uuid; exception when others then raise exception 'Invalid rental allocation reference: %', allocation.key; end;
+                if item_id is distinct from new.contract_id then raise exception 'Rental allocation belongs to another contract: %', item_id; end if;
+                select total_amount into target_amount from public.contracts where id = item_id;
+                if not found then raise exception 'Contract not found: %', item_id; end if;
+                rental_total := rental_total + allocation.value::numeric;
+              elsif allocation.key like 'fee-%' then
+                category := 'fees';
+                begin item_id := substring(allocation.key from 5)::uuid; exception when others then raise exception 'Invalid fee allocation reference: %', allocation.key; end;
+                select amount into target_amount from public.contract_fees where id = item_id and contract_id = new.contract_id;
+                if not found then raise exception 'Fee not found in this contract: %', item_id; end if;
+                if target_amount <= 0 then raise exception 'Zero-value fee cannot receive payment: %', item_id; end if;
+                fees_total := fees_total + allocation.value::numeric;
+              elsif allocation.key like 'fine-%' then
+                category := 'fines';
+                begin item_id := substring(allocation.key from 6)::uuid; exception when others then raise exception 'Invalid fine allocation reference: %', allocation.key; end;
+                select amount into target_amount from public.fines where id = item_id and contract_id = new.contract_id;
+                if not found then raise exception 'Fine not found in this contract: %', item_id; end if;
+                fines_total := fines_total + allocation.value::numeric;
+              elsif allocation.key like 'salik-%' then
+                category := 'salik';
+                begin item_id := substring(allocation.key from 7)::uuid; exception when others then raise exception 'Invalid Salik allocation reference: %', allocation.key; end;
+                select amount into target_amount from public.salik where id = item_id and contract_id = new.contract_id for update;
+                if not found then raise exception 'Salik transaction not found in this contract: %', item_id; end if;
+                if abs(allocation.value::numeric - target_amount) > 0.009 then raise exception 'Salik must be paid in full for transaction %', item_id; end if;
+                salik_total := salik_total + allocation.value::numeric;
+              elsif allocation.key like 'parking-%' then
+                category := 'parking';
+                begin item_id := substring(allocation.key from 9)::uuid; exception when others then raise exception 'Invalid Parking allocation reference: %', allocation.key; end;
+                select amount into target_amount from public.parking_charges where id = item_id and contract_id = new.contract_id for update;
+                if not found then raise exception 'Parking charge not found in this contract: %', item_id; end if;
+                parking_total := parking_total + allocation.value::numeric;
+              else
+                raise exception 'Unknown payment allocation type: %', allocation.key;
+              end if;
+
+              select coalesce(sum((entry.value)::numeric), 0) into already_allocated
+              from public.payments p
+              cross join lateral jsonb_each_text(coalesce(p.allocations -> 'lines', '{}'::jsonb)) entry
+              where p.id is distinct from new.id and p.contract_id = new.contract_id
+                and lower(coalesce(p.status, '')) = 'paid' and entry.key = allocation.key;
+
+              if already_allocated + allocation.value::numeric > target_amount + 0.009 then
+                raise exception 'Payment exceeds remaining amount for %', allocation.key;
+              end if;
+            end loop;
+
+            if abs(line_total - new.amount) > 0.009 then raise exception 'Payment amount must equal allocated line total'; end if;
+            if abs(coalesce((new.allocations ->> 'rental')::numeric, 0) - rental_total) > 0.009
+              or abs(coalesce((new.allocations ->> 'fees')::numeric, 0) - fees_total) > 0.009
+              or abs(coalesce((new.allocations ->> 'fines')::numeric, 0) - fines_total) > 0.009
+              or abs(coalesce((new.allocations ->> 'salik')::numeric, 0) - salik_total) > 0.009
+              or abs(coalesce((new.allocations ->> 'parking')::numeric, 0) - parking_total) > 0.009 then
+              raise exception 'Payment category totals do not match allocation lines';
+            end if;
+            return new;
+          end;
+          $$;
+
+          create or replace function public.sync_charge_statuses_from_payments()
+          returns trigger
+          language plpgsql
+          security definer
+          set search_path = public
+          as $$
+          declare
+            line_key text;
+            item_id uuid;
+            paid_total numeric;
+            charge_amount numeric;
+          begin
+            for line_key in
+              select distinct key
+              from (
+                select key from jsonb_each_text(coalesce(case when tg_op <> 'DELETE' then new.allocations -> 'lines' end, '{}'::jsonb))
+                union all
+                select key from jsonb_each_text(coalesce(case when tg_op <> 'INSERT' then old.allocations -> 'lines' end, '{}'::jsonb))
+              ) affected
+              where key like 'fine-%' or key like 'salik-%' or key like 'parking-%'
+            loop
+              if line_key like 'fine-%' then
+                begin item_id := substring(line_key from 6)::uuid; exception when others then continue; end;
+                select amount into charge_amount from public.fines where id = item_id;
+                if not found then continue; end if;
+                select coalesce(sum((e.value)::numeric),0) into paid_total
+                from public.payments p cross join lateral jsonb_each_text(coalesce(p.allocations->'lines','{}'::jsonb)) e
+                where lower(coalesce(p.status,''))='paid' and e.key=line_key;
+                update public.fines
+                set status = case when paid_total >= charge_amount - 0.009 then 'Paid' when paid_total > 0 then 'Partial' else 'Unpaid' end,
+                    paid_at = case when paid_total >= charge_amount - 0.009 then coalesce(paid_at, now()) else null end
+                where id=item_id;
+              elsif line_key like 'salik-%' then
+                begin item_id := substring(line_key from 7)::uuid; exception when others then continue; end;
+                select amount into charge_amount from public.salik where id = item_id;
+                if not found then continue; end if;
+                select coalesce(sum((e.value)::numeric),0) into paid_total
+                from public.payments p cross join lateral jsonb_each_text(coalesce(p.allocations->'lines','{}'::jsonb)) e
+                where lower(coalesce(p.status,''))='paid' and e.key=line_key;
+                update public.salik
+                set status = case when paid_total >= charge_amount - 0.009 then 'Paid' else 'Charged to Client' end,
+                    paid_at = case when paid_total >= charge_amount - 0.009 then coalesce(paid_at, now()) else null end
+                where id=item_id;
+              else
+                begin item_id := substring(line_key from 9)::uuid; exception when others then continue; end;
+                select amount into charge_amount from public.parking_charges where id = item_id;
+                if not found then continue; end if;
+                select coalesce(sum((e.value)::numeric),0) into paid_total
+                from public.payments p cross join lateral jsonb_each_text(coalesce(p.allocations->'lines','{}'::jsonb)) e
+                where lower(coalesce(p.status,''))='paid' and e.key=line_key;
+                update public.parking_charges
+                set status = case when paid_total >= charge_amount - 0.009 then 'Paid' when paid_total > 0 then 'Partial' else 'Unpaid' end,
+                    paid_at = case when paid_total >= charge_amount - 0.009 then coalesce(paid_at, now()) else null end
+                where id=item_id;
+              end if;
+            end loop;
+            return coalesce(new, old);
+          end;
+          $$;
+          ''')
+          PY
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/ContractDetail.tsx src/components/RecordPaymentModal.tsx supabase/migrations/20260815094500_add_parking_contract_payment_allocations.sql
+          git diff --cached --quiet && exit 0
+          git commit -m "Add Parking charges to contract financials"
+          git push origin HEAD:main
