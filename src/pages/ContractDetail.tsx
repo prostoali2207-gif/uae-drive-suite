@@ -35,6 +35,8 @@ import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFe
 import { VehicleTimelineSheet } from "@/components/VehicleTimelineSheet";
 import SalikModal from "@/components/SalikModal";
 import SalikDetailModal from "@/components/SalikDetailModal";
+import ParkingBulkSheet from "@/components/ParkingBulkSheet";
+import ParkingDetailModal from "@/components/ParkingDetailModal";
 import { InspectionPhotosTab } from "@/components/inspection/InspectionPhotosTab";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -2482,7 +2484,8 @@ const FinancialsPanel = ({
   const parkingVerificationLabel = getChargeVerificationLabel(parking.length, chargeImportEvidence.parkingLastImportAt);
   const hasUnverifiedAdditionalCharges =
     (fines.length === 0 && !chargeImportEvidence.finesLastImportAt) ||
-    (salik.length === 0 && !chargeImportEvidence.salikLastImportAt);
+    (salik.length === 0 && !chargeImportEvidence.salikLastImportAt) ||
+    (parking.length === 0 && !chargeImportEvidence.parkingLastImportAt);
   const showDepositVerificationWarning =
     Number(contract.deposit_amount) > 0 &&
     contract.status.toLowerCase() === "closed" &&
@@ -2491,8 +2494,10 @@ const FinancialsPanel = ({
     hasUnverifiedAdditionalCharges;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
+  const [showParkingModal, setShowParkingModal] = useState(false);
   const [finesModalOpen, setFinesModalOpen] = useState(false);
   const [salikModalOpen, setSalikModalOpen] = useState(false);
+  const [parkingModalOpen, setParkingModalOpen] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
   const [showAllPayments, setShowAllPayments] = useState(false);
@@ -3036,7 +3041,7 @@ const FinancialsPanel = ({
           {showDepositVerificationWarning ? (
             <div className="flex items-start gap-2 rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs text-tint-amber-foreground">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Fines/Salik import not verified. Review before returning deposit.</span>
+              <span>Fines/Salik/Parking import not verified. Review before returning deposit.</span>
             </div>
           ) : null}
           {openItemGroups.length === 0 ? (
@@ -3064,6 +3069,11 @@ const FinancialsPanel = ({
                     </Button>
                   ) : item.id === "salik" ? (
                     <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowSalikModal(true)}>
+                      View
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : item.id === "parking" ? (
+                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowParkingModal(true)}>
                       View
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
@@ -3222,7 +3232,7 @@ const FinancialsPanel = ({
               const feeTransactionNote = isFeeTransaction ? transaction.contractFee?.note?.trim() : "";
               const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
               const showsTransactionDetails =
-                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik";
+                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik" || transaction.type === "Parking";
 
               return (
               <div key={transaction.id}>
@@ -3286,6 +3296,16 @@ const FinancialsPanel = ({
                           size="sm"
                           className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
                           onClick={() => setSalikModalOpen(true)}
+                        >
+                          View all →
+                        </Button>
+                      ) : transaction.type === "Parking" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                          onClick={() => setParkingModalOpen(true)}
                         >
                           View all →
                         </Button>
@@ -3809,6 +3829,19 @@ const FinancialsPanel = ({
         onClose={() => setFinesModalOpen(false)}
       />
       <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />
+      <ParkingBulkSheet
+        contract={contract}
+        open={showParkingModal}
+        onOpenChange={setShowParkingModal}
+        transactions={parking}
+        onRefresh={onInlinePaymentRecorded}
+      />
+      <ParkingDetailModal
+        contractId={contract.id}
+        transactions={parking}
+        open={parkingModalOpen}
+        onClose={() => setParkingModalOpen(false)}
+      />
     </>
   );
 };
