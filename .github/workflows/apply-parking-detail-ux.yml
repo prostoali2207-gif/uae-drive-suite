@@ -1,0 +1,95 @@
+name: Apply Parking detail UX
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch ContractDetail Parking UX
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pages/ContractDetail.tsx')
+          text = path.read_text()
+
+          def rep(old, new, label):
+              global text
+              if old not in text:
+                  raise SystemExit(f'Missing anchor: {label}')
+              text = text.replace(old, new, 1)
+
+          if 'ParkingBulkSheet' not in text:
+              rep(
+                  'import SalikDetailModal from "@/components/SalikDetailModal";',
+                  'import SalikDetailModal from "@/components/SalikDetailModal";\nimport ParkingBulkSheet from "@/components/ParkingBulkSheet";\nimport ParkingDetailModal from "@/components/ParkingDetailModal";',
+                  'parking imports',
+              )
+
+          rep(
+              '  const hasUnverifiedAdditionalCharges =\n    (fines.length === 0 && !chargeImportEvidence.finesLastImportAt) ||\n    (salik.length === 0 && !chargeImportEvidence.salikLastImportAt);',
+              '  const hasUnverifiedAdditionalCharges =\n    (fines.length === 0 && !chargeImportEvidence.finesLastImportAt) ||\n    (salik.length === 0 && !chargeImportEvidence.salikLastImportAt) ||\n    (parking.length === 0 && !chargeImportEvidence.parkingLastImportAt);',
+              'parking verification',
+          )
+
+          rep(
+              '  const [showFinesModal, setShowFinesModal] = useState(false);\n  const [showSalikModal, setShowSalikModal] = useState(false);\n  const [finesModalOpen, setFinesModalOpen] = useState(false);\n  const [salikModalOpen, setSalikModalOpen] = useState(false);',
+              '  const [showFinesModal, setShowFinesModal] = useState(false);\n  const [showSalikModal, setShowSalikModal] = useState(false);\n  const [showParkingModal, setShowParkingModal] = useState(false);\n  const [finesModalOpen, setFinesModalOpen] = useState(false);\n  const [salikModalOpen, setSalikModalOpen] = useState(false);\n  const [parkingModalOpen, setParkingModalOpen] = useState(false);',
+              'parking modal state',
+          )
+
+          rep(
+              '<span>Fines/Salik import not verified. Review before returning deposit.</span>',
+              '<span>Fines/Salik/Parking import not verified. Review before returning deposit.</span>',
+              'deposit warning',
+          )
+
+          rep(
+              '''                  ) : item.id === "salik" ? (\n                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowSalikModal(true)}>\n                      View\n                      <ExternalLink className="h-3.5 w-3.5" />\n                    </Button>\n                  ) : (''',
+              '''                  ) : item.id === "salik" ? (\n                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowSalikModal(true)}>\n                      View\n                      <ExternalLink className="h-3.5 w-3.5" />\n                    </Button>\n                  ) : item.id === "parking" ? (\n                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowParkingModal(true)}>\n                      View\n                      <ExternalLink className="h-3.5 w-3.5" />\n                    </Button>\n                  ) : (''',
+              'open items parking view',
+          )
+
+          rep(
+              '              const showsTransactionDetails =\n                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik";',
+              '              const showsTransactionDetails =\n                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik" || transaction.type === "Parking";',
+              'parking transaction details',
+          )
+
+          rep(
+              '''                      ) : transaction.type === "Salik" ? (\n                        <Button\n                          type="button"\n                          variant="ghost"\n                          size="sm"\n                          className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"\n                          onClick={() => setSalikModalOpen(true)}\n                        >\n                          View all →\n                        </Button>\n                      ) : null}''',
+              '''                      ) : transaction.type === "Salik" ? (\n                        <Button\n                          type="button"\n                          variant="ghost"\n                          size="sm"\n                          className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"\n                          onClick={() => setSalikModalOpen(true)}\n                        >\n                          View all →\n                        </Button>\n                      ) : transaction.type === "Parking" ? (\n                        <Button\n                          type="button"\n                          variant="ghost"\n                          size="sm"\n                          className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"\n                          onClick={() => setParkingModalOpen(true)}\n                        >\n                          View all →\n                        </Button>\n                      ) : null}''',
+              'transaction history parking view',
+          )
+
+          rep(
+              '''      <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />''',
+              '''      <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />\n      <ParkingBulkSheet\n        contract={contract}\n        open={showParkingModal}\n        onOpenChange={setShowParkingModal}\n        transactions={parking}\n        onRefresh={onInlinePaymentRecorded}\n      />\n      <ParkingDetailModal\n        contractId={contract.id}\n        transactions={parking}\n        open={parkingModalOpen}\n        onClose={() => setParkingModalOpen(false)}\n      />''',
+              'parking modal render',
+          )
+
+          path.write_text(text)
+          PY
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit
+        run: |
+          git config user.name "FleetDesk Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/pages/ContractDetail.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: mirror Salik detail UX for Parking"
+          git push origin HEAD:main
