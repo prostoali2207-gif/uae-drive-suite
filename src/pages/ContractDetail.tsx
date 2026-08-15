@@ -183,6 +183,18 @@ interface SalikRow {
   } | null;
 }
 
+interface ParkingRow {
+  id: string;
+  parking_date: string;
+  location: string;
+  parking_zone?: string | null;
+  amount: number;
+  status: string;
+  notes?: string | null;
+  car_id: string | null;
+  cars: { plate: string; make: string; model: string } | null;
+}
+
 interface PaymentRow {
   id: string;
   payment_date: string;
@@ -256,6 +268,7 @@ type ContractFinancialTotals = {
 type ChargeImportEvidence = {
   finesLastImportAt: string | null;
   salikLastImportAt: string | null;
+  parkingLastImportAt: string | null;
 };
 
 type ContractPaymentAllocationLine = PaymentAllocationLine & {
@@ -284,7 +297,7 @@ type DepositReconciliationInfo = {
 type LedgerEntry = {
   id: string;
   date: string;
-  type: "Rental" | "Salik" | "Payment" | "Fine" | "Deposit";
+  type: "Rental" | "Salik" | "Parking" | "Payment" | "Fine" | "Deposit";
   description: string;
   debit: number;
   credit: number;
@@ -672,13 +685,14 @@ type SavedPaymentAllocations = {
   rental?: number;
   fines?: number;
   salik?: number;
+  parking?: number;
   fees?: number;
   lines?: Record<string, number>;
 };
 
 type PaymentAllocationDisplayLine = {
   id: string;
-  category: "rental" | "fines" | "salik" | "fees";
+  category: "rental" | "fines" | "salik" | "parking" | "fees";
   label: string;
   amount: number;
 };
@@ -708,6 +722,7 @@ const readSavedPaymentAllocations = (value: unknown): SavedPaymentAllocations | 
     rental: Number(value.rental) || undefined,
     fines: Number(value.fines) || undefined,
     salik: Number(value.salik) || undefined,
+    parking: Number(value.parking) || undefined,
     fees: Number(value.fees) || undefined,
     lines,
   };
@@ -731,6 +746,7 @@ const PAYMENT_ALLOCATION_CATEGORY_LABELS: Record<PaymentAllocationDisplayLine["c
   fees: "Other Fees",
   fines: "Traffic Fines",
   salik: "Salik",
+  parking: "Parking",
 };
 
 const buildPaymentAllocationDisplay = (
@@ -763,7 +779,7 @@ const buildPaymentAllocationDisplay = (
     });
     if (hasUnresolvedLine) return null;
   } else {
-    (["rental", "fees", "fines", "salik"] as const).forEach((category) => {
+    (["rental", "fees", "fines", "salik", "parking"] as const).forEach((category) => {
       const amount = Number(savedAllocations[category] ?? 0);
       if (!Number.isFinite(amount) || amount <= 0) return;
       lines.push({
@@ -848,6 +864,10 @@ const buildExpandedPaymentAllocationRows = (
       const fineId = line.id.slice("fine-".length);
       const fine = fines.find((item) => item.id === fineId);
       label = `Traffic Fine ${fine?.fine_number || "No number"}`;
+    }
+
+    if (line.id.startsWith("parking-")) {
+      label = "Parking";
     }
 
     if (line.id.startsWith("salik-")) {
@@ -1422,6 +1442,7 @@ type FinancialsPanelProps = {
   payments: PaymentRow[];
   fines: FineRow[];
   salik: SalikRow[];
+  parking: ParkingRow[];
   chargeImportEvidence: ChargeImportEvidence;
   contractFees: ContractFeeRow[];
   unpaidAllocationLines: ContractPaymentAllocationLine[];
@@ -2365,6 +2386,7 @@ const FinancialsPanel = ({
   payments,
   fines,
   salik,
+  parking,
   chargeImportEvidence,
   contractFees,
   unpaidAllocationLines,
@@ -2427,9 +2449,15 @@ const FinancialsPanel = ({
         label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
       });
     });
+    parking.forEach((charge) => {
+      lookup.set(`parking-${charge.id}`, {
+        category: "parking",
+        label: charge.location ? `Parking ${charge.location}` : "Parking",
+      });
+    });
 
     return lookup;
-  }, [contract.id, contractFees, fines, rentalExtensionCharges, rentalExtensions, salik]);
+  }, [contract.id, contractFees, fines, parking, rentalExtensionCharges, rentalExtensions, salik]);
   const depositInfo = getDepositReconciliationInfo(contract);
   const rawDepositStatus = (contract as any).deposit_status;
   const normalizedDepositStatus =
@@ -2451,6 +2479,7 @@ const FinancialsPanel = ({
     (contract as any).deposit_payment_method;
   const finesVerificationLabel = getChargeVerificationLabel(fines.length, chargeImportEvidence.finesLastImportAt);
   const salikVerificationLabel = getChargeVerificationLabel(salik.length, chargeImportEvidence.salikLastImportAt);
+  const parkingVerificationLabel = getChargeVerificationLabel(parking.length, chargeImportEvidence.parkingLastImportAt);
   const hasUnverifiedAdditionalCharges =
     (fines.length === 0 && !chargeImportEvidence.finesLastImportAt) ||
     (salik.length === 0 && !chargeImportEvidence.salikLastImportAt);
@@ -2518,6 +2547,18 @@ const FinancialsPanel = ({
         });
       }
 
+      if (line.category === "parking") {
+        groups.set("parking", {
+          id: "parking",
+          title: "Parking",
+          detail: `${parking.filter((charge) => charge.status.toLowerCase() !== "paid").length} charges`,
+          meta: parkingVerificationLabel,
+          due: nextDue,
+          icon: CarFront,
+          iconTone: "violet",
+        });
+      }
+
       if (line.category === "fines") {
         groups.set("fines", {
           id: "fines",
@@ -2566,6 +2607,8 @@ const FinancialsPanel = ({
     fines,
     finesVerificationLabel,
     otherFees,
+    parking,
+    parkingVerificationLabel,
     rentalExtensions,
     salik,
     salikVerificationLabel,
@@ -2585,8 +2628,14 @@ const FinancialsPanel = ({
         const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
         return currentTime > latestTime ? charge.charge_date : latest;
       }, salik[0]?.charge_date ?? contract.start_date) || contract.start_date;
+    const latestParkingDate = parking.reduce((latest, charge) => {
+      const currentTime = new Date(charge.parking_date).getTime() || 0;
+      const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
+      return currentTime > latestTime ? charge.parking_date : latest;
+    }, parking[0]?.parking_date ?? contract.start_date) || contract.start_date;
     const finesTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
     const salikTotal = salik.reduce((sum, charge) => sum + Number(charge.amount), 0);
+    const parkingTotal = parking.reduce((sum, charge) => sum + Number(charge.amount), 0);
     const salikTripCount = salik.reduce((sum, charge) => sum + Number(charge.trips), 0);
 
     const rentalPeriods = buildRentalPeriods(contract, rentalExtensions);
@@ -2682,6 +2731,19 @@ const FinancialsPanel = ({
         icon: Route,
         iconTone: "green" as const,
       }] : []),
+      ...(parking.length > 0 ? [{
+        id: "parking-summary",
+        date: latestParkingDate,
+        group: "charges" as const,
+        type: "Parking",
+        description: "Parking",
+        details: `${parking.length} ${parking.length === 1 ? "charge" : "charges"}`,
+        amount: parkingTotal,
+        amountTone: "debit" as const,
+        reference: contractNumberLabel(contract.id),
+        icon: CarFront,
+        iconTone: "violet" as const,
+      }] : []),
       ...payments.map((payment) => ({
         id: `payment-${payment.id}`,
         date: payment.payment_date,
@@ -2708,6 +2770,7 @@ const FinancialsPanel = ({
     otherFees,
     paymentAllocationLineLookup,
     payments,
+    parking,
     rentalExtensionCharges,
     rentalExtensions,
     salik,
@@ -2733,6 +2796,7 @@ const FinancialsPanel = ({
     if (transaction.type === "Payment") return "bg-green-950 text-green-300";
     if (transaction.type === "Fine") return "bg-red-950 text-red-300";
     if (transaction.type === "Salik") return "bg-emerald-950 text-emerald-300";
+    if (transaction.type === "Parking") return "bg-violet-950 text-violet-300";
     if (transaction.type === "Rent") return "bg-blue-950 text-blue-300";
     return "bg-purple-950 text-purple-300";
   };
@@ -2812,6 +2876,7 @@ const FinancialsPanel = ({
       rental: 0,
       fines: 0,
       salik: 0,
+      parking: 0,
       fees: 0,
       lines: lineAllocations,
     };
@@ -3754,9 +3819,11 @@ const ContractDetail = () => {
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [fines, setFines] = useState<FineRow[]>([]);
   const [salik, setSalik] = useState<SalikRow[]>([]);
+  const [parking, setParking] = useState<ParkingRow[]>([]);
   const [chargeImportEvidence, setChargeImportEvidence] = useState<ChargeImportEvidence>({
     finesLastImportAt: null,
     salikLastImportAt: null,
+    parkingLastImportAt: null,
   });
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [contractFees, setContractFees] = useState<ContractFeeRow[]>([]);
@@ -3874,8 +3941,10 @@ const ContractDetail = () => {
         paymentsRes,
         finesRes,
         salikRes,
+        parkingRes,
         latestFinesImportRes,
         latestSalikImportRes,
+        latestParkingImportRes,
         documentsRes,
       ] = await Promise.all([
         supabase
@@ -3893,6 +3962,11 @@ const ContractDetail = () => {
           .select("id, charge_date, trip_time, transaction_id, toll_gate, direction, trips, amount, status, car_id, cars(plate, make, model)")
           .eq("contract_id", c.id)
           .order("charge_date", { ascending: false }),
+        (supabase as any)
+          .from("parking_charges")
+          .select("id, parking_date, location, parking_zone, amount, status, notes, car_id, cars(plate, make, model)")
+          .eq("contract_id", c.id)
+          .order("parking_date", { ascending: false }),
         supabase
           .from("fines")
           .select("created_at")
@@ -3908,6 +3982,13 @@ const ContractDetail = () => {
           .limit(1)
           .maybeSingle(),
         (supabase as any)
+          .from("parking_charges")
+          .select("created_at")
+          .eq("owner_id", c.owner_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        (supabase as any)
           .from("contract_documents")
           .select("id, document_type, title, storage_bucket, storage_path, public_url, created_at")
           .eq("contract_id", c.id)
@@ -3916,6 +3997,7 @@ const ContractDetail = () => {
       if (!paymentsRes.error) setPayments(paymentsRes.data || []);
       if (!finesRes.error) setFines(finesRes.data || []);
       if (!salikRes.error) setSalik(salikRes.data || []);
+      if (!parkingRes.error) setParking((parkingRes.data || []) as ParkingRow[]);
       if (documentsRes.error) {
         toast.error("Failed to load contract documents");
         setContractDocuments([]);
@@ -3931,10 +4013,15 @@ const ContractDetail = () => {
           !latestSalikImportRes.error && latestSalikImportRes.data
             ? (latestSalikImportRes.data as { created_at: string }).created_at
             : null,
+        parkingLastImportAt:
+          !latestParkingImportRes.error && latestParkingImportRes.data
+            ? (latestParkingImportRes.data as { created_at: string }).created_at
+            : null,
       });
     } else {
       setContractDocuments([]);
-      setChargeImportEvidence({ finesLastImportAt: null, salikLastImportAt: null });
+      setParking([]);
+      setChargeImportEvidence({ finesLastImportAt: null, salikLastImportAt: null, parkingLastImportAt: null });
     }
     setLoading(false);
   }, [id]);
@@ -4090,6 +4177,17 @@ const ContractDetail = () => {
         status: s.status,
       }),
     );
+    parking.forEach((charge) =>
+      entries.push({
+        id: `parking-${charge.id}`,
+        date: charge.parking_date,
+        type: "Parking",
+        description: charge.location ? `Parking · ${charge.location}` : "Parking",
+        debit: Number(charge.amount),
+        credit: 0,
+        status: charge.status,
+      }),
+    );
     payments.forEach((p) =>
       entries.push({
         id: `pay-${p.id}`,
@@ -4102,7 +4200,7 @@ const ContractDetail = () => {
       }),
     );
     return entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [contract, fines, salik, payments, days]);
+  }, [contract, fines, salik, parking, payments, days]);
 
   const totals = useMemo(() => {
     const feeCharges = contractFees.reduce((sum, fee) => sum + Number(fee.amount), 0);
@@ -4866,6 +4964,7 @@ const ContractDetail = () => {
       rental: 0,
       fines: 0,
       salik: 0,
+      parking: 0,
       fees: 0,
     };
     const lines: Record<string, number> = {};
@@ -5301,10 +5400,11 @@ const ContractDetail = () => {
         return;
       }
 
-      const groupedAllocations: Record<"rental" | "fines" | "salik" | "fees", number> = {
+      const groupedAllocations: Record<"rental" | "fines" | "salik" | "parking" | "fees", number> = {
         rental: 0,
         fines: 0,
         salik: 0,
+        parking: 0,
         fees: 0,
       };
       const lineAllocations: Record<string, number> = {};
@@ -5639,6 +5739,13 @@ const ContractDetail = () => {
         due: Number(charge.amount),
         overdueImmediately: true,
       })),
+    ...parking.map((charge) => ({
+        id: `parking-${charge.id}`,
+        category: "parking" as const,
+        label: charge.location ? `Parking ${charge.location}` : "Parking",
+        due: Number(charge.amount),
+        overdueImmediately: true,
+      })),
   ];
   const paidByLine = new Map(grossPaymentAllocationLines.map((line) => [line.id, 0]));
   const addLinePayment = (lineId: string, amountToAdd: number) => {
@@ -5673,7 +5780,7 @@ const ContractDetail = () => {
           applied += addLinePayment(lineId, numericValue);
         });
       } else if (savedAllocations) {
-        (["rental", "fees", "fines", "salik"] as const).forEach((category) => {
+        (["rental", "fees", "fines", "salik", "parking"] as const).forEach((category) => {
           const value = Number(savedAllocations[category] ?? 0);
           if (value <= 0) return;
           applied += distributePayment(
@@ -6130,6 +6237,7 @@ const ContractDetail = () => {
               payments={payments}
               fines={fines}
               salik={salik}
+              parking={parking}
               chargeImportEvidence={chargeImportEvidence}
               contractFees={contractFees}
               unpaidAllocationLines={paymentAllocationLines}

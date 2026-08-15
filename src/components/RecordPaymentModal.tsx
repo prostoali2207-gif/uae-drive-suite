@@ -21,10 +21,10 @@ interface PaymentModalLedgerEntry {
   description: string;
   amount: number;
   status: string;
-  type: "Rental" | "Salik" | "Payment" | "Fine" | "Deposit";
+  type: "Rental" | "Salik" | "Parking" | "Payment" | "Fine" | "Deposit";
 }
 
-type AllocationCategory = "rental" | "fines" | "salik" | "fees";
+type AllocationCategory = "rental" | "fines" | "salik" | "parking" | "fees";
 
 export interface PaymentAllocationLine {
   id: string;
@@ -45,6 +45,7 @@ interface RecordPaymentModalProps {
     rental: number;
     fines: number;
     salik: number;
+    parking: number;
     fees: number;
   };
   allocationLines?: PaymentAllocationLine[];
@@ -93,6 +94,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       salik: unpaidEntries
         .filter((entry) => entry.type === "Salik")
         .reduce((sum, entry) => sum + Number(entry.amount), 0),
+      parking: unpaidEntries
+        .filter((entry) => entry.type === "Parking")
+        .reduce((sum, entry) => sum + Number(entry.amount), 0),
       fees: 0,
     };
 
@@ -101,6 +105,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       { id: "fees", category: "fees", label: "Other Fees", due: Number(dues.fees) },
       { id: "fines", category: "fines", label: "Traffic Fines", due: Number(dues.fines) },
       { id: "salik", category: "salik", label: "Salik", due: Number(dues.salik) },
+      { id: "parking", category: "parking", label: "Parking", due: Number(dues.parking) },
     ].filter((row) => row.due > 0);
   }, [allocationDues, allocationLines, unpaidEntries]);
 
@@ -156,6 +161,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         rental: 0,
         fines: 0,
         salik: 0,
+        parking: 0,
         fees: 0,
       };
       const lineAllocations: Record<string, number> = {};
