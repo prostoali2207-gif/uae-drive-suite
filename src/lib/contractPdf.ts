@@ -539,7 +539,8 @@ export async function generateContractPdf(
     ["Rate Type", contract.rate_type],
     ["Rental Rate", money(contract.rate_amount)],
     ["Total Rental", money(contract.total_amount)],
-  ]);
+    ["Deposit Held", money(contract.deposit_amount)],
+  ], 56);
   y += 10;
 
   compactHeader("16 KEY CONDITIONS — FULL TERMS CONTINUE ON THE FOLLOWING PAGES", margin, y, contentW);
