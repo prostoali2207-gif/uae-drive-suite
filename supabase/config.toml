@@ -1,1 +1,4 @@
-project_id = "iykxkbwxcqnvkcgscjtc"
+project_id = "vlcxjizieelcfunausll"
+
+[functions.fleetdesk-storage-bridge]
+verify_jwt = false
