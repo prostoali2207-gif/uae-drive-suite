@@ -29,7 +29,6 @@ interface SignContractModalProps {
   contractId: string;
   clientName: string;
   open: boolean;
-  onActivate: () => Promise<boolean>;
   onComplete: () => void;
 }
 
@@ -56,7 +55,7 @@ function SummaryItem({ label, value, accent }: { label: string; value: React.Rea
   );
 }
 
-export function SignContractModal({ contractId, clientName, open, onActivate, onComplete }: SignContractModalProps) {
+export function SignContractModal({ contractId, clientName, open, onComplete }: SignContractModalProps) {
   const [step, setStep] = useState<FlowStep>("review");
   const [loaded, setLoaded] = useState<LoadedContract | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,6 +131,14 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
             termsEn,
             keyTerms,
           });
+          const existing: Record<string, string> = {};
+          const contractSignatures = contractResult.data as { client_signature?: string | null; manager_signature?: string | null };
+          if (contractSignatures.client_signature) existing.customer = contractSignatures.client_signature;
+          if (contractSignatures.manager_signature) existing.company = contractSignatures.manager_signature;
+          drivers.forEach((driver) => {
+            if (driver.signature) existing[`driver-${driver.id}`] = driver.signature;
+          });
+          setSignatures(existing);
         }
       } catch (loadError) {
         const message = loadError instanceof Error ? loadError.message : "Could not load contract";
@@ -209,7 +216,7 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
     try {
       const { error: contractError } = await supabase
         .from("contracts")
-        .update({ client_signature: customerSignature, manager_signature: companySignature })
+        .update({ client_signature: customerSignature, manager_signature: companySignature, status: "Signed" })
         .eq("id", contractId);
       if (contractError) throw contractError;
 
@@ -242,10 +249,8 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
       if (uploadError) throw uploadError;
       const publicUrl = supabase.storage.from("contract-pdfs").getPublicUrl(filePath).data.publicUrl;
       setPdfUrl(publicUrl);
-      const activated = await onActivate();
-      if (!activated) return;
       setStep("success");
-      toast.success("Contract signed and activated");
+      toast.success("Contract signed and ready to start");
     } catch (saveError) {
       toast.error(saveError instanceof Error ? saveError.message : "Could not save signatures");
     } finally {
@@ -408,8 +413,8 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
           {!loading && !error && loaded && step === "success" && (
             <div className="mx-auto max-w-xl py-10 text-center">
               <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-10 w-10" /></div>
-              <h2 className="mt-5 text-2xl font-bold">Contract is active</h2>
-              <p className="mt-2 text-sm text-slate-600">All signatures are saved, the PDF is ready and the vehicle is marked as rented.</p>
+              <h2 className="mt-5 text-2xl font-bold">Contract is signed</h2>
+              <p className="mt-2 text-sm text-slate-600">All signatures are saved and the PDF is ready. Start the rental when the vehicle is actually handed over.</p>
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => {
                   if (!signedPdfUrl || !/^https?:\/\//i.test(signedPdfUrl)) {
