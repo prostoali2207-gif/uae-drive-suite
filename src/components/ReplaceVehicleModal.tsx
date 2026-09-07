@@ -58,6 +58,7 @@ import {
   formatContractOverlapMessage,
   parseContractDateTime,
 } from "@/lib/contractOverlap";
+import { buildReplacementBillingPeriods } from "@/lib/replacementRentalPricing";
 
 // Define the interface to support the missing contract_vehicles table
 interface ExtendedDatabase extends Database {
@@ -1235,7 +1236,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     if (Number.isNaN(swapDate.getTime())) return null;
     const swapDateKey = toLocalDateKey(swapDate);
 
-    const containingPeriod = rentalPeriods.find((period) => isInsideRentalPeriod(swapDateKey, period));
+    const containingPeriod = [...rentalPeriods]
+      .reverse()
+      .find((period) => isInsideRentalPeriod(swapDateKey, period));
 
     if (!containingPeriod) return null;
 
@@ -1349,10 +1352,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               .maybeSingle(),
             (extendedDb as any)
               .from("contract_fees")
-              .select("id, amount, extension_start, extension_end, created_at")
+              .select("id, label, amount, extension_start, extension_end, created_at")
               .eq("contract_id", contractId)
-              .not("extension_start", "is", null)
-              .order("extension_start", { ascending: true }),
+              .order("created_at", { ascending: true }),
             extendedDb
               .from("contract_vehicles")
               .select("daily_rate")
@@ -1381,35 +1383,23 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
           const contractDailyRate = contractPeriod
             ? calculateContractDailyRate(contractPeriod.rate_type, contractPeriod.rate_amount)
             : 0;
-          const originalPeriod =
+          const billingPeriods =
             contractPeriod && contractDailyRate > 0
-              ? [
-                  {
-                    id: contractPeriod.id,
-                    type: "contract" as const,
-                    start: contractPeriod.start_date,
-                    end: contractPeriod.end_date,
-                    amount: contractDailyRate * 30,
-                    daily_rate: contractDailyRate,
-                  },
-                ]
+              ? buildReplacementBillingPeriods(
+                  contractPeriod,
+                  (feePeriodsRes.data ?? []) as ContractFeePeriod[],
+                )
               : [];
-          const extensionPeriods = ((feePeriodsRes.data ?? []) as ContractFeePeriod[])
-            .filter((fee) => fee.extension_start && fee.extension_end)
-            .map((fee) => {
-              const extensionAmount = Number(fee.amount);
-              const dailyRate = extensionAmount > 0 ? extensionAmount / 30 : contractDailyRate;
-              return {
-                id: fee.id,
-                type: "fee" as const,
-                start: fee.extension_start!,
-                end: fee.extension_end!,
-                amount: extensionAmount,
-                daily_rate: dailyRate,
-              };
-            })
-            .filter((period) => Number.isFinite(period.daily_rate) && period.daily_rate > 0);
-          setRentalPeriods([...originalPeriod, ...extensionPeriods]);
+          setRentalPeriods(
+            billingPeriods.map((billingPeriod) => ({
+              id: billingPeriod.id,
+              type: billingPeriod.type,
+              start: billingPeriod.start,
+              end: billingPeriod.end,
+              amount: 0,
+              daily_rate: contractDailyRate,
+            })),
+          );
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Unknown error";
           console.error("Error fetching modal data:", err);
@@ -1484,9 +1474,6 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         (activeVehicle as ActiveVehiclePeriod | null)?.started_at ??
         parseContractDateTime(period.start_date, period.start_time).toISOString();
       const replacementDate = new Date(replacementTime);
-      const replacementDateKey = toLocalDateKey(replacementDate);
-      const contractStart = parseContractDateTime(period.start_date, period.start_time);
-      const contractEnd = parseContractDateTime(period.end_date, period.end_time);
       const currentVehicleStart = new Date(currentVehicleStartedAt);
       const activeVehicleDailyRate = Number((activeVehicle as ActiveVehiclePeriod | null)?.daily_rate);
       const currentVehicleDailyRate =
@@ -1494,35 +1481,34 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
           ? activeVehicleDailyRate
           : calculateContractDailyRate(period.rate_type, period.rate_amount);
 
-      const contractDailyRate = calculateContractDailyRate(period.rate_type, period.rate_amount);
-      const validationRentalPeriods: RentalPeriod[] = [
-        {
-          id: period.id,
-          type: "contract",
-          start: period.start_date,
-          end: period.end_date,
-          amount: contractDailyRate * 30,
-          daily_rate: contractDailyRate,
-        },
-        ...((feePeriods ?? []) as ContractFeePeriod[])
-          .filter((fee) => fee.extension_start && fee.extension_end)
-          .map((fee) => ({
-            id: fee.id,
-            type: "fee" as const,
-            start: fee.extension_start!,
-            end: fee.extension_end!,
-            amount: Number(fee.amount),
-            daily_rate: Number(fee.amount) / 30,
-          })),
-      ];
-      const matchingRentalPeriod = validationRentalPeriods.find((rentalPeriod) =>
-        isInsideRentalPeriod(replacementDateKey, rentalPeriod),
+      const billingPeriods = buildReplacementBillingPeriods(
+        period,
+        (feePeriods ?? []) as ContractFeePeriod[],
       );
+      const matchingRentalPeriod = [...billingPeriods].reverse().find((rentalPeriod) => {
+        const periodStart = parseContractDateTime(
+          rentalPeriod.start,
+          rentalPeriod.type === "contract" ? period.start_time : period.end_time,
+        );
+        const periodEnd = parseContractDateTime(rentalPeriod.end, period.end_time);
+        if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) return false;
+        return replacementDate >= periodStart && replacementDate <= periodEnd;
+      });
 
       if (Number.isNaN(replacementDate.getTime()) || !matchingRentalPeriod) {
         toast({
           title: "Invalid replacement time",
-          description: "Replacement date and time must be inside the contract period.",
+          description: "Replacement date and time must be inside a rental billing period.",
+          variant: "destructive",
+        });
+        setConfirmLoading(false);
+        return;
+      }
+
+      if (matchingRentalPeriod.type === "fee" && !matchingRentalPeriod.billingId) {
+        toast({
+          title: "Extension charge missing",
+          description: `Rent Extension #${matchingRentalPeriod.extensionNumber ?? "?"} has no financial charge. Add the extension rent charge before replacing the vehicle.`,
           variant: "destructive",
         });
         setConfirmLoading(false);
@@ -1533,25 +1519,15 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         matchingRentalPeriod.type === "fee"
           ? {
               type: "fee" as const,
-              id: matchingRentalPeriod.id,
+              id: matchingRentalPeriod.billingId!,
               periodStart: parseContractDateTime(matchingRentalPeriod.start, period.end_time),
               periodEnd: parseContractDateTime(matchingRentalPeriod.end, period.end_time),
             }
           : {
               type: "contract" as const,
-              periodStart: contractStart,
-              periodEnd: contractEnd,
+              periodStart: parseContractDateTime(matchingRentalPeriod.start, period.start_time),
+              periodEnd: parseContractDateTime(matchingRentalPeriod.end, period.end_time),
             };
-
-      if (!activeRentalTarget) {
-        toast({
-          title: "Rental period not found",
-          description: "Could not find the active rental charge for this replacement date.",
-          variant: "destructive",
-        });
-        setConfirmLoading(false);
-        return;
-      }
 
       if (Number.isNaN(currentVehicleStart.getTime()) || replacementDate < currentVehicleStart) {
         toast({
