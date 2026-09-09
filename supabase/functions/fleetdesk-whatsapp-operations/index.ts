@@ -9,6 +9,8 @@ const PAYMENT_CATEGORIES = ['rental', 'fees', 'fines', 'salik', 'parking'];
 const VEHICLE_RETURN_STATUSES = new Set(['Available', 'Under Service', 'Reserved', 'Unavailable']);
 const PAYMENT_METHODS = new Set(['Cash', 'Card', 'Transfer']);
 const FEE_CATEGORIES = new Set(['delivery', 'pickup', 'fuel', 'other']);
+const FINANCE_BRIDGE_URL = ''; // Set to the deployed Google Apps Script web app URL before enabling finance tools.
+const FINANCE_ACCOUNTS = new Set(['cash_aed', 'ajman_aed', 'sber_rub']);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,6 +37,44 @@ async function authorize(req) {
   const peachToken = req.headers.get('x-peach-token') || '';
   if (!peachToken) return false;
   return (await sha256Hex(peachToken)) === PEACH_TOKEN_SHA256;
+}
+
+async function callFinanceBridge(peachToken, action, payload) {
+  if (!FINANCE_BRIDGE_URL) throw new Error('Google Sheets finance bridge is not configured.');
+
+  const response = await fetch(FINANCE_BRIDGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: peachToken, action, payload }),
+  });
+
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('Google Sheets finance bridge returned an invalid response.');
+  }
+
+  if (!response.ok || !data || data.ok !== true) {
+    throw new Error(String((data && data.error) || 'Google Sheets finance bridge request failed.'));
+  }
+  return data;
+}
+
+function validateFinanceArgs(args, requireAmount = false) {
+  const account = String(args.account || '').trim().toLowerCase();
+  if (!FINANCE_ACCOUNTS.has(account)) throw new Error('account must be cash_aed, ajman_aed, or sber_rub.');
+
+  const date = String(args.date || '').trim();
+  if (!isDate(date)) throw new Error('date must be YYYY-MM-DD.');
+
+  if (requireAmount) {
+    const amount = roundMoney(args.amount);
+    if (!(amount > 0)) throw new Error('amount must be greater than zero.');
+    const article = String(args.article || '').trim();
+    if (!article) throw new Error('article is required.');
+  }
 }
 
 function normalizePhone(value) {
@@ -1029,7 +1069,38 @@ function getToolDeclarations() {
           },
           required: ['contract_id', 'actual_return_at', 'final_mileage', 'vehicle_status']
         }
-      }
+      },
+      ...(FINANCE_BRIDGE_URL ? [
+        {
+          name: 'find_finance_articles',
+          description: 'STAFF ONLY. Search the October/current Google Sheet account block for the exact bookkeeping row before recording a finance entry. Use this when the article or duplicate vehicle subrow is unclear.',
+          parameters: {
+            type: 'object',
+            properties: {
+              account: { type: 'string', enum: ['cash_aed', 'ajman_aed', 'sber_rub'], description: 'Bookkeeping account: cash AED, AJMAN AED, or SBER RUB.' },
+              date: { type: 'string', description: 'Transaction date YYYY-MM-DD.' },
+              query: { type: 'string', description: 'Part of the article name, vehicle plate, or category to search.' }
+            },
+            required: ['account', 'date', 'query']
+          }
+        },
+        {
+          name: 'record_finance_entry',
+          description: 'STAFF ONLY. Write one confirmed bookkeeping amount into the existing Google Sheet. Never writes parent/formula rows, never overwrites existing data, and only supports cash AED, AJMAN AED, and SBER RUB.',
+          parameters: {
+            type: 'object',
+            properties: {
+              account: { type: 'string', enum: ['cash_aed', 'ajman_aed', 'sber_rub'], description: 'Bookkeeping account.' },
+              date: { type: 'string', description: 'Transaction date YYYY-MM-DD.' },
+              article: { type: 'string', description: 'Exact article/subrow name returned by find_finance_articles or known from the sheet.' },
+              row: { type: 'number', description: 'Optional exact row returned by find_finance_articles when the same article exists in multiple sections.' },
+              amount: { type: 'number', description: 'Positive amount in the account currency.' },
+              note: { type: 'string', description: 'Optional note such as client name, plate, or short description.' }
+            },
+            required: ['account', 'date', 'article', 'amount']
+          }
+        }
+      ] : [])
     ]
   };
 }
@@ -1112,7 +1183,7 @@ async function runOperation(supabase, body) {
   }
 }
 
-async function handlePeachToolCall(supabase, body) {
+async function handlePeachToolCall(supabase, body, peachToken) {
   const name = String((body && body.name) || '').trim();
   const args = body && body.arguments && typeof body.arguments === 'object' ? body.arguments : {};
   const contact = body && body.contact && typeof body.contact === 'object' ? body.contact : {};
@@ -1127,6 +1198,58 @@ async function handlePeachToolCall(supabase, body) {
   if (name === 'find_contracts') {
     const contracts = await findContractsForActor(supabase, actor, args);
     return { status: 200, body: { ok: true, actor: { type: actor.type, name: actor.name, role: actor.role }, count: contracts.length, contracts } };
+  }
+
+  if (name === 'find_finance_articles') {
+    if (actor.type !== 'staff') return { status: 403, body: { error: 'Only active staff can use finance tools.' } };
+    validateFinanceArgs(args, false);
+    const result = await callFinanceBridge(peachToken, 'find_articles', {
+      account: String(args.account || '').trim().toLowerCase(),
+      date: String(args.date || '').trim(),
+      query: String(args.query || '').trim(),
+    });
+    return { status: 200, body: result };
+  }
+
+  if (name === 'record_finance_entry') {
+    if (actor.type !== 'staff') return { status: 403, body: { error: 'Only active staff can use finance tools.' } };
+    validateFinanceArgs(args, true);
+
+    const idempotencyKey = await buildToolIdempotencyKey(contact, name, args, 5);
+    const existing = await findExistingAudit(supabase, actor.ownerId, idempotencyKey);
+    if (existing) {
+      return { status: 200, body: { duplicate: true, status: existing.status, action: existing.action, result: existing.result } };
+    }
+
+    const payload = {
+      account: String(args.account || '').trim().toLowerCase(),
+      date: String(args.date || '').trim(),
+      article: String(args.article || '').trim(),
+      row: args.row === undefined ? null : Number(args.row),
+      amount: roundMoney(args.amount),
+      note: args.note ? String(args.note).trim() : '',
+    };
+
+    const auditId = await createAudit(
+      supabase,
+      actor.ownerId,
+      idempotencyKey,
+      actor,
+      actorPhone,
+      'record_finance_entry',
+      null,
+      payload
+    );
+
+    try {
+      const result = await callFinanceBridge(peachToken, 'record_entry', payload);
+      await finishAudit(supabase, auditId, 'applied', result);
+      return { status: 200, body: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unexpected error';
+      await finishAudit(supabase, auditId, 'failed', { ok: false, error: message });
+      return { status: 400, body: { error: message } };
+    }
   }
 
   const contractId = await resolveToolContractId(supabase, actor, args);
@@ -1198,8 +1321,9 @@ Deno.serve(async (req) => {
   const body = parsedBody && typeof parsedBody === 'object' ? parsedBody : {};
 
   try {
+    const peachToken = req.headers.get('x-peach-token') || '';
     const response = body.name && body.contact
-      ? await handlePeachToolCall(supabase, body)
+      ? await handlePeachToolCall(supabase, body, peachToken)
       : await runOperation(supabase, body);
     return json(response.body, response.status);
   } catch (error) {
