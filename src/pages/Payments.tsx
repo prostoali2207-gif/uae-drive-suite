@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -32,9 +32,6 @@ import { CreditCard, Plus, TrendingUp, TriangleAlert as AlertTriangle, Wallet } 
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
-
-type PaymentMethod = "Cash" | "Bank Transfer" | "Card";
-type PaymentStatus = "Paid" | "Partial" | "Overdue";
 
 interface PaymentRow {
   id: string;
@@ -61,22 +58,18 @@ const formatAed = (n: number) =>
   new Intl.NumberFormat("en-AE", { style: "currency", currency: "AED", maximumFractionDigits: 0 }).format(n);
 
 export default function Payments() {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [contracts, setContracts] = useState<ContractOption[]>([]);
   const [contractBalances, setContractBalances] = useState<Array<{ contract_id: string; balance_due: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [form, setForm] = useState({
-    payment_date: new Date().toISOString().slice(0, 10),
     client_id: "",
     contract_id: "",
-    amount: 0,
-    method: "Cash" as PaymentMethod,
-    status: "Paid" as PaymentStatus,
   });
 
   const fetchData = async () => {
@@ -141,36 +134,13 @@ export default function Payments() {
     return { collectedThisMonth, outstanding, balanceCount };
   }, [contractBalances, payments]);
 
-  const handleSubmit = async () => {
-    if (!form.client_id || form.amount <= 0) {
-      toast.error("Please fill in all required fields.");
+  const handleOpenContractPayment = () => {
+    if (!form.client_id || !form.contract_id) {
+      toast.error("Select a client and contract.");
       return;
     }
-    setSaving(true);
-    const { error } = await supabase.from("payments").insert({
-      payment_date: form.payment_date,
-      client_id: form.client_id,
-      contract_id: form.contract_id || null,
-      amount: Number(form.amount),
-      method: form.method,
-      status: form.status,
-    });
-    setSaving(false);
-    if (error) {
-      toast.error("Failed to record payment: " + error.message);
-    } else {
-      toast.success("Payment recorded");
-      setOpen(false);
-      setForm({
-        payment_date: new Date().toISOString().slice(0, 10),
-        client_id: "",
-        contract_id: "",
-        amount: 0,
-        method: "Cash",
-        status: "Paid",
-      });
-      fetchData();
-    }
+    setOpen(false);
+    navigate(`/contracts/${form.contract_id}`);
   };
 
   return (
@@ -189,24 +159,9 @@ export default function Payments() {
                 <DialogTitle>Record Payment</DialogTitle>
               </DialogHeader>
               <div className="grid gap-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Date</Label>
-                    <Input
-                      type="date"
-                      value={form.payment_date}
-                      onChange={(e) => setForm({ ...form, payment_date: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Amount (AED)</Label>
-                    <Input
-                      type="number"
-                      value={form.amount || ""}
-                      onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
-                    />
-                  </div>
-                </div>
+                <p className="text-sm text-muted-foreground">
+                  Select the contract first. The payment is recorded inside the contract so it is allocated to the correct rent, fees, fines, Salik or Parking balance.
+                </p>
                 <div className="space-y-2">
                   <Label>Client</Label>
                   <Select
@@ -220,7 +175,7 @@ export default function Payments() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Contract <span className="text-muted-foreground">(optional)</span></Label>
+                  <Label>Contract</Label>
                   <Select
                     value={form.contract_id}
                     onValueChange={(v) => setForm({ ...form, contract_id: v })}
@@ -232,40 +187,10 @@ export default function Payments() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Payment Method</Label>
-                    <Select
-                      value={form.method}
-                      onValueChange={(v: PaymentMethod) => setForm({ ...form, method: v })}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Cash">Cash</SelectItem>
-                        <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                        <SelectItem value="Card">Card</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select
-                      value={form.status}
-                      onValueChange={(v: PaymentStatus) => setForm({ ...form, status: v })}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Paid">Paid</SelectItem>
-                        <SelectItem value="Partial">Partial</SelectItem>
-                        <SelectItem value="Overdue">Overdue</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={handleSubmit} disabled={saving}>{saving ? "Saving..." : "Save Payment"}</Button>
+                <Button onClick={handleOpenContractPayment} disabled={!form.contract_id}>Open Contract</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
