@@ -747,7 +747,7 @@ const Contracts = () => {
       else {
         const contractRows = (contractsRes.data as ContractRow[]) || [];
         const contractIds = contractRows.map((contract) => contract.id);
-        let balanceByContract: Record<string, number> = {};
+        let balanceByContract: Record<string, { balance_due: number; payment_status: string }> = {};
         let effectiveEndDateByContract: Record<string, string> = {};
         if (contractIds.length > 0) {
           const [balancesResult, extensionsResult] = await Promise.all([
@@ -755,7 +755,7 @@ const Contracts = () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (supabase as any)
               .from("contract_balances")
-              .select("contract_id, balance_due")
+              .select("contract_id, payment_status, balance_due")
               .in("contract_id", contractIds),
             // contract_fees is not present in the generated database types.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -769,9 +769,12 @@ const Contracts = () => {
             toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesErr)}`);
           } else {
             balanceByContract = Object.fromEntries(
-              (balancesData || []).map((balance: { contract_id: string; balance_due: number | string | null }) => [
+              (balancesData || []).map((balance: { contract_id: string; payment_status: string | null; balance_due: number | string | null }) => [
                 balance.contract_id,
-                Number(balance.balance_due || 0),
+                {
+                  balance_due: Number(balance.balance_due || 0),
+                  payment_status: balance.payment_status || "Unpaid",
+                },
               ]),
             );
           }
@@ -796,7 +799,8 @@ const Contracts = () => {
         setContracts(
           contractRows.map((contract) => ({
             ...contract,
-            balance_due: balanceByContract[contract.id] ?? Number(contract.total_amount),
+            payment_status: balanceByContract[contract.id]?.payment_status ?? contract.payment_status,
+            balance_due: balanceByContract[contract.id]?.balance_due ?? Number(contract.total_amount),
             effective_end_date: effectiveEndDateByContract[contract.id] ?? contract.end_date,
           })),
         );
