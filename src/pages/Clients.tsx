@@ -83,6 +83,7 @@ interface ContractRow {
   total_amount: number;
   payment_status: string;
   status: string;
+  balance_due: number;
 }
 
 interface ClientRegistrationRequest {
@@ -632,9 +633,10 @@ const Clients = () => {
   };
 
   const fetchData = async () => {
-    const [clientsRes, contractsRes, requestsRes] = await Promise.all([
+    const [clientsRes, contractsRes, balancesRes, requestsRes] = await Promise.all([
       supabase.from("clients").select("*").order("created_at", { ascending: false }),
       supabase.from("contracts").select("id, client_id, total_amount, payment_status, status"),
+      (supabase as any).from("contract_balances").select("contract_id, balance_due"),
       supabase
         .from("client_registration_requests" as never)
         .select("*")
@@ -642,7 +644,24 @@ const Clients = () => {
     ]);
     if (clientsRes.error) toast.error(`Failed to load clients: ${toSupabaseMessage(clientsRes.error)}`);
     else setClients((clientsRes.data as any) || []);
-    if (!contractsRes.error) setContracts(contractsRes.data || []);
+    if (contractsRes.error) {
+      toast.error(`Failed to load contracts: ${toSupabaseMessage(contractsRes.error)}`);
+    } else if (balancesRes.error) {
+      toast.error(`Failed to load contract balances: ${toSupabaseMessage(balancesRes.error)}`);
+    } else {
+      const balanceByContract = Object.fromEntries(
+        (balancesRes.data || []).map((row: { contract_id: string; balance_due: number | string | null }) => [
+          row.contract_id,
+          Number(row.balance_due || 0),
+        ]),
+      );
+      setContracts(
+        (contractsRes.data || []).map((contract) => ({
+          ...contract,
+          balance_due: balanceByContract[contract.id] ?? 0,
+        })),
+      );
+    }
     if (requestsRes.error) toast.error(`Failed to load registration requests: ${toSupabaseMessage(requestsRes.error)}`);
     else setRegistrationRequests((requestsRes.data as unknown as ClientRegistrationRequest[]) || []);
     setLoading(false);
@@ -663,10 +682,7 @@ const Clients = () => {
   const enriched = useMemo(() => {
     return clients.map((c) => {
       const cs = contracts.filter((k) => k.client_id === c.id);
-      const outstanding = cs.reduce((sum, k) => {
-        if (k.payment_status === "Paid") return sum;
-        return sum + Number(k.total_amount);
-      }, 0);
+      const outstanding = cs.reduce((sum, k) => sum + Math.max(0, Number(k.balance_due) || 0), 0);
       const hasActive = cs.some((k) => k.status === "Active" || k.status === "Expiring Soon");
       return { ...c, totalContracts: cs.length, hasActive, outstanding };
     });
