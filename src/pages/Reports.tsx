@@ -37,6 +37,8 @@ interface Contract {
   total_amount: number;
   status: string;
   payment_status: string;
+  balance_due: number;
+  effective_end_date: string;
 }
 interface ClientRow {
   id: string;
@@ -70,18 +72,47 @@ const Reports = () => {
 
   useEffect(() => {
     (async () => {
-      const [p, c, k, cl, f] = await Promise.all([
+      const [p, c, k, balances, extensions, cl, f] = await Promise.all([
         supabase.from("payments").select("amount, payment_date, status, client_id"),
         supabase.from("cars").select("id, status"),
         supabase
           .from("contracts")
           .select("id, client_id, car_id, end_date, total_amount, status, payment_status"),
+        (supabase as any).from("contract_balances").select("contract_id, payment_status, balance_due"),
+        (supabase as any)
+          .from("contract_fees")
+          .select("contract_id, extension_end")
+          .not("extension_end", "is", null),
         supabase.from("clients").select("id, full_name"),
         supabase.from("fines").select("amount, status"),
       ]);
       setPayments((p.data as Payment[]) || []);
       setCars((c.data as CarRow[]) || []);
-      setContracts((k.data as Contract[]) || []);
+      const balanceByContract = Object.fromEntries(
+        (balances.data || []).map((row: { contract_id: string; payment_status: string; balance_due: number | string | null }) => [
+          row.contract_id,
+          {
+            payment_status: row.payment_status,
+            balance_due: Number(row.balance_due || 0),
+          },
+        ]),
+      );
+      const effectiveEndByContract = (extensions.data || []).reduce(
+        (result: Record<string, string>, row: { contract_id: string; extension_end: string | null }) => {
+          if (!row.extension_end) return result;
+          if (!result[row.contract_id] || row.extension_end > result[row.contract_id]) result[row.contract_id] = row.extension_end;
+          return result;
+        },
+        {},
+      );
+      setContracts(
+        ((k.data || []) as Array<Omit<Contract, "balance_due" | "effective_end_date">>).map((contract) => ({
+          ...contract,
+          payment_status: balanceByContract[contract.id]?.payment_status ?? contract.payment_status,
+          balance_due: balanceByContract[contract.id]?.balance_due ?? Number(contract.total_amount),
+          effective_end_date: effectiveEndByContract[contract.id] ?? contract.end_date,
+        })),
+      );
       setClients((cl.data as ClientRow[]) || []);
       setFines((f.data as Fine[]) || []);
       setLoading(false);
@@ -154,17 +185,14 @@ const Reports = () => {
     const nameById = Object.fromEntries(clients.map((c) => [c.id, c.full_name]));
     return contracts
       .filter((c) => {
-        const end = new Date(c.end_date);
-        return (
-          c.payment_status !== "Paid" ||
-          (end < today && c.status !== "Completed")
-        );
+        const end = new Date(c.effective_end_date);
+        return c.balance_due > 0.009 || (end < today && !["Completed", "Closed"].includes(c.status));
       })
       .map((c) => ({
         id: c.id,
         client: nameById[c.client_id] || "—",
-        end_date: c.end_date,
-        total: Number(c.total_amount),
+        end_date: c.effective_end_date,
+        total: Number(c.balance_due),
         status: c.status,
         payment_status: c.payment_status,
       }))
