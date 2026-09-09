@@ -51,6 +51,9 @@ interface ContractRow {
   total_amount: number;
   payment_status: string;
   status: string;
+  financial_total: number;
+  financial_paid: number;
+  balance_due: number;
   cars: { plate: string; make: string; model: string } | null;
 }
 
@@ -148,7 +151,47 @@ const ClientDetail = () => {
           .eq("id", id)
           .then(() => {});
       }
-      if (!contractsRes.error) setContracts((contractsRes.data as ContractRow[]) || []);
+      if (!contractsRes.error) {
+        const rows = (contractsRes.data || []) as Array<Omit<ContractRow, "financial_total" | "financial_paid" | "balance_due">>;
+        const contractIds = rows.map((contract) => contract.id);
+        if (contractIds.length === 0) {
+          setContracts([]);
+        } else {
+          const { data: balancesData, error: balancesError } = await (supabase as any)
+            .from("contract_balances")
+            .select("contract_id, payment_status, total_amount, total_fees, total_fines, total_salik, total_parking, total_paid, balance_due")
+            .in("contract_id", contractIds);
+          if (balancesError) {
+            toast.error("Failed to load client financial balances");
+          } else {
+            const financialByContract = Object.fromEntries(
+              (balancesData || []).map((balance: any) => [
+                balance.contract_id,
+                {
+                  payment_status: String(balance.payment_status || "Unpaid"),
+                  financial_total:
+                    Number(balance.total_amount || 0) +
+                    Number(balance.total_fees || 0) +
+                    Number(balance.total_fines || 0) +
+                    Number(balance.total_salik || 0) +
+                    Number(balance.total_parking || 0),
+                  financial_paid: Number(balance.total_paid || 0),
+                  balance_due: Number(balance.balance_due || 0),
+                },
+              ]),
+            );
+            setContracts(
+              rows.map((contract) => ({
+                ...contract,
+                payment_status: financialByContract[contract.id]?.payment_status ?? contract.payment_status,
+                financial_total: financialByContract[contract.id]?.financial_total ?? Number(contract.total_amount),
+                financial_paid: financialByContract[contract.id]?.financial_paid ?? 0,
+                balance_due: financialByContract[contract.id]?.balance_due ?? Number(contract.total_amount),
+              })),
+            );
+          }
+        }
+      }
       setLoading(false);
     };
     fetchData();
@@ -277,11 +320,9 @@ const ClientDetail = () => {
   };
 
   const totals = useMemo(() => {
-    const totalBilled = contracts.reduce((s, c) => s + Number(c.total_amount), 0);
-    const totalPaid = contracts
-      .filter((c) => c.payment_status === "Paid")
-      .reduce((s, c) => s + Number(c.total_amount), 0);
-    const totalOutstanding = Math.max(0, totalBilled - totalPaid);
+    const totalBilled = contracts.reduce((sum, contract) => sum + Number(contract.financial_total || 0), 0);
+    const totalPaid = contracts.reduce((sum, contract) => sum + Number(contract.financial_paid || 0), 0);
+    const totalOutstanding = contracts.reduce((sum, contract) => sum + Math.max(0, Number(contract.balance_due || 0)), 0);
     return { totalBilled, totalPaid, totalOutstanding };
   }, [contracts]);
 
