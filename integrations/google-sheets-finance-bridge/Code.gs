@@ -62,9 +62,14 @@ function findArticles_(payload) {
 
   const sheet = sheetForDate_(date);
   const block = blockForAccount_(sheet, account);
+  const rowCount = Math.max(1, sheet.getLastRow() - 2);
   const values = sheet
-    .getRange(3, block.articleCol, Math.max(1, sheet.getLastRow() - 2), 1)
+    .getRange(3, block.articleCol, rowCount, 1)
     .getDisplayValues();
+  const dateCol = dateColumn_(sheet, block, date);
+  const formulas = sheet
+    .getRange(3, dateCol, rowCount, 1)
+    .getFormulas();
 
   const matches = [];
   for (let i = 0; i < values.length; i++) {
@@ -76,7 +81,7 @@ function findArticles_(payload) {
     matches.push({
       row,
       article: label,
-      section: parentContext_(sheet, block.articleCol, row, date),
+      section: parentContextFromArrays_(values, formulas, i),
       direct_write_exception: isDirectWriteException_(label),
     });
     if (matches.length >= 20) break;
@@ -255,27 +260,14 @@ function resolveArticleRow_(sheet, articleCol, article, requestedRow) {
   return rows[0] || null;
 }
 
-function parentContext_(sheet, articleCol, row, dateString) {
-  const block = { articleCol, nextArticleCol: nextArticleColumn_(sheet, articleCol) };
-  const dateCol = dateColumn_(sheet, block, dateString);
-
-  for (let r = row - 1; r >= 3 && r >= row - 120; r--) {
-    const label = String(sheet.getRange(r, articleCol).getDisplayValue() || '').trim();
+function parentContextFromArrays_(labels, formulas, index) {
+  for (let i = index - 1; i >= 0 && i >= index - 120; i--) {
+    const label = String((labels[i] && labels[i][0]) || '').trim();
     if (!label) continue;
-    const formula = sheet.getRange(r, dateCol).getFormula();
+    const formula = String((formulas[i] && formulas[i][0]) || '');
     if (formula) return label;
   }
   return null;
-}
-
-function nextArticleColumn_(sheet, articleCol) {
-  const row2 = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
-  const articleCols = [];
-  for (let i = 0; i < row2.length; i++) {
-    if (normalize_(row2[i]) === normalize_('Наименование статьи')) articleCols.push(i + 1);
-  }
-  const idx = articleCols.indexOf(articleCol);
-  return idx >= 0 && idx + 1 < articleCols.length ? articleCols[idx + 1] : sheet.getLastColumn() + 1;
 }
 
 function isDirectWriteException_(article) {
