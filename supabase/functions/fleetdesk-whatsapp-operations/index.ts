@@ -1,9 +1,5 @@
-import { createHash } from 'node:crypto';
-import {
-  getAdminClient,
-  getOwnerId,
-  handleError,
-} from '../_lib/fleetdesk.js';
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.105.1";
 
 const PEACH_TOKEN_SHA256 = 'a837eb5861426d57f2b47398aac8f43dc3852a4d74651aecfb0ccb6ccb73dc6f';
 const MUTATING_ACTIONS = new Set(['extend_contract', 'record_payment', 'add_fee', 'close_contract']);
@@ -14,35 +10,31 @@ const VEHICLE_RETURN_STATUSES = new Set(['Available', 'Under Service', 'Reserved
 const PAYMENT_METHODS = new Set(['Cash', 'Card', 'Transfer']);
 const FEE_CATEGORIES = new Set(['delivery', 'pickup', 'fuel', 'other']);
 
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Peach-Token');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Peach-Token',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
-function secureEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
-function authorize(req, res) {
-  const bearer = req.headers.authorization || '';
-  const expectedBearer = process.env.FLEETDESK_GPT_API_KEY
-    ? `Bearer ${process.env.FLEETDESK_GPT_API_KEY}`
-    : null;
-
-  if (expectedBearer && secureEqual(bearer, expectedBearer)) return true;
-
-  const peachToken = String(req.headers['x-peach-token'] || '');
-  if (peachToken) {
-    const digest = createHash('sha256').update(peachToken).digest('hex');
-    if (secureEqual(digest, PEACH_TOKEN_SHA256)) return true;
-  }
-
-  res.status(401).json({ error: 'Unauthorized' });
-  return false;
+async function authorize(req) {
+  const peachToken = req.headers.get('x-peach-token') || '';
+  if (!peachToken) return false;
+  return (await sha256Hex(peachToken)) === PEACH_TOKEN_SHA256;
 }
 
 function normalizePhone(value) {
@@ -194,30 +186,36 @@ function allocateAmount(unpaidLines, amount, mode = 'all') {
   return { ...grouped, lines };
 }
 
-async function getActor(supabase, ownerId, actorPhone) {
+async function getActor(supabase, actorPhone) {
   const normalized = normalizePhone(actorPhone);
-  if (!normalized) return { type: 'unknown', id: null, name: null, role: null };
+  if (!normalized) return { type: 'unknown', id: null, ownerId: null, name: null, role: null };
 
   const { data: staffRows, error: staffError } = await supabase
     .from('staff')
-    .select('id, full_name, role, phone, status')
-    .eq('owner_id', ownerId)
+    .select('id, owner_id, full_name, role, phone, status')
     .eq('status', 'active');
   if (staffError) throw staffError;
 
-  const staff = (staffRows || []).find((row) => normalizePhone(row.phone) === normalized);
-  if (staff) return { type: 'staff', id: staff.id, name: staff.full_name, role: staff.role };
+  const staffMatches = (staffRows || []).filter((row) => normalizePhone(row.phone) === normalized);
+  if (staffMatches.length > 1) throw new Error('Phone number matches more than one active FleetDesk staff account.');
+  if (staffMatches.length === 1) {
+    const staff = staffMatches[0];
+    return { type: 'staff', id: staff.id, ownerId: staff.owner_id, name: staff.full_name, role: staff.role };
+  }
 
   const { data: clientRows, error: clientError } = await supabase
     .from('clients')
-    .select('id, full_name, phone')
-    .eq('owner_id', ownerId);
+    .select('id, owner_id, full_name, phone');
   if (clientError) throw clientError;
 
-  const client = (clientRows || []).find((row) => normalizePhone(row.phone) === normalized);
-  if (client) return { type: 'client', id: client.id, name: client.full_name, role: null };
+  const clientMatches = (clientRows || []).filter((row) => normalizePhone(row.phone) === normalized);
+  if (clientMatches.length > 1) throw new Error('Phone number matches more than one FleetDesk client account.');
+  if (clientMatches.length === 1) {
+    const client = clientMatches[0];
+    return { type: 'client', id: client.id, ownerId: client.owner_id, name: client.full_name, role: null };
+  }
 
-  return { type: 'unknown', id: null, name: null, role: null };
+  return { type: 'unknown', id: null, ownerId: null, name: null, role: null };
 }
 
 async function getContract(supabase, ownerId, contractId) {
@@ -802,18 +800,23 @@ async function handleCloseContract(supabase, ownerId, actor, contractId, payload
   }
 }
 
-export default async function handler(req, res) {
-  setCors(res);
-  if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!authorize(req, res)) return;
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (!(await authorize(req))) return json({ error: 'Unauthorized' }, 401);
 
-  const supabase = getAdminClient();
-  const ownerId = getOwnerId();
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRole) return json({ error: 'FleetDesk service configuration is incomplete.' }, 500);
+
+  const supabase = createClient(supabaseUrl, serviceRole, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   let auditId = null;
 
   try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const parsedBody = await req.json().catch(() => ({}));
+    const body = parsedBody && typeof parsedBody === 'object' ? parsedBody : {};
     const idempotencyKey = String(body.idempotency_key || '').trim();
     const actorPhone = String(body.actor_phone || '').trim();
     const action = String(body.action || '').trim();
@@ -821,25 +824,26 @@ export default async function handler(req, res) {
     const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
 
     if (!idempotencyKey || idempotencyKey.length > 200) {
-      return res.status(400).json({ error: 'idempotency_key is required and must be 200 characters or fewer.' });
+      return json({ error: 'idempotency_key is required and must be 200 characters or fewer.' }, 400);
     }
-    if (!actorPhone) return res.status(400).json({ error: 'actor_phone is required.' });
-    if (!action) return res.status(400).json({ error: 'action is required.' });
+    if (!actorPhone) return json({ error: 'actor_phone is required.' }, 400);
+    if (!action) return json({ error: 'action is required.' }, 400);
+
+    const actor = await getActor(supabase, actorPhone);
+    if (actor.type === 'unknown' || !actor.ownerId) {
+      return json({ error: 'Phone number is not recognized as FleetDesk staff or client.' }, 403);
+    }
+    const ownerId = actor.ownerId;
 
     const existing = await findExistingAudit(supabase, ownerId, idempotencyKey);
     if (existing) {
-      return res.status(200).json({
+      return json({
         duplicate: true,
         status: existing.status,
         action: existing.action,
         contract_id: existing.contract_id,
         result: existing.result,
       });
-    }
-
-    const actor = await getActor(supabase, ownerId, actorPhone);
-    if (actor.type === 'unknown') {
-      return res.status(403).json({ error: 'Phone number is not recognized as FleetDesk staff or client.' });
     }
 
     auditId = await createAudit(
@@ -876,7 +880,7 @@ export default async function handler(req, res) {
 
     const finalStatus = REQUEST_ACTIONS.has(action) ? 'requested' : 'applied';
     await finishAudit(supabase, auditId, finalStatus, result);
-    return res.status(200).json(result);
+    return json(result);
   } catch (error) {
     if (auditId) {
       try {
@@ -889,19 +893,22 @@ export default async function handler(req, res) {
       }
     }
 
-    if (error instanceof Error && (
-      error.message.includes('required') ||
-      error.message.includes('must be') ||
-      error.message.includes('cannot be') ||
-      error.message.includes('not authorized') ||
-      error.message.includes('not recognized') ||
-      error.message.includes('already') ||
-      error.message.includes('outstanding') ||
-      error.message.includes('overlapping')
-    )) {
-      return res.status(400).json({ error: error.message });
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    if (
+      message.includes('required') ||
+      message.includes('must be') ||
+      message.includes('cannot be') ||
+      message.includes('not authorized') ||
+      message.includes('not recognized') ||
+      message.includes('already') ||
+      message.includes('outstanding') ||
+      message.includes('overlapping') ||
+      message.includes('matches more than one')
+    ) {
+      return json({ error: message }, 400);
     }
 
-    return handleError(res, error);
+    console.error(error);
+    return json({ error: 'Unexpected server error' }, 500);
   }
-}
+});
