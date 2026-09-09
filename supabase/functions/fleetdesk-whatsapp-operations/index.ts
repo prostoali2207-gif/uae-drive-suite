@@ -386,7 +386,7 @@ async function handleContractContext(supabase, ownerId, actor, contractId) {
     contract: {
       id: contract.id,
       status: contract.status,
-      payment_status: contract.payment_status,
+      payment_status: ledger.outstanding <= 0.009 ? 'Paid' : ledger.payments.some((payment) => String(payment.status || '').toLowerCase() === 'paid') ? 'Partial' : 'Unpaid',
       start_date: contract.start_date,
       start_time: contract.start_time,
       end_date: contract.end_date,
@@ -861,11 +861,23 @@ async function findContractsForActor(supabase, actor, filters = {}) {
     return true;
   }).slice(0, 10);
 
+  const matchIds = matches.map((row) => row.id);
+  const balanceByContract = {};
+  if (matchIds.length > 0) {
+    const { data: balances, error: balancesError } = await supabase
+      .from('contract_balances')
+      .select('contract_id, payment_status, balance_due')
+      .in('contract_id', matchIds);
+    if (balancesError) throw balancesError;
+    for (const balance of balances || []) balanceByContract[balance.contract_id] = balance;
+  }
+
   return matches.map((row) => ({
     id: row.id,
     contract_number: 'CTR-' + String(row.id).slice(0, 8).toUpperCase(),
     status: row.status,
-    payment_status: row.payment_status,
+    payment_status: balanceByContract[row.id]?.payment_status || row.payment_status,
+    outstanding: Number(balanceByContract[row.id]?.balance_due || 0),
     start_date: row.start_date,
     start_time: row.start_time,
     end_date: row.end_date,
