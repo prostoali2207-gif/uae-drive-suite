@@ -64,6 +64,7 @@ export default function Payments() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [contracts, setContracts] = useState<ContractOption[]>([]);
+  const [contractBalances, setContractBalances] = useState<Array<{ contract_id: string; balance_due: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,17 +80,28 @@ export default function Payments() {
   });
 
   const fetchData = async () => {
-    const [paymentsRes, clientsRes, contractsRes] = await Promise.all([
+    const [paymentsRes, clientsRes, contractsRes, balancesRes] = await Promise.all([
       supabase
         .from("payments")
         .select("*, clients(full_name), contracts(id)")
         .order("payment_date", { ascending: false }),
       supabase.from("clients").select("id, full_name").order("full_name"),
       supabase.from("contracts").select("id, client_id").order("created_at", { ascending: false }),
+      (supabase as any).from("contract_balances").select("contract_id, balance_due"),
     ]);
     if (!paymentsRes.error) setPayments((paymentsRes.data as PaymentRow[]) || []);
     if (!clientsRes.error) setClients(clientsRes.data || []);
     if (!contractsRes.error) setContracts(contractsRes.data || []);
+    if (balancesRes.error) {
+      toast.error("Failed to load outstanding balances");
+    } else {
+      setContractBalances(
+        (balancesRes.data || []).map((row: { contract_id: string; balance_due: number | string | null }) => ({
+          contract_id: row.contract_id,
+          balance_due: Number(row.balance_due || 0),
+        })),
+      );
+    }
     setLoading(false);
   };
 
@@ -124,12 +136,10 @@ export default function Payments() {
         return p.status === "Paid" && d.getMonth() === month && d.getFullYear() === year;
       })
       .reduce((s, p) => s + Number(p.amount), 0);
-    const outstanding = payments
-      .filter((p) => p.status !== "Paid")
-      .reduce((s, p) => s + Number(p.amount), 0);
-    const overdueCount = payments.filter((p) => p.status === "Overdue").length;
-    return { collectedThisMonth, outstanding, overdueCount };
-  }, [payments]);
+    const outstanding = contractBalances.reduce((sum, row) => sum + Math.max(0, Number(row.balance_due) || 0), 0);
+    const balanceCount = contractBalances.filter((row) => Number(row.balance_due) > 0.009).length;
+    return { collectedThisMonth, outstanding, balanceCount };
+  }, [contractBalances, payments]);
 
   const handleSubmit = async () => {
     if (!form.client_id || form.amount <= 0) {
@@ -280,13 +290,13 @@ export default function Payments() {
               <div className="text-2xl font-semibold">{formatAed(summary.outstanding)}</div>
             </CardContent>
           </Card>
-          <Card className={summary.overdueCount > 0 ? "border-rose-500/40 bg-rose-500/5" : ""}>
+          <Card className={summary.balanceCount > 0 ? "border-rose-500/40 bg-rose-500/5" : ""}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Count</CardTitle>
-              <AlertTriangle className={`h-4 w-4 ${summary.overdueCount > 0 ? "text-tint-rose-foreground" : "text-muted-foreground"}`} />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Contracts With Balance</CardTitle>
+              <AlertTriangle className={`h-4 w-4 ${summary.balanceCount > 0 ? "text-tint-rose-foreground" : "text-muted-foreground"}`} />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-semibold">{summary.overdueCount}</div>
+              <div className="text-2xl font-semibold">{summary.balanceCount}</div>
             </CardContent>
           </Card>
         </div>
