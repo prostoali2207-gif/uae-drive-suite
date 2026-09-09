@@ -72,9 +72,11 @@ function findArticles_(payload) {
     if (!label) continue;
     const normalized = normalize_(label);
     if (!normalized.includes(query)) continue;
+    const row = i + 3;
     matches.push({
-      row: i + 3,
+      row,
       article: label,
+      section: parentContext_(sheet, block.articleCol, row, date),
       direct_write_exception: isDirectWriteException_(label),
     });
     if (matches.length >= 20) break;
@@ -107,7 +109,7 @@ function recordEntry_(payload) {
   const sheet = sheetForDate_(date);
   const block = blockForAccount_(sheet, account);
   const dateCol = dateColumn_(sheet, block, date);
-  const articleRow = exactArticleRow_(sheet, block.articleCol, article);
+  const articleRow = resolveArticleRow_(sheet, block.articleCol, article, payload.row);
 
   if (!articleRow) {
     const suggestions = findArticles_({ account, date, query: article });
@@ -223,19 +225,57 @@ function dateColumn_(sheet, block, dateString) {
   throw new Error('Date ' + dateString + ' was not found in ' + ACCOUNT_LABEL_BY_BLOCK_(block.articleCol) + '.');
 }
 
-function exactArticleRow_(sheet, articleCol, article) {
+function resolveArticleRow_(sheet, articleCol, article, requestedRow) {
+  const target = normalize_(article);
+
+  if (requestedRow !== undefined && requestedRow !== null && requestedRow !== '') {
+    const row = Number(requestedRow);
+    if (!Number.isInteger(row) || row < 3 || row > sheet.getLastRow()) {
+      throw new Error('row is invalid.');
+    }
+    const actual = String(sheet.getRange(row, articleCol).getDisplayValue() || '').trim();
+    if (normalize_(actual) !== target) {
+      throw new Error('The selected row no longer matches the requested article.');
+    }
+    return row;
+  }
+
   const values = sheet
     .getRange(3, articleCol, Math.max(1, sheet.getLastRow() - 2), 1)
     .getDisplayValues();
 
-  const target = normalize_(article);
   const rows = [];
   for (let i = 0; i < values.length; i++) {
     if (normalize_(values[i][0]) === target) rows.push(i + 3);
   }
 
-  if (rows.length > 1) throw new Error('More than one exact article matches. Use a more specific subrow.');
+  if (rows.length > 1) {
+    throw new Error('More than one exact article matches. Call find_articles and pass the returned row.');
+  }
   return rows[0] || null;
+}
+
+function parentContext_(sheet, articleCol, row, dateString) {
+  const block = { articleCol, nextArticleCol: nextArticleColumn_(sheet, articleCol) };
+  const dateCol = dateColumn_(sheet, block, dateString);
+
+  for (let r = row - 1; r >= 3 && r >= row - 120; r--) {
+    const label = String(sheet.getRange(r, articleCol).getDisplayValue() || '').trim();
+    if (!label) continue;
+    const formula = sheet.getRange(r, dateCol).getFormula();
+    if (formula) return label;
+  }
+  return null;
+}
+
+function nextArticleColumn_(sheet, articleCol) {
+  const row2 = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  const articleCols = [];
+  for (let i = 0; i < row2.length; i++) {
+    if (normalize_(row2[i]) === normalize_('Наименование статьи')) articleCols.push(i + 1);
+  }
+  const idx = articleCols.indexOf(articleCol);
+  return idx >= 0 && idx + 1 < articleCols.length ? articleCols[idx + 1] : sheet.getLastColumn() + 1;
 }
 
 function isDirectWriteException_(article) {
