@@ -4266,7 +4266,7 @@ const ContractDetail = () => {
 
     setGeneratingInvoice(true);
     try {
-      const [profileRes, feesRes, finesRes, salikRes, paymentsRes] = await Promise.all([
+      const [profileRes, feesRes, finesRes, salikRes, parkingRes, paymentsRes] = await Promise.all([
         (supabase as any)
           .from("profiles")
           .select(
@@ -4288,17 +4288,22 @@ const ContractDetail = () => {
           .select("id, trips, amount")
           .eq("contract_id", contract.id),
         (supabase as any)
+          .from("parking_charges")
+          .select("id, amount, location")
+          .eq("contract_id", contract.id),
+        (supabase as any)
           .from("payments")
-          .select("id, amount")
+          .select("id, amount, status")
           .eq("contract_id", contract.id),
       ]);
 
-      if (profileRes.error || feesRes.error || finesRes.error || salikRes.error || paymentsRes.error) {
+      if (profileRes.error || feesRes.error || finesRes.error || salikRes.error || parkingRes.error || paymentsRes.error) {
         throw new Error(
           profileRes.error?.message ||
             feesRes.error?.message ||
             finesRes.error?.message ||
             salikRes.error?.message ||
+            parkingRes.error?.message ||
             paymentsRes.error?.message ||
             "Failed to load invoice data",
         );
@@ -4385,15 +4390,19 @@ const ContractDetail = () => {
       const fees = ((feesRes.data ?? []) as Array<{ id: string; label: string; amount: number }>)
         .map((fee) => ({ ...fee, amount: Number(fee.amount) || 0 }))
         .filter((fee) => fee.amount !== 0);
-      const paidAmount = ((paymentsRes.data ?? []) as Array<{ amount: number }>).reduce(
-        (sum, payment) => sum + (Number(payment.amount) || 0),
-        0,
-      );
+      const parkingCharges = ((parkingRes.data ?? []) as Array<{ id: string; amount: number; location?: string | null }>).map((charge) => ({
+        ...charge,
+        amount: Number(charge.amount) || 0,
+      }));
+      const paidAmount = ((paymentsRes.data ?? []) as Array<{ amount: number; status: string | null }>)
+        .filter((payment) => String(payment.status || "").toLowerCase() === "paid")
+        .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
       const finesTotal = chargedFines.reduce((sum, fine) => sum + fine.amount, 0);
       const salikTrips = salikCharges.reduce((sum, charge) => sum + charge.trips, 0);
       const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
       const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
-      const subtotal = rentalAmount + finesTotal + salikTotal + feeTotal;
+      const parkingTotal = parkingCharges.reduce((sum, charge) => sum + charge.amount, 0);
+      const subtotal = rentalAmount + finesTotal + salikTotal + parkingTotal + feeTotal;
       const taxTotal = vatEnabled ? (subtotal * vatRate) / 100 : 0;
       const invoiceAmount = subtotal + taxTotal;
       const remainingBalance = Math.max(0, invoiceAmount - paidAmount);
@@ -4439,6 +4448,15 @@ const ContractDetail = () => {
             `Salik Charges\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
             String(salikTrips),
             salikTotal,
+          ),
+        );
+      }
+      if (parkingCharges.length > 0) {
+        rows.push(
+          makeInvoiceRow(
+            `Parking Charges\n${parkingCharges.length} ${parkingCharges.length === 1 ? "charge" : "charges"}`,
+            String(parkingCharges.length),
+            parkingTotal,
           ),
         );
       }
