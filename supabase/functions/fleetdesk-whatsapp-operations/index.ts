@@ -800,23 +800,231 @@ async function handleCloseContract(supabase, ownerId, actor, contractId, payload
   }
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-  if (!(await authorize(req))) return json({ error: 'Unauthorized' }, 401);
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !serviceRole) return json({ error: 'FleetDesk service configuration is incomplete.' }, 500);
+const CLOSED_LIKE_STATUSES = new Set(['closed', 'completed', 'cancelled', 'canceled', 'void', 'deleted', 'deleted draft']);
 
-  const supabase = createClient(supabaseUrl, serviceRole, {
-    auth: { persistSession: false, autoRefreshToken: false },
+function normalizePlate(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function normalizeContractReference(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^CTR-/i, '')
+    .replace(/[^a-fA-F0-9-]/g, '')
+    .toLowerCase();
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(stableJson).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map((key) => JSON.stringify(key) + ':' + stableJson(value[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
+async function buildToolIdempotencyKey(contact, name, args, dedupeWindowMinutes = 5) {
+  const contactKey = String((contact && contact.id) || normalizePhone(contact && contact.phone_number) || 'unknown');
+  const bucketMs = dedupeWindowMinutes * 60 * 1000;
+  const bucket = Math.floor(Date.now() / bucketMs);
+  const digest = await sha256Hex(stableJson({ contactKey, name, args, bucket }));
+  return 'peach-tool:' + name + ':' + digest.slice(0, 40);
+}
+
+async function findContractsForActor(supabase, actor, filters = {}) {
+  const ownerId = actor.ownerId;
+  if (!ownerId) throw new Error('Could not resolve FleetDesk owner.');
+
+  let query = supabase
+    .from('contracts')
+    .select('id, client_id, car_id, start_date, start_time, end_date, end_time, rate_type, rate_amount, total_amount, deposit_amount, status, payment_status, client:clients(id, full_name, phone), car:cars(id, plate, make, model, status)')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (actor.type === 'client') query = query.eq('client_id', actor.id);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const plate = normalizePlate(filters.plate);
+  const contractRef = normalizeContractReference(filters.contract_reference || filters.contract_id);
+  const clientPhone = normalizePhone(filters.client_phone);
+  const includeClosed = Boolean(filters.include_closed);
+
+  const matches = (data || []).filter((row) => {
+    const status = String(row.status || '').trim().toLowerCase();
+    if (!includeClosed && CLOSED_LIKE_STATUSES.has(status)) return false;
+    if (plate && normalizePlate(row.car && row.car.plate) !== plate) return false;
+    if (clientPhone && normalizePhone(row.client && row.client.phone) !== clientPhone) return false;
+    if (contractRef && !String(row.id).toLowerCase().startsWith(contractRef)) return false;
+    return true;
+  }).slice(0, 10);
+
+  return matches.map((row) => ({
+    id: row.id,
+    contract_number: 'CTR-' + String(row.id).slice(0, 8).toUpperCase(),
+    status: row.status,
+    payment_status: row.payment_status,
+    start_date: row.start_date,
+    start_time: row.start_time,
+    end_date: row.end_date,
+    end_time: row.end_time,
+    rate_type: row.rate_type,
+    rate_amount: Number(row.rate_amount),
+    total_amount: Number(row.total_amount),
+    deposit_amount: Number(row.deposit_amount || 0),
+    client: row.client,
+    car: row.car,
+  }));
+}
+
+async function resolveToolContractId(supabase, actor, args = {}) {
+  if (args.contract_id && /^[0-9a-fA-F-]{36}$/.test(String(args.contract_id))) {
+    const contract = await getContract(supabase, actor.ownerId, String(args.contract_id));
+    ensureActorCanReadContract(actor, contract);
+    return contract.id;
+  }
+
+  const matches = await findContractsForActor(supabase, actor, {
+    contract_reference: args.contract_reference || args.contract_id,
+    plate: args.plate,
+    client_phone: args.client_phone,
+    include_closed: Boolean(args.include_closed),
   });
-  let auditId = null;
 
+  if (matches.length === 0) throw new Error('No matching FleetDesk contract found.');
+  if (matches.length > 1) throw new Error('More than one contract matches. Ask for the vehicle plate or contract number.');
+  return matches[0].id;
+}
+
+function getToolDeclarations() {
+  return {
+    function_declarations: [
+      {
+        name: 'find_contracts',
+        description: 'Find matching FleetDesk rental contracts for the WhatsApp contact. Clients only see their own contracts. Staff can search by plate, contract number, or client phone. Use this before any contract action when the contract is unclear.',
+        parameters: {
+          type: 'object',
+          properties: {
+            plate: { type: 'string', description: 'Vehicle plate, for example A 77108.' },
+            contract_reference: { type: 'string', description: 'FleetDesk contract number such as CTR-7C82A495, or a contract UUID.' },
+            client_phone: { type: 'string', description: 'Client phone number. Staff use only.' },
+            include_closed: { type: 'boolean', description: 'Whether to include closed/cancelled contracts. Default false.' }
+          },
+          required: []
+        }
+      },
+      {
+        name: 'get_contract_context',
+        description: 'Get authoritative FleetDesk contract details, vehicle, client, outstanding balance, and unpaid charge lines. Never invent financial facts; call this function.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contract_id: { type: 'string', description: 'Full FleetDesk contract UUID from find_contracts.' }
+          },
+          required: ['contract_id']
+        }
+      },
+      {
+        name: 'request_extension',
+        description: 'Record a request to extend a rental. This does not extend the contract or confirm a price. Safe for clients or staff.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contract_id: { type: 'string', description: 'FleetDesk contract UUID.' },
+            new_end_date: { type: 'string', description: 'Requested new return date in YYYY-MM-DD.' },
+            new_end_time: { type: 'string', description: 'Requested new return time in HH:MM 24-hour format.' },
+            note: { type: 'string', description: 'Optional request note.' }
+          },
+          required: ['contract_id', 'new_end_date', 'new_end_time']
+        }
+      },
+      {
+        name: 'request_return',
+        description: 'Record a vehicle return/pickup request. This does not close the contract. Safe for clients or staff.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contract_id: { type: 'string', description: 'FleetDesk contract UUID.' },
+            requested_return_at: { type: 'string', description: 'Requested return date/time in YYYY-MM-DDTHH:MM.' },
+            pickup_required: { type: 'boolean', description: 'True if the customer wants vehicle pickup.' },
+            location: { type: 'string', description: 'Pickup/return location if relevant.' },
+            note: { type: 'string', description: 'Optional request note.' }
+          },
+          required: ['contract_id', 'requested_return_at']
+        }
+      },
+      {
+        name: 'extend_contract',
+        description: 'Actually extend a FleetDesk contract. Staff only. Requires the manager-confirmed extension rent amount; never calculate or invent the amount yourself.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contract_id: { type: 'string', description: 'FleetDesk contract UUID.' },
+            new_end_date: { type: 'string', description: 'New contract end date YYYY-MM-DD.' },
+            new_end_time: { type: 'string', description: 'New contract end time HH:MM.' },
+            rent_amount: { type: 'number', description: 'Manager-confirmed extension rent charge in AED.' }
+          },
+          required: ['contract_id', 'new_end_date', 'new_end_time', 'rent_amount']
+        }
+      },
+      {
+        name: 'record_payment',
+        description: 'Record a real paid amount against a FleetDesk contract. Staff only. The endpoint allocates it only to genuine outstanding charge lines and rejects overpayment.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contract_id: { type: 'string', description: 'FleetDesk contract UUID.' },
+            amount: { type: 'number', description: 'Payment amount in AED.' },
+            method: { type: 'string', enum: ['Cash', 'Card', 'Transfer'], description: 'Payment method.' },
+            payment_date: { type: 'string', description: 'Payment date YYYY-MM-DD. Defaults to today in Dubai.' },
+            allocation_mode: { type: 'string', enum: ['all', 'rental', 'fees', 'fines', 'salik', 'parking'], description: 'Which outstanding category to allocate to. Default all.' }
+          },
+          required: ['contract_id', 'amount', 'method']
+        }
+      },
+      {
+        name: 'add_fee',
+        description: 'Add a contract charge such as delivery, pickup, fuel, or another approved fee. Staff only.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contract_id: { type: 'string', description: 'FleetDesk contract UUID.' },
+            category: { type: 'string', enum: ['delivery', 'pickup', 'fuel', 'other'], description: 'Fee category.' },
+            label: { type: 'string', description: 'Visible fee label.' },
+            amount: { type: 'number', description: 'Charge amount in AED.' },
+            note: { type: 'string', description: 'Optional internal note.' }
+          },
+          required: ['contract_id', 'category', 'label', 'amount']
+        }
+      },
+      {
+        name: 'close_contract',
+        description: 'Physically close/return a FleetDesk rental after staff confirms the vehicle is back. Staff only. Requires final mileage, post-return vehicle status, and deposit reconciliation when a deposit exists.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contract_id: { type: 'string', description: 'FleetDesk contract UUID.' },
+            actual_return_at: { type: 'string', description: 'Actual physical return time YYYY-MM-DDTHH:MM.' },
+            final_mileage: { type: 'number', description: 'Final vehicle mileage.' },
+            vehicle_status: { type: 'string', enum: ['Available', 'Under Service', 'Reserved', 'Unavailable'], description: 'Vehicle status after return.' },
+            deposit_action: { type: 'string', enum: ['return_full', 'apply_to_balance', 'retain_partial', 'retain_full'], description: 'Required if the contract has a security deposit.' },
+            deposit_retained_amount: { type: 'number', description: 'Required only for retain_partial.' },
+            deposit_retain_reason: { type: 'string', description: 'Required when retaining any deposit amount.' },
+            deposit_return_due_date: { type: 'string', description: 'Optional deposit return due date YYYY-MM-DD.' },
+            received_by: { type: 'string', description: 'Name of staff who physically received the vehicle.' }
+          },
+          required: ['contract_id', 'actual_return_at', 'final_mileage', 'vehicle_status']
+        }
+      }
+    ]
+  };
+}
+
+async function runOperation(supabase, body) {
+  let auditId = null;
   try {
-    const parsedBody = await req.json().catch(() => ({}));
-    const body = parsedBody && typeof parsedBody === 'object' ? parsedBody : {};
     const idempotencyKey = String(body.idempotency_key || '').trim();
     const actorPhone = String(body.actor_phone || '').trim();
     const action = String(body.action || '').trim();
@@ -824,38 +1032,23 @@ Deno.serve(async (req) => {
     const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
 
     if (!idempotencyKey || idempotencyKey.length > 200) {
-      return json({ error: 'idempotency_key is required and must be 200 characters or fewer.' }, 400);
+      return { status: 400, body: { error: 'idempotency_key is required and must be 200 characters or fewer.' } };
     }
-    if (!actorPhone) return json({ error: 'actor_phone is required.' }, 400);
-    if (!action) return json({ error: 'action is required.' }, 400);
+    if (!actorPhone) return { status: 400, body: { error: 'actor_phone is required.' } };
+    if (!action) return { status: 400, body: { error: 'action is required.' } };
 
     const actor = await getActor(supabase, actorPhone);
     if (actor.type === 'unknown' || !actor.ownerId) {
-      return json({ error: 'Phone number is not recognized as FleetDesk staff or client.' }, 403);
+      return { status: 403, body: { error: 'Phone number is not recognized as FleetDesk staff or client.' } };
     }
     const ownerId = actor.ownerId;
 
     const existing = await findExistingAudit(supabase, ownerId, idempotencyKey);
     if (existing) {
-      return json({
-        duplicate: true,
-        status: existing.status,
-        action: existing.action,
-        contract_id: existing.contract_id,
-        result: existing.result,
-      });
+      return { status: 200, body: { duplicate: true, status: existing.status, action: existing.action, contract_id: existing.contract_id, result: existing.result } };
     }
 
-    auditId = await createAudit(
-      supabase,
-      ownerId,
-      idempotencyKey,
-      actor,
-      actorPhone,
-      action,
-      contractId,
-      payload,
-    );
+    auditId = await createAudit(supabase, ownerId, idempotencyKey, actor, actorPhone, action, contractId, payload);
 
     let result;
     if (action === 'contract_context') {
@@ -864,29 +1057,23 @@ Deno.serve(async (req) => {
       result = await handleRequestAction(supabase, ownerId, actor, action, contractId, payload);
     } else if (MUTATING_ACTIONS.has(action)) {
       if (actor.type !== 'staff') throw new Error('Only active staff can perform this action.');
-
-      if (action === 'extend_contract') {
-        result = await handleExtendContract(supabase, ownerId, contractId, payload);
-      } else if (action === 'record_payment') {
-        result = await handleRecordPayment(supabase, ownerId, contractId, payload);
-      } else if (action === 'add_fee') {
-        result = await handleAddFee(supabase, ownerId, contractId, payload);
-      } else {
-        result = await handleCloseContract(supabase, ownerId, actor, contractId, payload);
-      }
+      if (action === 'extend_contract') result = await handleExtendContract(supabase, ownerId, contractId, payload);
+      else if (action === 'record_payment') result = await handleRecordPayment(supabase, ownerId, contractId, payload);
+      else if (action === 'add_fee') result = await handleAddFee(supabase, ownerId, contractId, payload);
+      else result = await handleCloseContract(supabase, ownerId, actor, contractId, payload);
     } else {
       throw new Error('Unsupported action.');
     }
 
     const finalStatus = REQUEST_ACTIONS.has(action) ? 'requested' : 'applied';
     await finishAudit(supabase, auditId, finalStatus, result);
-    return json(result);
+    return { status: 200, body: result };
   } catch (error) {
     if (auditId) {
       try {
         await finishAudit(supabase, auditId, 'failed', {
           ok: false,
-          error: error instanceof Error ? error.message : 'Unexpected error',
+          error: error instanceof Error ? error.message : 'Unexpected error'
         });
       } catch (auditError) {
         console.error('Failed to update WhatsApp audit row', auditError);
@@ -894,7 +1081,7 @@ Deno.serve(async (req) => {
     }
 
     const message = error instanceof Error ? error.message : 'Unexpected error';
-    if (
+    const isUserError =
       message.includes('required') ||
       message.includes('must be') ||
       message.includes('cannot be') ||
@@ -903,12 +1090,117 @@ Deno.serve(async (req) => {
       message.includes('already') ||
       message.includes('outstanding') ||
       message.includes('overlapping') ||
-      message.includes('matches more than one')
-    ) {
-      return json({ error: message }, 400);
-    }
+      message.includes('More than one') ||
+      message.includes('No matching') ||
+      message.includes('Only active staff');
 
+    if (isUserError) return { status: 400, body: { error: message } };
     console.error(error);
-    return json({ error: 'Unexpected server error' }, 500);
+    return { status: 500, body: { error: 'Unexpected server error' } };
+  }
+}
+
+async function handlePeachToolCall(supabase, body) {
+  const name = String((body && body.name) || '').trim();
+  const args = body && body.arguments && typeof body.arguments === 'object' ? body.arguments : {};
+  const contact = body && body.contact && typeof body.contact === 'object' ? body.contact : {};
+  const actorPhone = String(contact.phone_number || '').trim();
+
+  if (!name) return { status: 400, body: { error: 'Tool name is required.' } };
+  if (!actorPhone) return { status: 400, body: { error: 'Peach contact phone_number is required.' } };
+
+  const actor = await getActor(supabase, actorPhone);
+  if (actor.type === 'unknown' || !actor.ownerId) return { status: 403, body: { error: 'Phone number is not recognized as FleetDesk staff or client.' } };
+
+  if (name === 'find_contracts') {
+    const contracts = await findContractsForActor(supabase, actor, args);
+    return { status: 200, body: { ok: true, actor: { type: actor.type, name: actor.name, role: actor.role }, count: contracts.length, contracts } };
+  }
+
+  const contractId = await resolveToolContractId(supabase, actor, args);
+  const idempotencyKey = name === 'get_contract_context'
+    ? 'peach-tool:' + name + ':' + Date.now() + ':' + String(contact.id || normalizePhone(actorPhone))
+    : await buildToolIdempotencyKey(contact, name, args, 5);
+
+  let action;
+  let payload = {};
+
+  if (name === 'get_contract_context') {
+    action = 'contract_context';
+  } else if (name === 'request_extension') {
+    action = 'request_extension';
+    payload = { new_end_date: args.new_end_date, new_end_time: args.new_end_time, note: args.note || null };
+  } else if (name === 'request_return') {
+    action = 'request_return';
+    payload = { requested_return_at: args.requested_return_at, pickup_required: Boolean(args.pickup_required), location: args.location || null, note: args.note || null };
+  } else if (name === 'extend_contract') {
+    action = 'extend_contract';
+    payload = { new_end_date: args.new_end_date, new_end_time: args.new_end_time, rent_amount: args.rent_amount };
+  } else if (name === 'record_payment') {
+    action = 'record_payment';
+    payload = { amount: args.amount, method: args.method, payment_date: args.payment_date, allocation_mode: args.allocation_mode || 'all' };
+  } else if (name === 'add_fee') {
+    action = 'add_fee';
+    payload = { category: args.category, label: args.label, amount: args.amount, note: args.note || null };
+  } else if (name === 'close_contract') {
+    action = 'close_contract';
+    payload = {
+      actual_return_at: args.actual_return_at,
+      final_mileage: args.final_mileage,
+      vehicle_status: args.vehicle_status,
+      deposit_action: args.deposit_action,
+      deposit_retained_amount: args.deposit_retained_amount,
+      deposit_retain_reason: args.deposit_retain_reason,
+      deposit_return_due_date: args.deposit_return_due_date,
+      received_by: args.received_by
+    };
+  } else {
+    return { status: 400, body: { error: 'Unknown FleetDesk tool function.' } };
+  }
+
+  return await runOperation(supabase, {
+    idempotency_key: idempotencyKey,
+    actor_phone: actorPhone,
+    action,
+    contract_id: contractId,
+    payload
+  });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
+  if (!['GET', 'POST'].includes(req.method)) return json({ error: 'Method not allowed' }, 405);
+  if (!(await authorize(req))) return json({ error: 'Unauthorized' }, 401);
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRole) return json({ error: 'FleetDesk service configuration is incomplete.' }, 500);
+
+  const supabase = createClient(supabaseUrl, serviceRole, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+
+  if (req.method === 'GET') return json(getToolDeclarations());
+
+  const parsedBody = await req.json().catch(() => ({}));
+  const body = parsedBody && typeof parsedBody === 'object' ? parsedBody : {};
+
+  try {
+    const response = body.name && body.contact
+      ? await handlePeachToolCall(supabase, body)
+      : await runOperation(supabase, body);
+    return json(response.body, response.status);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    const status =
+      message.includes('required') ||
+      message.includes('No matching') ||
+      message.includes('More than one') ||
+      message.includes('not recognized') ||
+      message.includes('not authorized')
+        ? 400
+        : 500;
+    if (status === 500) console.error(error);
+    return json({ error: status === 500 ? 'Unexpected server error' : message }, status);
   }
 });
