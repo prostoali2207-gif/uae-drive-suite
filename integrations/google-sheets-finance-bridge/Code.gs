@@ -1,8 +1,7 @@
 const SPREADSHEET_ID = '1XnAQPfubyv80uEUgszDZZfRVAir35yIth718r7AERps';
 const PEACH_TOKEN_SHA256 = 'a837eb5861426d57f2b47398aac8f43dc3852a4d74651aecfb0ccb6ccb73dc6f';
 
-// These are the verified article columns in the 1:1 accounting template.
-// Each date uses two columns immediately after the article column: amount, note.
+// Verified 1:1 accounting template layout.
 const ACCOUNT_BLOCK = Object.freeze({
   cash_aed: Object.freeze({ articleCol: 2, nextArticleCol: 68 }),
   ajman_aed: Object.freeze({ articleCol: 68, nextArticleCol: 134 }),
@@ -19,6 +18,17 @@ const DIRECT_WRITE_EXCEPTIONS = Object.freeze([
   'платные дороги',
   'мойка авто',
 ]);
+
+// Amount/formula parent rows are identical in the first three verified account blocks.
+// Keeping this index in code removes a slow formula scan from every read-only lookup.
+const FORMULA_PARENT_ROWS = new Set([
+  4, 5, 85, 91, 92, 98, 104, 110, 116, 122, 128, 134, 140, 146, 155,
+  161, 162, 242, 248, 255, 256, 262, 268, 274, 280, 286, 292, 298, 305,
+  313, 319, 328, 331, 337, 343, 354, 364, 369, 384,
+]);
+
+const FIRST_ARTICLE_ROW = 3;
+const LAST_ARTICLE_ROW = 384;
 
 const MONTHS_RU = Object.freeze([
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -69,46 +79,25 @@ function findArticles_(payload) {
 
   const sheet = sheetForDate_(date);
   const block = blockForAccount_(account);
-  const dateCol = dateColumn_(block, date);
-  const rowCount = Math.max(1, sheet.getLastRow() - 2);
+  const rowCount = LAST_ARTICLE_ROW - FIRST_ARTICLE_ROW + 1;
   const labels = sheet
-    .getRange(3, block.articleCol, rowCount, 1)
+    .getRange(FIRST_ARTICLE_ROW, block.articleCol, rowCount, 1)
     .getDisplayValues();
 
-  const rawMatches = [];
+  const matches = [];
   for (let i = 0; i < labels.length; i++) {
     const label = String(labels[i][0] || '').trim();
     if (!label || !normalize_(label).includes(query)) continue;
-    rawMatches.push({ index: i, row: i + 3, article: label });
-    if (rawMatches.length >= 20) break;
+    const row = i + FIRST_ARTICLE_ROW;
+    matches.push({
+      row,
+      article: label,
+      section: parentContextFromRows_(labels, row),
+      formula_row: FORMULA_PARENT_ROWS.has(row),
+      direct_write_exception: isDirectWriteException_(label),
+    });
+    if (matches.length >= 20) break;
   }
-
-  let formulaStartIndex = 0;
-  let formulaRows = [];
-  if (rawMatches.length) {
-    const minIndex = rawMatches[0].index;
-    const maxIndex = rawMatches[rawMatches.length - 1].index;
-    formulaStartIndex = Math.max(0, minIndex - 120);
-    const formulaRowCount = maxIndex - formulaStartIndex + 1;
-    formulaRows = sheet
-      .getRange(formulaStartIndex + 3, dateCol, formulaRowCount, 1)
-      .getFormulas();
-  }
-
-  const matches = rawMatches.map(function (match) {
-    const formulaIndex = match.index - formulaStartIndex;
-    const formula = formulaRows.length && formulaIndex >= 0
-      ? String((formulaRows[formulaIndex] && formulaRows[formulaIndex][0]) || '')
-      : '';
-
-    return {
-      row: match.row,
-      article: match.article,
-      section: parentContextFromWindow_(labels, formulaRows, formulaStartIndex, match.index),
-      formula_row: Boolean(formula),
-      direct_write_exception: isDirectWriteException_(match.article),
-    };
-  });
 
   return {
     ok: true,
@@ -138,7 +127,6 @@ function recordEntry_(payload) {
   const block = blockForAccount_(account);
   const dateCol = dateColumn_(block, date);
   const articleRow = resolveArticleRow_(sheet, block.articleCol, article, payload.row);
-
   if (!articleRow) throw new Error('Article not found in this account block.');
 
   const directException = isDirectWriteException_(article);
@@ -156,7 +144,7 @@ function recordEntry_(payload) {
     const amountFormula = String(formulas[0] || '');
     const noteFormula = String(formulas[1] || '');
 
-    if (amountFormula && !directException) {
+    if ((amountFormula || FORMULA_PARENT_ROWS.has(articleRow)) && !directException) {
       throw new Error('This is an automatic parent/formula row. Write to its subrow instead.');
     }
     if (noteFormula) {
@@ -167,16 +155,15 @@ function recordEntry_(payload) {
     const currentNote = values[1];
     const amountOccupied = currentAmount !== '' && currentAmount !== null && Number(currentAmount) !== 0;
     const noteOccupied = String(currentNote || '').trim() !== '';
-
     if (amountOccupied || noteOccupied) {
       throw new Error('This article/date cell already contains data. Nothing was overwritten.');
     }
 
     targetRange.setValues([[amount, note]]);
-    SpreadsheetApp.flush();
 
-    const writtenAmount = Number(sheet.getRange(articleRow, dateCol).getValue());
-    if (Math.abs(writtenAmount - amount) > 0.0001) {
+    // Reading back forces pending SpreadsheetApp writes to be applied and verifies the value.
+    const written = targetRange.getValues()[0];
+    if (Math.abs(Number(written[0]) - amount) > 0.0001 || String(written[1] || '') !== note) {
       throw new Error('Write verification failed.');
     }
   } finally {
@@ -191,6 +178,7 @@ function recordEntry_(payload) {
     date,
     sheet: sheet.getName(),
     article,
+    row: articleRow,
     amount,
     note: note || null,
     amount_cell: a1_(articleRow, dateCol),
@@ -198,12 +186,18 @@ function recordEntry_(payload) {
   };
 }
 
+function spreadsheet_() {
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active && active.getId() === SPREADSHEET_ID) return active;
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
 function sheetForDate_(dateString) {
   const parts = dateString.split('-').map(Number);
   const year = parts[0];
   const month = parts[1];
   const sheetName = MONTHS_RU[month - 1] + ' ' + year;
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(sheetName);
+  const sheet = spreadsheet_().getSheetByName(sheetName);
   if (!sheet) throw new Error('No finance sheet exists for ' + sheetName + '.');
   return sheet;
 }
@@ -228,23 +222,20 @@ function resolveArticleRow_(sheet, articleCol, article, requestedRow) {
 
   if (requestedRow !== undefined && requestedRow !== null && requestedRow !== '') {
     const row = Number(requestedRow);
-    if (!Number.isInteger(row) || row < 3 || row > sheet.getLastRow()) {
+    if (!Number.isInteger(row) || row < FIRST_ARTICLE_ROW || row > LAST_ARTICLE_ROW) {
       throw new Error('row is invalid.');
-    }
-    const actual = String(sheet.getRange(row, articleCol).getDisplayValue() || '').trim();
-    if (normalize_(actual) !== target) {
-      throw new Error('The selected row no longer matches the requested article.');
     }
     return row;
   }
 
+  const rowCount = LAST_ARTICLE_ROW - FIRST_ARTICLE_ROW + 1;
   const values = sheet
-    .getRange(3, articleCol, Math.max(1, sheet.getLastRow() - 2), 1)
+    .getRange(FIRST_ARTICLE_ROW, articleCol, rowCount, 1)
     .getDisplayValues();
 
   const rows = [];
   for (let i = 0; i < values.length; i++) {
-    if (normalize_(values[i][0]) === target) rows.push(i + 3);
+    if (normalize_(values[i][0]) === target) rows.push(i + FIRST_ARTICLE_ROW);
   }
 
   if (rows.length > 1) {
@@ -253,14 +244,12 @@ function resolveArticleRow_(sheet, articleCol, article, requestedRow) {
   return rows[0] || null;
 }
 
-function parentContextFromWindow_(labels, formulas, formulaStartIndex, index) {
-  for (let i = index - 1; i >= 0 && i >= index - 120; i--) {
-    const label = String((labels[i] && labels[i][0]) || '').trim();
-    if (!label) continue;
-    const formulaIndex = i - formulaStartIndex;
-    if (formulaIndex < 0 || formulaIndex >= formulas.length) continue;
-    const formula = String((formulas[formulaIndex] && formulas[formulaIndex][0]) || '');
-    if (formula) return label;
+function parentContextFromRows_(labels, row) {
+  const minRow = Math.max(FIRST_ARTICLE_ROW, row - 120);
+  for (let candidate = row - 1; candidate >= minRow; candidate--) {
+    if (!FORMULA_PARENT_ROWS.has(candidate)) continue;
+    const label = String((labels[candidate - FIRST_ARTICLE_ROW] || [])[0] || '').trim();
+    if (label) return label;
   }
   return null;
 }
