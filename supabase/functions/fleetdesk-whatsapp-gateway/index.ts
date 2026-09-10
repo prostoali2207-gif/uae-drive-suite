@@ -65,15 +65,33 @@ async function getActiveStaff(supabase: ReturnType<typeof createClient>, phone: 
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
 
-  const { data, error } = await supabase
+  const { data: staffRows, error: staffError } = await supabase
     .from('staff')
     .select('id, owner_id, full_name, role, phone, status')
     .eq('status', 'active');
-  if (error) throw error;
+  if (staffError) throw staffError;
 
-  const matches = (data || []).filter((row) => normalizePhone(row.phone) === normalized);
-  if (matches.length > 1) throw new Error('Phone number matches more than one active FleetDesk staff account.');
-  return matches.length === 1 ? matches[0] : null;
+  const directMatches = (staffRows || []).filter((row) => normalizePhone(row.phone) === normalized);
+  if (directMatches.length > 1) throw new Error('Phone number matches more than one active FleetDesk staff account.');
+  if (directMatches.length === 1) return directMatches[0];
+
+  const { data: alias, error: aliasError } = await supabase
+    .from('staff_phone_aliases')
+    .select('staff_id')
+    .eq('normalized_phone', normalized)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (aliasError) throw aliasError;
+  if (!alias?.staff_id) return null;
+
+  const { data: staff, error: aliasStaffError } = await supabase
+    .from('staff')
+    .select('id, owner_id, full_name, role, phone, status')
+    .eq('id', alias.staff_id)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (aliasStaffError) throw aliasStaffError;
+  return staff || null;
 }
 
 async function findAudit(supabase: ReturnType<typeof createClient>, ownerId: string, idempotencyKey: string) {
@@ -240,6 +258,27 @@ async function forwardRentalRequest(peachToken: string, body: unknown) {
   });
 }
 
+async function canonicalizeStaffAlias(
+  supabase: ReturnType<typeof createClient>,
+  body: Record<string, any>,
+) {
+  const contact = body.contact && typeof body.contact === 'object' ? body.contact : null;
+  const actorPhone = String(contact?.phone_number || '').trim();
+  if (!actorPhone) return body;
+
+  const staff = await getActiveStaff(supabase, actorPhone);
+  if (!staff?.phone || normalizePhone(staff.phone) === normalizePhone(actorPhone)) return body;
+
+  return {
+    ...body,
+    contact: {
+      ...contact,
+      phone_number: staff.phone,
+      original_phone_number: actorPhone,
+    },
+  };
+}
+
 async function handleFinanceTool(
   supabase: ReturnType<typeof createClient>,
   peachToken: string,
@@ -315,21 +354,26 @@ Deno.serve(async (req: Request) => {
   try {
     if (req.method === 'GET') return json(await getCombinedDeclarations(peachToken));
 
-    const body = await req.json().catch(() => ({}));
-    const name = String((body as any)?.name || '').trim();
-
-    if (!FINANCE_TOOL_NAMES.has(name)) {
-      return await forwardRentalRequest(peachToken, body);
-    }
-
+    const body = await req.json().catch(() => ({})) as Record<string, any>;
+    const name = String(body?.name || '').trim();
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!FINANCE_TOOL_NAMES.has(name)) {
+      if (!supabaseUrl || !serviceRole) return await forwardRentalRequest(peachToken, body);
+      const supabase = createClient(supabaseUrl, serviceRole, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const forwardedBody = await canonicalizeStaffAlias(supabase, body);
+      return await forwardRentalRequest(peachToken, forwardedBody);
+    }
+
     if (!supabaseUrl || !serviceRole) return json({ error: 'FleetDesk service configuration is incomplete.' }, 500);
 
     const supabase = createClient(supabaseUrl, serviceRole, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    return await handleFinanceTool(supabase, peachToken, body as Record<string, any>);
+    return await handleFinanceTool(supabase, peachToken, body);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error';
     const isUserError =
