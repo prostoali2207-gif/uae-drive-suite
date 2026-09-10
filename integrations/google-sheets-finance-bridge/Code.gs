@@ -1,10 +1,12 @@
 const SPREADSHEET_ID = '1XnAQPfubyv80uEUgszDZZfRVAir35yIth718r7AERps';
 const PEACH_TOKEN_SHA256 = 'a837eb5861426d57f2b47398aac8f43dc3852a4d74651aecfb0ccb6ccb73dc6f';
 
-const ACCOUNT_INDEX = Object.freeze({
-  cash_aed: 0,
-  ajman_aed: 1,
-  sber_rub: 2,
+// These are the verified article columns in the 1:1 accounting template.
+// Each date uses two columns immediately after the article column: amount, note.
+const ACCOUNT_BLOCK = Object.freeze({
+  cash_aed: Object.freeze({ articleCol: 2, nextArticleCol: 68 }),
+  ajman_aed: Object.freeze({ articleCol: 68, nextArticleCol: 134 }),
+  sber_rub: Object.freeze({ articleCol: 134, nextArticleCol: 200 }),
 });
 
 const ACCOUNT_LABEL = Object.freeze({
@@ -32,24 +34,29 @@ function doGet() {
 }
 
 function doPost(e) {
+  const startedAt = Date.now();
   try {
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const token = String(body.token || '');
     if (!token || sha256Hex_(token) !== PEACH_TOKEN_SHA256) {
-      return json_({ ok: false, error: 'Unauthorized' });
+      return json_({ ok: false, error: 'Unauthorized', bridge_ms: Date.now() - startedAt });
     }
 
     const action = String(body.action || '').trim();
     const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
+    let result;
 
-    if (action === 'find_articles') return json_(findArticles_(payload));
-    if (action === 'record_entry') return json_(recordEntry_(payload));
+    if (action === 'find_articles') result = findArticles_(payload);
+    else if (action === 'record_entry') result = recordEntry_(payload);
+    else result = { ok: false, error: 'Unsupported finance bridge action.' };
 
-    return json_({ ok: false, error: 'Unsupported finance bridge action.' });
+    result.bridge_ms = Date.now() - startedAt;
+    return json_(result);
   } catch (error) {
     return json_({
       ok: false,
       error: error instanceof Error ? error.message : String(error),
+      bridge_ms: Date.now() - startedAt,
     });
   }
 }
@@ -61,31 +68,47 @@ function findArticles_(payload) {
   if (!query) throw new Error('query is required.');
 
   const sheet = sheetForDate_(date);
-  const block = blockForAccount_(sheet, account);
+  const block = blockForAccount_(account);
+  const dateCol = dateColumn_(block, date);
   const rowCount = Math.max(1, sheet.getLastRow() - 2);
-  const values = sheet
+  const labels = sheet
     .getRange(3, block.articleCol, rowCount, 1)
     .getDisplayValues();
-  const dateCol = dateColumn_(sheet, block, date);
-  const formulas = sheet
-    .getRange(3, dateCol, rowCount, 1)
-    .getFormulas();
 
-  const matches = [];
-  for (let i = 0; i < values.length; i++) {
-    const label = String(values[i][0] || '').trim();
-    if (!label) continue;
-    const normalized = normalize_(label);
-    if (!normalized.includes(query)) continue;
-    const row = i + 3;
-    matches.push({
-      row,
-      article: label,
-      section: parentContextFromArrays_(values, formulas, i),
-      direct_write_exception: isDirectWriteException_(label),
-    });
-    if (matches.length >= 20) break;
+  const rawMatches = [];
+  for (let i = 0; i < labels.length; i++) {
+    const label = String(labels[i][0] || '').trim();
+    if (!label || !normalize_(label).includes(query)) continue;
+    rawMatches.push({ index: i, row: i + 3, article: label });
+    if (rawMatches.length >= 20) break;
   }
+
+  let formulaStartIndex = 0;
+  let formulaRows = [];
+  if (rawMatches.length) {
+    const minIndex = rawMatches[0].index;
+    const maxIndex = rawMatches[rawMatches.length - 1].index;
+    formulaStartIndex = Math.max(0, minIndex - 120);
+    const formulaRowCount = maxIndex - formulaStartIndex + 1;
+    formulaRows = sheet
+      .getRange(formulaStartIndex + 3, dateCol, formulaRowCount, 1)
+      .getFormulas();
+  }
+
+  const matches = rawMatches.map(function (match) {
+    const formulaIndex = match.index - formulaStartIndex;
+    const formula = formulaRows.length && formulaIndex >= 0
+      ? String((formulaRows[formulaIndex] && formulaRows[formulaIndex][0]) || '')
+      : '';
+
+    return {
+      row: match.row,
+      article: match.article,
+      section: parentContextFromWindow_(labels, formulaRows, formulaStartIndex, match.index),
+      formula_row: Boolean(formula),
+      direct_write_exception: isDirectWriteException_(match.article),
+    };
+  });
 
   return {
     ok: true,
@@ -112,59 +135,47 @@ function recordEntry_(payload) {
   if (note.length > 500) throw new Error('note is too long.');
 
   const sheet = sheetForDate_(date);
-  const block = blockForAccount_(sheet, account);
-  const dateCol = dateColumn_(sheet, block, date);
+  const block = blockForAccount_(account);
+  const dateCol = dateColumn_(block, date);
   const articleRow = resolveArticleRow_(sheet, block.articleCol, article, payload.row);
 
-  if (!articleRow) {
-    const suggestions = findArticles_({ account, date, query: article });
-    throw new Error(
-      suggestions.count
-        ? 'Exact article not found. Use one of the returned article names.'
-        : 'Article not found in this account block.'
-    );
-  }
+  if (!articleRow) throw new Error('Article not found in this account block.');
 
-  const amountCell = sheet.getRange(articleRow, dateCol);
-  const noteCell = sheet.getRange(articleRow, dateCol + 1);
-  const amountFormula = amountCell.getFormula();
-  const noteFormula = noteCell.getFormula();
   const directException = isDirectWriteException_(article);
-
-  if (amountFormula && !directException) {
-    throw new Error('This is an automatic parent/formula row. Write to its subrow instead.');
-  }
-  if (noteFormula) {
-    throw new Error('The note cell is calculated automatically and cannot be overwritten.');
-  }
-
-  const currentAmount = amountCell.getValue();
-  const currentNote = noteCell.getValue();
-  const amountOccupied = currentAmount !== '' && currentAmount !== null && Number(currentAmount) !== 0;
-  const noteOccupied = String(currentNote || '').trim() !== '';
-
-  if (amountOccupied || noteOccupied) {
-    throw new Error('This article/date cell already contains data. Nothing was overwritten.');
-  }
-
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    const freshAmount = amountCell.getValue();
-    const freshNote = noteCell.getValue();
-    const freshFormula = amountCell.getFormula();
-    const freshAmountOccupied = freshAmount !== '' && freshAmount !== null && Number(freshAmount) !== 0;
-    const freshNoteOccupied = String(freshNote || '').trim() !== '';
-
-    if ((freshFormula && !directException) || freshAmountOccupied || freshNoteOccupied) {
-      throw new Error('The target cell changed before write. Nothing was overwritten.');
+    const actualArticle = String(sheet.getRange(articleRow, block.articleCol).getDisplayValue() || '').trim();
+    if (normalize_(actualArticle) !== normalize_(article)) {
+      throw new Error('The selected row no longer matches the requested article.');
     }
 
-    amountCell.setValue(amount);
-    if (note) noteCell.setValue(note);
+    const targetRange = sheet.getRange(articleRow, dateCol, 1, 2);
+    const formulas = targetRange.getFormulas()[0];
+    const values = targetRange.getValues()[0];
+    const amountFormula = String(formulas[0] || '');
+    const noteFormula = String(formulas[1] || '');
+
+    if (amountFormula && !directException) {
+      throw new Error('This is an automatic parent/formula row. Write to its subrow instead.');
+    }
+    if (noteFormula) {
+      throw new Error('The note cell is calculated automatically and cannot be overwritten.');
+    }
+
+    const currentAmount = values[0];
+    const currentNote = values[1];
+    const amountOccupied = currentAmount !== '' && currentAmount !== null && Number(currentAmount) !== 0;
+    const noteOccupied = String(currentNote || '').trim() !== '';
+
+    if (amountOccupied || noteOccupied) {
+      throw new Error('This article/date cell already contains data. Nothing was overwritten.');
+    }
+
+    targetRange.setValues([[amount, note]]);
     SpreadsheetApp.flush();
 
-    const writtenAmount = Number(amountCell.getValue());
+    const writtenAmount = Number(sheet.getRange(articleRow, dateCol).getValue());
     if (Math.abs(writtenAmount - amount) > 0.0001) {
       throw new Error('Write verification failed.');
     }
@@ -192,42 +203,24 @@ function sheetForDate_(dateString) {
   const year = parts[0];
   const month = parts[1];
   const sheetName = MONTHS_RU[month - 1] + ' ' + year;
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(sheetName);
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(sheetName);
   if (!sheet) throw new Error('No finance sheet exists for ' + sheetName + '.');
   return sheet;
 }
 
-function blockForAccount_(sheet, account) {
-  const row2 = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
-  const articleCols = [];
-  for (let i = 0; i < row2.length; i++) {
-    if (normalize_(row2[i]) === normalize_('Наименование статьи')) articleCols.push(i + 1);
-  }
-
-  if (articleCols.length < 3) throw new Error('Finance block headers were not found.');
-  const blockIndex = ACCOUNT_INDEX[account];
-  const articleCol = articleCols[blockIndex];
-  const nextArticleCol = articleCols[blockIndex + 1] || (sheet.getLastColumn() + 1);
-
-  return { articleCol, nextArticleCol };
+function blockForAccount_(account) {
+  const block = ACCOUNT_BLOCK[account];
+  if (!block) throw new Error('Finance account block was not found.');
+  return block;
 }
 
-function dateColumn_(sheet, block, dateString) {
-  const width = Math.max(1, block.nextArticleCol - block.articleCol - 1);
-  const values = sheet.getRange(2, block.articleCol + 1, 1, width).getValues()[0];
-  const timezone = SpreadsheetApp.openById(SPREADSHEET_ID).getSpreadsheetTimeZone() || 'Asia/Dubai';
-
-  for (let i = 0; i < values.length; i++) {
-    const value = values[i];
-    if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value)) {
-      if (Utilities.formatDate(value, timezone, 'yyyy-MM-dd') === dateString) {
-        return block.articleCol + 1 + i;
-      }
-    }
+function dateColumn_(block, dateString) {
+  const day = Number(dateString.slice(8, 10));
+  const dateCol = block.articleCol + (day * 2 - 1);
+  if (dateCol <= block.articleCol || dateCol >= block.nextArticleCol) {
+    throw new Error('Date ' + dateString + ' is outside this finance block.');
   }
-
-  throw new Error('Date ' + dateString + ' was not found in ' + accountLabelByBlock_(block.articleCol) + '.');
+  return dateCol;
 }
 
 function resolveArticleRow_(sheet, articleCol, article, requestedRow) {
@@ -260,11 +253,13 @@ function resolveArticleRow_(sheet, articleCol, article, requestedRow) {
   return rows[0] || null;
 }
 
-function parentContextFromArrays_(labels, formulas, index) {
+function parentContextFromWindow_(labels, formulas, formulaStartIndex, index) {
   for (let i = index - 1; i >= 0 && i >= index - 120; i--) {
     const label = String((labels[i] && labels[i][0]) || '').trim();
     if (!label) continue;
-    const formula = String((formulas[i] && formulas[i][0]) || '');
+    const formulaIndex = i - formulaStartIndex;
+    if (formulaIndex < 0 || formulaIndex >= formulas.length) continue;
+    const formula = String((formulas[formulaIndex] && formulas[formulaIndex][0]) || '');
     if (formula) return label;
   }
   return null;
@@ -280,7 +275,7 @@ function isDirectWriteException_(article) {
 
 function validateAccount_(value) {
   const account = String(value || '').trim().toLowerCase();
-  if (!Object.prototype.hasOwnProperty.call(ACCOUNT_INDEX, account)) {
+  if (!Object.prototype.hasOwnProperty.call(ACCOUNT_BLOCK, account)) {
     throw new Error('account must be cash_aed, ajman_aed, or sber_rub.');
   }
   return account;
@@ -325,13 +320,6 @@ function a1_(row, col) {
     n = Math.floor((n - 1) / 26);
   }
   return letters + row;
-}
-
-function accountLabelByBlock_(articleCol) {
-  if (articleCol === 2) return ACCOUNT_LABEL.cash_aed;
-  if (articleCol === 68) return ACCOUNT_LABEL.ajman_aed;
-  if (articleCol === 134) return ACCOUNT_LABEL.sber_rub;
-  return 'finance block';
 }
 
 function json_(body) {
