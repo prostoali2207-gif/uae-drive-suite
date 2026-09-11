@@ -106,7 +106,11 @@ Deno.serve(async (req: Request) => {
           top_keys: Object.keys(body || {}),
           request_keys: Object.keys(request || {}),
           contact_keys: Object.keys(request?.contact || {}),
-          message_keys: Object.keys(request?.message || {})
+          message_keys: Object.keys(request?.message || {}),
+          request_payload: request?.payload || null,
+          request_params: request?.params || null,
+          request_context: request?.context || null,
+          body_type: body?.type || null
         },
         status: "applied",
         result: null,
