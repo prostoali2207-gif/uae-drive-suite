@@ -13,6 +13,9 @@ function json(body: unknown, status = 200) {
 function reply(text: string) {
   return json({ changes: [{ action: "send_message", message: { text } }] });
 }
+function noReply() {
+  return json({ changes: [] });
+}
 async function sha256Hex(value: string) {
   const bytes = new TextEncoder().encode(value);
   const hash = await crypto.subtle.digest("SHA-256", bytes);
@@ -78,16 +81,14 @@ Deno.serve(async (req: Request) => {
     const request = body?.request || {};
     const phone = String(request?.contact?.phone_number || "");
     const text = String(request?.message?.text || "").trim();
-    if (!phone || !text) return reply("Не удалось прочитать сообщение.");
+    if (!phone || !text) return noReply();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
     const staff = await getActiveStaff(supabase, phone);
 
-    if (!/^fd\b/i.test(text)) {
-      return reply("Для FleetDesk-команд начните сообщение с «fd». Например: «fd авто».");
-    }
+    if (!/^fd\b/i.test(text)) return noReply();
     if (!staff?.owner_id) return reply("Этот номер не зарегистрирован как активный сотрудник FleetDesk.");
 
     const cmd = text.replace(/^fd\s*/i, "").trim();
