@@ -133,6 +133,34 @@ async function createAudit(
   return data.id as string;
 }
 
+
+async function createFinanceLookupAudit(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  staff: Record<string, any>,
+  actorPhone: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } = await supabase
+    .from('whatsapp_operation_requests')
+    .insert({
+      owner_id: ownerId,
+      idempotency_key: `peach-read:find_finance_articles:${crypto.randomUUID()}`,
+      actor_phone: actorPhone,
+      actor_type: 'staff',
+      actor_staff_id: staff.id,
+      actor_client_id: null,
+      action: 'find_finance_articles',
+      contract_id: null,
+      payload,
+      status: 'received',
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
 async function finishAudit(
   supabase: ReturnType<typeof createClient>,
   auditId: string,
@@ -296,12 +324,34 @@ async function handleFinanceTool(
   if (!staff?.owner_id) return json({ error: 'Only active FleetDesk staff can use finance tools.' }, 403);
 
   if (name === 'find_finance_articles') {
-    const result = await callFinanceBridge(peachToken, 'find_articles', {
+    const payload = {
       account: String(args.account).trim().toLowerCase(),
       date: String(args.date).trim(),
       query: String(args.query).trim(),
-    });
-    return json(result);
+    };
+    const startedAt = Date.now();
+    const auditId = await createFinanceLookupAudit(
+      supabase,
+      staff.owner_id,
+      staff,
+      actorPhone,
+      payload,
+    );
+
+    try {
+      const result = await callFinanceBridge(peachToken, 'find_articles', payload);
+      const tracedResult = { ...result, gateway_ms: Date.now() - startedAt };
+      await finishAudit(supabase, auditId, 'applied', tracedResult);
+      return json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unexpected error';
+      await finishAudit(supabase, auditId, 'failed', {
+        ok: false,
+        error: message,
+        gateway_ms: Date.now() - startedAt,
+      });
+      return json({ error: message }, 400);
+    }
   }
 
   const payload = {
