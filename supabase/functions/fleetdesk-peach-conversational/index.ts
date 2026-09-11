@@ -81,7 +81,9 @@ Deno.serve(async (req: Request) => {
     const request = body?.request || {};
     const eventPayload = request?.payload || {};
     const phone = String(
+      eventPayload?.subscriber?.phone_number ||
       eventPayload?.contact?.phone_number ||
+      request?.subscriber?.phone_number ||
       request?.contact?.phone_number ||
       ""
     );
