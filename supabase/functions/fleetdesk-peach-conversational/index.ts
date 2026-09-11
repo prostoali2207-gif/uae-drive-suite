@@ -70,7 +70,7 @@ function formatFinance(data: any) {
 }
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-  const token = req.headers.get("x-peach-token") || "";
+  const token = req.headers.get("x-peach-token") || new URL(req.url).searchParams.get("token") || "";
   if (!token || await sha256Hex(token) !== PEACH_TOKEN_SHA256) return json({ error: "Unauthorized" }, 401);
 
   try {
