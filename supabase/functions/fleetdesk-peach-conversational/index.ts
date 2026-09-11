@@ -81,6 +81,39 @@ Deno.serve(async (req: Request) => {
     const request = body?.request || {};
     const phone = String(request?.contact?.phone_number || "");
     const text = String(request?.message?.text || "").trim();
+
+    const probeUrl = new URL(req.url);
+    const probeHeaders = Array.from(req.headers.keys()).sort();
+    const probeSupabaseUrl = Deno.env.get("SUPABASE_URL");
+    const probeServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (probeSupabaseUrl && probeServiceRole) {
+      const probeClient = createClient(probeSupabaseUrl, probeServiceRole, { auth: { persistSession: false } });
+      await probeClient.from("whatsapp_operation_requests").insert({
+        owner_id: "9efc96c2-5854-40e7-84da-f1d389c04ea7",
+        idempotency_key: "peach-backend-probe:" + crypto.randomUUID(),
+        actor_phone: "peach-backend-probe",
+        actor_type: "system",
+        actor_staff_id: null,
+        actor_client_id: null,
+        action: "peach_backend_probe",
+        contract_id: null,
+        payload: {
+          header_names: probeHeaders,
+          has_x_peach_token: Boolean(req.headers.get("x-peach-token")),
+          has_authorization: Boolean(req.headers.get("authorization")),
+          has_query_token: Boolean(probeUrl.searchParams.get("token")),
+          user_agent: req.headers.get("user-agent") || null,
+          top_keys: Object.keys(body || {}),
+          request_keys: Object.keys(request || {}),
+          contact_keys: Object.keys(request?.contact || {}),
+          message_keys: Object.keys(request?.message || {})
+        },
+        status: "applied",
+        result: null,
+        processed_at: new Date().toISOString()
+      });
+    }
+
     if (!phone || !text) return noReply();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
