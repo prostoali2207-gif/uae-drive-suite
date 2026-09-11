@@ -11,15 +11,10 @@ function json(body: unknown, status = 200) {
   });
 }
 function reply(text: string) {
-  return json({
-    changes: [
-      { action: "send_message", message: { text } },
-      { action: "close_stream" },
-    ],
-  });
+  return json({ changes: [{ action: "send_message", message: { text } }] });
 }
 function noReply() {
-  return json({ changes: [{ action: "close_stream" }] });
+  return json({ changes: [] });
 }
 async function sha256Hex(value: string) {
   const bytes = new TextEncoder().encode(value);
