@@ -740,7 +740,27 @@ const Contracts = () => {
       const [contractsRes, clientsRes, carsRes, profileRes] = await Promise.all([
         supabase
           .from("contracts")
-          .select("*, deposit_amount, deposit_returned, clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number), cars(plate, make, model, year, color)")
+          .select(`
+            id,
+            client_id,
+            car_id,
+            start_date,
+            start_time,
+            end_date,
+            end_time,
+            rate_type,
+            rate_amount,
+            total_amount,
+            deposit_amount,
+            deposit_returned,
+            deposit_status,
+            initial_mileage,
+            fuel_level,
+            status,
+            payment_status,
+            clients(full_name, phone, nationality, client_type, emirates_id, passport_number, license_number),
+            cars(plate, make, model, year, color)
+          `)
           .eq("owner_id", userId)
           .order("created_at", { ascending: false }),
         supabase
@@ -2075,7 +2095,17 @@ const Contracts = () => {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
-                                await generateContractPdf(c);
+                                const { data: signatureData, error: signatureError } = await supabase
+                                  .from("contracts")
+                                  .select("client_signature, manager_signature")
+                                  .eq("id", c.id)
+                                  .single();
+                                if (signatureError) throw signatureError;
+                                await generateContractPdf({
+                                  ...c,
+                                  client_signature: signatureData?.client_signature ?? null,
+                                  manager_signature: signatureData?.manager_signature ?? null,
+                                });
                                 toast.success("Contract PDF downloaded");
                               } catch (err) {
                                 toast.error("Failed to generate PDF");
