@@ -87,8 +87,8 @@ export function AppSidebar() {
                           "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
                           item.title === "New Contract"
                             ? isActive
-                              ? "bg-blue-600 text-white"
-                              : "bg-blue-600/15 text-blue-300 hover:bg-blue-600 hover:text-white"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-primary/15 text-primary hover:bg-primary hover:text-primary-foreground"
                             : isActive
                               ? "bg-sidebar-accent text-sidebar-accent-foreground"
                               : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
@@ -98,7 +98,7 @@ export function AppSidebar() {
                       <item.icon className="h-4 w-4 shrink-0" />
                       <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                       {item.title === "Clients" && newClientsCount > 0 && (
-                        <span className="ml-auto bg-blue-600 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                        <span className="ml-auto bg-primary text-primary-foreground text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
                           {newClientsCount}
                         </span>
                       )}
