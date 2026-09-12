@@ -580,19 +580,19 @@ const Fines = () => {
   return (
     <DashboardLayout title="Fines & Salik" subtitle="Traffic fines and toll charges">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col gap-5">
-        <TabsList className="w-fit">
+        <TabsList className="grid w-full grid-cols-3 md:w-fit">
           <TabsTrigger value="fines">Traffic Fines</TabsTrigger>
           <TabsTrigger value="salik">Salik Charges</TabsTrigger>
           <TabsTrigger value="parking">Parking</TabsTrigger>
         </TabsList>
         {activeTab !== "parking" && (
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={activeTab === "fines" ? finesSearch : salikSearch}
               onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : setSalikSearch(e.target.value)}
               placeholder={activeTab === "fines" ? "Search fine number, client, or plate..." : "Search transaction ID, client, or plate..."}
-              className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"
+              className="w-full rounded-lg border border-border bg-background pl-9 text-foreground placeholder:text-muted-foreground"
             />
           </div>
         )}
@@ -634,16 +634,16 @@ const Fines = () => {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:justify-end">
             <input ref={finesFileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Fines")} />
-            <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => finesFileRef.current?.click()}>
+            <Button size="sm" variant="outline" className="w-full gap-1.5 md:w-auto" disabled={importing} onClick={() => finesFileRef.current?.click()}>
               <Upload className="h-4 w-4" />
               {importing ? "Importing..." : "Import Fines (Excel)"}
             </Button>
             {chargeableFines.length > 0 && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="outline" disabled={chargingAllFines}>
+                  <Button size="sm" variant="outline" className="w-full md:w-auto" disabled={chargingAllFines}>
                     Charge All Unpaid
                   </Button>
                 </AlertDialogTrigger>
@@ -665,7 +665,7 @@ const Fines = () => {
             )}
             <Dialog open={fineOpen} onOpenChange={setFineOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="col-span-2 w-full gap-1.5 md:w-auto">
                   <Plus className="h-4 w-4" />
                   Add Fine
                 </Button>
@@ -790,7 +790,93 @@ const Fines = () => {
             </Dialog>
           </div>
 
-          <div className="rounded-xl border border-border bg-card">
+          <div className="grid gap-3 md:hidden">
+            {loading ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading fines...</div>
+            ) : fines.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">No fines recorded.</div>
+            ) : filteredFines.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">{finesEmptyMessage}</div>
+            ) : (
+              paginatedFines.map((f) => {
+                const paidAt = (f as FineRow & { paid_at?: string | null }).paid_at;
+                const companyExpense = isCompanyExpense(f);
+                const displayedStatus: ChargeStatus = paidAt
+                  ? "Paid"
+                  : f.status === "Charged to Client"
+                    ? "Charged to Client"
+                    : "Unpaid";
+
+                return (
+                  <article key={f.id} className="rounded-xl border border-border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-mono text-[11px] text-muted-foreground">{formatDate(f.fine_date)}</div>
+                        <div className="mt-1 flex min-w-0 items-center gap-2">
+                          <span className="truncate font-mono text-sm font-semibold text-foreground">{f.fine_number || "No fine number"}</span>
+                          {f.black_points > 0 && (
+                            <span className="shrink-0 rounded-full bg-tint-rose px-2 py-0.5 font-mono text-[10px] font-semibold text-tint-rose-foreground">
+                              {f.black_points} BP
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono text-base font-semibold tabular-nums text-foreground">AED {Number(f.amount).toLocaleString()}</div>
+                        <span className={cn("mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium", statusClasses[paidAt ? "Paid" : "Unpaid"])}>
+                          {paidAt ? "Paid" : "Unpaid"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3">
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Car</div>
+                        <div className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">{f.cars?.plate ?? "—"}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Client</div>
+                        <div className="mt-0.5 truncate text-xs font-medium text-foreground">
+                          {f.clients?.full_name ?? (companyExpense ? "Company Expense" : "Not linked")}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Type</div>
+                        <div className="mt-0.5 truncate text-xs text-foreground">{f.fine_type}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Source</div>
+                        <div className="mt-0.5 truncate text-xs text-foreground">{f.source}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                      {displayedStatus !== "Unpaid" && (
+                        <span className={cn("inline-flex w-fit rounded-full px-2 py-1 text-xs font-medium", statusClasses[displayedStatus])}>
+                          {displayedStatus}
+                        </span>
+                      )}
+                      {f.status === "Unpaid" && displayedStatus === "Unpaid" && f.contract_id !== null && (
+                        <Button size="sm" variant="outline" className="min-h-11 w-full" onClick={() => chargeFineToClient(f.id)}>
+                          Charge to Client
+                        </Button>
+                      )}
+                      {f.status === "Unpaid" && displayedStatus === "Unpaid" && f.contract_id === null && !companyExpense && (
+                        <div className="grid gap-2">
+                          <div className="text-xs text-tint-amber-foreground">Not linked to a contract — cannot charge client.</div>
+                          <Button size="sm" variant="outline" className="min-h-11 w-full" onClick={() => markFineAsCompanyExpense(f.id)}>
+                            Mark as Company Expense
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+
+          <div className="hidden rounded-xl border border-border bg-card md:block">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
