@@ -137,7 +137,7 @@ export function ParkingDetailModal({ contractId, transactions, open, onClose }: 
 
           <footer className="sticky bottom-0 flex min-h-14 items-center justify-between gap-4 border-t border-border bg-card px-4 py-3 sm:px-6">
             <span className="text-sm font-medium text-muted-foreground">Total charged to client</span>
-            <span className="font-ibm-plex-mono text-base font-semibold tabular-nums text-[#a78bfa]">{fmtAed(total)}</span>
+            <span className="font-ibm-plex-mono text-base font-semibold tabular-nums text-primary">{fmtAed(total)}</span>
           </footer>
         </div>
       </div>
