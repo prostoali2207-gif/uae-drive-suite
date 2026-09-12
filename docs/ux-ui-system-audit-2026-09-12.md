@@ -193,3 +193,49 @@ Next systemization targets after this batch:
 2. fines/Salik/parking detail bottom sheets;
 3. vehicle history/timeline sheets;
 4. New Contract only as a separate UX/interface task.
+
+
+## Second systemization batch — mobile + desktop
+
+Applied after Ali explicitly required parity across mobile and desktop.
+
+Affected:
+- `src/pages/Clients.tsx`
+- `src/components/FinesDetailModal.tsx`
+- `src/components/SalikDetailModal.tsx`
+- `src/components/ParkingDetailModal.tsx`
+- `src/components/VehicleHistorySheet.tsx`
+- `src/components/VehicleTimelineSheet.tsx`
+- `src/components/VehicleTimelineEditPanel.tsx`
+
+### Mobile requirements
+
+- ~390px remains a first-class viewport.
+- Clients keeps dedicated mobile cards and filters, but uses the same semantic surfaces/status colors as desktop.
+- Fines summary changes from 4 cramped columns to 2×2 on mobile and returns to 4 columns on `sm+`.
+- Fines detail rows collapse to a mobile two-column priority layout; date moves under the violation identifier and status remains visible below the amount.
+- Salik summary changes to 2×2 on mobile and 4 columns on `sm+`.
+- Vehicle History/Timeline remain full-width sheets on mobile.
+- Touch controls remain at least the existing ~44px treatment.
+- No page-level horizontal scroll was introduced by this batch.
+
+### Desktop requirements
+
+- Existing desktop tables/list structure remains unchanged unless a semantic-token replacement is required.
+- Fines desktop retains its four-column data layout.
+- Vehicle History/Timeline retain their existing `sm:max-w` side-sheet widths.
+- Clients desktop table remains the primary desktop representation.
+- Semantic status/surface roles are shared with mobile.
+
+### Behavior boundary
+
+No intended changes to:
+- Supabase queries/mutations;
+- rental calculations;
+- payments/deposits;
+- vehicle availability;
+- replacement logic;
+- client validation;
+- routing/authentication.
+
+This batch changes visual tokens and responsive presentation only.
