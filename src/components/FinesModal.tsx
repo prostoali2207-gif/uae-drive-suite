@@ -259,7 +259,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
     const isSaving = payingFineId === fine.id;
 
     return (
-      <div className="mt-3 -mx-3 border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
+      <div className="mt-3 -mx-3 border-t border-border bg-muted/20 px-4 py-3">
         <div className="flex flex-col md:flex-row md:items-end md:gap-3 md:flex-wrap">
           <div className="flex w-full gap-3 md:w-auto">
             <div className="grid w-full gap-1.5 md:w-48">
@@ -270,7 +270,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                 step="0.01"
                 value={Math.round(Number(paymentDraft.amount))}
                 onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
-                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-foreground"
+                className="h-9 rounded-lg border border-input bg-input font-mono text-sm tabular-nums text-foreground"
               />
             </div>
             <div className="grid w-full gap-1.5 md:w-24">
@@ -281,7 +281,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                 step="0.01"
                 value={paymentDraft.taxRate}
                 onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
-                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-foreground"
+                className="h-9 rounded-lg border border-input bg-input font-mono text-sm tabular-nums text-foreground"
               />
             </div>
           </div>
@@ -292,14 +292,14 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
             </div>
             <div className="flex items-center justify-between gap-3 text-sm font-semibold text-foreground">
               <span>Total</span>
-              <span className="font-mono tabular-nums text-[#22c55e]">{formatAed(total)}</span>
+              <span className="font-mono tabular-nums text-tint-green-foreground">{formatAed(total)}</span>
             </div>
           </div>
           <Select
             value={paymentDraft.method}
             onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
           >
-            <SelectTrigger className="h-9 w-full rounded-lg border border-[#2a3a55] bg-[#1a2338] py-2 text-sm text-foreground md:w-40">
+            <SelectTrigger className="h-9 w-full rounded-lg border border-input bg-input py-2 text-sm text-foreground md:w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -386,7 +386,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                           {blackPoints > 0 ? (
                             <Badge
                               variant="outline"
-                              className="shrink-0 rounded-full border-[#f59e0b]/25 bg-[#f59e0b]/15 px-2 py-0.5 text-[10px] font-semibold text-[#f59e0b]"
+                              className="shrink-0 rounded-full border-tint-amber-foreground/20 bg-tint-amber px-2 py-0.5 text-[10px] font-semibold text-tint-amber-foreground"
                             >
                               ● {blackPoints} BP
                             </Badge>
@@ -426,7 +426,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                           size="sm"
                           onClick={() => toggleFinePayment(fine)}
                           disabled={payingFineId !== null}
-                          className="h-8 border border-[#22c55e]/25 bg-[#22c55e]/15 px-3 text-xs font-medium text-[#22c55e] hover:bg-[#22c55e]/25"
+                          className="h-8 border border-[#22c55e]/25 bg-[#22c55e]/15 px-3 text-xs font-medium text-tint-green-foreground hover:bg-[#22c55e]/25"
                         >
                           Pay
                         </Button>
@@ -440,16 +440,16 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
           )}
         </div>
 
-        <div className="border-t border-border bg-[#12182d] px-5 py-4">
+        <div className="border-t border-border bg-muted/20 px-5 py-4">
           <div className="flex items-center justify-between text-sm">
             <span className="text-foreground/65">Paid</span>
-            <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#22c55e]">
+            <span className="font-ibm-plex-mono font-semibold tabular-nums text-tint-green-foreground">
               {formatAed(summary.paid)}
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between text-sm">
             <span className="text-foreground/65">Outstanding</span>
-            <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#ef4444]">
+            <span className="font-ibm-plex-mono font-semibold tabular-nums text-tint-rose-foreground">
               {formatAed(summary.outstanding)}
             </span>
           </div>
