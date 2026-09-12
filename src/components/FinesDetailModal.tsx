@@ -131,7 +131,7 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
         </header>
 
         <div className="max-h-[calc(88vh-76px)] overflow-y-auto">
-          <section className="grid grid-cols-4 border-b border-border bg-white/[0.02]">
+          <section className="grid grid-cols-2 border-b border-border bg-muted/10 sm:grid-cols-4">
             <SummaryItem label="Violations" value={summary.violations.toLocaleString("en-US")} />
             <SummaryItem label="Fines" value={formatAed(summary.fines)} valueClassName="text-tint-rose-foreground" />
             <SummaryItem label="Service fees" value={formatAed(summary.serviceFees)} />
@@ -145,15 +145,15 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search fine number or type"
-                className="h-11 border-input bg-input pl-9 font-dm-sans text-white placeholder:text-muted-foreground focus-visible:ring-white/20"
+                className="h-11 border-input bg-input pl-9 font-dm-sans text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
               />
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1.6fr)_82px_86px_76px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-muted-foreground sm:grid-cols-[minmax(0,1.6fr)_82px_86px_76px]">
               <span>Violation</span>
-              <span>Date</span>
+              <span className="hidden sm:block">Date</span>
               <span className="text-right">Amount</span>
-              <span className="text-right">Status</span>
+              <span className="hidden text-right sm:block">Status</span>
             </div>
 
             {loading ? (
@@ -174,7 +174,7 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
                   return (
                     <div
                       key={fine.id}
-                      className="grid min-h-11 grid-cols-[minmax(0,1.6fr)_82px_86px_76px] items-center gap-2 rounded-md border border-border bg-muted/10 px-3 py-3"
+                      className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-muted/10 px-3 py-3 sm:grid-cols-[minmax(0,1.6fr)_82px_86px_76px]"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-foreground">
@@ -183,14 +183,17 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
                         <p className="mt-1 truncate font-ibm-plex-mono text-[11px] text-muted-foreground">
                           {fine.fine_number || "No fine number"}
                         </p>
+                        <p className="mt-1 font-ibm-plex-mono text-[10px] text-muted-foreground sm:hidden">
+                          {formatDate(fine.fine_date)}
+                        </p>
                       </div>
-                      <p className="font-ibm-plex-mono text-[11px] text-muted-foreground">
+                      <p className="hidden font-ibm-plex-mono text-[11px] text-muted-foreground sm:block">
                         {formatDate(fine.fine_date)}
                       </p>
                       <p className="font-ibm-plex-mono text-xs font-semibold tabular-nums text-foreground text-right">
                         {formatAed(toNumber(fine.amount))}
                       </p>
-                      <div className="flex justify-end">
+                      <div className="col-start-2 row-start-2 flex justify-end sm:col-start-auto sm:row-start-auto">
                         <Badge
                           className={
                             isUnpaid
@@ -229,7 +232,7 @@ interface SummaryItemProps {
 
 function SummaryItem({ label, value, valueClassName = "text-foreground" }: SummaryItemProps) {
   return (
-    <div className="min-w-0 border-r border-border px-2 py-3 last:border-r-0 sm:px-4">
+    <div className="min-w-0 border-r border-border px-2 py-3 even:border-r-0 sm:border-r sm:px-4 sm:even:border-r sm:last:border-r-0">
       <p className="truncate text-[10px] font-medium uppercase tracking-normal text-muted-foreground">{label}</p>
       <p className={`mt-1 truncate font-ibm-plex-mono text-xs font-semibold tabular-nums sm:text-sm ${valueClassName}`}>
         {value}
