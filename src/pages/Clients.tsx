@@ -1160,7 +1160,7 @@ const Clients = () => {
                     </div>
 
                     {importPreview.skippedMissingRequired > 0 && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                      <div className="rounded-lg border border-tint-amber-foreground/20 bg-tint-amber px-3 py-2 text-sm text-tint-amber-foreground">
                         {importPreview.skippedMissingRequired} rows are missing full name or phone and will be skipped.
                       </div>
                     )}
@@ -1804,11 +1804,11 @@ const Clients = () => {
 
         <div className="-mx-2 grid grid-cols-3 gap-2 md:hidden">
           <div className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-border bg-card px-2 py-2 text-center">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="h-2 w-2 rounded-full bg-tint-green-foreground" />
             <span className="text-sm font-semibold text-foreground">{activeClientsCount} Active</span>
           </div>
           <div className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-border bg-card px-2 py-2 text-center">
-            <span className="font-mono text-sm font-semibold text-red-400">AED {outstandingTotal.toLocaleString()}</span>
+            <span className="font-mono text-sm font-semibold text-tint-rose-foreground">AED {outstandingTotal.toLocaleString()}</span>
             <span className="text-[11px] font-medium text-muted-foreground">Due</span>
           </div>
           <div className="flex min-h-14 items-center justify-center rounded-xl border border-border bg-card px-2 py-2 text-center">
@@ -1875,13 +1875,13 @@ const Clients = () => {
                   </div>
                   <div className="flex min-w-0 flex-col items-end pr-5 text-right">
                     <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                      <span className={cn("h-2 w-2 rounded-full", c.hasActive ? "bg-emerald-500" : "bg-slate-500")} />
+                      <span className={cn("h-2 w-2 rounded-full", c.hasActive ? "bg-tint-green-foreground" : "bg-muted-foreground")} />
                       <span>{c.hasActive ? "Active" : "No active"}</span>
                     </div>
                     <div
                       className={cn(
                         "mt-2 font-mono text-xs font-semibold",
-                        c.outstanding > 0 ? "text-red-400" : "text-emerald-400",
+                        c.outstanding > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground",
                       )}
                     >
                       AED {c.outstanding.toLocaleString()}
@@ -1966,7 +1966,7 @@ const Clients = () => {
                         {c.full_name}
                       </Link>
                       {c.is_new === true && (
-                        <span className="ml-2 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full px-2 py-0.5">New</span>
+                        <span className="ml-2 bg-primary/10 text-primary text-xs font-semibold rounded-full px-2 py-0.5">New</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.phone}</TableCell>
