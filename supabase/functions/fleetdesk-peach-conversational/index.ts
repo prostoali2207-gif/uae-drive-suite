@@ -123,25 +123,51 @@ Deno.serve(async (req: Request) => {
     // In that call Peach owns the recipient, so returning send_message is enough.
     if (directReply) return reply(directReply);
 
+    const developerData = body?.data || {};
+    const developerMessage = developerData?.message || body?.message || {};
+    const eventType = String(body?.type || body?.event_type || body?.topic || "").trim();
+
     phone = String(
       eventPayload?.subscriber?.phone_number ||
       eventPayload?.contact?.phone_number ||
       request?.subscriber?.phone_number ||
       request?.contact?.phone_number ||
+      developerData?.subscriber?.phone_number ||
+      developerData?.contact?.phone_number ||
+      developerMessage?.author?.phone_number ||
+      body?.subscriber?.phone_number ||
+      body?.contact?.phone_number ||
       ""
     );
     const text = String(
       eventPayload?.message?.text ||
       request?.message?.text ||
+      developerMessage?.text ||
+      developerMessage?.reply?.text ||
+      developerData?.text ||
+      body?.text ||
       ""
     ).trim();
 
-    // Classic Workflow sends request.contact + request.message directly.
-    // Regular backend-driven inbound requests use request.payload and are ignored
-    // so they cannot produce a delayed duplicate response.
-    fastWebhook = Boolean(request?.contact?.phone_number && request?.message?.text && !request?.payload);
+    const classicWebhook = Boolean(
+      request?.contact?.phone_number &&
+      request?.message?.text &&
+      !request?.payload
+    );
+    const developerWebhook = eventType === "conversation.message_received";
+    const inboundDirection = String(
+      developerMessage?.direction ||
+      developerData?.direction ||
+      "inbound"
+    ).toLowerCase();
+
+    // Fast path can come from the legacy Classic Workflow or directly from
+    // Peach Developer Webhooks. Backend-driven conversational app calls remain
+    // ignored so they cannot create delayed duplicate replies.
+    fastWebhook = classicWebhook || developerWebhook;
 
     if (!fastWebhook) return noReply();
+    if (developerWebhook && inboundDirection !== "inbound") return noReply();
     if (!phone || !text) return noReply();
     if (!/^fd\b/i.test(text)) return noReply();
 
