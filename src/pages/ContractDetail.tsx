@@ -1727,7 +1727,7 @@ const ContractFinesSheet = ({
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 border-[#2a3a55] bg-transparent text-xs text-foreground"
+              className="h-9 border-border bg-transparent text-xs text-foreground"
               disabled={isSaving}
               onClick={() => setOpenPaymentFineId(null)}
             >
@@ -1736,7 +1736,7 @@ const ContractFinesSheet = ({
             <Button
               type="button"
               size="sm"
-              className="h-9 bg-primary text-xs font-semibold text-white hover:bg-primary/90"
+              className="h-9 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               disabled={isSaving}
               onClick={() => void recordFinePayment(fine)}
             >
@@ -3003,7 +3003,7 @@ const FinancialsPanel = ({
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 w-24 rounded-lg border border-[#2a3a55] bg-transparent text-sm font-semibold text-foreground hover:bg-white/5 hover:text-foreground"
+              className="h-9 w-24 rounded-lg border border-border bg-transparent text-sm font-semibold text-foreground hover:bg-white/5 hover:text-foreground"
               disabled={savingInlinePayment}
               onClick={() => setOpenInlinePaymentId(null)}
             >
@@ -7003,7 +7003,7 @@ const ContractDetail = () => {
                       <span
                         className={cn(
                           "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                          depositCloseAction === "return_full" ? "border-[#3b6fff]" : "border-[#1e2535]",
+                          depositCloseAction === "return_full" ? "border-primary" : "border-border",
                         )}
                       >
                         {depositCloseAction === "return_full" && (
