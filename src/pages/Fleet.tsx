@@ -454,7 +454,7 @@ const Fleet = () => {
                     </div>
 
                     {importPreview.missingRequiredData > 0 && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                      <div className="rounded-lg border border-tint-amber-foreground/20 bg-tint-amber px-3 py-2 text-sm text-tint-amber-foreground">
                         {importPreview.missingRequiredData} rows are missing plate, make, model, or year and will be skipped.
                       </div>
                     )}
@@ -484,7 +484,7 @@ const Fleet = () => {
                                     "text-[11px]",
                                     row.ready
                                       ? "bg-tint-green text-tint-green-foreground"
-                                      : "border-amber-500/40 text-amber-700",
+                                      : "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
                                   )}
                                 >
                                   {row.ready ? "Ready" : row.skipReason}
