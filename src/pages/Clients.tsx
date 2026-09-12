@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
+import { readPageCache, writePageCache } from "@/lib/pageDataCache";
 import { NationalityCombobox } from "@/components/NationalityCombobox";
 import { ClientType } from "@/components/ClientTypeFields";
 import { toast } from "sonner";
@@ -110,6 +112,12 @@ interface ClientRegistrationRequest {
   rejection_reason: string | null;
   created_client_id: string | null;
   created_at: string;
+}
+
+interface ClientsPageCache {
+  clients: ClientRecord[];
+  contracts: ContractRow[];
+  registrationRequests: ClientRegistrationRequest[];
 }
 
 type ClientFilter = "All" | "Emirates ID" | "Passport" | "Active" | "Outstanding";
@@ -564,12 +572,14 @@ const countryFlags: Record<string, string> = {
 const getCountryFlag = (nationality: string) => countryFlags[nationality] || "🌐";
 
 const Clients = () => {
+  const { user } = useAuth();
+  const initialPageCache = user ? readPageCache<ClientsPageCache>("clients", user.id) : null;
   const location = useLocation();
   const navigate = useNavigate();
-  const [clients, setClients] = useState<ClientRecord[]>([]);
-  const [contracts, setContracts] = useState<ContractRow[]>([]);
-  const [registrationRequests, setRegistrationRequests] = useState<ClientRegistrationRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [clients, setClients] = useState<ClientRecord[]>(() => initialPageCache?.clients ?? []);
+  const [contracts, setContracts] = useState<ContractRow[]>(() => initialPageCache?.contracts ?? []);
+  const [registrationRequests, setRegistrationRequests] = useState<ClientRegistrationRequest[]>(() => initialPageCache?.registrationRequests ?? []);
+  const [loading, setLoading] = useState(() => !initialPageCache);
   const [query, setQuery] = useState("");
   const [docFilter, setDocFilter] = useState<ClientFilter>("All");
   const [open, setOpen] = useState(false);
@@ -632,7 +642,8 @@ const Clients = () => {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     const [clientsRes, contractsRes, balancesRes, requestsRes] = await Promise.all([
       supabase.from("clients").select("*").order("created_at", { ascending: false }),
       supabase.from("contracts").select("id, client_id, total_amount, payment_status, status"),
@@ -642,8 +653,12 @@ const Clients = () => {
         .select("*")
         .order("created_at", { ascending: false }),
     ]);
+
+    const nextClients = clientsRes.error ? null : ((clientsRes.data as ClientRecord[]) || []);
     if (clientsRes.error) toast.error(`Failed to load clients: ${toSupabaseMessage(clientsRes.error)}`);
-    else setClients((clientsRes.data as any) || []);
+    else setClients(nextClients ?? []);
+
+    let nextContracts: ContractRow[] | null = null;
     if (contractsRes.error) {
       toast.error(`Failed to load contracts: ${toSupabaseMessage(contractsRes.error)}`);
     } else if (balancesRes.error) {
@@ -655,20 +670,31 @@ const Clients = () => {
           Number(row.balance_due || 0),
         ]),
       );
-      setContracts(
-        (contractsRes.data || []).map((contract) => ({
-          ...contract,
-          balance_due: balanceByContract[contract.id] ?? 0,
-        })),
-      );
+      nextContracts = (contractsRes.data || []).map((contract) => ({
+        ...contract,
+        balance_due: balanceByContract[contract.id] ?? 0,
+      }));
+      setContracts(nextContracts);
     }
+
+    const nextRequests = requestsRes.error
+      ? null
+      : ((requestsRes.data as unknown as ClientRegistrationRequest[]) || []);
     if (requestsRes.error) toast.error(`Failed to load registration requests: ${toSupabaseMessage(requestsRes.error)}`);
-    else setRegistrationRequests((requestsRes.data as unknown as ClientRegistrationRequest[]) || []);
+    else setRegistrationRequests(nextRequests ?? []);
+
+    if (user && nextClients && nextContracts && nextRequests) {
+      writePageCache<ClientsPageCache>("clients", user.id, {
+        clients: nextClients,
+        contracts: nextContracts,
+        registrationRequests: nextRequests,
+      });
+    }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(!initialPageCache);
   }, []);
 
   useEffect(() => {
