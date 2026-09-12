@@ -41,9 +41,9 @@ interface ContractSalikTransaction {
 }
 
 const statusStyles: Record<string, string> = {
-  Paid: "border-[#22c55e]/25 bg-[#22c55e]/15 text-[#22c55e]",
-  "Charged to Client": "border-[#f59e0b]/25 bg-[#f59e0b]/15 text-[#f59e0b]",
-  Unpaid: "border-[#ef4444]/25 bg-[#ef4444]/15 text-[#ef4444]",
+  Paid: "border-tint-green-foreground/20 bg-tint-green text-tint-green-foreground",
+  "Charged to Client": "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
+  Unpaid: "border-tint-rose-foreground/20 bg-tint-rose text-tint-rose-foreground",
 };
 
 const formatAed = (amount: number) =>
@@ -163,13 +163,13 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[460px]">
-        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[460px]">
+        <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
-            <Route className="h-5 w-5 text-[#e8eaf0]/70" />
-            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Salik</SheetTitle>
+            <Route className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Salik</SheetTitle>
           </div>
-          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+          <SheetDescription className="text-xs text-foreground/55">
             {loading
               ? "Loading transactions..."
               : `${transactions.length} ${transactions.length === 1 ? "transaction" : "transactions"} found`}
@@ -178,14 +178,14 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-sm text-[#e8eaf0]/60">
+            <div className="flex items-center justify-center py-16 text-sm text-foreground/60">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading Salik
             </div>
           ) : transactions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-12 text-center">
-              <Radar className="mb-3 h-5 w-5 text-[#e8eaf0]/45" />
-              <p className="text-sm font-medium text-[#e8eaf0]">No Salik linked to this contract</p>
+            <div className="flex flex-col items-center justify-center rounded-md border border-border bg-white/[0.02] px-4 py-12 text-center">
+              <Radar className="mb-3 h-5 w-5 text-foreground/45" />
+              <p className="text-sm font-medium text-foreground">No Salik linked to this contract</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -203,19 +203,19 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
                 return (
                   <div
                     key={transaction.id}
-                    className="rounded-md border border-[#232d4a] bg-white/[0.025] p-3"
+                    className="rounded-md border border-border bg-white/[0.025] p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-[#e8eaf0]">
+                        <h3 className="truncate text-sm font-semibold text-foreground">
                           {transaction.toll_gate || "Salik transaction"}
                         </h3>
-                        <p className="mt-1 font-ibm-plex-mono text-[11px] text-[#e8eaf0]/55">
+                        <p className="mt-1 font-ibm-plex-mono text-[11px] text-foreground/55">
                           {transactionMeta.join(" · ")}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="font-ibm-plex-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                        <p className="font-ibm-plex-mono text-sm font-semibold tabular-nums text-foreground">
                           {formatAed(toAmount(transaction.amount))}
                         </p>
                         <Badge
@@ -252,15 +252,15 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
           )}
         </div>
 
-        <div className="border-t border-[#232d4a] bg-[#12182d] px-5 py-4">
+        <div className="border-t border-border bg-[#12182d] px-5 py-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-[#e8eaf0]/65">Paid</span>
+            <span className="text-foreground/65">Paid</span>
             <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#22c55e]">
               {formatAed(summary.paid)}
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between text-sm">
-            <span className="text-[#e8eaf0]/65">Outstanding</span>
+            <span className="text-foreground/65">Outstanding</span>
             <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#ef4444]">
               {formatAed(summary.outstanding)}
             </span>
