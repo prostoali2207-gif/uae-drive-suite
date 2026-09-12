@@ -222,20 +222,20 @@ export function ParkingBulkSheet({ contract, open, onOpenChange, transactions, o
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[520px]">
-          <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+        <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[520px]">
+          <SheetHeader className="border-b border-border px-5 py-4 text-left">
             <div className="flex items-center gap-2">
-              <CarFront className="h-5 w-5 text-[#e8eaf0]/70" />
-              <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Parking</SheetTitle>
+              <CarFront className="h-5 w-5 text-muted-foreground" />
+              <SheetTitle className="text-lg font-semibold text-foreground">Contract Parking</SheetTitle>
             </div>
-            <SheetDescription className="text-xs text-[#e8eaf0]/55">
+            <SheetDescription className="text-xs text-foreground/55">
               {unpaidTransactions.length} unpaid {unpaidTransactions.length === 1 ? "charge" : "charges"} found
             </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
             {unpaidTransactions.length === 0 ? (
-              <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
+              <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
                 No unpaid Parking linked to this contract.
               </div>
             ) : (
@@ -248,8 +248,8 @@ export function ParkingBulkSheet({ contract, open, onOpenChange, transactions, o
                       className={cn(
                         "h-8 shrink-0 rounded-full border px-3 font-mono text-[11px] font-medium tabular-nums transition-colors",
                         month.ids.every((id) => selectedIds.has(id))
-                          ? "border-[#1d4ed8] bg-[#0c1f3a] text-[#e8eaf0]"
-                          : "border-[#232d4a] bg-white/[0.03] text-[#e8eaf0]/70 hover:bg-white/[0.06]",
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-white/[0.03] text-muted-foreground hover:bg-white/[0.06]",
                       )}
                       onClick={() => setSelectedIds(new Set(month.ids))}
                     >
@@ -260,17 +260,17 @@ export function ParkingBulkSheet({ contract, open, onOpenChange, transactions, o
 
                 <button
                   type="button"
-                  className="flex min-h-10 w-full items-center gap-3 rounded-md border border-[#232d4a] bg-white/[0.02] px-3 py-2 text-left text-xs font-medium text-[#e8eaf0]/80 transition-colors hover:bg-white/[0.05]"
+                  className="flex min-h-10 w-full items-center gap-3 rounded-md border border-border bg-white/[0.02] px-3 py-2 text-left text-xs font-medium text-foreground/80 transition-colors hover:bg-white/[0.05]"
                   onClick={toggleVisibleTransactions}
                 >
                   <Checkbox
                     checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
                     onCheckedChange={toggleVisibleTransactions}
                     onClick={(event) => event.stopPropagation()}
-                    className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                    className="h-4 w-4 shrink-0 border-muted-foreground/60 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                   />
                   <span>Select all</span>
-                  <span className="ml-auto font-mono text-[11px] tabular-nums text-[#e8eaf0]/45">{visibleIds.length}</span>
+                  <span className="ml-auto font-mono text-[11px] tabular-nums text-foreground/45">{visibleIds.length}</span>
                 </button>
 
                 <div className="space-y-1.5">
@@ -284,7 +284,7 @@ export function ParkingBulkSheet({ contract, open, onOpenChange, transactions, o
                         tabIndex={0}
                         className={cn(
                           "grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 py-2 transition-colors",
-                          selected ? "border-[#1d4ed8] bg-[#0c1f3a]" : "border-[#232d4a] bg-white/[0.015] hover:bg-white/[0.04]",
+                          selected ? "border-primary bg-primary/10" : "border-border bg-white/[0.015] hover:bg-white/[0.04]",
                         )}
                         onClick={() => toggleTransaction(transaction.id)}
                         onKeyDown={(event) => {
@@ -298,16 +298,16 @@ export function ParkingBulkSheet({ contract, open, onOpenChange, transactions, o
                           checked={selected}
                           onCheckedChange={() => toggleTransaction(transaction.id)}
                           onClick={(event) => event.stopPropagation()}
-                          className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                          className="h-4 w-4 shrink-0 border-muted-foreground/60 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                         />
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-[#e8eaf0]">{transaction.location || "Parking"}</div>
-                          <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
+                          <div className="truncate text-sm font-medium text-foreground">{transaction.location || "Parking"}</div>
+                          <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-foreground/50">
                             {formatDateTime(transaction.parking_date)}{transaction.parking_zone ? ` · Zone ${transaction.parking_zone}` : ""}
                           </div>
-                          <div className="mt-0.5 truncate text-[11px] text-[#e8eaf0]/45">{vehicle || "No car"}</div>
+                          <div className="mt-0.5 truncate text-[11px] text-foreground/45">{vehicle || "No car"}</div>
                         </div>
-                        <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                        <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-foreground">
                           {fmtAed(Number(transaction.amount))}
                         </div>
                       </div>
@@ -319,14 +319,14 @@ export function ParkingBulkSheet({ contract, open, onOpenChange, transactions, o
           </div>
 
           <div className={cn(
-            "absolute inset-x-0 bottom-0 border-t border-[#1d4ed8]/30 bg-[#0d1526] px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
+            "absolute inset-x-0 bottom-0 border-t border-primary/30 bg-card px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
             selectedIds.size > 0 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0",
           )}>
             <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+              <div className="min-w-0 font-mono text-sm font-semibold tabular-nums text-foreground">
                 {selectedIds.size} {selectedIds.size === 1 ? "charge" : "charges"} · {fmtAed(selectedTotal)}
               </div>
-              <Button type="button" size="sm" className="h-9 shrink-0 bg-[#1d4ed8] px-4 text-xs font-semibold text-white hover:bg-[#2563eb]" onClick={openPaymentDialog} disabled={confirmingPayment}>
+              <Button type="button" size="sm" className="h-9 shrink-0 bg-primary px-4 text-xs font-semibold text-white hover:bg-primary/90" onClick={openPaymentDialog} disabled={confirmingPayment}>
                 Pay
               </Button>
             </div>

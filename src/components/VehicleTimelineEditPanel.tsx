@@ -183,7 +183,7 @@ export const VehicleTimelineEditPanel: React.FC<VehicleTimelineEditPanelProps> =
       <button
         type="button"
         onClick={beginEdit}
-        className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-white/80 transition hover:bg-white/[0.08]"
+        className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-border bg-muted/20 px-3 text-xs font-semibold text-foreground/80 transition hover:bg-muted/40"
       >
         <Pencil className="h-4 w-4" />
         Edit vehicle history
@@ -192,18 +192,18 @@ export const VehicleTimelineEditPanel: React.FC<VehicleTimelineEditPanelProps> =
   }
 
   return (
-    <div className="mt-3 space-y-3 border-t border-white/7 pt-3">
+    <div className="mt-3 space-y-3 border-t border-border pt-3">
       <div>
-        <label className="mb-1 block text-[11px] text-white/45">Start date and time</label>
+        <label className="mb-1 block text-[11px] text-muted-foreground">Start date and time</label>
         <input
           type="datetime-local"
           value={startValue}
           onChange={(event) => setStartValue(event.target.value)}
           disabled={isFirstVehicle || saving}
-          className="min-h-11 w-full rounded-md border border-white/10 bg-[#11131b] px-3 font-ibm-plex-mono text-xs text-white outline-none focus:border-white/25 disabled:cursor-not-allowed disabled:opacity-45"
+          className="min-h-11 w-full rounded-md border border-input bg-input px-3 font-ibm-plex-mono text-xs text-foreground outline-none focus:border-ring disabled:cursor-not-allowed disabled:opacity-45"
         />
         {isFirstVehicle && (
-          <p className="mt-1 text-[10px] text-white/35">
+          <p className="mt-1 text-[10px] text-muted-foreground">
             The first vehicle starts with the contract and is changed in contract details.
           </p>
         )}
@@ -211,19 +211,19 @@ export const VehicleTimelineEditPanel: React.FC<VehicleTimelineEditPanelProps> =
 
       {!isActive && (
         <div>
-          <label className="mb-1 block text-[11px] text-white/45">End date and time</label>
+          <label className="mb-1 block text-[11px] text-muted-foreground">End date and time</label>
           <input
             type="datetime-local"
             value={endValue}
             onChange={(event) => setEndValue(event.target.value)}
             disabled={saving}
-            className="min-h-11 w-full rounded-md border border-white/10 bg-[#11131b] px-3 font-ibm-plex-mono text-xs text-white outline-none focus:border-white/25"
+            className="min-h-11 w-full rounded-md border border-input bg-input px-3 font-ibm-plex-mono text-xs text-foreground outline-none focus:border-ring"
           />
         </div>
       )}
 
       <div>
-        <label className="mb-1 block text-[11px] text-white/45">Daily price, AED</label>
+        <label className="mb-1 block text-[11px] text-muted-foreground">Daily price, AED</label>
         <input
           type="number"
           min="0.01"
@@ -231,11 +231,11 @@ export const VehicleTimelineEditPanel: React.FC<VehicleTimelineEditPanelProps> =
           value={rateValue}
           onChange={(event) => setRateValue(event.target.value)}
           disabled={saving}
-          className="min-h-11 w-full rounded-md border border-white/10 bg-[#11131b] px-3 font-ibm-plex-mono text-xs text-white outline-none focus:border-white/25"
+          className="min-h-11 w-full rounded-md border border-input bg-input px-3 font-ibm-plex-mono text-xs text-foreground outline-none focus:border-ring"
         />
       </div>
 
-      <p className="text-[10px] leading-relaxed text-amber-200/65">
+      <p className="text-[10px] leading-relaxed text-tint-amber-foreground">
         Changing a boundary also moves the adjacent vehicle boundary so the timeline stays continuous.
       </p>
 
@@ -244,7 +244,7 @@ export const VehicleTimelineEditPanel: React.FC<VehicleTimelineEditPanelProps> =
           type="button"
           onClick={() => setEditing(false)}
           disabled={saving}
-          className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-white/10 px-3 text-xs font-semibold text-white/65 hover:bg-white/[0.05] disabled:opacity-50"
+          className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-xs font-semibold text-muted-foreground hover:bg-muted/30 disabled:opacity-50"
         >
           <X className="h-4 w-4" />
           Cancel
@@ -253,7 +253,7 @@ export const VehicleTimelineEditPanel: React.FC<VehicleTimelineEditPanelProps> =
           type="button"
           onClick={saveCorrection}
           disabled={saving}
-          className="flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-400 px-3 text-xs font-bold text-[#0d1512] hover:bg-emerald-300 disabled:opacity-50"
+          className="flex min-h-11 items-center justify-center gap-2 rounded-md bg-primary px-3 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           Save correction

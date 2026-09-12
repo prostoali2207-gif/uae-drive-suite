@@ -54,9 +54,9 @@ interface ContractFine {
 }
 
 const statusStyles: Record<string, string> = {
-  Paid: "border-[#22c55e]/25 bg-[#22c55e]/15 text-[#22c55e]",
-  "Charged to Client": "border-[#f59e0b]/25 bg-[#f59e0b]/15 text-[#f59e0b]",
-  Unpaid: "border-[#ef4444]/25 bg-[#ef4444]/15 text-[#ef4444]",
+  Paid: "border-tint-green-foreground/20 bg-tint-green text-tint-green-foreground",
+  "Charged to Client": "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
+  Unpaid: "border-tint-rose-foreground/20 bg-tint-rose text-tint-rose-foreground",
 };
 
 const formatAed = (amount: number) =>
@@ -259,47 +259,47 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
     const isSaving = payingFineId === fine.id;
 
     return (
-      <div className="mt-3 -mx-3 border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
+      <div className="mt-3 -mx-3 border-t border-border bg-muted/20 px-4 py-3">
         <div className="flex flex-col md:flex-row md:items-end md:gap-3 md:flex-wrap">
           <div className="flex w-full gap-3 md:w-auto">
             <div className="grid w-full gap-1.5 md:w-48">
-              <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
+              <Label className="text-[10px] uppercase tracking-wide text-foreground/55">Amount</Label>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
                 value={Math.round(Number(paymentDraft.amount))}
                 onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
-                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-[#e8eaf0]"
+                className="h-9 rounded-lg border border-input bg-input font-mono text-sm tabular-nums text-foreground"
               />
             </div>
             <div className="grid w-full gap-1.5 md:w-24">
-              <Label className="text-[10px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
+              <Label className="text-[10px] uppercase tracking-wide text-foreground/55">Tax %</Label>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
                 value={paymentDraft.taxRate}
                 onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
-                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-[#e8eaf0]"
+                className="h-9 rounded-lg border border-input bg-input font-mono text-sm tabular-nums text-foreground"
               />
             </div>
           </div>
           <div className="w-full space-y-1 text-sm md:w-auto md:self-center">
-            <div className="flex items-center justify-between gap-3 text-xs text-[#e8eaf0]/55">
+            <div className="flex items-center justify-between gap-3 text-xs text-foreground/55">
               <span>Tax amount</span>
               <span className="font-mono tabular-nums">{formatAed(taxAmount)}</span>
             </div>
-            <div className="flex items-center justify-between gap-3 text-sm font-semibold text-[#e8eaf0]">
+            <div className="flex items-center justify-between gap-3 text-sm font-semibold text-foreground">
               <span>Total</span>
-              <span className="font-mono tabular-nums text-[#22c55e]">{formatAed(total)}</span>
+              <span className="font-mono tabular-nums text-tint-green-foreground">{formatAed(total)}</span>
             </div>
           </div>
           <Select
             value={paymentDraft.method}
             onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
           >
-            <SelectTrigger className="h-9 w-full rounded-lg border border-[#2a3a55] bg-[#1a2338] py-2 text-sm text-[#e8eaf0] md:w-40">
+            <SelectTrigger className="h-9 w-full rounded-lg border border-input bg-input py-2 text-sm text-foreground md:w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -326,7 +326,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
               size="sm"
               disabled={payingFineId !== null}
               onClick={() => setOpenPaymentFineId(null)}
-              className="h-9 w-24 rounded-lg border border-[#2a3a55] bg-transparent px-3 text-sm font-semibold text-[#e8eaf0] hover:bg-white/[0.06] hover:text-[#e8eaf0]"
+              className="h-9 w-24 rounded-lg border border-border bg-transparent px-3 text-sm font-semibold text-foreground hover:bg-muted/50 hover:text-foreground"
             >
               Cancel
             </Button>
@@ -338,27 +338,27 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[460px]">
-        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[460px]">
+        <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
-            <ReceiptText className="h-5 w-5 text-[#e8eaf0]/70" />
-            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Fines</SheetTitle>
+            <ReceiptText className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Fines</SheetTitle>
           </div>
-          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+          <SheetDescription className="text-xs text-foreground/55">
             {loading ? "Loading fines..." : `${fines.length} ${fines.length === 1 ? "fine" : "fines"} found`}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-sm text-[#e8eaf0]/60">
+            <div className="flex items-center justify-center py-16 text-sm text-foreground/60">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading fines
             </div>
           ) : fines.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-12 text-center">
-              <AlertCircle className="mb-3 h-5 w-5 text-[#e8eaf0]/45" />
-              <p className="text-sm font-medium text-[#e8eaf0]">No fines linked to this contract</p>
+            <div className="flex flex-col items-center justify-center rounded-md border border-border bg-white/[0.02] px-4 py-12 text-center">
+              <AlertCircle className="mb-3 h-5 w-5 text-foreground/45" />
+              <p className="text-sm font-medium text-foreground">No fines linked to this contract</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -372,34 +372,34 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                 return (
                   <div
                     key={fine.id}
-                    className="rounded-md border border-[#232d4a] bg-white/[0.025] p-3"
+                    className="rounded-md border border-border bg-white/[0.025] p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="break-words font-mono text-base font-semibold leading-5 text-[#e8eaf0]">
+                        <h3 className="break-words font-mono text-base font-semibold leading-5 text-foreground">
                           {fine.fine_number || "No fine number"}
                         </h3>
                         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                          <p className="min-w-0 break-words text-xs leading-5 text-[#e8eaf0]/60">
+                          <p className="min-w-0 break-words text-xs leading-5 text-foreground/60">
                             {formatDate(fine.fine_date)} · {(fine.fine_type || "Traffic fine").slice(0, 30)}
                           </p>
                           {blackPoints > 0 ? (
                             <Badge
                               variant="outline"
-                              className="shrink-0 rounded-full border-[#f59e0b]/25 bg-[#f59e0b]/15 px-2 py-0.5 text-[10px] font-semibold text-[#f59e0b]"
+                              className="shrink-0 rounded-full border-tint-amber-foreground/20 bg-tint-amber px-2 py-0.5 text-[10px] font-semibold text-tint-amber-foreground"
                             >
                               ● {blackPoints} BP
                             </Badge>
                           ) : null}
                         </div>
                         {vehicleInfo || chargeSource ? (
-                          <p className="mt-1 min-w-0 break-words text-xs leading-5 text-[#e8eaf0]/60">
+                          <p className="mt-1 min-w-0 break-words text-xs leading-5 text-foreground/60">
                             {[vehicleInfo, chargeSource].filter(Boolean).join(" · ")}
                           </p>
                         ) : null}
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                        <p className="font-mono text-sm font-semibold tabular-nums text-foreground">
                           {formatAed(toAmount(fine.amount))}
                         </p>
                         {fine.status !== "Charged to Client" ? (
@@ -414,7 +414,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                     </div>
 
                     {fine.notes ? (
-                      <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#e8eaf0]/55">
+                      <p className="mt-2 line-clamp-2 text-xs leading-5 text-foreground/55">
                         {fine.notes}
                       </p>
                     ) : null}
@@ -426,7 +426,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                           size="sm"
                           onClick={() => toggleFinePayment(fine)}
                           disabled={payingFineId !== null}
-                          className="h-8 border border-[#22c55e]/25 bg-[#22c55e]/15 px-3 text-xs font-medium text-[#22c55e] hover:bg-[#22c55e]/25"
+                          className="h-8 border border-tint-green-foreground/20 bg-tint-green px-3 text-xs font-medium text-tint-green-foreground hover:bg-tint-green/80"
                         >
                           Pay
                         </Button>
@@ -440,16 +440,16 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
           )}
         </div>
 
-        <div className="border-t border-[#232d4a] bg-[#12182d] px-5 py-4">
+        <div className="border-t border-border bg-muted/20 px-5 py-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-[#e8eaf0]/65">Paid</span>
-            <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#22c55e]">
+            <span className="text-foreground/65">Paid</span>
+            <span className="font-ibm-plex-mono font-semibold tabular-nums text-tint-green-foreground">
               {formatAed(summary.paid)}
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between text-sm">
-            <span className="text-[#e8eaf0]/65">Outstanding</span>
-            <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#ef4444]">
+            <span className="text-foreground/65">Outstanding</span>
+            <span className="font-ibm-plex-mono font-semibold tabular-nums text-tint-rose-foreground">
               {formatAed(summary.outstanding)}
             </span>
           </div>

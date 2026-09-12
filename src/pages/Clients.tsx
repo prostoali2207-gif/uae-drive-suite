@@ -1160,7 +1160,7 @@ const Clients = () => {
                     </div>
 
                     {importPreview.skippedMissingRequired > 0 && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                      <div className="rounded-lg border border-tint-amber-foreground/20 bg-tint-amber px-3 py-2 text-sm text-tint-amber-foreground">
                         {importPreview.skippedMissingRequired} rows are missing full name or phone and will be skipped.
                       </div>
                     )}
@@ -1190,7 +1190,7 @@ const Clients = () => {
                                     "text-[11px]",
                                     row.ready
                                       ? "bg-tint-green text-tint-green-foreground"
-                                      : "border-amber-500/40 text-amber-700",
+                                      : "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
                                   )}
                                 >
                                   {row.ready ? "Ready" : row.skipReason}
@@ -1383,7 +1383,7 @@ const Clients = () => {
                 {step === 1 ? (
                   <div className="grid gap-4">
                     <div className="grid gap-1.5">
-                      <Label htmlFor="name" className="text-foreground">Full Name <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="name" className="text-foreground">Full Name <span className="text-destructive">*</span></Label>
                       <Input 
                         id="name" 
                         required 
@@ -1393,7 +1393,7 @@ const Clients = () => {
                       />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="phone" className="text-foreground">Phone <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="phone" className="text-foreground">Phone <span className="text-destructive">*</span></Label>
                       <ClientPhoneInput
                         dialCode={phoneDialCode}
                         isoCountry={phoneIsoCountry}
@@ -1425,7 +1425,7 @@ const Clients = () => {
                       {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-destructive">*</span></Label>
                       <DateOfBirthPicker
                         value={form.date_of_birth}
                         hasError={Boolean(dobError)}
@@ -1457,7 +1457,7 @@ const Clients = () => {
                       {form.client_type === "Resident" ? (
                         <>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="eid" className="text-foreground">Emirates ID <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="eid" className="text-foreground">Emirates ID <span className="text-destructive">*</span></Label>
                             <Input
                               id="eid"
                               required
@@ -1467,7 +1467,7 @@ const Clients = () => {
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="eidexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="eidexp" className="text-foreground">Expiry Date <span className="text-destructive">*</span></Label>
                             <Input
                               id="eidexp"
                               type="date"
@@ -1481,7 +1481,7 @@ const Clients = () => {
                       ) : (
                         <>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="pass" className="text-foreground">Passport Number <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="pass" className="text-foreground">Passport Number <span className="text-destructive">*</span></Label>
                             <Input
                               id="pass"
                               required
@@ -1491,7 +1491,7 @@ const Clients = () => {
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="passexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="passexp" className="text-foreground">Expiry Date <span className="text-destructive">*</span></Label>
                             <Input
                               id="passexp"
                               type="date"
@@ -1507,7 +1507,7 @@ const Clients = () => {
 
                     <div className="grid gap-1.5">
                       <Label className="text-foreground">
-                        Driving Licence Type <span className="text-red-500">*</span>
+                        Driving Licence Type <span className="text-destructive">*</span>
                       </Label>
                       <Tabs
                         value={form.license_type}
@@ -1580,7 +1580,7 @@ const Clients = () => {
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="grid gap-1.5">
-                        <Label htmlFor="nat" className="text-foreground">Nationality <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="nat" className="text-foreground">Nationality <span className="text-destructive">*</span></Label>
                         <NationalityCombobox
                           id="nat"
                           value={form.nationality}
@@ -1591,7 +1591,7 @@ const Clients = () => {
                         />
                       </div>
                       <div className="grid gap-1.5">
-                        <Label htmlFor="lic" className="text-foreground">License Number <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="lic" className="text-foreground">License Number <span className="text-destructive">*</span></Label>
                         <Input 
                           id="lic" 
                           required 
@@ -1604,7 +1604,7 @@ const Clients = () => {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-1.5">
-                        <Label htmlFor="licexp" className="text-foreground">License Expiry <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="licexp" className="text-foreground">License Expiry <span className="text-destructive">*</span></Label>
                         <Input 
                           id="licexp" 
                           type="date" 
@@ -1803,15 +1803,15 @@ const Clients = () => {
         </div>
 
         <div className="-mx-2 grid grid-cols-3 gap-2 md:hidden">
-          <div className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <div className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-border bg-card px-2 py-2 text-center">
+            <span className="h-2 w-2 rounded-full bg-tint-green-foreground" />
             <span className="text-sm font-semibold text-foreground">{activeClientsCount} Active</span>
           </div>
-          <div className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
-            <span className="font-mono text-sm font-semibold text-red-400">AED {outstandingTotal.toLocaleString()}</span>
+          <div className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-border bg-card px-2 py-2 text-center">
+            <span className="font-mono text-sm font-semibold text-tint-rose-foreground">AED {outstandingTotal.toLocaleString()}</span>
             <span className="text-[11px] font-medium text-muted-foreground">Due</span>
           </div>
-          <div className="flex min-h-14 items-center justify-center rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
+          <div className="flex min-h-14 items-center justify-center rounded-xl border border-border bg-card px-2 py-2 text-center">
             <span className="text-sm font-semibold text-foreground">{clients.length} Total</span>
           </div>
         </div>
@@ -1826,8 +1826,8 @@ const Clients = () => {
                 className={cn(
                   "h-9 rounded-full px-4 text-sm font-medium transition-colors",
                   docFilter === opt
-                    ? "bg-[#2563eb] text-white"
-                    : "bg-[#161b27] text-muted-foreground",
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground",
                 )}
               >
                 {opt}
@@ -1838,11 +1838,11 @@ const Clients = () => {
 
         <div className="-mx-2 grid gap-2 px-2 md:hidden">
           {loading ? (
-            <div className="rounded-xl border border-[#21293d] bg-[#161b27] px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
               Loading clients...
             </div>
           ) : filtered.length === 0 ? (
-            <div className="rounded-xl border border-[#21293d] bg-[#161b27] px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
               No clients found.
             </div>
           ) : (
@@ -1856,11 +1856,11 @@ const Clients = () => {
                   key={c.id}
                   to={`/clients/${c.id}`}
                   className={cn(
-                    "relative grid grid-cols-[44px_minmax(0,1fr)_88px] gap-3 rounded-xl border border-[#21293d] bg-[#161b27] p-3 text-left transition-opacity",
+                    "relative grid grid-cols-[44px_minmax(0,1fr)_88px] gap-3 rounded-xl border border-border bg-card p-3 text-left transition-opacity",
                     !c.hasActive && "opacity-60",
                   )}
                 >
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#21293d] text-sm font-semibold text-foreground">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground">
                     {getInitials(c.full_name)}
                   </div>
                   <div className="min-w-0">
@@ -1875,13 +1875,13 @@ const Clients = () => {
                   </div>
                   <div className="flex min-w-0 flex-col items-end pr-5 text-right">
                     <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                      <span className={cn("h-2 w-2 rounded-full", c.hasActive ? "bg-emerald-500" : "bg-slate-500")} />
+                      <span className={cn("h-2 w-2 rounded-full", c.hasActive ? "bg-tint-green-foreground" : "bg-muted-foreground")} />
                       <span>{c.hasActive ? "Active" : "No active"}</span>
                     </div>
                     <div
                       className={cn(
                         "mt-2 font-mono text-xs font-semibold",
-                        c.outstanding > 0 ? "text-red-400" : "text-emerald-400",
+                        c.outstanding > 0 ? "text-tint-rose-foreground" : "text-tint-green-foreground",
                       )}
                     >
                       AED {c.outstanding.toLocaleString()}
@@ -1925,7 +1925,7 @@ const Clients = () => {
           type="button"
           aria-label="Add client"
           onClick={openAdd}
-          className="fixed bottom-20 right-4 z-50 h-14 w-14 rounded-full bg-[#2563eb] p-0 text-white shadow-lg hover:bg-[#1d4ed8] md:hidden"
+          className="fixed bottom-20 right-4 z-50 h-14 w-14 rounded-full bg-primary p-0 text-primary-foreground shadow-lg hover:bg-primary/90 md:hidden"
         >
           <Plus className="h-7 w-7" />
         </Button>
@@ -1966,7 +1966,7 @@ const Clients = () => {
                         {c.full_name}
                       </Link>
                       {c.is_new === true && (
-                        <span className="ml-2 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full px-2 py-0.5">New</span>
+                        <span className="ml-2 bg-primary/10 text-primary text-xs font-semibold rounded-full px-2 py-0.5">New</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.phone}</TableCell>
@@ -1984,7 +1984,7 @@ const Clients = () => {
                         className={cn(
                           "text-[11px]",
                           isClientIncomplete(c)
-                            ? "border-amber-500/40 text-amber-700"
+                            ? "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground"
                             : "bg-tint-green text-tint-green-foreground",
                         )}
                       >

@@ -1516,9 +1516,9 @@ const FineStatusBadge = ({ status }: { status: string | null | undefined }) => {
     <span
       className={cn(
         "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
-        normalized === "Paid" && "border-[#22c55e]/25 bg-[#22c55e]/15 text-[#22c55e]",
-        normalized === "Partial" && "border-[#f59e0b]/25 bg-[#f59e0b]/15 text-[#f59e0b]",
-        normalized === "Unpaid" && "border-[#ef4444]/25 bg-[#ef4444]/15 text-[#ef4444]",
+        normalized === "Paid" && "border-tint-green-foreground/20 bg-tint-green text-tint-green-foreground",
+        normalized === "Partial" && "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
+        normalized === "Unpaid" && "border-tint-rose-foreground/20 bg-tint-rose text-tint-rose-foreground",
       )}
     >
       {normalized}
@@ -1676,37 +1676,37 @@ const ContractFinesSheet = ({
     const isSaving = payingFineId === fine.id;
 
     return (
-      <div className="mt-3 rounded-lg border border-[#24304f] bg-[#0f1729] p-3">
+      <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3">
         <div className="grid gap-3 sm:grid-cols-[1fr_96px_150px]">
           <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-foreground/55">Amount</Label>
             <Input
               type="number"
               min="0"
               step="0.01"
               value={paymentDraft.amount}
               onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
-              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-[#e8eaf0]"
+              className="h-9 border-input bg-input font-mono text-sm text-foreground"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-foreground/55">Tax %</Label>
             <Input
               type="number"
               min="0"
               step="0.01"
               value={paymentDraft.taxRate}
               onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
-              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-[#e8eaf0]"
+              className="h-9 border-input bg-input font-mono text-sm text-foreground"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Method</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-foreground/55">Method</Label>
             <Select
               value={paymentDraft.method}
               onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
             >
-              <SelectTrigger className="h-9 border-[#2a3a55] bg-[#1a2338] text-sm text-[#e8eaf0]">
+              <SelectTrigger className="h-9 border-input bg-input text-sm text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1719,15 +1719,15 @@ const ContractFinesSheet = ({
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-[#e8eaf0]/60">
-            Tax {fmtAed(taxAmount)} / Total <span className="font-mono font-semibold text-[#e8eaf0]">{fmtAed(total)}</span>
+          <div className="text-xs text-foreground/60">
+            Tax {fmtAed(taxAmount)} / Total <span className="font-mono font-semibold text-foreground">{fmtAed(total)}</span>
           </div>
           <div className="flex gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 border-[#2a3a55] bg-transparent text-xs text-[#e8eaf0]"
+              className="h-9 border-border bg-transparent text-xs text-foreground"
               disabled={isSaving}
               onClick={() => setOpenPaymentFineId(null)}
             >
@@ -1736,7 +1736,7 @@ const ContractFinesSheet = ({
             <Button
               type="button"
               size="sm"
-              className="h-9 bg-[#1d4ed8] text-xs font-semibold text-white hover:bg-[#2563eb]"
+              className="h-9 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               disabled={isSaving}
               onClick={() => void recordFinePayment(fine)}
             >
@@ -1750,35 +1750,35 @@ const ContractFinesSheet = ({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[560px]">
-        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[560px]">
+        <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-[#e8eaf0]/70" />
-            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Fines</SheetTitle>
+            <Receipt className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Fines</SheetTitle>
           </div>
-          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+          <SheetDescription className="text-xs text-foreground/55">
             {visibleFines.length} unpaid or partial fines / {fmtAed(outstandingTotal)}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {visibleFines.length === 0 ? (
-            <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
+            <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
               No unpaid fines linked to this contract.
             </div>
           ) : (
             <div className="space-y-2">
               {visibleFines.map(({ fine, displayAmount }) => (
-                <div key={fine.id} className="rounded-md border border-[#232d4a] bg-white/[0.015] px-3 py-3">
+                <div key={fine.id} className="rounded-md border border-border bg-white/[0.015] px-3 py-3">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-[#e8eaf0]">
+                      <div className="truncate text-sm font-medium text-foreground">
                         {fine.fine_type || "Traffic violation"}
                       </div>
-                      <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
+                      <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-foreground/50">
                         {formatDubaiDateTime(fine.fine_date)} / {fine.fine_number || "No fine number"}
                       </div>
-                      <div className="mt-0.5 truncate text-[11px] text-[#e8eaf0]/50">
+                      <div className="mt-0.5 truncate text-[11px] text-foreground/50">
                         {getFineVehicleSourceLine(fine) || "No vehicle details"}
                       </div>
                       <div className="mt-2">
@@ -1786,13 +1786,13 @@ const ContractFinesSheet = ({
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                      <div className="font-mono text-sm font-semibold tabular-nums text-foreground">
                         {fmtAed(displayAmount)}
                       </div>
                       <Button
                         type="button"
                         size="sm"
-                        className="mt-2 h-8 bg-[#1d4ed8] px-3 text-xs font-semibold text-white hover:bg-[#2563eb]"
+                        className="mt-2 h-8 bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90"
                         onClick={() => toggleFinePayment(fine, displayAmount)}
                       >
                         Pay
@@ -1841,10 +1841,10 @@ const ContractFinesDetailModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/65 font-dm-sans" onClick={onClose}>
       <div
-        className="max-h-[88vh] w-full animate-in slide-in-from-bottom duration-200 overflow-hidden rounded-t-2xl border border-[#22222e] bg-[#12121a] text-white shadow-2xl"
+        className="max-h-[88vh] w-full animate-in slide-in-from-bottom duration-200 overflow-hidden rounded-t-2xl border border-border bg-card text-foreground shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-[#22222e] px-4 py-4 sm:px-6">
+        <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 sm:px-6">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold leading-6 text-white">Traffic Fines</h2>
             <p className="mt-1 truncate font-mono text-xs text-white/50">{contractId}</p>
@@ -2118,20 +2118,20 @@ const ContractSalikBulkSheet = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[520px]">
-        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[520px]">
+        <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
-            <Route className="h-5 w-5 text-[#e8eaf0]/70" />
-            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Salik</SheetTitle>
+            <Route className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Salik</SheetTitle>
           </div>
-          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+          <SheetDescription className="text-xs text-foreground/55">
             {unpaidTransactions.length} unpaid {unpaidTransactions.length === 1 ? "transaction" : "transactions"} found
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
           {unpaidTransactions.length === 0 ? (
-            <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
+            <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
               No unpaid Salik linked to this contract.
             </div>
           ) : (
@@ -2147,8 +2147,8 @@ const ContractSalikBulkSheet = ({
                       className={cn(
                         "h-8 shrink-0 rounded-full border px-3 font-mono text-[11px] font-medium tabular-nums transition-colors",
                         isSelected
-                          ? "border-[#1d4ed8] bg-[#0c1f3a] text-[#e8eaf0]"
-                          : "border-[#232d4a] bg-white/[0.03] text-[#e8eaf0]/70 hover:bg-white/[0.06]",
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-white/[0.03] text-muted-foreground hover:bg-white/[0.06]",
                       )}
                       onClick={() => selectMonthTransactions(month.ids)}
                     >
@@ -2160,17 +2160,17 @@ const ContractSalikBulkSheet = ({
 
               <button
                 type="button"
-                className="flex min-h-10 w-full items-center gap-3 rounded-md border border-[#232d4a] bg-white/[0.02] px-3 py-2 text-left text-xs font-medium text-[#e8eaf0]/80 transition-colors hover:bg-white/[0.05]"
+                className="flex min-h-10 w-full items-center gap-3 rounded-md border border-border bg-white/[0.02] px-3 py-2 text-left text-xs font-medium text-foreground/80 transition-colors hover:bg-white/[0.05]"
                 onClick={toggleVisibleTransactions}
               >
                 <Checkbox
                   checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
                   onCheckedChange={toggleVisibleTransactions}
                   onClick={(event) => event.stopPropagation()}
-                  className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                  className="h-4 w-4 shrink-0 border-muted-foreground/60 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                 />
                 <span>Select all</span>
-                <span className="ml-auto font-mono text-[11px] tabular-nums text-[#e8eaf0]/45">
+                <span className="ml-auto font-mono text-[11px] tabular-nums text-foreground/45">
                   {visibleIds.length}
                 </span>
               </button>
@@ -2187,8 +2187,8 @@ const ContractSalikBulkSheet = ({
                       className={cn(
                         "grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 py-2 transition-colors",
                         isSelected
-                          ? "border-[#1d4ed8] bg-[#0c1f3a]"
-                          : "border-[#232d4a] bg-white/[0.015] hover:bg-white/[0.04]",
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-white/[0.015] hover:bg-white/[0.04]",
                       )}
                       onClick={() => toggleTransaction(transaction.id)}
                       onKeyDown={(event) => {
@@ -2202,20 +2202,20 @@ const ContractSalikBulkSheet = ({
                         checked={isSelected}
                         onCheckedChange={() => toggleTransaction(transaction.id)}
                         onClick={(event) => event.stopPropagation()}
-                        className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                        className="h-4 w-4 shrink-0 border-muted-foreground/60 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                       />
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-[#e8eaf0]">
+                        <div className="truncate text-sm font-medium text-foreground">
                           {transaction.toll_gate || "Salik transaction"}
                         </div>
-                        <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
+                        <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-foreground/50">
                           {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] text-[#e8eaf0]/45">
+                        <div className="mt-0.5 truncate text-[11px] text-foreground/45">
                           {[transaction.cars?.plate, [transaction.cars?.make, transaction.cars?.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "No car"}
                         </div>
                       </div>
-                      <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                      <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-foreground">
                         {fmtAed(Number(transaction.amount))}
                       </div>
                     </div>
@@ -2228,18 +2228,18 @@ const ContractSalikBulkSheet = ({
 
         <div
           className={cn(
-            "absolute inset-x-0 bottom-0 border-t border-[#1d4ed8]/30 bg-[#0d1526] px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
+            "absolute inset-x-0 bottom-0 border-t border-primary/30 bg-card px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
             selectedIds.size > 0 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0",
           )}
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+            <div className="min-w-0 font-mono text-sm font-semibold tabular-nums text-foreground">
               {selectedIds.size} {selectedIds.size === 1 ? "transaction" : "transactions"} · {fmtAed(selectedTotal)}
             </div>
             <Button
               type="button"
               size="sm"
-              className="h-9 shrink-0 bg-[#1d4ed8] px-4 text-xs font-semibold text-white hover:bg-[#2563eb]"
+              className="h-9 shrink-0 bg-primary px-4 text-xs font-semibold text-white hover:bg-primary/90"
               onClick={openPaymentDialog}
               disabled={confirmingPayment}
             >
@@ -2937,7 +2937,7 @@ const FinancialsPanel = ({
     const total = Math.round((amount + taxAmount) * 100) / 100;
 
     return (
-      <div className="border-t border-[#1e3a5f] bg-[#0f1729] px-4 py-3">
+      <div className="border-t border-border bg-muted/20 px-4 py-3">
         <div className="flex flex-col md:flex-row md:items-end md:gap-3 md:flex-wrap">
           <div className="flex w-full gap-3 md:w-auto">
             <div className="grid w-full gap-1.5 md:w-48">
@@ -2948,7 +2948,7 @@ const FinancialsPanel = ({
                 step="0.01"
                 value={Math.round(Number(inlinePaymentDraft.amount))}
                 onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
-                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-foreground"
+                className="h-9 rounded-lg border border-input bg-input font-mono text-sm tabular-nums text-foreground"
               />
             </div>
             <div className="grid w-full gap-1.5 md:w-24">
@@ -2959,7 +2959,7 @@ const FinancialsPanel = ({
                 step="0.01"
                 value={inlinePaymentDraft.taxRate}
                 onChange={(event) => setInlinePaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
-                className="h-9 rounded-lg border border-[#2a3a55] bg-[#1a2338] font-mono text-sm tabular-nums text-foreground"
+                className="h-9 rounded-lg border border-input bg-input font-mono text-sm tabular-nums text-foreground"
               />
             </div>
           </div>
@@ -2979,7 +2979,7 @@ const FinancialsPanel = ({
               setInlinePaymentDraft((draft) => ({ ...draft, method: value as InlinePaymentMethod }))
             }
           >
-            <SelectTrigger className="h-9 w-full rounded-lg border border-[#2a3a55] bg-[#1a2338] py-2 text-sm md:w-40">
+            <SelectTrigger className="h-9 w-full rounded-lg border border-input bg-input py-2 text-sm md:w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -3003,7 +3003,7 @@ const FinancialsPanel = ({
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 w-24 rounded-lg border border-[#2a3a55] bg-transparent text-sm font-semibold text-foreground hover:bg-white/5 hover:text-foreground"
+              className="h-9 w-24 rounded-lg border border-border bg-transparent text-sm font-semibold text-foreground hover:bg-white/5 hover:text-foreground"
               disabled={savingInlinePayment}
               onClick={() => setOpenInlinePaymentId(null)}
             >
@@ -3795,7 +3795,7 @@ const FinancialsPanel = ({
           ) : null}
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-40 hidden w-full max-w-[100vw] min-w-0 justify-end bg-[#121830] p-3 md:flex">
+        <div className="fixed inset-x-0 bottom-0 z-40 hidden w-full max-w-[100vw] min-w-0 justify-end bg-background p-3 md:flex">
           <Button
             type="button"
             className="h-11 min-w-[180px] gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
@@ -6959,34 +6959,34 @@ const ContractDetail = () => {
               const calculatedDepositReturnDueLabel = formatDate(calculatedDepositReturnDueDate);
 
               return (
-              <div className="overflow-hidden rounded-[10px] border border-[#1e2535] bg-[#1a2030]">
-                <div className="flex items-center justify-between border-b border-[#1e2535] px-[14px] py-[12px]">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-[#4a5568]">
+              <div className="overflow-hidden rounded-[10px] border border-border bg-card">
+                <div className="flex items-center justify-between border-b border-border px-[14px] py-[12px]">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                     SECURITY DEPOSIT
                   </div>
-                  <div className="font-['IBM_Plex_Mono'] text-[14px] font-semibold text-[#f0f4ff]">
+                  <div className="font-['IBM_Plex_Mono'] text-[14px] font-semibold text-foreground">
                     {fmtAed(closeDepositAmount)}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-b border-[#1e2535] px-[14px] py-[10px] text-[12px]">
+                <div className="flex items-center justify-between border-b border-border px-[14px] py-[10px] text-[12px]">
                   <div className="flex items-center gap-2">
-                    <span className="text-[#6b7a99]">Held</span>
-                    <span className="font-['IBM_Plex_Mono'] font-medium text-[#c8d3e8]">
+                    <span className="text-muted-foreground">Held</span>
+                    <span className="font-['IBM_Plex_Mono'] font-medium text-foreground">
                       {fmtAed(closeDepositAmount)}
                     </span>
                   </div>
-                  <span className="text-[#1e2535]">│</span>
+                  <span className="text-border">│</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[#6b7a99]">Outstanding balance</span>
-                    <span className="font-['IBM_Plex_Mono'] font-medium text-[#f97316]">
+                    <span className="text-muted-foreground">Outstanding balance</span>
+                    <span className="font-['IBM_Plex_Mono'] font-medium text-tint-amber-foreground">
                       {fmtAed(closeOutstandingBalance)}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-[8px] px-[14px] pb-[8px] pt-[12px]">
-                  <div className="mb-[4px] text-[10px] font-semibold tracking-widest text-[#4a5568]">
+                  <div className="mb-[4px] text-[10px] font-semibold tracking-widest text-muted-foreground">
                     WHAT TO DO WITH DEPOSIT?
                   </div>
                   <button
@@ -6995,31 +6995,31 @@ const ContractDetail = () => {
                     className={cn(
                       "flex cursor-pointer items-center justify-between rounded-[8px] border-[1.5px] p-[11px]",
                       depositCloseAction === "return_full"
-                        ? "border-[#3b6fff] bg-[rgba(59,111,255,0.08)]"
-                        : "border-[#1e2535] bg-[#161b27]",
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-muted/20",
                     )}
                   >
                     <div className="flex items-center gap-3 text-left">
                       <span
                         className={cn(
                           "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                          depositCloseAction === "return_full" ? "border-[#3b6fff]" : "border-[#1e2535]",
+                          depositCloseAction === "return_full" ? "border-primary" : "border-border",
                         )}
                       >
                         {depositCloseAction === "return_full" && (
-                          <span className="h-[7px] w-[7px] rounded-full bg-[#3b6fff]" />
+                          <span className="h-[7px] w-[7px] rounded-full bg-primary" />
                         )}
                       </span>
                       <span className="flex flex-col">
-                        <span className="text-[13px] font-medium text-[#c8d3e8]">
+                        <span className="text-[13px] font-medium text-foreground">
                           Hold deposit
                         </span>
-                        <span className="text-[11px] text-[#4a5568]">
+                        <span className="text-[11px] text-muted-foreground">
                           Return due in {depositReturnDays} days — {calculatedDepositReturnDueLabel}
                         </span>
                       </span>
                     </div>
-                    <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#3b6fff]">
+                    <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-primary">
                       {fmtAed(closeDepositAmount)}
                     </span>
                   </button>
@@ -7029,8 +7029,8 @@ const ContractDetail = () => {
                     className={cn(
                       "flex cursor-pointer items-center justify-between rounded-[8px] border-[1.5px] p-[11px]",
                       depositCloseAction === "apply_to_balance"
-                        ? "border-[#22c55e] bg-[rgba(34,197,94,0.07)]"
-                        : "border-[#1e2535] bg-[#161b27]",
+                        ? "border-tint-green-foreground/30 bg-tint-green"
+                        : "border-border bg-muted/20",
                     )}
                   >
                     <div className="flex items-center gap-3 text-left">
@@ -7041,28 +7041,28 @@ const ContractDetail = () => {
                         )}
                       >
                         {depositCloseAction === "apply_to_balance" && (
-                          <span className="h-[7px] w-[7px] rounded-full bg-[#22c55e]" />
+                          <span className="h-[7px] w-[7px] rounded-full bg-tint-green-foreground" />
                         )}
                       </span>
                       <span className="flex flex-col">
-                        <span className="text-[13px] font-medium text-[#c8d3e8]">
+                        <span className="text-[13px] font-medium text-foreground">
                           Apply to outstanding balance
                         </span>
-                        <span className="text-[11px] text-[#4a5568]">
+                        <span className="text-[11px] text-muted-foreground">
                           Covers {fmtAed(closeOutstandingBalance)} debt, hold remaining{" "}
                           {fmtAed(Math.max(0, closeDepositAmount - closeOutstandingBalance))}
                         </span>
                       </span>
                     </div>
-                    <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#22c55e]">
+                    <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-tint-green-foreground">
                       {fmtAed(closeOutstandingBalance)}
                     </span>
                   </button>
                 </div>
 
                 <div className="flex items-center justify-between gap-[10px] px-[14px] pb-[12px]">
-                  <Label className="text-[12px] text-[#6b7a99]">Return due date</Label>
-                  <div className="rounded-[6px] border border-[#1e2535] bg-[#1a2030] px-[10px] py-[7px] font-['IBM_Plex_Mono'] text-[12px] text-[#c8d3e8]">
+                  <Label className="text-[12px] text-muted-foreground">Return due date</Label>
+                  <div className="rounded-[6px] border border-border bg-card px-[10px] py-[7px] font-['IBM_Plex_Mono'] text-[12px] text-foreground">
                     {calculatedDepositReturnDueLabel}
                   </div>
                 </div>
@@ -7071,7 +7071,7 @@ const ContractDetail = () => {
                   className="group px-[14px] pb-[12px]"
                   defaultOpen={depositCloseAction === "retain_partial" || depositCloseAction === "retain_full"}
                 >
-                  <summary className="cursor-pointer list-none text-[11px] text-[#4a5568] underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                  <summary className="cursor-pointer list-none text-[11px] text-muted-foreground underline underline-offset-2 [&::-webkit-details-marker]:hidden">
                     ⋯ Retain partial or full deposit
                   </summary>
                   <div className="mt-3 grid gap-2">
@@ -7081,8 +7081,8 @@ const ContractDetail = () => {
                       className={cn(
                         "flex min-h-10 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm",
                         depositCloseAction === "retain_partial"
-                          ? "border-[#3b6fff] bg-[rgba(59,111,255,0.08)]"
-                          : "border-[#1e2535] bg-[#161b27]",
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-muted/20",
                       )}
                     >
                       <span
@@ -7092,10 +7092,10 @@ const ContractDetail = () => {
                         )}
                       >
                         {depositCloseAction === "retain_partial" && (
-                          <span className="h-[7px] w-[7px] rounded-full bg-[#3b6fff]" />
+                          <span className="h-[7px] w-[7px] rounded-full bg-primary" />
                         )}
                       </span>
-                      <span className="flex-1 text-left text-[#c8d3e8]">Retain partial amount</span>
+                      <span className="flex-1 text-left text-foreground">Retain partial amount</span>
                     </button>
                     <button
                       type="button"
@@ -7103,8 +7103,8 @@ const ContractDetail = () => {
                       className={cn(
                         "flex min-h-10 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm",
                         depositCloseAction === "retain_full"
-                          ? "border-[#3b6fff] bg-[rgba(59,111,255,0.08)]"
-                          : "border-[#1e2535] bg-[#161b27]",
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-muted/20",
                       )}
                     >
                       <span
@@ -7114,22 +7114,22 @@ const ContractDetail = () => {
                         )}
                       >
                         {depositCloseAction === "retain_full" && (
-                          <span className="h-[7px] w-[7px] rounded-full bg-[#3b6fff]" />
+                          <span className="h-[7px] w-[7px] rounded-full bg-primary" />
                         )}
                       </span>
-                      <span className="flex-1 text-left text-[#c8d3e8]">Retain full deposit</span>
-                      <span className="font-['IBM_Plex_Mono'] text-xs font-semibold text-[#c8d3e8]">
+                      <span className="flex-1 text-left text-foreground">Retain full deposit</span>
+                      <span className="font-['IBM_Plex_Mono'] text-xs font-semibold text-foreground">
                         {fmtAed(closeDepositAmount)}
                       </span>
                     </button>
 
                     {depositCloseAction === "retain_partial" && (
                       <div className="grid gap-1.5">
-                        <Label className="text-xs uppercase tracking-wide text-[#4a5568]">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                           Retained Amount
                         </Label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#6b7a99]">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                             AED
                           </span>
                           <Input
@@ -7138,7 +7138,7 @@ const ContractDetail = () => {
                             max={closeDepositAmount}
                             value={depositRetainedAmount}
                             onChange={(e) => setDepositRetainedAmount(e.target.value)}
-                            className="border-[#1e2535] bg-[#161b27] pl-12 text-[#c8d3e8]"
+                            className="border-border bg-muted/20 pl-12 text-foreground"
                             placeholder="0.00"
                           />
                         </div>
@@ -7147,21 +7147,21 @@ const ContractDetail = () => {
 
                     {(depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
                       <div className="grid gap-1.5">
-                        <Label className="text-xs uppercase tracking-wide text-[#4a5568]">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                           Retention Reason
                         </Label>
                         <Textarea
                           value={depositRetainReason}
                           onChange={(e) => setDepositRetainReason(e.target.value)}
                           placeholder="Damage, fuel, late return, fines pending..."
-                          className="min-h-[72px] border-[#1e2535] bg-[#161b27] text-[#c8d3e8]"
+                          className="min-h-[72px] border-border bg-muted/20 text-foreground"
                         />
                       </div>
                     )}
                     {closeDepositReturnAmount > 0 &&
                       (depositCloseAction === "retain_partial" || depositCloseAction === "retain_full") && (
                         <div className="grid gap-1.5">
-                          <Label className="text-xs uppercase tracking-wide text-[#4a5568]">
+                          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                             Return Due Date
                           </Label>
                           <input
@@ -7171,7 +7171,7 @@ const ContractDetail = () => {
                               setDepositReturnDueDate(e.target.value);
                               setDepositReturnDueDateEdited(true);
                             }}
-                            className="flex h-11 w-full rounded-md border border-[#1e2535] bg-[#161b27] px-3 py-2 font-['IBM_Plex_Mono'] text-base text-[#c8d3e8] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
+                            className="flex h-11 w-full rounded-md border border-border bg-muted/20 px-3 py-2 font-['IBM_Plex_Mono'] text-base text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-9 md:text-sm"
                           />
                         </div>
                       )}

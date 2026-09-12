@@ -431,8 +431,8 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
     ];
 
     return (
-      <section className="rounded-lg border border-white/7 bg-white/[0.025] p-3">
-        <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
+      <section className="rounded-lg border border-border bg-muted/10 p-3">
+        <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           {title}
         </h3>
         <dl className="space-y-2.5">
@@ -441,8 +441,8 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               key={detail.label}
               className="flex min-w-0 items-start justify-between gap-3"
             >
-              <dt className="shrink-0 text-[11px] text-white/40">{detail.label}</dt>
-              <dd className="min-w-0 text-right font-ibm-plex-mono text-xs text-white/85">
+              <dt className="shrink-0 text-[11px] text-muted-foreground">{detail.label}</dt>
+              <dd className="min-w-0 text-right font-ibm-plex-mono text-xs text-foreground/85">
                 {detail.value}
               </dd>
             </div>
@@ -454,15 +454,15 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
 
   return (
     <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-white/7 bg-[#161925] p-6 font-dm-sans text-white sm:max-w-[380px]">
-        <SheetHeader className="space-y-1.5 border-b border-white/7 pb-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-4 font-dm-sans text-foreground sm:p-6 sm:max-w-[380px]">
+        <SheetHeader className="space-y-1.5 border-b border-border pb-4 text-left">
           <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-white/60" />
-            <SheetTitle className="font-dm-sans text-lg font-semibold text-white">
+            <History className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="font-dm-sans text-lg font-semibold text-foreground">
               Vehicle History
             </SheetTitle>
           </div>
-          <SheetDescription className="font-dm-sans text-xs text-white/50">
+          <SheetDescription className="font-dm-sans text-xs text-muted-foreground">
             {loading
               ? "Loading..."
               : `${replacementEvents.length} ${
@@ -477,18 +477,18 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               {[1, 2].map((item) => (
                 <div
                   key={item}
-                  className="rounded-xl border border-white/5 bg-[#1c1c1f] p-4"
+                  className="rounded-xl border border-border bg-muted/10 p-4"
                 >
                   <div className="space-y-2">
-                    <div className="h-3 w-1/3 rounded bg-white/10" />
-                    <div className="h-4 w-4/5 rounded bg-white/10" />
-                    <div className="h-3 w-1/2 rounded bg-white/5" />
+                    <div className="h-3 w-1/3 rounded bg-muted" />
+                    <div className="h-4 w-4/5 rounded bg-muted" />
+                    <div className="h-3 w-1/2 rounded bg-muted/60" />
                   </div>
                 </div>
               ))}
             </div>
           ) : replacementEvents.length === 0 ? (
-            <div className="py-12 text-center text-sm italic text-white/40">
+            <div className="py-12 text-center text-sm italic text-muted-foreground">
               No replacements recorded
             </div>
           ) : (
@@ -509,23 +509,23 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                     <AccordionItem
                       key={event.id}
                       value={event.id}
-                      className="overflow-hidden rounded-xl border border-white/7 bg-[#1c1c1f]"
+                      className="overflow-hidden rounded-xl border border-border bg-muted/10"
                     >
                       <AccordionTrigger className="min-h-20 px-4 py-3 text-left hover:no-underline">
                         <div className="min-w-0 pr-3">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                             Replacement {index + 1}
                           </div>
-                          <div className="mt-1 truncate text-sm font-semibold text-white/90">
-                            {beforeName} <span className="text-white/35">→</span>{" "}
+                          <div className="mt-1 truncate text-sm font-semibold text-foreground">
+                            {beforeName} <span className="text-muted-foreground">→</span>{" "}
                             {afterName}
                           </div>
-                          <div className="mt-1 font-ibm-plex-mono text-[11px] font-normal text-white/50">
+                          <div className="mt-1 font-ibm-plex-mono text-[11px] font-normal text-muted-foreground">
                             {formatDateTimeline(event.replacement_at)}
                           </div>
                         </div>
                       </AccordionTrigger>
-                      <AccordionContent className="space-y-3 border-t border-white/7 px-3 pt-3">
+                      <AccordionContent className="space-y-3 border-t border-border px-3 pt-3">
                         {renderVehicleDetails("Before Replacement", event.before)}
                         {renderVehicleDetails("After Replacement", event.after)}
                       </AccordionContent>
@@ -534,17 +534,17 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                 })}
               </Accordion>
 
-              <div className="mt-4 border-t border-white/7 pt-4">
-                <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 font-ibm-plex-mono">
-                  <span className="text-[10px] uppercase tracking-wider text-white/40">
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="flex items-center justify-between rounded-md border border-border bg-muted/10 px-3 py-2 font-ibm-plex-mono">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                     Grand Total
                   </span>
-                  <span className="text-sm font-semibold text-white">
+                  <span className="text-sm font-semibold text-foreground">
                     {formatAed(grandTotal)}
                   </span>
                 </div>
                 {history.some((item) => item.display_daily_rate === null) && (
-                  <p className="mt-2 text-[11px] text-white/35">
+                  <p className="mt-2 text-[11px] text-muted-foreground">
                     Rows without daily rate are excluded from the total.
                   </p>
                 )}

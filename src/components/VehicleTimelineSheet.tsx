@@ -408,15 +408,15 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
 
   return (
     <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-white/7 bg-[#11131b] p-4 font-dm-sans text-white sm:max-w-[440px] sm:p-6">
-        <SheetHeader className="space-y-1.5 border-b border-white/7 pb-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-4 font-dm-sans text-foreground sm:max-w-[440px] sm:p-6">
+        <SheetHeader className="space-y-1.5 border-b border-border pb-4 text-left">
           <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-white/60" />
-            <SheetTitle className="font-dm-sans text-lg font-semibold text-white">
+            <History className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="font-dm-sans text-lg font-semibold text-foreground">
               Vehicle Timeline
             </SheetTitle>
           </div>
-          <SheetDescription className="font-dm-sans text-xs text-white/50">
+          <SheetDescription className="font-dm-sans text-xs text-muted-foreground">
             {loading
               ? "Loading..."
               : `${periodGroups.length} billing ${periodGroups.length === 1 ? "period" : "periods"}`}
@@ -427,11 +427,11 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
           {loading ? (
             <div className="animate-pulse space-y-3">
               {[1, 2].map((item) => (
-                <div key={item} className="h-40 rounded-xl border border-white/5 bg-white/[0.03]" />
+                <div key={item} className="h-40 rounded-xl border border-border bg-muted/10" />
               ))}
             </div>
           ) : periodGroups.length === 0 ? (
-            <div className="py-12 text-center text-sm italic text-white/40">
+            <div className="py-12 text-center text-sm italic text-muted-foreground">
               This vehicle was never replaced — the same car was used for the entire rental period.
             </div>
           ) : (
@@ -449,21 +449,21 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
                 const periodEnd = getPeriodEndTimestamp(period);
 
                 return (
-                  <section key={period.id} className="overflow-hidden rounded-xl border border-white/10 bg-[#191c25]">
-                    <header className="flex items-start justify-between gap-3 border-b border-white/7 p-4">
+                  <section key={period.id} className="overflow-hidden rounded-xl border border-border bg-muted/10">
+                    <header className="flex items-start justify-between gap-3 border-b border-border p-4">
                       <div className="min-w-0">
-                        <h2 className="text-sm font-semibold text-white">
+                        <h2 className="text-sm font-semibold text-foreground">
                           {periodIndex === 0 ? "Period 1" : `Extension ${periodIndex + 1}`}
                         </h2>
-                        <p className="mt-1 font-ibm-plex-mono text-[10px] text-white/45">
+                        <p className="mt-1 font-ibm-plex-mono text-[10px] text-muted-foreground">
                           {periodStart && periodEnd
                             ? `${formatDateTimeline(periodStart)} — ${formatDateTimeline(periodEnd)}`
                             : "Dates unavailable"}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className="text-[9px] font-semibold uppercase tracking-wider text-white/35">Total</div>
-                        <div className="mt-0.5 font-ibm-plex-mono text-base font-semibold text-emerald-300">
+                        <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Total</div>
+                        <div className="mt-0.5 font-ibm-plex-mono text-base font-semibold text-tint-green-foreground">
                           {formatAed(periodTotal)}
                         </div>
                       </div>
@@ -486,37 +486,37 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
                           <div key={node.timeline_id} className="relative pl-7">
                             {(nodeIndex > 0 || node.continues_from_previous) && (
                               <div className="absolute -top-2 left-[7px] flex h-4 items-center">
-                                <span className={`h-4 border-l ${node.continues_from_previous ? "border-dashed border-sky-400/70" : "border-solid border-white/20"}`} />
+                                <span className={`h-4 border-l ${node.continues_from_previous ? "border-dashed border-primary/70" : "border-solid border-border"}`} />
                                 {node.continues_from_previous && (
-                                  <span className="ml-1.5 rounded bg-[#191c25] px-1 text-[8px] font-semibold uppercase tracking-wider text-sky-300">Continues</span>
+                                  <span className="ml-1.5 rounded bg-card px-1 text-[8px] font-semibold uppercase tracking-wider text-primary">Continues</span>
                                 )}
                               </div>
                             )}
                             {nodeIndex < nodes.length - 1 && (
-                              <span className={`absolute bottom-0 left-[7px] top-4 border-l ${nodes[nodeIndex + 1].continues_from_previous ? "border-dashed border-sky-400/70" : "border-solid border-white/20"}`} />
+                              <span className={`absolute bottom-0 left-[7px] top-4 border-l ${nodes[nodeIndex + 1].continues_from_previous ? "border-dashed border-primary/70" : "border-solid border-border"}`} />
                             )}
-                            <span className={`absolute left-0 top-[23px] h-3.5 w-3.5 rounded-full border-2 border-[#191c25] ring-1 ${active ? "bg-emerald-400 ring-emerald-300/60" : "bg-white/50 ring-white/20"}`} />
+                            <span className={`absolute left-0 top-[23px] h-3.5 w-3.5 rounded-full border-2 border-card ring-1 ${active ? "bg-tint-green-foreground ring-tint-green-foreground/60" : "bg-muted-foreground/50 ring-border"}`} />
 
-                            <AccordionItem value={node.timeline_id} className="border-b border-white/7 last:border-b-0">
+                            <AccordionItem value={node.timeline_id} className="border-b border-border last:border-b-0">
                               <AccordionTrigger className="min-h-16 py-3 text-left hover:no-underline [&>svg]:h-4 [&>svg]:w-4">
                                 <div className="min-w-0 flex-1 pr-2">
                                   <div className="flex min-w-0 items-center gap-2">
-                                    <span className="truncate text-sm font-semibold text-white/90">{vehicleName}</span>
-                                    {node.car && <span className="shrink-0 font-ibm-plex-mono text-[10px] text-white/50">{node.car.plate}</span>}
-                                    {active && <span className="shrink-0 rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-emerald-300">ACTIVE</span>}
+                                    <span className="truncate text-sm font-semibold text-foreground">{vehicleName}</span>
+                                    {node.car && <span className="shrink-0 font-ibm-plex-mono text-[10px] text-muted-foreground">{node.car.plate}</span>}
+                                    {active && <span className="shrink-0 rounded border border-tint-green-foreground/30 bg-tint-green px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-tint-green-foreground">ACTIVE</span>}
                                   </div>
-                                  <div className="mt-1 font-ibm-plex-mono text-[10px] text-white/45">
+                                  <div className="mt-1 font-ibm-plex-mono text-[10px] text-muted-foreground">
                                     {formatDateTimeline(node.display_started_at)} {active ? "→ Active" : `→ ${node.display_ended_at ? formatDateTimeline(node.display_ended_at) : "Active"}`}
                                   </div>
-                                  <div className="mt-1 flex gap-3 font-ibm-plex-mono text-[11px] text-white/70">
+                                  <div className="mt-1 flex gap-3 font-ibm-plex-mono text-[11px] text-muted-foreground">
                                     <span>{formatDays(days)} days</span>
-                                    <span className="text-white/25">·</span>
+                                    <span className="text-muted-foreground/60">·</span>
                                     <span>{amount === null ? "--" : formatAed(amount)}</span>
                                   </div>
                                 </div>
                               </AccordionTrigger>
                               <AccordionContent className="pb-3">
-                                <dl className="space-y-2 rounded-lg border border-white/7 bg-black/10 p-3">
+                                <dl className="space-y-2 rounded-lg border border-border bg-muted/10 p-3">
                                   {[
                                     ["Vehicle", node.car ? `${vehicleName} · ${node.car.plate} · ${node.car.year}` : vehicleName],
                                     ["Start Date", formatDateTimeline(node.display_started_at)],
@@ -526,8 +526,8 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
                                     ["Existing Total", amount === null ? "--" : formatAed(amount)],
                                   ].map(([label, value]) => (
                                     <div key={label} className="flex items-start justify-between gap-3">
-                                      <dt className="text-[11px] text-white/40">{label}</dt>
-                                      <dd className="text-right font-ibm-plex-mono text-xs text-white/85">{value}</dd>
+                                      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+                                      <dd className="text-right font-ibm-plex-mono text-xs text-foreground/85">{value}</dd>
                                     </div>
                                   ))}
                                 </dl>
