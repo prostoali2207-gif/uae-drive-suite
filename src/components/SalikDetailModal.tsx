@@ -131,14 +131,14 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
             type="button"
             aria-label="Close Salik transactions"
             onClick={onClose}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-white/5 hover:text-white"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted/30 hover:text-foreground"
           >
             <X className="h-5 w-5" />
           </button>
         </header>
 
         <div className="max-h-[calc(88vh-76px)] overflow-y-auto">
-          <section className="grid grid-cols-4 border-b border-border bg-white/[0.02]">
+          <section className="grid grid-cols-2 border-b border-border bg-muted/10 sm:grid-cols-4">
             <SummaryItem label="Trips" value={summary.trips.toLocaleString("en-US")} />
             <SummaryItem label="Tolls" value={formatAed(summary.tolls)} valueClassName="text-tint-green-foreground" />
             <SummaryItem label="Service fees" value={formatAed(summary.serviceFees)} />
@@ -152,7 +152,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search transaction ID or gate"
-                className="h-11 border-input bg-input pl-9 font-dm-sans text-white placeholder:text-muted-foreground focus-visible:ring-white/20"
+                className="h-11 border-input bg-input pl-9 font-dm-sans text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
               />
             </div>
 
@@ -234,7 +234,7 @@ interface SummaryItemProps {
 
 function SummaryItem({ label, value, valueClassName = "text-foreground" }: SummaryItemProps) {
   return (
-    <div className="min-w-0 border-r border-border px-2 py-3 last:border-r-0 sm:px-4">
+    <div className="min-w-0 border-r border-border px-2 py-3 even:border-r-0 sm:border-r sm:px-4 sm:even:border-r sm:last:border-r-0">
       <p className="truncate text-[10px] font-medium uppercase tracking-normal text-muted-foreground">{label}</p>
       <p className={`mt-1 truncate font-ibm-plex-mono text-xs font-semibold tabular-nums sm:text-sm ${valueClassName}`}>
         {value}
