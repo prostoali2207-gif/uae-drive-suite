@@ -42,6 +42,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
+import { readPageCache, writePageCache } from "@/lib/pageDataCache";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import {
   findOverlappingContract,
@@ -117,6 +119,12 @@ interface ClientOption {
   license_expiry: string | null;
 }
 interface CarOption { id: string; plate: string; make: string; model: string; status: string; }
+interface ContractsPageCache {
+  contracts: ContractRow[];
+  clients: ClientOption[];
+  cars: CarOption[];
+  depositReadyCutoff: string;
+}
 type VehicleAvailability =
   | { status: "available" }
   | { status: "conflict"; conflict: Awaited<ReturnType<typeof findVehicleContractOverlap>> }
@@ -673,14 +681,16 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
 }
 
 const Contracts = () => {
+  const { user } = useAuth();
+  const initialPageCache = user ? readPageCache<ContractsPageCache>("contracts", user.id) : null;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const dashboardFilter = getDashboardContractFilter(searchParams.get("filter"));
   const activeDashboardFilterLabel = dashboardFilter ? dashboardContractFilterLabels[dashboardFilter] : null;
-  const [contracts, setContracts] = useState<ContractRow[]>([]);
-  const [clients, setClients] = useState<ClientOption[]>([]);
-  const [cars, setCars] = useState<CarOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [contracts, setContracts] = useState<ContractRow[]>(() => initialPageCache?.contracts ?? []);
+  const [clients, setClients] = useState<ClientOption[]>(() => initialPageCache?.clients ?? []);
+  const [cars, setCars] = useState<CarOption[]>(() => initialPageCache?.cars ?? []);
+  const [loading, setLoading] = useState(() => !initialPageCache);
   const [filter, setFilter] = useState<ContractFilter>("All");
   const [depositFilter, setDepositFilter] = useState<DepositFilter>("All");
   const [open, setOpen] = useState(false);
@@ -709,10 +719,10 @@ const Contracts = () => {
   const availabilityRequestIdRef = useRef(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [depositReadyCutoff, setDepositReadyCutoff] = useState(() => getDepositReadyCutoff(15));
+  const [depositReadyCutoff, setDepositReadyCutoff] = useState(() => initialPageCache?.depositReadyCutoff ?? getDepositReadyCutoff(15));
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       try {
         await syncVehicleStatusesWithContracts();
@@ -742,7 +752,9 @@ const Contracts = () => {
         supabase.from("profiles").select("deposit_return_days" as never).eq("id", userId).single(),
       ]);
       const depositReturnDays = (profileRes.data as { deposit_return_days?: number | null } | null)?.deposit_return_days ?? 15;
-      setDepositReadyCutoff(getDepositReadyCutoff(depositReturnDays));
+      const nextDepositReadyCutoff = getDepositReadyCutoff(depositReturnDays);
+      setDepositReadyCutoff(nextDepositReadyCutoff);
+      let nextContracts: ContractRow[] | null = null;
       if (contractsRes.error) toast.error(`Failed to load contracts: ${toSupabaseMessage(contractsRes.error)}`);
       else {
         const contractRows = (contractsRes.data as ContractRow[]) || [];
@@ -796,17 +808,26 @@ const Contracts = () => {
           }
         }
 
-        setContracts(
-          contractRows.map((contract) => ({
-            ...contract,
-            payment_status: balanceByContract[contract.id]?.payment_status ?? contract.payment_status,
-            balance_due: balanceByContract[contract.id]?.balance_due ?? Number(contract.total_amount),
-            effective_end_date: effectiveEndDateByContract[contract.id] ?? contract.end_date,
-          })),
-        );
+        nextContracts = contractRows.map((contract) => ({
+          ...contract,
+          payment_status: balanceByContract[contract.id]?.payment_status ?? contract.payment_status,
+          balance_due: balanceByContract[contract.id]?.balance_due ?? Number(contract.total_amount),
+          effective_end_date: effectiveEndDateByContract[contract.id] ?? contract.end_date,
+        }));
+        setContracts(nextContracts);
       }
-      if (!clientsRes.error) setClients(clientsRes.data || []);
-      if (!carsRes.error) setCars(carsRes.data || []);
+      const nextClients = !clientsRes.error ? ((clientsRes.data || []) as ClientOption[]) : null;
+      const nextCars = !carsRes.error ? ((carsRes.data || []) as CarOption[]) : null;
+      if (nextClients) setClients(nextClients);
+      if (nextCars) setCars(nextCars);
+      if (nextContracts && nextClients && nextCars) {
+        writePageCache<ContractsPageCache>("contracts", userId, {
+          contracts: nextContracts,
+          clients: nextClients,
+          cars: nextCars,
+          depositReadyCutoff: nextDepositReadyCutoff,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not load contracts.";
       toast.error(message);
@@ -817,7 +838,7 @@ const Contracts = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(!initialPageCache);
   }, []);
 
   useEffect(() => {
