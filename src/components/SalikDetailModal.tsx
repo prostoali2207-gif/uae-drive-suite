@@ -165,7 +165,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
             {loading ? (
               <p className="py-10 text-center text-sm text-muted-foreground">Loading Salik transactions...</p>
             ) : error ? (
-              <p className="rounded-md border border-[#ef4444]/25 bg-[#ef4444]/10 px-3 py-3 text-sm text-[#fecaca]">
+              <p className="rounded-md border border-tint-rose-foreground/20 bg-tint-rose px-3 py-3 text-sm text-tint-rose-foreground">
                 {error}
               </p>
             ) : filteredTransactions.length === 0 ? (
