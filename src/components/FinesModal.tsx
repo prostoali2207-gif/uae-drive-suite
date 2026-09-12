@@ -426,7 +426,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
                           size="sm"
                           onClick={() => toggleFinePayment(fine)}
                           disabled={payingFineId !== null}
-                          className="h-8 border border-[#22c55e]/25 bg-[#22c55e]/15 px-3 text-xs font-medium text-tint-green-foreground hover:bg-[#22c55e]/25"
+                          className="h-8 border border-tint-green-foreground/20 bg-tint-green px-3 text-xs font-medium text-tint-green-foreground hover:bg-tint-green/80"
                         >
                           Pay
                         </Button>
