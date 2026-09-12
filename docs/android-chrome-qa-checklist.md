@@ -5,10 +5,9 @@ Device target: Galaxy Note 20 Ultra, Chrome, real logged-in manager account.
 ## Confirm Latest Build
 
 1. Open FleetDesk production URL in Chrome.
-2. Check the tiny `build ...` stamp near the lower-left of the screen.
+2. Connect Chrome remote debugging and confirm the console line: `[FleetDesk] build=<id> mode=production`.
 3. Compare it with the latest deployed commit/build id from Vercel.
-4. If the stamp does not match, open Chrome site settings for the domain and clear storage/cache, then reload.
-5. Optional: connect remote debugging and confirm the console line: `[FleetDesk] build=<id> mode=production`.
+4. If the build does not match, open Chrome site settings for the domain and clear storage/cache, then reload.
 
 ## Contract Create
 
@@ -49,7 +48,7 @@ Device target: Galaxy Note 20 Ultra, Chrome, real logged-in manager account.
 Record:
 
 - Device model and Chrome version.
-- Visible build id.
+- Build id from the `[FleetDesk]` console line.
 - Contract id used.
 - Whether any tap required double-tap.
 - Whether any modal/dropdown left the page unclickable.
