@@ -160,3 +160,36 @@ Explicitly unchanged:
 - all existing actions and business behavior remain unchanged.
 
 Product Interface verdict: SYSTEMIZE READY.
+
+
+## First batch implementation status
+
+Implemented on branch `ui/operational-product-cores`:
+
+- upgraded FleetDesk UX specialization to the Operational Product UX core;
+- added FleetDesk Product Interface / Design Systems specialization;
+- upgraded UI Guard into an independent reviewer;
+- updated FleetDesk agent routing;
+- migrated Contract Detail visual states/surfaces toward shared semantic tokens;
+- migrated Fines/Salik/Parking working sheets used from Contract Detail toward shared semantic tokens.
+
+Files with product UI changes:
+- `src/pages/ContractDetail.tsx`
+- `src/components/FinesModal.tsx`
+- `src/components/SalikModal.tsx`
+- `src/components/ParkingBulkSheet.tsx`
+
+No intended change to:
+- queries;
+- mutations;
+- calculations;
+- rental rules;
+- routing;
+- Supabase;
+- action handlers.
+
+Next systemization targets after this batch:
+1. Clients mobile summary surfaces;
+2. fines/Salik/parking detail bottom sheets;
+3. vehicle history/timeline sheets;
+4. New Contract only as a separate UX/interface task.
