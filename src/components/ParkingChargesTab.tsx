@@ -174,12 +174,12 @@ export function ParkingChargesTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search parking, client, or plate..."
-          className="w-full rounded-lg border border-white/10 bg-background pl-9 text-foreground placeholder:text-white/40"
+          className="w-full rounded-lg border border-border bg-background pl-9 text-foreground placeholder:text-muted-foreground"
         />
       </div>
 
@@ -197,16 +197,16 @@ export function ParkingChargesTab() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:justify-end">
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleImport} />
-        <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => fileRef.current?.click()}>
+        <Button size="sm" variant="outline" className="w-full gap-1.5 md:w-auto" disabled={importing} onClick={() => fileRef.current?.click()}>
           <Upload className="h-4 w-4" />
           {importing ? "Importing..." : "Import Parking (PDF)"}
         </Button>
         {chargeable.length > 0 && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button size="sm" variant="outline" disabled={charging}>Charge All Unpaid</Button>
+              <Button size="sm" variant="outline" className="w-full md:w-auto" disabled={charging}>Charge All Unpaid</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
@@ -226,7 +226,78 @@ export function ParkingChargesTab() {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="grid gap-3 md:hidden">
+        {loading ? (
+          <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading parking...</div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+            No parking charges recorded. Import a Salik Statement PDF.
+          </div>
+        ) : (
+          getPaginatedRows(filtered, page, pageSize).map((row) => {
+            const displayedStatus = row.paid_at ? "Paid" : row.status;
+
+            return (
+              <article key={row.id} className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-mono text-[11px] text-muted-foreground">{formatDate(row.parking_date)}</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-foreground">{row.location}</div>
+                    {row.parking_zone ? (
+                      <div className="mt-0.5 text-xs text-muted-foreground">Zone {row.parking_zone}</div>
+                    ) : null}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-base font-semibold tabular-nums text-foreground">{money(row.amount)}</div>
+                    <span className={cn(
+                      "mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
+                      displayedStatus === "Unpaid"
+                        ? "bg-tint-rose text-tint-rose-foreground"
+                        : statusClasses[displayedStatus] ?? "bg-muted text-muted-foreground",
+                    )}>
+                      {displayedStatus}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-4 border-t border-border pt-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Car</div>
+                    <div className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">{row.cars?.plate ?? "—"}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Client</div>
+                    <div className="mt-0.5 truncate text-xs font-medium text-foreground">{row.clients?.full_name ?? "Not linked"}</div>
+                  </div>
+                </div>
+
+                {displayedStatus === "Unpaid" && (
+                  <div className="mt-3 border-t border-border pt-3">
+                    {row.contract_id ? (
+                      <Button size="sm" variant="outline" className="min-h-11 w-full" onClick={() => void chargeOne(row.id)}>
+                        Charge to Client
+                      </Button>
+                    ) : (
+                      <div className="text-xs text-tint-amber-foreground">Not linked to a contract — cannot charge client.</div>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </div>
+      <div className="md:hidden">
+        <ListPagination
+          page={page}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      </div>
+
+      <div className="hidden rounded-xl border border-border bg-card md:block">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
