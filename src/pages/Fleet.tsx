@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
+import { readPageCache, writePageCache } from "@/lib/pageDataCache";
 import { syncVehicleStatusesWithContracts } from "@/lib/vehicleStatusSync";
 import { Badge } from "@/components/ui/badge";
 import { previewLegacyFleetImport, type LegacyFleetImportPreview } from "@/lib/fleetImport";
@@ -63,6 +65,10 @@ interface Car {
   insurance_expiry: string | null;
   mulkiya_expiry: string | null;
   tag_number: string | null;
+}
+
+interface FleetPageCache {
+  cars: Car[];
 }
 
 function toSupabaseMessage(error: { code?: string; message?: string } | null): string {
@@ -100,9 +106,11 @@ function displayStatus(status: string): string {
 }
 
 const Fleet = () => {
+  const { user } = useAuth();
+  const initialPageCache = user ? readPageCache<FleetPageCache>("fleet", user.id) : null;
   const navigate = useNavigate();
-  const [cars, setCars] = useState<Car[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cars, setCars] = useState<Car[]>(() => initialPageCache?.cars ?? []);
+  const [loading, setLoading] = useState(() => !initialPageCache);
   const [filter, setFilter] = useState<FleetFilter>("All");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -120,7 +128,8 @@ const Fleet = () => {
   const [pageSize, setPageSize] = useState(25);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const fetchCars = async () => {
+  const fetchCars = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       await syncVehicleStatusesWithContracts();
     } catch (syncErr) {
@@ -134,13 +143,15 @@ const Fleet = () => {
     if (error) {
       toast.error(`Failed to load fleet: ${toSupabaseMessage(error)}`);
     } else {
-      setCars((data as Car[]) || []);
+      const nextCars = (data as Car[]) || [];
+      setCars(nextCars);
+      if (user) writePageCache<FleetPageCache>("fleet", user.id, { cars: nextCars });
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchCars();
+    fetchCars(!initialPageCache);
   }, []);
 
   const filtered = useMemo(() => {
