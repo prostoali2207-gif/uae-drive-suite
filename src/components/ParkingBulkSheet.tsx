@@ -319,7 +319,7 @@ export function ParkingBulkSheet({ contract, open, onOpenChange, transactions, o
           </div>
 
           <div className={cn(
-            "absolute inset-x-0 bottom-0 border-t border-primary/30 bg-[#0d1526] px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
+            "absolute inset-x-0 bottom-0 border-t border-primary/30 bg-card px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
             selectedIds.size > 0 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0",
           )}>
             <div className="flex items-center justify-between gap-3">
