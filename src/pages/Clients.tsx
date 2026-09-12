@@ -1190,7 +1190,7 @@ const Clients = () => {
                                     "text-[11px]",
                                     row.ready
                                       ? "bg-tint-green text-tint-green-foreground"
-                                      : "border-amber-500/40 text-amber-700",
+                                      : "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
                                   )}
                                 >
                                   {row.ready ? "Ready" : row.skipReason}
@@ -1383,7 +1383,7 @@ const Clients = () => {
                 {step === 1 ? (
                   <div className="grid gap-4">
                     <div className="grid gap-1.5">
-                      <Label htmlFor="name" className="text-foreground">Full Name <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="name" className="text-foreground">Full Name <span className="text-destructive">*</span></Label>
                       <Input 
                         id="name" 
                         required 
@@ -1393,7 +1393,7 @@ const Clients = () => {
                       />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="phone" className="text-foreground">Phone <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="phone" className="text-foreground">Phone <span className="text-destructive">*</span></Label>
                       <ClientPhoneInput
                         dialCode={phoneDialCode}
                         isoCountry={phoneIsoCountry}
@@ -1425,7 +1425,7 @@ const Clients = () => {
                       {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="dob" className="text-foreground">Date of Birth <span className="text-destructive">*</span></Label>
                       <DateOfBirthPicker
                         value={form.date_of_birth}
                         hasError={Boolean(dobError)}
@@ -1457,7 +1457,7 @@ const Clients = () => {
                       {form.client_type === "Resident" ? (
                         <>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="eid" className="text-foreground">Emirates ID <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="eid" className="text-foreground">Emirates ID <span className="text-destructive">*</span></Label>
                             <Input
                               id="eid"
                               required
@@ -1467,7 +1467,7 @@ const Clients = () => {
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="eidexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="eidexp" className="text-foreground">Expiry Date <span className="text-destructive">*</span></Label>
                             <Input
                               id="eidexp"
                               type="date"
@@ -1481,7 +1481,7 @@ const Clients = () => {
                       ) : (
                         <>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="pass" className="text-foreground">Passport Number <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="pass" className="text-foreground">Passport Number <span className="text-destructive">*</span></Label>
                             <Input
                               id="pass"
                               required
@@ -1491,7 +1491,7 @@ const Clients = () => {
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="passexp" className="text-foreground">Expiry Date <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="passexp" className="text-foreground">Expiry Date <span className="text-destructive">*</span></Label>
                             <Input
                               id="passexp"
                               type="date"
@@ -1507,7 +1507,7 @@ const Clients = () => {
 
                     <div className="grid gap-1.5">
                       <Label className="text-foreground">
-                        Driving Licence Type <span className="text-red-500">*</span>
+                        Driving Licence Type <span className="text-destructive">*</span>
                       </Label>
                       <Tabs
                         value={form.license_type}
@@ -1580,7 +1580,7 @@ const Clients = () => {
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="grid gap-1.5">
-                        <Label htmlFor="nat" className="text-foreground">Nationality <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="nat" className="text-foreground">Nationality <span className="text-destructive">*</span></Label>
                         <NationalityCombobox
                           id="nat"
                           value={form.nationality}
@@ -1591,7 +1591,7 @@ const Clients = () => {
                         />
                       </div>
                       <div className="grid gap-1.5">
-                        <Label htmlFor="lic" className="text-foreground">License Number <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="lic" className="text-foreground">License Number <span className="text-destructive">*</span></Label>
                         <Input 
                           id="lic" 
                           required 
@@ -1604,7 +1604,7 @@ const Clients = () => {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-1.5">
-                        <Label htmlFor="licexp" className="text-foreground">License Expiry <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="licexp" className="text-foreground">License Expiry <span className="text-destructive">*</span></Label>
                         <Input 
                           id="licexp" 
                           type="date" 
@@ -1984,7 +1984,7 @@ const Clients = () => {
                         className={cn(
                           "text-[11px]",
                           isClientIncomplete(c)
-                            ? "border-amber-500/40 text-amber-700"
+                            ? "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground"
                             : "bg-tint-green text-tint-green-foreground",
                         )}
                       >
