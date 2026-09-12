@@ -486,22 +486,22 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
                           <div key={node.timeline_id} className="relative pl-7">
                             {(nodeIndex > 0 || node.continues_from_previous) && (
                               <div className="absolute -top-2 left-[7px] flex h-4 items-center">
-                                <span className={`h-4 border-l ${node.continues_from_previous ? "border-dashed border-sky-400/70" : "border-solid border-border"}`} />
+                                <span className={`h-4 border-l ${node.continues_from_previous ? "border-dashed border-primary/70" : "border-solid border-border"}`} />
                                 {node.continues_from_previous && (
-                                  <span className="ml-1.5 rounded bg-card px-1 text-[8px] font-semibold uppercase tracking-wider text-sky-300">Continues</span>
+                                  <span className="ml-1.5 rounded bg-card px-1 text-[8px] font-semibold uppercase tracking-wider text-primary">Continues</span>
                                 )}
                               </div>
                             )}
                             {nodeIndex < nodes.length - 1 && (
-                              <span className={`absolute bottom-0 left-[7px] top-4 border-l ${nodes[nodeIndex + 1].continues_from_previous ? "border-dashed border-sky-400/70" : "border-solid border-border"}`} />
+                              <span className={`absolute bottom-0 left-[7px] top-4 border-l ${nodes[nodeIndex + 1].continues_from_previous ? "border-dashed border-primary/70" : "border-solid border-border"}`} />
                             )}
-                            <span className={`absolute left-0 top-[23px] h-3.5 w-3.5 rounded-full border-2 border-[#191c25] ring-1 ${active ? "bg-emerald-400 ring-emerald-300/60" : "bg-white/50 ring-white/20"}`} />
+                            <span className={`absolute left-0 top-[23px] h-3.5 w-3.5 rounded-full border-2 border-card ring-1 ${active ? "bg-tint-green-foreground ring-tint-green-foreground/60" : "bg-muted-foreground/50 ring-border"}`} />
 
                             <AccordionItem value={node.timeline_id} className="border-b border-border last:border-b-0">
                               <AccordionTrigger className="min-h-16 py-3 text-left hover:no-underline [&>svg]:h-4 [&>svg]:w-4">
                                 <div className="min-w-0 flex-1 pr-2">
                                   <div className="flex min-w-0 items-center gap-2">
-                                    <span className="truncate text-sm font-semibold text-white/90">{vehicleName}</span>
+                                    <span className="truncate text-sm font-semibold text-foreground">{vehicleName}</span>
                                     {node.car && <span className="shrink-0 font-ibm-plex-mono text-[10px] text-muted-foreground">{node.car.plate}</span>}
                                     {active && <span className="shrink-0 rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-tint-green-foreground">ACTIVE</span>}
                                   </div>
