@@ -112,44 +112,44 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/65 font-dm-sans" onClick={onClose}>
       <div
-        className="max-h-[88vh] w-full animate-in slide-in-from-bottom duration-200 overflow-hidden rounded-t-2xl border border-[#22222e] bg-[#12121a] text-white shadow-2xl"
+        className="max-h-[88vh] w-full animate-in slide-in-from-bottom duration-200 overflow-hidden rounded-t-2xl border border-border bg-card text-foreground shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-[#22222e] px-4 py-4 sm:px-6">
+        <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 sm:px-6">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold leading-6 text-white">Traffic Fines</h2>
-            <p className="mt-1 truncate font-ibm-plex-mono text-xs text-white/50">{contractId}</p>
+            <h2 className="text-lg font-semibold leading-6 text-foreground">Traffic Fines</h2>
+            <p className="mt-1 truncate font-ibm-plex-mono text-xs text-muted-foreground">{contractId}</p>
           </div>
           <button
             type="button"
             aria-label="Close traffic fines"
             onClick={onClose}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-[#22222e] text-white/70 transition hover:bg-white/5 hover:text-white"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-white/5 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
         </header>
 
         <div className="max-h-[calc(88vh-76px)] overflow-y-auto">
-          <section className="grid grid-cols-4 border-b border-[#22222e] bg-white/[0.02]">
+          <section className="grid grid-cols-4 border-b border-border bg-white/[0.02]">
             <SummaryItem label="Violations" value={summary.violations.toLocaleString("en-US")} />
-            <SummaryItem label="Fines" value={formatAed(summary.fines)} valueClassName="text-[#ef4444]" />
+            <SummaryItem label="Fines" value={formatAed(summary.fines)} valueClassName="text-tint-rose-foreground" />
             <SummaryItem label="Service fees" value={formatAed(summary.serviceFees)} />
-            <SummaryItem label="Total" value={formatAed(summary.total)} valueClassName="text-[#ef4444]" />
+            <SummaryItem label="Total" value={formatAed(summary.total)} valueClassName="text-tint-rose-foreground" />
           </section>
 
           <section className="space-y-3 px-4 py-4 sm:px-6">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search fine number or type"
-                className="h-11 border-[#22222e] bg-white/[0.03] pl-9 font-dm-sans text-white placeholder:text-white/35 focus-visible:ring-white/20"
+                className="h-11 border-input bg-input pl-9 font-dm-sans text-white placeholder:text-muted-foreground focus-visible:ring-white/20"
               />
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1.6fr)_82px_86px_76px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-white/40">
+            <div className="grid grid-cols-[minmax(0,1.6fr)_82px_86px_76px] gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
               <span>Violation</span>
               <span>Date</span>
               <span className="text-right">Amount</span>
@@ -157,13 +157,13 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
             </div>
 
             {loading ? (
-              <p className="py-10 text-center text-sm text-white/55">Loading traffic fines...</p>
+              <p className="py-10 text-center text-sm text-muted-foreground">Loading traffic fines...</p>
             ) : error ? (
-              <p className="rounded-md border border-[#ef4444]/25 bg-[#ef4444]/10 px-3 py-3 text-sm text-[#fecaca]">
+              <p className="rounded-md border border-tint-rose-foreground/20 bg-tint-rose px-3 py-3 text-sm text-tint-rose-foreground">
                 {error}
               </p>
             ) : filteredFines.length === 0 ? (
-              <p className="rounded-md border border-[#22222e] bg-white/[0.02] px-3 py-8 text-center text-sm text-white/50">
+              <p className="rounded-md border border-border bg-muted/10 px-3 py-8 text-center text-sm text-muted-foreground">
                 No traffic fines found.
               </p>
             ) : (
@@ -174,28 +174,28 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
                   return (
                     <div
                       key={fine.id}
-                      className="grid min-h-11 grid-cols-[minmax(0,1.6fr)_82px_86px_76px] items-center gap-2 rounded-md border border-[#22222e] bg-white/[0.025] px-3 py-3"
+                      className="grid min-h-11 grid-cols-[minmax(0,1.6fr)_82px_86px_76px] items-center gap-2 rounded-md border border-border bg-muted/10 px-3 py-3"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">
+                        <p className="truncate text-sm font-semibold text-foreground">
                           {fine.fine_type || "Traffic violation"}
                         </p>
-                        <p className="mt-1 truncate font-ibm-plex-mono text-[11px] text-white/45">
+                        <p className="mt-1 truncate font-ibm-plex-mono text-[11px] text-muted-foreground">
                           {fine.fine_number || "No fine number"}
                         </p>
                       </div>
-                      <p className="font-ibm-plex-mono text-[11px] text-white/65">
+                      <p className="font-ibm-plex-mono text-[11px] text-muted-foreground">
                         {formatDate(fine.fine_date)}
                       </p>
-                      <p className="font-ibm-plex-mono text-xs font-semibold tabular-nums text-white text-right">
+                      <p className="font-ibm-plex-mono text-xs font-semibold tabular-nums text-foreground text-right">
                         {formatAed(toNumber(fine.amount))}
                       </p>
                       <div className="flex justify-end">
                         <Badge
                           className={
                             isUnpaid
-                              ? "border-[#ef4444]/25 bg-[#ef4444]/15 text-[#ef4444] hover:bg-[#ef4444]/15"
-                              : "border-[#22c55e]/25 bg-[#22c55e]/15 text-[#22c55e] hover:bg-[#22c55e]/15"
+                              ? "border-tint-rose-foreground/20 bg-tint-rose text-tint-rose-foreground hover:bg-tint-rose/80"
+                              : "border-tint-green-foreground/20 bg-tint-green text-tint-green-foreground hover:bg-tint-green/80"
                           }
                           variant="outline"
                         >
@@ -209,9 +209,9 @@ export function FinesDetailModal({ contractId, open, onClose }: FinesDetailModal
             )}
           </section>
 
-          <footer className="sticky bottom-0 flex min-h-14 items-center justify-between gap-4 border-t border-[#22222e] bg-[#12121a] px-4 py-3 sm:px-6">
-            <span className="text-sm font-medium text-white/70">Total charged to client</span>
-            <span className="font-ibm-plex-mono text-base font-semibold tabular-nums text-[#ef4444]">
+          <footer className="sticky bottom-0 flex min-h-14 items-center justify-between gap-4 border-t border-border bg-card px-4 py-3 sm:px-6">
+            <span className="text-sm font-medium text-muted-foreground">Total charged to client</span>
+            <span className="font-ibm-plex-mono text-base font-semibold tabular-nums text-tint-rose-foreground">
               {formatAed(summary.total)}
             </span>
           </footer>
@@ -227,10 +227,10 @@ interface SummaryItemProps {
   valueClassName?: string;
 }
 
-function SummaryItem({ label, value, valueClassName = "text-white" }: SummaryItemProps) {
+function SummaryItem({ label, value, valueClassName = "text-foreground" }: SummaryItemProps) {
   return (
-    <div className="min-w-0 border-r border-[#22222e] px-2 py-3 last:border-r-0 sm:px-4">
-      <p className="truncate text-[10px] font-medium uppercase tracking-normal text-white/40">{label}</p>
+    <div className="min-w-0 border-r border-border px-2 py-3 last:border-r-0 sm:px-4">
+      <p className="truncate text-[10px] font-medium uppercase tracking-normal text-muted-foreground">{label}</p>
       <p className={`mt-1 truncate font-ibm-plex-mono text-xs font-semibold tabular-nums sm:text-sm ${valueClassName}`}>
         {value}
       </p>
