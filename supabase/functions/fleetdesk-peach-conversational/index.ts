@@ -155,16 +155,20 @@ Deno.serve(async (req: Request) => {
       !request?.payload
     );
     const developerWebhook = eventType === "conversation.message_received";
+    const backendDrivenWebhook = Boolean(
+      request?.payload?.subscriber?.phone_number &&
+      request?.payload?.message?.text
+    );
     const inboundDirection = String(
       developerMessage?.direction ||
       developerData?.direction ||
       "inbound"
     ).toLowerCase();
 
-    // Fast path can come from the legacy Classic Workflow or directly from
-    // Peach Developer Webhooks. Backend-driven conversational app calls remain
-    // ignored so they cannot create delayed duplicate replies.
-    fastWebhook = classicWebhook || developerWebhook;
+    // Accept all supported inbound Peach paths. For backend-driven inbound
+    // events, FleetDesk sends the WhatsApp reply itself through Peach API,
+    // so we do not wait for Peach's conversational response queue.
+    fastWebhook = classicWebhook || developerWebhook || backendDrivenWebhook;
 
     if (!fastWebhook) return noReply();
     if (developerWebhook && inboundDirection !== "inbound") return noReply();
