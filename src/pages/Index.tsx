@@ -247,7 +247,7 @@ const Index = () => {
       sublabel: "Active contracts ending today",
       value: stats.returnsToday.toLocaleString("en-AE"),
       icon: CornerDownLeft,
-      color: "text-red-500 bg-red-500/10",
+      color: "text-tint-rose-foreground bg-tint-rose",
       to: "/contracts?filter=returns-today",
     },
     {
@@ -255,7 +255,7 @@ const Index = () => {
       sublabel: "Active contracts past end date",
       value: stats.overdueReturns.toLocaleString("en-AE"),
       icon: AlertCircle,
-      color: "text-red-500 bg-red-500/10",
+      color: "text-tint-rose-foreground bg-tint-rose",
       to: "/contracts?filter=overdue",
     },
     {
@@ -263,7 +263,7 @@ const Index = () => {
       sublabel: "Traffic fines to collect",
       value: formatAED(stats.finesUnpaid),
       icon: AlertTriangle,
-      color: "text-amber-500 bg-amber-500/10",
+      color: "text-tint-amber-foreground bg-tint-amber",
       to: "/fines?type=fines&status=unpaid",
       amount: true,
     },
@@ -272,7 +272,7 @@ const Index = () => {
       sublabel: "Toll charges to collect",
       value: formatAED(stats.salikUnpaid),
       icon: Navigation,
-      color: "text-amber-500 bg-amber-500/10",
+      color: "text-tint-amber-foreground bg-tint-amber",
       to: "/fines?type=salik&status=unpaid",
       amount: true,
     },
@@ -281,7 +281,7 @@ const Index = () => {
       sublabel: "Active customer balances to collect",
       value: `${formatAED(stats.unpaidBalanceTotal)} · ${stats.unpaidBalanceContracts.toLocaleString("en-AE")} contracts`,
       icon: Wallet,
-      color: "text-amber-500 bg-amber-500/10",
+      color: "text-tint-amber-foreground bg-tint-amber",
       to: "/contracts?sort=balance_desc",
       amount: true,
     },
@@ -290,7 +290,7 @@ const Index = () => {
       sublabel: "Closed contracts held 15+ days",
       value: stats.depositsReady.toLocaleString("en-AE"),
       icon: Banknote,
-      color: "text-green-500 bg-green-500/10",
+      color: "text-tint-green-foreground bg-tint-green",
       to: "/contracts?filter=deposits-ready",
     },
     stats.maintenanceCount > 0 ? {
@@ -298,7 +298,7 @@ const Index = () => {
       sublabel: "Vehicles due for service or oil change within 7 days",
       value: stats.maintenanceCount.toLocaleString("en-AE"),
       icon: Wrench,
-      color: "text-amber-500 bg-amber-500/10",
+      color: "text-tint-amber-foreground bg-tint-amber",
       to: "/fleet",
     } : null,
   ].filter(Boolean);
@@ -359,7 +359,7 @@ const Index = () => {
                     className={cn(
                       "min-h-10 rounded-md px-3 text-sm font-medium transition-colors",
                       renewalFilter === filter.value
-                        ? "bg-white text-slate-950 shadow-sm"
+                        ? "bg-primary text-primary-foreground shadow-sm"
                         : "bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                     )}
                   >
@@ -403,8 +403,8 @@ const Index = () => {
                         className={cn(
                           "rounded-full px-2.5 py-1 text-xs font-semibold",
                           reason.tone === "red"
-                            ? "bg-red-500/10 text-red-600"
-                            : "bg-yellow-500/15 text-yellow-700",
+                            ? "bg-tint-rose text-tint-rose-foreground"
+                            : "bg-tint-amber text-tint-amber-foreground",
                         )}
                       >
                         {reason.label}
