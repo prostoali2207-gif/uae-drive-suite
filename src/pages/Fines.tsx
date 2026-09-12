@@ -875,6 +875,15 @@ const Fines = () => {
               })
             )}
           </div>
+          <div className="md:hidden">
+            <ListPagination
+              page={finesPage}
+              pageSize={finesPageSize}
+              total={filteredFines.length}
+              onPageChange={setFinesPage}
+              onPageSizeChange={setFinesPageSize}
+            />
+          </div>
 
           <div className="hidden rounded-xl border border-border bg-card md:block">
             <Table>
@@ -1054,7 +1063,7 @@ const Fines = () => {
                   <DialogDescription>Record toll charges for a vehicle.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleAddSalik} className="grid gap-4 py-2">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label htmlFor="s-date">Date</Label>
                       <Input id="s-date" type="date" required value={salikForm.charge_date} onChange={(e) => setSalikForm({ ...salikForm, charge_date: e.target.value })} />
@@ -1068,7 +1077,7 @@ const Fines = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-2 grid gap-1.5">
+                    <div className="grid gap-1.5 sm:col-span-2">
                       <Label>Client</Label>
                       <Select value={salikForm.client_id} onValueChange={(v) => setSalikForm({ ...salikForm, client_id: v })}>
                         <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
@@ -1154,6 +1163,15 @@ const Fines = () => {
                 );
               })
             )}
+          </div>
+          <div className="md:hidden">
+            <ListPagination
+              page={salikPage}
+              pageSize={salikPageSize}
+              total={filteredSalik.length}
+              onPageChange={setSalikPage}
+              onPageSizeChange={setSalikPageSize}
+            />
           </div>
 
           <div className="hidden rounded-xl border border-border bg-card md:block">
