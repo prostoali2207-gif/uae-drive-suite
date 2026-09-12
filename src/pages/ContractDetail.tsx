@@ -1516,9 +1516,9 @@ const FineStatusBadge = ({ status }: { status: string | null | undefined }) => {
     <span
       className={cn(
         "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
-        normalized === "Paid" && "border-[#22c55e]/25 bg-[#22c55e]/15 text-[#22c55e]",
-        normalized === "Partial" && "border-[#f59e0b]/25 bg-[#f59e0b]/15 text-[#f59e0b]",
-        normalized === "Unpaid" && "border-[#ef4444]/25 bg-[#ef4444]/15 text-[#ef4444]",
+        normalized === "Paid" && "border-tint-green-foreground/20 bg-tint-green text-tint-green-foreground",
+        normalized === "Partial" && "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
+        normalized === "Unpaid" && "border-tint-rose-foreground/20 bg-tint-rose text-tint-rose-foreground",
       )}
     >
       {normalized}
@@ -1679,34 +1679,34 @@ const ContractFinesSheet = ({
       <div className="mt-3 rounded-lg border border-[#24304f] bg-[#0f1729] p-3">
         <div className="grid gap-3 sm:grid-cols-[1fr_96px_150px]">
           <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Amount</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-foreground/55">Amount</Label>
             <Input
               type="number"
               min="0"
               step="0.01"
               value={paymentDraft.amount}
               onChange={(event) => setPaymentDraft((draft) => ({ ...draft, amount: event.target.value }))}
-              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-[#e8eaf0]"
+              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-foreground"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Tax %</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-foreground/55">Tax %</Label>
             <Input
               type="number"
               min="0"
               step="0.01"
               value={paymentDraft.taxRate}
               onChange={(event) => setPaymentDraft((draft) => ({ ...draft, taxRate: event.target.value }))}
-              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-[#e8eaf0]"
+              className="h-9 border-[#2a3a55] bg-[#1a2338] font-mono text-sm text-foreground"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-[#e8eaf0]/55">Method</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-foreground/55">Method</Label>
             <Select
               value={paymentDraft.method}
               onValueChange={(value) => setPaymentDraft((draft) => ({ ...draft, method: value as FinePaymentMethod }))}
             >
-              <SelectTrigger className="h-9 border-[#2a3a55] bg-[#1a2338] text-sm text-[#e8eaf0]">
+              <SelectTrigger className="h-9 border-[#2a3a55] bg-[#1a2338] text-sm text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1719,15 +1719,15 @@ const ContractFinesSheet = ({
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-[#e8eaf0]/60">
-            Tax {fmtAed(taxAmount)} / Total <span className="font-mono font-semibold text-[#e8eaf0]">{fmtAed(total)}</span>
+          <div className="text-xs text-foreground/60">
+            Tax {fmtAed(taxAmount)} / Total <span className="font-mono font-semibold text-foreground">{fmtAed(total)}</span>
           </div>
           <div className="flex gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 border-[#2a3a55] bg-transparent text-xs text-[#e8eaf0]"
+              className="h-9 border-[#2a3a55] bg-transparent text-xs text-foreground"
               disabled={isSaving}
               onClick={() => setOpenPaymentFineId(null)}
             >
@@ -1736,7 +1736,7 @@ const ContractFinesSheet = ({
             <Button
               type="button"
               size="sm"
-              className="h-9 bg-[#1d4ed8] text-xs font-semibold text-white hover:bg-[#2563eb]"
+              className="h-9 bg-primary text-xs font-semibold text-white hover:bg-primary/90"
               disabled={isSaving}
               onClick={() => void recordFinePayment(fine)}
             >
@@ -1750,35 +1750,35 @@ const ContractFinesSheet = ({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[560px]">
-        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[560px]">
+        <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-[#e8eaf0]/70" />
-            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Fines</SheetTitle>
+            <Receipt className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Fines</SheetTitle>
           </div>
-          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+          <SheetDescription className="text-xs text-foreground/55">
             {visibleFines.length} unpaid or partial fines / {fmtAed(outstandingTotal)}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {visibleFines.length === 0 ? (
-            <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
+            <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
               No unpaid fines linked to this contract.
             </div>
           ) : (
             <div className="space-y-2">
               {visibleFines.map(({ fine, displayAmount }) => (
-                <div key={fine.id} className="rounded-md border border-[#232d4a] bg-white/[0.015] px-3 py-3">
+                <div key={fine.id} className="rounded-md border border-border bg-white/[0.015] px-3 py-3">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-[#e8eaf0]">
+                      <div className="truncate text-sm font-medium text-foreground">
                         {fine.fine_type || "Traffic violation"}
                       </div>
-                      <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
+                      <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-foreground/50">
                         {formatDubaiDateTime(fine.fine_date)} / {fine.fine_number || "No fine number"}
                       </div>
-                      <div className="mt-0.5 truncate text-[11px] text-[#e8eaf0]/50">
+                      <div className="mt-0.5 truncate text-[11px] text-foreground/50">
                         {getFineVehicleSourceLine(fine) || "No vehicle details"}
                       </div>
                       <div className="mt-2">
@@ -1786,13 +1786,13 @@ const ContractFinesSheet = ({
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                      <div className="font-mono text-sm font-semibold tabular-nums text-foreground">
                         {fmtAed(displayAmount)}
                       </div>
                       <Button
                         type="button"
                         size="sm"
-                        className="mt-2 h-8 bg-[#1d4ed8] px-3 text-xs font-semibold text-white hover:bg-[#2563eb]"
+                        className="mt-2 h-8 bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90"
                         onClick={() => toggleFinePayment(fine, displayAmount)}
                       >
                         Pay
@@ -2118,20 +2118,20 @@ const ContractSalikBulkSheet = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full w-full flex-col border-l border-[#232d4a] bg-[#161d35] p-0 text-[#e8eaf0] sm:max-w-[520px]">
-        <SheetHeader className="border-b border-[#232d4a] px-5 py-4 text-left">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[520px]">
+        <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
-            <Route className="h-5 w-5 text-[#e8eaf0]/70" />
-            <SheetTitle className="text-lg font-semibold text-[#e8eaf0]">Contract Salik</SheetTitle>
+            <Route className="h-5 w-5 text-muted-foreground" />
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Salik</SheetTitle>
           </div>
-          <SheetDescription className="text-xs text-[#e8eaf0]/55">
+          <SheetDescription className="text-xs text-foreground/55">
             {unpaidTransactions.length} unpaid {unpaidTransactions.length === 1 ? "transaction" : "transactions"} found
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
           {unpaidTransactions.length === 0 ? (
-            <div className="rounded-md border border-[#232d4a] bg-white/[0.02] px-4 py-10 text-center text-sm text-[#e8eaf0]/60">
+            <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
               No unpaid Salik linked to this contract.
             </div>
           ) : (
@@ -2147,8 +2147,8 @@ const ContractSalikBulkSheet = ({
                       className={cn(
                         "h-8 shrink-0 rounded-full border px-3 font-mono text-[11px] font-medium tabular-nums transition-colors",
                         isSelected
-                          ? "border-[#1d4ed8] bg-[#0c1f3a] text-[#e8eaf0]"
-                          : "border-[#232d4a] bg-white/[0.03] text-[#e8eaf0]/70 hover:bg-white/[0.06]",
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-white/[0.03] text-muted-foreground hover:bg-white/[0.06]",
                       )}
                       onClick={() => selectMonthTransactions(month.ids)}
                     >
@@ -2160,17 +2160,17 @@ const ContractSalikBulkSheet = ({
 
               <button
                 type="button"
-                className="flex min-h-10 w-full items-center gap-3 rounded-md border border-[#232d4a] bg-white/[0.02] px-3 py-2 text-left text-xs font-medium text-[#e8eaf0]/80 transition-colors hover:bg-white/[0.05]"
+                className="flex min-h-10 w-full items-center gap-3 rounded-md border border-border bg-white/[0.02] px-3 py-2 text-left text-xs font-medium text-foreground/80 transition-colors hover:bg-white/[0.05]"
                 onClick={toggleVisibleTransactions}
               >
                 <Checkbox
                   checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
                   onCheckedChange={toggleVisibleTransactions}
                   onClick={(event) => event.stopPropagation()}
-                  className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                  className="h-4 w-4 shrink-0 border-muted-foreground/60 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                 />
                 <span>Select all</span>
-                <span className="ml-auto font-mono text-[11px] tabular-nums text-[#e8eaf0]/45">
+                <span className="ml-auto font-mono text-[11px] tabular-nums text-foreground/45">
                   {visibleIds.length}
                 </span>
               </button>
@@ -2187,8 +2187,8 @@ const ContractSalikBulkSheet = ({
                       className={cn(
                         "grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 py-2 transition-colors",
                         isSelected
-                          ? "border-[#1d4ed8] bg-[#0c1f3a]"
-                          : "border-[#232d4a] bg-white/[0.015] hover:bg-white/[0.04]",
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-white/[0.015] hover:bg-white/[0.04]",
                       )}
                       onClick={() => toggleTransaction(transaction.id)}
                       onKeyDown={(event) => {
@@ -2202,20 +2202,20 @@ const ContractSalikBulkSheet = ({
                         checked={isSelected}
                         onCheckedChange={() => toggleTransaction(transaction.id)}
                         onClick={(event) => event.stopPropagation()}
-                        className="h-4 w-4 shrink-0 border-[#64748b] data-[state=checked]:border-[#1d4ed8] data-[state=checked]:bg-[#1d4ed8]"
+                        className="h-4 w-4 shrink-0 border-muted-foreground/60 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                       />
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-[#e8eaf0]">
+                        <div className="truncate text-sm font-medium text-foreground">
                           {transaction.toll_gate || "Salik transaction"}
                         </div>
-                        <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-[#e8eaf0]/50">
+                        <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-foreground/50">
                           {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] text-[#e8eaf0]/45">
+                        <div className="mt-0.5 truncate text-[11px] text-foreground/45">
                           {[transaction.cars?.plate, [transaction.cars?.make, transaction.cars?.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "No car"}
                         </div>
                       </div>
-                      <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+                      <div className="shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-foreground">
                         {fmtAed(Number(transaction.amount))}
                       </div>
                     </div>
@@ -2228,18 +2228,18 @@ const ContractSalikBulkSheet = ({
 
         <div
           className={cn(
-            "absolute inset-x-0 bottom-0 border-t border-[#1d4ed8]/30 bg-[#0d1526] px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
+            "absolute inset-x-0 bottom-0 border-t border-primary/30 bg-[#0d1526] px-5 py-4 shadow-2xl transition-all duration-200 ease-out",
             selectedIds.size > 0 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0",
           )}
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 font-mono text-sm font-semibold tabular-nums text-[#e8eaf0]">
+            <div className="min-w-0 font-mono text-sm font-semibold tabular-nums text-foreground">
               {selectedIds.size} {selectedIds.size === 1 ? "transaction" : "transactions"} · {fmtAed(selectedTotal)}
             </div>
             <Button
               type="button"
               size="sm"
-              className="h-9 shrink-0 bg-[#1d4ed8] px-4 text-xs font-semibold text-white hover:bg-[#2563eb]"
+              className="h-9 shrink-0 bg-primary px-4 text-xs font-semibold text-white hover:bg-primary/90"
               onClick={openPaymentDialog}
               disabled={confirmingPayment}
             >
