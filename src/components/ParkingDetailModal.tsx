@@ -75,7 +75,7 @@ export function ParkingDetailModal({ contractId, transactions, open, onClose }: 
             type="button"
             aria-label="Close Parking charges"
             onClick={onClose}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-white/5 hover:text-white"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted/30 hover:text-foreground"
           >
             <X className="h-5 w-5" />
           </button>
@@ -89,7 +89,7 @@ export function ParkingDetailModal({ contractId, transactions, open, onClose }: 
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search location, zone or plate"
-                className="h-11 border-input bg-input pl-9 font-dm-sans text-white placeholder:text-muted-foreground focus-visible:ring-white/20"
+                className="h-11 border-input bg-input pl-9 font-dm-sans text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
               />
             </div>
 
