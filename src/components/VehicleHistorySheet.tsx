@@ -477,12 +477,12 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
               {[1, 2].map((item) => (
                 <div
                   key={item}
-                  className="rounded-xl border border-white/5 bg-[#1c1c1f] p-4"
+                  className="rounded-xl border border-border bg-muted/10 p-4"
                 >
                   <div className="space-y-2">
-                    <div className="h-3 w-1/3 rounded bg-white/10" />
-                    <div className="h-4 w-4/5 rounded bg-white/10" />
-                    <div className="h-3 w-1/2 rounded bg-white/5" />
+                    <div className="h-3 w-1/3 rounded bg-muted" />
+                    <div className="h-4 w-4/5 rounded bg-muted" />
+                    <div className="h-3 w-1/2 rounded bg-muted/60" />
                   </div>
                 </div>
               ))}
