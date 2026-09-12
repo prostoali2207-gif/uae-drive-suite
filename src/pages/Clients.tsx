@@ -1803,15 +1803,15 @@ const Clients = () => {
         </div>
 
         <div className="-mx-2 grid grid-cols-3 gap-2 md:hidden">
-          <div className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
+          <div className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-border bg-card px-2 py-2 text-center">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span className="text-sm font-semibold text-foreground">{activeClientsCount} Active</span>
           </div>
-          <div className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
+          <div className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-border bg-card px-2 py-2 text-center">
             <span className="font-mono text-sm font-semibold text-red-400">AED {outstandingTotal.toLocaleString()}</span>
             <span className="text-[11px] font-medium text-muted-foreground">Due</span>
           </div>
-          <div className="flex min-h-14 items-center justify-center rounded-xl border border-[#21293d] bg-[#161b27] px-2 py-2 text-center">
+          <div className="flex min-h-14 items-center justify-center rounded-xl border border-border bg-card px-2 py-2 text-center">
             <span className="text-sm font-semibold text-foreground">{clients.length} Total</span>
           </div>
         </div>
@@ -1826,8 +1826,8 @@ const Clients = () => {
                 className={cn(
                   "h-9 rounded-full px-4 text-sm font-medium transition-colors",
                   docFilter === opt
-                    ? "bg-[#2563eb] text-white"
-                    : "bg-[#161b27] text-muted-foreground",
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground",
                 )}
               >
                 {opt}
@@ -1838,11 +1838,11 @@ const Clients = () => {
 
         <div className="-mx-2 grid gap-2 px-2 md:hidden">
           {loading ? (
-            <div className="rounded-xl border border-[#21293d] bg-[#161b27] px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
               Loading clients...
             </div>
           ) : filtered.length === 0 ? (
-            <div className="rounded-xl border border-[#21293d] bg-[#161b27] px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
               No clients found.
             </div>
           ) : (
@@ -1856,11 +1856,11 @@ const Clients = () => {
                   key={c.id}
                   to={`/clients/${c.id}`}
                   className={cn(
-                    "relative grid grid-cols-[44px_minmax(0,1fr)_88px] gap-3 rounded-xl border border-[#21293d] bg-[#161b27] p-3 text-left transition-opacity",
+                    "relative grid grid-cols-[44px_minmax(0,1fr)_88px] gap-3 rounded-xl border border-border bg-card p-3 text-left transition-opacity",
                     !c.hasActive && "opacity-60",
                   )}
                 >
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#21293d] text-sm font-semibold text-foreground">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground">
                     {getInitials(c.full_name)}
                   </div>
                   <div className="min-w-0">
@@ -1925,7 +1925,7 @@ const Clients = () => {
           type="button"
           aria-label="Add client"
           onClick={openAdd}
-          className="fixed bottom-20 right-4 z-50 h-14 w-14 rounded-full bg-[#2563eb] p-0 text-white shadow-lg hover:bg-[#1d4ed8] md:hidden"
+          className="fixed bottom-20 right-4 z-50 h-14 w-14 rounded-full bg-primary p-0 text-primary-foreground shadow-lg hover:bg-primary/90 md:hidden"
         >
           <Plus className="h-7 w-7" />
         </Button>
