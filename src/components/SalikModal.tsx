@@ -234,7 +234,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
                           size="sm"
                           onClick={() => markTransactionPaid(transaction.id)}
                           disabled={payingTransactionId !== null}
-                          className="h-8 border border-[#22c55e]/25 bg-[#22c55e]/15 px-3 text-xs font-medium text-[#22c55e] hover:bg-[#22c55e]/25"
+                          className="h-8 border border-tint-green-foreground/20 bg-tint-green px-3 text-xs font-medium text-tint-green-foreground hover:bg-tint-green/80"
                         >
                           {isPaying ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -252,16 +252,16 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
           )}
         </div>
 
-        <div className="border-t border-border bg-[#12182d] px-5 py-4">
+        <div className="border-t border-border bg-muted/20 px-5 py-4">
           <div className="flex items-center justify-between text-sm">
             <span className="text-foreground/65">Paid</span>
-            <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#22c55e]">
+            <span className="font-ibm-plex-mono font-semibold tabular-nums text-tint-green-foreground">
               {formatAed(summary.paid)}
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between text-sm">
             <span className="text-foreground/65">Outstanding</span>
-            <span className="font-ibm-plex-mono font-semibold tabular-nums text-[#ef4444]">
+            <span className="font-ibm-plex-mono font-semibold tabular-nums text-tint-rose-foreground">
               {formatAed(summary.outstanding)}
             </span>
           </div>
