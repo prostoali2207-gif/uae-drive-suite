@@ -287,6 +287,15 @@ export function ParkingChargesTab() {
           })
         )}
       </div>
+      <div className="md:hidden">
+        <ListPagination
+          page={page}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      </div>
 
       <div className="hidden rounded-xl border border-border bg-card md:block">
         <Table>
