@@ -326,7 +326,7 @@ export function FinesModal({ contractId, clientId, ownerId, open, onOpenChange, 
               size="sm"
               disabled={payingFineId !== null}
               onClick={() => setOpenPaymentFineId(null)}
-              className="h-9 w-24 rounded-lg border border-[#2a3a55] bg-transparent px-3 text-sm font-semibold text-foreground hover:bg-white/[0.06] hover:text-foreground"
+              className="h-9 w-24 rounded-lg border border-border bg-transparent px-3 text-sm font-semibold text-foreground hover:bg-muted/50 hover:text-foreground"
             >
               Cancel
             </Button>
