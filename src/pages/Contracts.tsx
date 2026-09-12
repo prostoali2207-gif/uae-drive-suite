@@ -1670,7 +1670,7 @@ const Contracts = () => {
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-[#121830] p-1">
+                  <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-background p-1">
                     {rateTypes.map((rateType) => (
                       <Button
                         key={rateType}
@@ -1849,7 +1849,7 @@ const Contracts = () => {
             </DialogContent>
             <Button
       size="icon"
-      className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 md:hidden"
+      className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 md:hidden"
       aria-label="New Contract"
       onClick={() => navigate("/contracts/new")}
     >
@@ -1937,15 +1937,15 @@ const Contracts = () => {
                           <div className="grid grid-cols-2 gap-3">
                             {hasBalanceDue && (
                               <div>
-                                <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DUE</div>
-                                <div className="mt-1 font-mono text-base leading-5 text-[#f87171]">
+                                <div className="text-[10px] font-semibold uppercase leading-3 text-muted-foreground">DUE</div>
+                                <div className="mt-1 font-mono text-base leading-5 text-tint-rose-foreground">
                                   AED {balance.toLocaleString()}
                                 </div>
                               </div>
                             )}
                             {hasDeposit && (
                               <div className={cn("text-right", !hasBalanceDue && "col-start-2")}>
-                                <div className="text-[10px] font-semibold uppercase leading-3 text-[#3d5478]">DEPOSIT</div>
+                                <div className="text-[10px] font-semibold uppercase leading-3 text-muted-foreground">DEPOSIT</div>
                                 <div className="mt-1 flex items-center justify-end gap-2">
                                   <span className={cn("font-mono text-sm leading-5", isDepositReturned ? "text-muted-foreground" : "text-foreground")}>
                                     AED {depositAmount.toLocaleString()}
@@ -1955,7 +1955,7 @@ const Contracts = () => {
                                       "rounded border px-[7px] py-0.5 text-[10px] font-bold leading-3",
                                       isDepositReturned
                                         ? "border-border bg-muted text-muted-foreground"
-                                        : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
+                                        : "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
                                     )}
                                   >
                                     {depositState.toUpperCase()}
@@ -2065,10 +2065,10 @@ const Contracts = () => {
                       </TableCell>
                       <TableCell className="px-5 text-right">
                         {!hasDeposit ? (
-                          <div className="text-sm text-[#2d3f5c]">—</div>
+                          <div className="text-sm text-muted-foreground">—</div>
                         ) : (
                           <div className="flex flex-col items-end gap-1">
-                            <div className={cn("font-mono text-sm font-medium", isDepositReturned ? "text-[#475569]" : "text-foreground")}>
+                            <div className={cn("font-mono text-sm font-medium", isDepositReturned ? "text-muted-foreground" : "text-foreground")}>
                               AED {depositAmount.toLocaleString()}
                             </div>
                             <span
@@ -2076,7 +2076,7 @@ const Contracts = () => {
                                 "rounded border px-[7px] py-0.5 text-[10px] font-bold uppercase leading-3",
                                 isDepositReturned
                                   ? "border-border bg-muted text-muted-foreground"
-                                  : "border-[#4a3510] bg-[#2a1f05] text-[#fbbf24]",
+                                  : "border-tint-amber-foreground/20 bg-tint-amber text-tint-amber-foreground",
                               )}
                             >
                               {depositState.toUpperCase()}
@@ -2119,7 +2119,7 @@ const Contracts = () => {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 gap-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                              className="h-7 gap-1 text-xs text-primary hover:bg-primary/10 hover:text-primary"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setReopenTargetId(c.id);
