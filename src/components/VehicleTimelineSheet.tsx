@@ -503,20 +503,20 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
                                   <div className="flex min-w-0 items-center gap-2">
                                     <span className="truncate text-sm font-semibold text-foreground">{vehicleName}</span>
                                     {node.car && <span className="shrink-0 font-ibm-plex-mono text-[10px] text-muted-foreground">{node.car.plate}</span>}
-                                    {active && <span className="shrink-0 rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-tint-green-foreground">ACTIVE</span>}
+                                    {active && <span className="shrink-0 rounded border border-tint-green-foreground/30 bg-tint-green px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-tint-green-foreground">ACTIVE</span>}
                                   </div>
                                   <div className="mt-1 font-ibm-plex-mono text-[10px] text-muted-foreground">
                                     {formatDateTimeline(node.display_started_at)} {active ? "→ Active" : `→ ${node.display_ended_at ? formatDateTimeline(node.display_ended_at) : "Active"}`}
                                   </div>
-                                  <div className="mt-1 flex gap-3 font-ibm-plex-mono text-[11px] text-white/70">
+                                  <div className="mt-1 flex gap-3 font-ibm-plex-mono text-[11px] text-muted-foreground">
                                     <span>{formatDays(days)} days</span>
-                                    <span className="text-white/25">·</span>
+                                    <span className="text-muted-foreground/60">·</span>
                                     <span>{amount === null ? "--" : formatAed(amount)}</span>
                                   </div>
                                 </div>
                               </AccordionTrigger>
                               <AccordionContent className="pb-3">
-                                <dl className="space-y-2 rounded-lg border border-white/7 bg-black/10 p-3">
+                                <dl className="space-y-2 rounded-lg border border-border bg-muted/10 p-3">
                                   {[
                                     ["Vehicle", node.car ? `${vehicleName} · ${node.car.plate} · ${node.car.year}` : vehicleName],
                                     ["Start Date", formatDateTimeline(node.display_started_at)],
@@ -527,7 +527,7 @@ export const VehicleTimelineSheet: React.FC<VehicleHistorySheetProps> = ({
                                   ].map(([label, value]) => (
                                     <div key={label} className="flex items-start justify-between gap-3">
                                       <dt className="text-[11px] text-muted-foreground">{label}</dt>
-                                      <dd className="text-right font-ibm-plex-mono text-xs text-white/85">{value}</dd>
+                                      <dd className="text-right font-ibm-plex-mono text-xs text-foreground/85">{value}</dd>
                                     </div>
                                   ))}
                                 </dl>
