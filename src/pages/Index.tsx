@@ -15,6 +15,7 @@ import ExpiringContracts from "@/components/ExpiringContracts";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { readPageCache, writePageCache } from "@/lib/pageDataCache";
 
 const formatAED = (n: number) => `AED ${n.toLocaleString("en-AE")}`;
 type RenewalFilter = "today" | "tomorrow" | "week";
@@ -53,26 +54,36 @@ interface Stats {
   revenueThisMonth: number;
 }
 
+interface DashboardPageCache {
+  stats: Stats;
+  carsNotReady: CarsNotReadyRow[];
+}
+
+const emptyStats: Stats = {
+  activeContracts: 0,
+  availableCars: 0,
+  totalCars: 0,
+  finesUnpaid: 0,
+  salikUnpaid: 0,
+  renewalsDue: 0,
+  returnsToday: 0,
+  overdueReturns: 0,
+  depositsReady: 0,
+  maintenanceCount: 0,
+  unpaidBalanceTotal: 0,
+  unpaidBalanceContracts: 0,
+  revenueThisMonth: 0,
+};
+
 const Index = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const initialPageCache = user ? readPageCache<DashboardPageCache>("dashboard", user.id) : null;
   const [renewalFilter, setRenewalFilter] = useState<RenewalFilter>("today");
-  const [carsNotReady, setCarsNotReady] = useState<CarsNotReadyRow[]>([]);
-  const [stats, setStats] = useState<Stats>({
-    activeContracts: 0,
-    availableCars: 0,
-    totalCars: 0,
-    finesUnpaid: 0,
-    salikUnpaid: 0,
-    renewalsDue: 0,
-    returnsToday: 0,
-    overdueReturns: 0,
-    depositsReady: 0,
-    maintenanceCount: 0,
-    unpaidBalanceTotal: 0,
-    unpaidBalanceContracts: 0,
-    revenueThisMonth: 0,
-  });
+  const [carsNotReady, setCarsNotReady] = useState<CarsNotReadyRow[]>(
+    () => initialPageCache?.carsNotReady ?? [],
+  );
+  const [stats, setStats] = useState<Stats>(() => initialPageCache?.stats ?? emptyStats);
 
   useEffect(() => {
     if (!user) return;
@@ -205,7 +216,7 @@ const Index = () => {
 
       setCarsNotReady(carsNotReadyRows);
 
-      setStats({
+      const nextStats: Stats = {
         activeContracts: contractsRes.count ?? 0,
         availableCars: carsRes.count ?? 0,
         totalCars: totalCarsRes.count ?? 0,
@@ -219,6 +230,11 @@ const Index = () => {
         unpaidBalanceTotal,
         unpaidBalanceContracts,
         revenueThisMonth: (revenueThisMonthRes.data || []).reduce((s, p) => s + Number(p.amount), 0),
+      };
+      setStats(nextStats);
+      writePageCache<DashboardPageCache>("dashboard", user.id, {
+        stats: nextStats,
+        carsNotReady: carsNotReadyRows,
       });
     };
     load();

@@ -5,6 +5,8 @@ import { Calendar, Clock, MessageCircle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RenewContractDialog from "@/components/RenewContractDialog";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { readPageCache, writePageCache } from "@/lib/pageDataCache";
 
 interface ContractWithDetails {
   id: string;
@@ -46,15 +48,20 @@ const addDays = (date: Date, days: number) => {
 };
 
 const ExpiringContracts = ({ filter = "today" }: ExpiringContractsProps) => {
+  const { user } = useAuth();
+  const initialPageCache = user
+    ? readPageCache<ContractWithDetails[]>("dashboard-expiring-contracts", user.id)
+    : null;
   const [openContractId, setOpenContractId] = useState<string | null>(null);
-  const [contracts, setContracts] = useState<ContractWithDetails[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [contracts, setContracts] = useState<ContractWithDetails[]>(() => initialPageCache ?? []);
+  const [loading, setLoading] = useState(() => !initialPageCache);
 
   useEffect(() => {
-    fetchExpiringContracts();
+    fetchExpiringContracts(!initialPageCache);
   }, []);
 
-  const fetchExpiringContracts = async () => {
+  const fetchExpiringContracts = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const threeDaysFromNow = new Date();
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
@@ -129,12 +136,14 @@ const ExpiringContracts = ({ filter = "today" }: ExpiringContractsProps) => {
         );
       }
 
-      setContracts(
-        (data || []).map((contract) => ({
-          ...contract,
-          balance_due: balanceByContract[contract.id] ?? 0,
-        })),
-      );
+      const nextContracts = (data || []).map((contract) => ({
+        ...contract,
+        balance_due: balanceByContract[contract.id] ?? 0,
+      }));
+      setContracts(nextContracts);
+      if (user) {
+        writePageCache("dashboard-expiring-contracts", user.id, nextContracts);
+      }
     } catch (error) {
       console.error("Error fetching expiring contracts:", error);
     } finally {
