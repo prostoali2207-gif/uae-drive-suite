@@ -509,7 +509,7 @@ export const VehicleHistorySheet: React.FC<VehicleHistorySheetProps> = ({
                     <AccordionItem
                       key={event.id}
                       value={event.id}
-                      className="overflow-hidden rounded-xl border border-border bg-[#1c1c1f]"
+                      className="overflow-hidden rounded-xl border border-border bg-muted/10"
                     >
                       <AccordionTrigger className="min-h-20 px-4 py-3 text-left hover:no-underline">
                         <div className="min-w-0 pr-3">
