@@ -1012,16 +1012,16 @@ const Fines = () => {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:justify-end">
             <input ref={salikFileRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Salik")} />
-            <Button size="sm" variant="outline" className="gap-1.5" disabled={importing} onClick={() => salikFileRef.current?.click()}>
+            <Button size="sm" variant="outline" className="w-full gap-1.5 md:w-auto" disabled={importing} onClick={() => salikFileRef.current?.click()}>
               <Upload className="h-4 w-4" />
               {importing ? "Importing..." : "Import Salik (Excel)"}
             </Button>
             {chargeableSalik.length > 0 && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="outline" disabled={chargingAllSalik}>
+                  <Button size="sm" variant="outline" className="w-full md:w-auto" disabled={chargingAllSalik}>
                     Charge All Unpaid
                   </Button>
                 </AlertDialogTrigger>
@@ -1043,7 +1043,7 @@ const Fines = () => {
             )}
             <Dialog open={salikOpen} onOpenChange={setSalikOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="col-span-2 w-full gap-1.5 md:w-auto">
                   <Plus className="h-4 w-4" />
                   Add Salik Charges
                 </Button>
@@ -1095,7 +1095,68 @@ const Fines = () => {
             </Dialog>
           </div>
 
-          <div className="rounded-xl border border-border bg-card">
+          <div className="grid gap-3 md:hidden">
+            {loading ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading Salik charges...</div>
+            ) : salik.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">No Salik charges recorded.</div>
+            ) : filteredSalik.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">{salikEmptyMessage}</div>
+            ) : (
+              paginatedSalik.map((s) => {
+                const paidAt = (s as SalikRow & { paid_at?: string | null }).paid_at;
+                const displayedStatus: ChargeStatus = paidAt
+                  ? "Paid"
+                  : s.status === "Charged to Client"
+                    ? "Charged to Client"
+                    : "Unpaid";
+
+                return (
+                  <article key={s.id} className="rounded-xl border border-border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {formatDateOnly(s.charge_date)}{s.trip_time ? ` · ${s.trip_time}` : ""}
+                        </div>
+                        <div className="mt-1 truncate font-mono text-sm font-semibold text-foreground">{s.transaction_id || "No transaction ID"}</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono text-base font-semibold tabular-nums text-foreground">AED {Number(s.amount).toLocaleString()}</div>
+                        <span className={cn("mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium", statusClasses[displayedStatus])}>
+                          {displayedStatus}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-4 border-t border-border pt-3">
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Car</div>
+                        <div className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">{s.cars?.plate ?? "—"}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Client</div>
+                        <div className="mt-0.5 truncate text-xs font-medium text-foreground">{s.clients?.full_name ?? "Not linked"}</div>
+                      </div>
+                    </div>
+
+                    {displayedStatus === "Unpaid" && (
+                      <div className="mt-3 border-t border-border pt-3">
+                        {s.contract_id ? (
+                          <Button size="sm" variant="outline" className="min-h-11 w-full" onClick={() => chargeSalikToClient(s.id)}>
+                            Charge to Client
+                          </Button>
+                        ) : (
+                          <div className="text-xs text-tint-amber-foreground">Not linked to a contract — cannot charge client.</div>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })
+            )}
+          </div>
+
+          <div className="hidden rounded-xl border border-border bg-card md:block">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
