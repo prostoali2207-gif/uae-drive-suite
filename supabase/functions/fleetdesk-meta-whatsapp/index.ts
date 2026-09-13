@@ -100,6 +100,69 @@ async function sendWhatsAppText(phoneNumberId: string, to: string, body: string)
   return data;
 }
 
+async function sendWhatsAppList(
+  phoneNumberId: string,
+  to: string,
+  header: string,
+  body: string,
+  button: string,
+  rows: Array<{ id: string; title: string; description?: string }>,
+) {
+  const accessToken = Deno.env.get("META_ACCESS_TOKEN") || "";
+  if (!accessToken) throw new Error("META_ACCESS_TOKEN is not configured");
+
+  const response = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(phoneNumberId)}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizePhone(to),
+        type: "interactive",
+        interactive: {
+          type: "list",
+          header: { type: "text", text: header },
+          body: { text: body },
+          action: {
+            button,
+            sections: [{
+              title: "FleetDesk",
+              rows: rows.map((row) => ({
+                id: row.id,
+                title: row.title,
+                ...(row.description ? { description: row.description } : {}),
+              })),
+            }],
+          },
+        },
+      }),
+    },
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String(data?.error?.message || `Meta list send failed (${response.status})`));
+  }
+  return data;
+}
+
+function mainMenuRows() {
+  return [
+    { id: "fd_section_cars", title: "Авто", description: "Доступность и поиск машины" },
+    { id: "fd_section_contracts", title: "Контракты", description: "Активные и поиск договора" },
+    { id: "fd_section_clients", title: "Клиенты", description: "Поиск клиента" },
+    { id: "fd_section_finance", title: "Финансы", description: "Таблица «Движение денег»" },
+    { id: "fd_section_fines", title: "Штрафы", description: "Неоплаченные штрафы" },
+    { id: "fd_section_salik", title: "Salik", description: "Неоплаченные проезды" },
+    { id: "fd_section_parking", title: "Парковки", description: "Неоплаченные парковки" },
+  ];
+}
+
 async function getActiveStaff(supabase: ReturnType<typeof createClient>, phone: string) {
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
@@ -193,6 +256,160 @@ function formatFinance(data: any) {
   ).join("\n");
 }
 
+async function findClientsForStaff(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  queryText: string,
+) {
+  const query = String(queryText || "").trim();
+  if (!query) return [];
+  const digits = normalizePhone(query);
+
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, full_name, phone, nationality, license_number, license_expiry, passport_number, passport_expiry")
+    .eq("owner_id", ownerId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+
+  const q = query.toLowerCase();
+  return (data || []).filter((row: any) => {
+    const byName = String(row.full_name || "").toLowerCase().includes(q);
+    const byPhone = digits && normalizePhone(row.phone).includes(digits);
+    return byName || byPhone;
+  }).slice(0, 10);
+}
+
+function formatClients(rows: any[]) {
+  if (!rows.length) return "Клиент не найден.";
+  return rows.map((c) =>
+    `• ${c.full_name || "Без имени"} — ${c.phone || "без телефона"}${c.nationality ? " — " + c.nationality : ""}`
+  ).join("\n");
+}
+
+async function listOpenContracts(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+) {
+  const { data, error } = await supabase
+    .from("contracts")
+    .select("id, end_date, end_time, status, client:clients(full_name), car:cars(plate, make, model)")
+    .eq("owner_id", ownerId)
+    .in("status", ["Active", "Expiring Soon"])
+    .order("end_date", { ascending: true })
+    .limit(15);
+  if (error) throw error;
+  return data || [];
+}
+
+function formatOpenContracts(rows: any[]) {
+  if (!rows.length) return "Открытых контрактов нет.";
+  return rows.map((c: any) =>
+    `• ${c.car?.plate || "без номера"} — ${c.client?.full_name || "без клиента"} — до ${c.end_date || "?"}`
+  ).join("\n");
+}
+
+async function getCarByPlate(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  plateInput: string,
+) {
+  const target = normalizePlate(plateInput);
+  const { data, error } = await supabase
+    .from("cars")
+    .select("plate, make, model, year, color, status, insurance_expiry, mulkiya_expiry, tag_number")
+    .eq("owner_id", ownerId);
+  if (error) throw error;
+  return (data || []).find((car: any) => normalizePlate(car.plate) === target) || null;
+}
+
+function formatCar(car: any) {
+  if (!car) return "Машина не найдена.";
+  return [
+    `${car.plate} — ${car.make || ""} ${car.model || ""} ${car.year || ""}`.trim(),
+    `Статус: ${car.status || "—"}`,
+    car.color ? `Цвет: ${car.color}` : null,
+    car.mulkiya_expiry ? `Mulkiya до: ${car.mulkiya_expiry}` : null,
+    car.insurance_expiry ? `Страховка до: ${car.insurance_expiry}` : null,
+  ].filter(Boolean).join("\n");
+}
+
+async function listFines(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  plateInput?: string,
+) {
+  const { data, error } = await supabase
+    .from("fines")
+    .select("fine_date, fine_type, fine_number, amount, original_amount, service_fee, status, black_points, car:cars(plate, make, model)")
+    .eq("owner_id", ownerId)
+    .in("status", ["Unpaid", "Partial"])
+    .order("fine_date", { ascending: false })
+    .limit(80);
+  if (error) throw error;
+  const target = plateInput ? normalizePlate(plateInput) : "";
+  return (data || []).filter((row: any) => !target || normalizePlate(row.car?.plate) === target).slice(0, 10);
+}
+
+function formatFines(rows: any[]) {
+  if (!rows.length) return "Неоплаченных штрафов не найдено.";
+  return rows.map((r: any) =>
+    `• ${r.car?.plate || "без номера"} — ${Number(r.amount || 0)} AED — ${String(r.fine_date || "").slice(0, 10)}${r.black_points ? " — " + r.black_points + " BP" : ""}`
+  ).join("\n");
+}
+
+async function listSalik(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  plateInput?: string,
+) {
+  const { data, error } = await supabase
+    .from("salik")
+    .select("charge_date, trip_time, toll_gate, amount, original_amount, service_fee, status, car:cars(plate, make, model)")
+    .eq("owner_id", ownerId)
+    .eq("status", "Unpaid")
+    .order("charge_date", { ascending: false })
+    .limit(120);
+  if (error) throw error;
+  const target = plateInput ? normalizePlate(plateInput) : "";
+  return (data || []).filter((row: any) => !target || normalizePlate(row.car?.plate) === target).slice(0, 10);
+}
+
+function formatSalik(rows: any[]) {
+  if (!rows.length) return "Неоплаченных Salik не найдено.";
+  return rows.map((r: any) =>
+    `• ${r.car?.plate || "без номера"} — ${Number(r.amount || 0)} AED — ${r.charge_date || "?"}${r.toll_gate ? " — " + r.toll_gate : ""}`
+  ).join("\n");
+}
+
+async function listParking(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  plateInput?: string,
+) {
+  const { data, error } = await supabase
+    .from("parking_charges")
+    .select("parking_date, plate_number, location, parking_zone, amount, original_amount, service_fee, status, car:cars(plate, make, model)")
+    .eq("owner_id", ownerId)
+    .eq("status", "Unpaid")
+    .order("parking_date", { ascending: false })
+    .limit(120);
+  if (error) throw error;
+  const target = plateInput ? normalizePlate(plateInput) : "";
+  return (data || []).filter((row: any) => {
+    if (!target) return true;
+    return normalizePlate(row.car?.plate || row.plate_number) === target;
+  }).slice(0, 10);
+}
+
+function formatParking(rows: any[]) {
+  if (!rows.length) return "Неоплаченных парковок не найдено.";
+  return rows.map((r: any) =>
+    `• ${r.car?.plate || r.plate_number || "без номера"} — ${Number(r.amount || 0)} AED — ${String(r.parking_date || "").slice(0, 10)}${r.location ? " — " + r.location : ""}`
+  ).join("\n");
+}
+
 async function beginAudit(
   supabase: ReturnType<typeof createClient>,
   ownerId: string,
@@ -256,6 +473,49 @@ async function handleCommand(
 ) {
   const cmd = text.replace(/^fd\s*/i, "").trim();
 
+  if (!cmd || /^(меню|помощь|help|команды)$/i.test(cmd)) {
+    return "__MAIN_MENU__";
+  }
+
+  if (/^section_cars$/i.test(cmd)) {
+    const { data: cars, error } = await supabase
+      .from("cars")
+      .select("plate, make, model, year, status")
+      .eq("owner_id", staff.owner_id)
+      .eq("status", "Available")
+      .order("plate");
+    if (error) throw error;
+    return "АВТО\n" + formatAvailable(cars || []) + "\n\nПоиск машины: fd машина 77108";
+  }
+
+  if (/^section_contracts$/i.test(cmd)) {
+    const rows = await listOpenContracts(supabase, staff.owner_id);
+    return "КОНТРАКТЫ\n" + formatOpenContracts(rows) + "\n\nПоиск: fd контракт 73558";
+  }
+
+  if (/^section_clients$/i.test(cmd)) {
+    return "КЛИЕНТЫ\nПоиск по имени или телефону:\nfd клиент +97150...\nfd клиент Имя";
+  }
+
+  if (/^section_finance$/i.test(cmd)) {
+    return "ФИНАНСЫ — «ДВИЖЕНИЕ ДЕНЕГ»\nТолько текущая финансовая таблица.\n\nПример:\nfd финансы наличные 01.10 Мойка авто";
+  }
+
+  if (/^section_fines$/i.test(cmd)) {
+    const rows = await listFines(supabase, staff.owner_id);
+    return "ШТРАФЫ\n" + formatFines(rows) + "\n\nПо машине: fd штрафы 77108";
+  }
+
+  if (/^section_salik$/i.test(cmd)) {
+    const rows = await listSalik(supabase, staff.owner_id);
+    return "SALIK\n" + formatSalik(rows) + "\n\nПо машине: fd salik 77108";
+  }
+
+  if (/^section_parking$/i.test(cmd)) {
+    const rows = await listParking(supabase, staff.owner_id);
+    return "ПАРКОВКИ\n" + formatParking(rows) + "\n\nПо машине: fd парковки 77108";
+  }
+
   if (/^(авто|машины|доступные авто|свободные машины)$/i.test(cmd)) {
     const { data: cars, error } = await supabase
       .from("cars")
@@ -267,12 +527,40 @@ async function handleCommand(
     return formatAvailable(cars || []);
   }
 
+  const carMatch = cmd.match(/^машина\s+(.+)$/i);
+  if (carMatch) {
+    return formatCar(await getCarByPlate(supabase, staff.owner_id, carMatch[1]));
+  }
+
+  if (/^контракты$/i.test(cmd)) {
+    return formatOpenContracts(await listOpenContracts(supabase, staff.owner_id));
+  }
+
   const contractMatch = cmd.match(/^(?:контракт|договор)\s+(.+)$/i);
   if (contractMatch) {
     const contracts = await findContracts(supabase, staff.owner_id, contractMatch[1]);
     return formatContracts(contracts);
   }
 
+  const clientMatch = cmd.match(/^клиент\s+(.+)$/i);
+  if (clientMatch) {
+    return formatClients(await findClientsForStaff(supabase, staff.owner_id, clientMatch[1]));
+  }
+
+  const fineMatch = cmd.match(/^штрафы(?:\s+(.+))?$/i);
+  if (fineMatch) {
+    return formatFines(await listFines(supabase, staff.owner_id, fineMatch[1]));
+  }
+
+  const salikMatch = cmd.match(/^salik(?:\s+(.+))?$/i);
+  if (salikMatch) {
+    return formatSalik(await listSalik(supabase, staff.owner_id, salikMatch[1]));
+  }
+
+  const parkingMatch = cmd.match(/^парковки(?:\s+(.+))?$/i);
+  if (parkingMatch) {
+    return formatParking(await listParking(supabase, staff.owner_id, parkingMatch[1]));
+  }
 
   const financeMatch = cmd.match(/^финансы\s+(наличные|ajman|сбер)\s+(\d{2})\.(\d{2})(?:\.(\d{2,4}))?\s+(.+)$/i);
   if (financeMatch) {
@@ -296,10 +584,7 @@ async function handleCommand(
     return formatFinance(result);
   }
 
-  if (/^(помощь|help|команды)$/i.test(cmd)) {
-    return "Команды FleetDesk:\nfd авто\nfd контракт 73558\nfd финансы наличные 01.10 Мойка авто";
-  }
-  return "Команда не распознана. Напиши: fd помощь";
+  return "__MAIN_MENU__";
 }
 
 Deno.serve(async (req: Request) => {
@@ -349,11 +634,19 @@ Deno.serve(async (req: Request) => {
         if (!phoneNumberId) continue;
 
         for (const message of value?.messages || []) {
-          if (message?.type !== "text") continue;
-
           const sender = String(message?.from || "");
-          const text = String(message?.text?.body || "").trim();
           const messageId = String(message?.id || "");
+          let text = "";
+
+          if (message?.type === "text") {
+            text = String(message?.text?.body || "").trim();
+          } else if (message?.type === "interactive") {
+            const listId = String(message?.interactive?.list_reply?.id || "").trim();
+            const buttonId = String(message?.interactive?.button_reply?.id || "").trim();
+            const selectedId = listId || buttonId;
+            if (selectedId.startsWith("fd_")) text = "fd " + selectedId.slice(3);
+          }
+
           if (!sender || !messageId || !/^fd\b/i.test(text)) continue;
 
           const staff = await getActiveStaff(supabase, sender);
@@ -367,9 +660,18 @@ Deno.serve(async (req: Request) => {
 
           try {
             const responseText = await handleCommand(supabase, staff, text);
-            const metaResult = await sendWhatsAppText(phoneNumberId, sender, responseText);
+            const metaResult = responseText === "__MAIN_MENU__"
+              ? await sendWhatsAppList(
+                  phoneNumberId,
+                  sender,
+                  "FleetDesk",
+                  "Выбери раздел:",
+                  "Разделы",
+                  mainMenuRows(),
+                )
+              : await sendWhatsAppText(phoneNumberId, sender, responseText);
             await finishAudit(supabase, audit.id, "applied", {
-              reply: responseText,
+              reply: responseText === "__MAIN_MENU__" ? "main_menu" : responseText,
               meta_message_id: metaResult?.messages?.[0]?.id || null,
             });
           } catch (error) {
