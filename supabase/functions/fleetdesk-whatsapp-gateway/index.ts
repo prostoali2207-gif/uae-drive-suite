@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.105.1";
 const PEACH_TOKEN_SHA256 = 'a837eb5861426d57f2b47398aac8f43dc3852a4d74651aecfb0ccb6ccb73dc6f';
 const RENTAL_BACKEND_URL = 'https://vlcxjizieelcfunausll.supabase.co/functions/v1/fleetdesk-whatsapp-operations';
 const FINANCE_BRIDGE_URL = 'https://script.google.com/macros/s/AKfycbx-Zh3OD-aXy2rpmBFWw2mXvUUOLMn69Ndxx4lf2KDBi26FgfPRvY5UPfTMj6-49wY_uA/exec';
-const FINANCE_TOOL_NAMES = new Set(['find_finance_articles', 'record_finance_entry']);
+const FINANCE_TOOL_NAMES = new Set(['get_finance_context', 'find_finance_articles', 'record_finance_entry']);
 const FINANCE_ACCOUNTS = new Set(['cash_aed', 'ajman_aed', 'sber_rub']);
 
 const corsHeaders = {
@@ -147,6 +147,8 @@ async function finishAudit(
 }
 
 function validateFinanceArgs(name: string, args: Record<string, unknown>) {
+  if (name === 'get_finance_context') return;
+
   const account = String(args.account || '').trim().toLowerCase();
   if (!FINANCE_ACCOUNTS.has(account)) {
     throw new Error('account must be cash_aed, ajman_aed, or sber_rub.');
@@ -192,6 +194,15 @@ async function callFinanceBridge(peachToken: string, action: string, payload: Re
 }
 
 const financeDeclarations = [
+  {
+    name: 'get_finance_context',
+    description: 'STAFF ONLY. Return the active accounting period and supported accounts for the current «Движение денег» sheet.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
   {
     name: 'find_finance_articles',
     description: 'STAFF ONLY. Search the Google Sheet bookkeeping block for the exact article/subrow before recording an entry. Use when the correct row is unclear or the same vehicle/article appears in multiple sections.',
@@ -294,6 +305,11 @@ async function handleFinanceTool(
 
   const staff = await getActiveStaff(supabase, actorPhone);
   if (!staff?.owner_id) return json({ error: 'Only active FleetDesk staff can use finance tools.' }, 403);
+
+  if (name === 'get_finance_context') {
+    const result = await callFinanceBridge(peachToken, 'get_context', {});
+    return json(result);
+  }
 
   if (name === 'find_finance_articles') {
     const result = await callFinanceBridge(peachToken, 'find_articles', {
