@@ -119,9 +119,9 @@ Deno.serve(async (req: Request) => {
       ""
     ).trim();
 
-    // Public Peach stream trigger calls this backend a second time.
-    // In that call Peach owns the recipient, so returning send_message is enough.
-    if (directReply) return reply(directReply);
+    // Direct Meta WhatsApp now owns FleetDesk fd commands.
+    // Ignore previously queued Peach reply events so delayed duplicates cannot leak through.
+    if (directReply) return noReply();
 
     const developerData = body?.data || {};
     const developerMessage = developerData?.message || body?.message || {};
@@ -173,7 +173,8 @@ Deno.serve(async (req: Request) => {
     if (!fastWebhook) return noReply();
     if (developerWebhook && inboundDirection !== "inbound") return noReply();
     if (!phone || !text) return noReply();
-    if (!/^fd\b/i.test(text)) return noReply();
+    if (/^fd\b/i.test(text)) return noReply();
+    return noReply();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
