@@ -410,6 +410,200 @@ function formatParking(rows: any[]) {
   ).join("\n");
 }
 
+
+async function getSectionChannel(
+  supabase: ReturnType<typeof createClient>,
+  phoneNumberId: string,
+) {
+  const { data, error } = await supabase
+    .from("whatsapp_section_channels")
+    .select("phone_number_id, display_phone_number, section, status")
+    .eq("phone_number_id", phoneNumberId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function formatDubaiTime(value: string) {
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Asia/Dubai",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+async function getRentalActivityFeed(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  queryText = "",
+) {
+  const { data: events, error } = await supabase
+    .from("rental_activity_events")
+    .select("id, event_type, event_at, contract_id, car_id, details, contract:contracts(id, start_date, start_time, end_date, end_time, rate_type, rate_amount, client:clients(full_name, phone), car:cars(plate, make, model)), car:cars(plate, make, model)")
+    .eq("owner_id", ownerId)
+    .order("event_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  const contractIds = Array.from(new Set((events || []).map((e: any) => e.contract_id).filter(Boolean)));
+  const balances: Record<string, any> = {};
+  if (contractIds.length) {
+    const { data: rows, error: balanceError } = await supabase
+      .from("contract_balances")
+      .select("contract_id, total_fees, total_paid")
+      .in("contract_id", contractIds);
+    if (balanceError) throw balanceError;
+    for (const row of rows || []) balances[row.contract_id] = row;
+  }
+
+  const fromCarIds = Array.from(new Set((events || [])
+    .map((e: any) => String(e?.details?.from_car_id || ""))
+    .filter(Boolean)));
+  const fromCars: Record<string, any> = {};
+  if (fromCarIds.length) {
+    const { data: rows, error: carsError } = await supabase
+      .from("cars")
+      .select("id, plate, make, model")
+      .in("id", fromCarIds);
+    if (carsError) throw carsError;
+    for (const row of rows || []) fromCars[row.id] = row;
+  }
+
+  const q = String(queryText || "").trim().toLowerCase();
+  const plateQ = normalizePlate(queryText);
+  return (events || []).filter((e: any) => {
+    if (!q) return true;
+    const contractRef = ("CTR-" + String(e.contract_id || "").slice(0, 8)).toLowerCase();
+    const currentPlate = normalizePlate(e.car?.plate || e.contract?.car?.plate);
+    const oldPlate = normalizePlate(fromCars[String(e?.details?.from_car_id || "")]?.plate);
+    const clientName = String(e.contract?.client?.full_name || "").toLowerCase();
+    return contractRef.includes(q) ||
+      clientName.includes(q) ||
+      (plateQ && (currentPlate.includes(plateQ) || oldPlate.includes(plateQ)));
+  }).slice(0, 15).map((e: any) => ({
+    ...e,
+    balance: balances[e.contract_id] || { total_fees: 0, total_paid: 0 },
+    from_car: fromCars[String(e?.details?.from_car_id || "")] || null,
+  }));
+}
+
+function formatRentalActivity(rows: any[]) {
+  if (!rows.length) return "Пока событий нет.";
+
+  return rows.map((e: any) => {
+    const ref = "CTR-" + String(e.contract_id || "").slice(0, 8).toUpperCase();
+    const client = e.contract?.client?.full_name || "без клиента";
+    const car = e.car || e.contract?.car || {};
+    const fees = Number(e.balance?.total_fees || 0);
+    const paid = Number(e.balance?.total_paid || 0);
+    const when = formatDubaiTime(e.event_at);
+
+    if (e.event_type === "vehicle_replacement") {
+      const oldPlate = e.from_car?.plate || "—";
+      const newPlate = car?.plate || "—";
+      return [
+        "ЗАМЕНА",
+        `${oldPlate} → ${newPlate}`,
+        `Контракт: ${ref}`,
+        `Клиент: ${client}`,
+        `Fees: ${fees} AED`,
+        `Оплачено: ${paid} AED`,
+        `Время: ${when}`,
+      ].join("\n");
+    }
+
+    const title = e.event_type === "rental_out" ? "СДАЛИ" : "ПРИНЯЛИ";
+    return [
+      title,
+      `${car?.plate || "—"} — ${car?.make || ""} ${car?.model || ""}`.trim(),
+      `Контракт: ${ref}`,
+      `Клиент: ${client}`,
+      `Fees: ${fees} AED`,
+      `Оплачено: ${paid} AED`,
+      `Время: ${when}`,
+    ].join("\n");
+  }).join("\n\n");
+}
+
+async function handleSectionMessage(
+  supabase: ReturnType<typeof createClient>,
+  staff: any,
+  section: string,
+  rawText: string,
+) {
+  const text = String(rawText || "").trim();
+
+  if (section === "cars") {
+    const query = text.replace(/^(fd\s*)?(машина|авто)?\s*/i, "").trim();
+    if (!query || /^(список|доступные)$/i.test(query)) {
+      const { data: cars, error } = await supabase
+        .from("cars")
+        .select("plate, make, model, year, status")
+        .eq("owner_id", staff.owner_id)
+        .eq("status", "Available")
+        .order("plate");
+      if (error) throw error;
+      return formatAvailable(cars || []);
+    }
+    return formatCar(await getCarByPlate(supabase, staff.owner_id, query));
+  }
+
+  if (section === "contracts") {
+    const query = text.replace(/^(fd\s*)?(контракт|договор)?\s*/i, "").trim();
+    if (!query || /^активные$/i.test(query)) {
+      return formatOpenContracts(await listOpenContracts(supabase, staff.owner_id));
+    }
+    return formatContracts(await findContracts(supabase, staff.owner_id, query));
+  }
+
+  if (section === "clients") {
+    const query = text.replace(/^(fd\s*)?клиент?\s*/i, "").trim();
+    if (!query) return "Напиши имя или номер телефона клиента.";
+    return formatClients(await findClientsForStaff(supabase, staff.owner_id, query));
+  }
+
+  if (section === "finance") {
+    const financeText = text.replace(/^fd\s*/i, "").replace(/^финансы\s*/i, "").trim();
+    const match = financeText.match(/^(наличные|ajman|сбер)\s+(\d{2})\.(\d{2})(?:\.(\d{2,4}))?\s+(.+)$/i);
+    if (!match) {
+      return "Финансы = таблица «Движение денег».\nФормат: наличные 01.10 Мойка авто";
+    }
+    const account = match[1].toLowerCase() === "наличные"
+      ? "cash_aed"
+      : match[1].toLowerCase() === "ajman"
+        ? "ajman_aed"
+        : "sber_rub";
+    const yearRaw = match[4];
+    const year = yearRaw ? (yearRaw.length === 2 ? "20" + yearRaw : yearRaw) : "2026";
+    const date = `${year}-${match[3]}-${match[2]}`;
+    const result = await callFleetDeskGateway({
+      name: "find_finance_articles",
+      arguments: { account, date, query: match[5].trim() },
+      contact: { phone_number: staff.phone },
+    });
+    return formatFinance(result);
+  }
+
+  if (section === "handover") {
+    const query = text
+      .replace(/^fd\s*/i, "")
+      .replace(/^(сдали|приняли|замена|последние)\s*/i, "")
+      .trim();
+    return formatRentalActivity(await getRentalActivityFeed(supabase, staff.owner_id, query));
+  }
+
+  return "Раздел FleetDesk не настроен.";
+}
+
 async function beginAudit(
   supabase: ReturnType<typeof createClient>,
   ownerId: string,
@@ -647,7 +841,10 @@ Deno.serve(async (req: Request) => {
             if (selectedId.startsWith("fd_")) text = "fd " + selectedId.slice(3);
           }
 
-          if (!sender || !messageId || !/^fd\b/i.test(text)) continue;
+          if (!sender || !messageId) continue;
+
+          const preSection = await getSectionChannel(supabase, phoneNumberId);
+          if (!preSection && !/^fd\b/i.test(text)) continue;
 
           const staff = await getActiveStaff(supabase, sender);
           if (!staff?.owner_id) {
@@ -655,11 +852,14 @@ Deno.serve(async (req: Request) => {
             continue;
           }
 
+          const sectionChannel = preSection;
           const audit = await beginAudit(supabase, staff.owner_id, messageId, staff, sender, text);
           if (audit.duplicate) continue;
 
           try {
-            const responseText = await handleCommand(supabase, staff, text);
+            const responseText = sectionChannel
+              ? await handleSectionMessage(supabase, staff, sectionChannel.section, text)
+              : await handleCommand(supabase, staff, text);
             const metaResult = responseText === "__MAIN_MENU__"
               ? await sendWhatsAppList(
                   phoneNumberId,
