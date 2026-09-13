@@ -204,6 +204,22 @@ async function sendWhatsAppButtons(
   return data;
 }
 
+async function getFinanceContext(
+  supabase: ReturnType<typeof createClient>,
+  staff: any,
+) {
+  const result = await callFleetDeskGateway(supabase, {
+    name: "get_finance_context",
+    arguments: {},
+    contact: { phone_number: staff.phone },
+  });
+
+  if (result?.input_sheet !== "Ввод операций" || !result?.period?.start || !result?.period?.end) {
+    throw new Error("Finance bridge is not on the current input-sheet version");
+  }
+  return result;
+}
+
 function financeMenuRows() {
   return [
     { id: "fd_finance_cash", title: "Наличные AED", description: "Блок наличных в «Движении денег»" },
@@ -718,11 +734,21 @@ async function handleSectionMessage(
   }
 
   if (section === "finance") {
-    if (!text) return "__FINANCE_MENU__";
+    if (
+      !text ||
+      /^fd(?:\s+финансы)?$/i.test(text) ||
+      /^fd\s+section_/i.test(text)
+    ) return "__FINANCE_MENU__";
 
     const selectedAccount = financeAccountFromCommand(text);
     if (selectedAccount) {
-      return `${financeAccountLabel(selectedAccount)} выбраны.\nНапиши сумму и что записать. Например:\n120 мойка 77108\n\nДата автоматически сегодня. Для другой даты: 12.09 120 мойка 77108`;
+      const context = await getFinanceContext(supabase, staff);
+      const today = dubaiDate();
+      const todayInside = today >= context.period.start && today <= context.period.end;
+
+      return todayInside
+        ? `${financeAccountLabel(selectedAccount)}.\nНапиши сумму и операцию, например:\n120 мойка 77108\n\nСегодняшняя дата подставится сама.`
+        : `${financeAccountLabel(selectedAccount)}.\nТаблица сейчас: ${context.period.start} — ${context.period.end}.\nНапиши дату, сумму и операцию, например:\n01.10 120 мойка 77108`;
     }
 
     const confirmMatch = text.match(/^fd\s+finance_confirm_([0-9a-f-]{36})$/i);
@@ -796,9 +822,21 @@ async function handleSectionMessage(
     const account = await getFinanceAccountState(supabase, staff.owner_id, normalizePhone(sender));
     if (!account) return "__FINANCE_MENU__";
 
-    const parsed = parseFinanceEntry(text.replace(/^fd\s*/i, "").trim());
+    const context = await getFinanceContext(supabase, staff);
+    const financeInput = text.replace(/^fd\s*/i, "").trim();
+    const today = dubaiDate();
+    const todayInside = today >= context.period.start && today <= context.period.end;
+    const hasExplicitDate = /^(?:вчера\s+|\d{1,2}\.\d{1,2}(?:\.\d{2,4})?\s+)/i.test(financeInput);
+
+    if (!hasExplicitDate && !todayInside) {
+      return `Таблица сейчас: ${context.period.start} — ${context.period.end}.\nНачни с даты, например:\n01.10 120 мойка 77108`;
+    }
+
+    const parsed = parseFinanceEntry(financeInput);
     if (!parsed) {
-      return `${financeAccountLabel(account)}.\nНапиши так: 120 мойка 77108\nИли с датой: 12.09 120 мойка 77108`;
+      return todayInside
+        ? `${financeAccountLabel(account)}.\nНапиши: 120 мойка 77108`
+        : `${financeAccountLabel(account)}.\nНапиши: 01.10 120 мойка 77108`;
     }
 
     let result = await callFleetDeskGateway(supabase, {
@@ -1251,30 +1289,22 @@ Deno.serve(async (req: Request) => {
             continue;
           }
 
-          const conversationSection = preSection
-            ? preSection.section
-            : await getConversationSection(supabase, staff.owner_id, sender);
-
-          const sectionSelection = text.match(/^fd\s+section_(cars|contracts|clients|finance|handover)$/i);
-          if (!preSection && !conversationSection && !sectionSelection && !/^fd\b/i.test(text)) continue;
-
           const sectionChannel = preSection;
           const audit = await beginAudit(supabase, staff.owner_id, messageId, staff, sender, text);
           if (audit.duplicate) continue;
 
           try {
-            const selectedSection = sectionSelection?.[1]?.toLowerCase() || null;
-            const activeSection = sectionChannel?.section || selectedSection || conversationSection;
+            // The current WhatsApp number is dedicated to Finance.
+            // Future numbers can override this through whatsapp_section_channels.
+            const activeSection = sectionChannel?.section || "finance";
 
-            const responseText = activeSection && !/^fd(?:\s+(?:меню|помощь|help|команды))?$/i.test(text)
-              ? await handleSectionMessage(
-                  supabase,
-                  staff,
-                  activeSection,
-                  selectedSection ? "" : text,
-                  sender,
-                )
-              : await handleCommand(supabase, staff, text);
+            const responseText = await handleSectionMessage(
+              supabase,
+              staff,
+              activeSection,
+              text,
+              sender,
+            );
             let metaResult: any;
             if (responseText === "__MAIN_MENU__") {
               metaResult = await sendWhatsAppList(
@@ -1290,7 +1320,7 @@ Deno.serve(async (req: Request) => {
                 phoneNumberId,
                 sender,
                 "Финансы",
-                "«Движение денег». Выбери счёт:",
+                "«Движение денег» · выбери счёт:",
                 "Счета",
                 financeMenuRows(),
               );
