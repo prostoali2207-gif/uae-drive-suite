@@ -51,9 +51,19 @@ async function verifyMetaSignature(rawBody: string, signatureHeader: string | nu
   return timingSafeEqual(expected, signatureHeader);
 }
 
-async function callFleetDeskGateway(body: unknown) {
-  const token = Deno.env.get("FLEETDESK_GATEWAY_TOKEN") || "";
-  if (!token) throw new Error("FLEETDESK_GATEWAY_TOKEN is not configured");
+async function callFleetDeskGateway(
+  supabase: ReturnType<typeof createClient>,
+  body: unknown,
+) {
+  const { data: secretRow, error: secretError } = await supabase
+    .from("service_integration_secrets")
+    .select("secret_value")
+    .eq("secret_name", "fleetdesk_gateway_token")
+    .maybeSingle();
+  if (secretError) throw secretError;
+
+  const token = String(secretRow?.secret_value || "");
+  if (!token) throw new Error("FleetDesk finance connection is not configured");
 
   const response = await fetch(GATEWAY_URL, {
     method: "POST",
@@ -149,6 +159,143 @@ async function sendWhatsAppList(
     throw new Error(String(data?.error?.message || `Meta list send failed (${response.status})`));
   }
   return data;
+}
+
+async function sendWhatsAppButtons(
+  phoneNumberId: string,
+  to: string,
+  body: string,
+  buttons: Array<{ id: string; title: string }>,
+) {
+  const accessToken = Deno.env.get("META_ACCESS_TOKEN") || "";
+  if (!accessToken) throw new Error("META_ACCESS_TOKEN is not configured");
+
+  const response = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(phoneNumberId)}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizePhone(to),
+        type: "interactive",
+        interactive: {
+          type: "button",
+          body: { text: body },
+          action: {
+            buttons: buttons.slice(0, 3).map((button) => ({
+              type: "reply",
+              reply: { id: button.id, title: button.title },
+            })),
+          },
+        },
+      }),
+    },
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String(data?.error?.message || `Meta button send failed (${response.status})`));
+  }
+  return data;
+}
+
+function financeMenuRows() {
+  return [
+    { id: "fd_finance_cash", title: "Наличные AED", description: "Блок наличных в «Движении денег»" },
+    { id: "fd_finance_ajman", title: "Ajman AED", description: "Банковский блок AJMAN" },
+    { id: "fd_finance_sber", title: "Сбер RUB", description: "Рублёвый блок СБЕР" },
+  ];
+}
+
+function financeAccountFromCommand(text: string) {
+  if (/^fd\s+finance_cash$/i.test(text)) return "cash_aed";
+  if (/^fd\s+finance_ajman$/i.test(text)) return "ajman_aed";
+  if (/^fd\s+finance_sber$/i.test(text)) return "sber_rub";
+  return null;
+}
+
+function financeAccountLabel(account: string) {
+  if (account === "cash_aed") return "Наличные AED";
+  if (account === "ajman_aed") return "Ajman AED";
+  if (account === "sber_rub") return "Сбер RUB";
+  return account;
+}
+
+function financeCurrency(account: string) {
+  return account === "sber_rub" ? "RUB" : "AED";
+}
+
+function dubaiDate(offsetDays = 0) {
+  const now = new Date(Date.now() + offsetDays * 86400000);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const map: Record<string, string> = {};
+  for (const part of parts) map[part.type] = part.value;
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function parseFinanceEntry(text: string) {
+  let value = String(text || "").trim();
+  let date = dubaiDate();
+
+  if (/^вчера\s+/i.test(value)) {
+    date = dubaiDate(-1);
+    value = value.replace(/^вчера\s+/i, "").trim();
+  } else {
+    const dateMatch = value.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\s+/);
+    if (dateMatch) {
+      const yearRaw = dateMatch[3];
+      const year = yearRaw ? (yearRaw.length === 2 ? "20" + yearRaw : yearRaw) : dubaiDate().slice(0, 4);
+      date = `${year}-${String(dateMatch[2]).padStart(2, "0")}-${String(dateMatch[1]).padStart(2, "0")}`;
+      value = value.slice(dateMatch[0].length).trim();
+    }
+  }
+
+  const amountMatch = value.match(/^(\d+(?:[.,]\d{1,2})?)\s+(.+)$/);
+  if (!amountMatch) return null;
+
+  const amount = Number(amountMatch[1].replace(",", "."));
+  const query = amountMatch[2].trim();
+  if (!(amount > 0) || !query) return null;
+  return { date, amount, query };
+}
+
+function normalizeFinanceText(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^a-zа-я0-9]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function financeSearchToken(query: string) {
+  const tokens = normalizeFinanceText(query).split(" ").filter(Boolean);
+  const plateLike = tokens.find((t) => /\d{4,}/.test(t));
+  if (plateLike) return plateLike;
+  return tokens.find((t) => t.length >= 3) || query;
+}
+
+function rankFinanceMatches(query: string, matches: any[]) {
+  const ignored = new Set(["авто", "машина", "оплата", "расход", "доход", "за", "на"]);
+  const tokens = normalizeFinanceText(query)
+    .split(" ")
+    .filter((t) => t.length >= 2 && !ignored.has(t));
+
+  return (matches || []).map((match: any) => {
+    const hay = normalizeFinanceText(`${match.article || ""} ${match.section || ""}`);
+    const score = tokens.reduce((sum, token) => sum + (hay.includes(token) ? 1 : 0), 0);
+    return { ...match, score };
+  }).sort((a: any, b: any) => b.score - a.score || Number(a.row) - Number(b.row));
 }
 
 function mainMenuRows() {
@@ -537,6 +684,7 @@ async function handleSectionMessage(
   staff: any,
   section: string,
   rawText: string,
+  sender: string,
 ) {
   const text = String(rawText || "").trim();
 
@@ -570,25 +718,148 @@ async function handleSectionMessage(
   }
 
   if (section === "finance") {
-    const financeText = text.replace(/^fd\s*/i, "").replace(/^финансы\s*/i, "").trim();
-    const match = financeText.match(/^(наличные|ajman|сбер)\s+(\d{2})\.(\d{2})(?:\.(\d{2,4}))?\s+(.+)$/i);
-    if (!match) {
-      return "Финансы = таблица «Движение денег».\nФормат: наличные 01.10 Мойка авто";
+    if (!text) return "__FINANCE_MENU__";
+
+    const selectedAccount = financeAccountFromCommand(text);
+    if (selectedAccount) {
+      return `${financeAccountLabel(selectedAccount)} выбраны.\nНапиши сумму и что записать. Например:\n120 мойка 77108\n\nДата автоматически сегодня. Для другой даты: 12.09 120 мойка 77108`;
     }
-    const account = match[1].toLowerCase() === "наличные"
-      ? "cash_aed"
-      : match[1].toLowerCase() === "ajman"
-        ? "ajman_aed"
-        : "sber_rub";
-    const yearRaw = match[4];
-    const year = yearRaw ? (yearRaw.length === 2 ? "20" + yearRaw : yearRaw) : "2026";
-    const date = `${year}-${match[3]}-${match[2]}`;
-    const result = await callFleetDeskGateway({
+
+    const confirmMatch = text.match(/^fd\s+finance_confirm_([0-9a-f-]{36})$/i);
+    if (confirmMatch) {
+      const draft = await getFinanceDraft(supabase, staff.owner_id, normalizePhone(sender), confirmMatch[1]);
+      // Staff aliases may differ from the canonical staff phone; retry by draft ID below through the sender-aware path in the webhook.
+      if (!draft) return "Эта операция уже недоступна. Создай её заново.";
+      if (draft.status !== "requested") return "Эта операция уже обработана.";
+
+      const payload: any = draft.payload || {};
+      const result = await callFleetDeskGateway(supabase, {
+        name: "record_finance_entry",
+        arguments: {
+          account: payload.account,
+          date: payload.date,
+          article: payload.article,
+          row: payload.row,
+          amount: payload.amount,
+          note: payload.note || "",
+        },
+        contact: { phone_number: staff.phone },
+      });
+
+      await updateFinanceDraft(supabase, draft.id, {
+        status: "applied",
+        result,
+        processed_at: new Date().toISOString(),
+      });
+
+      return `Записано.\n${financeAccountLabel(String(payload.account))} — ${payload.article} — ${Number(payload.amount)} ${financeCurrency(String(payload.account))}`;
+    }
+
+    const cancelMatch = text.match(/^fd\s+finance_cancel_([0-9a-f-]{36})$/i);
+    if (cancelMatch) {
+      await updateFinanceDraft(supabase, cancelMatch[1], {
+        status: "rejected",
+        result: { cancelled: true },
+        processed_at: new Date().toISOString(),
+      });
+      return "Отменено.";
+    }
+
+    const pickMatch = text.match(/^fd\s+finance_pick_([0-9a-f-]{36})_(\d+)$/i);
+    if (pickMatch) {
+      const { data: draft, error } = await supabase
+        .from("whatsapp_operation_requests")
+        .select("id, payload, status")
+        .eq("id", pickMatch[1])
+        .eq("owner_id", staff.owner_id)
+        .eq("action", "finance_draft")
+        .maybeSingle();
+      if (error) throw error;
+      if (!draft || draft.status !== "requested") return "Эта операция уже недоступна.";
+
+      const payload: any = draft.payload || {};
+      const row = Number(pickMatch[2]);
+      const candidate = (payload.candidates || []).find((item: any) => Number(item.row) === row);
+      if (!candidate) return "Эта строка больше недоступна.";
+
+      const nextPayload = {
+        ...payload,
+        stage: "confirm",
+        article: candidate.article,
+        row: candidate.row,
+        candidates: undefined,
+      };
+      await updateFinanceDraft(supabase, draft.id, { payload: nextPayload });
+      return "__FINANCE_CONFIRM__:" + draft.id;
+    }
+
+    const account = await getFinanceAccountState(supabase, staff.owner_id, normalizePhone(sender));
+    if (!account) return "__FINANCE_MENU__";
+
+    const parsed = parseFinanceEntry(text.replace(/^fd\s*/i, "").trim());
+    if (!parsed) {
+      return `${financeAccountLabel(account)}.\nНапиши так: 120 мойка 77108\nИли с датой: 12.09 120 мойка 77108`;
+    }
+
+    let result = await callFleetDeskGateway(supabase, {
       name: "find_finance_articles",
-      arguments: { account, date, query: match[5].trim() },
+      arguments: {
+        account,
+        date: parsed.date,
+        query: financeSearchToken(parsed.query),
+      },
       contact: { phone_number: staff.phone },
     });
-    return formatFinance(result);
+
+    let ranked = rankFinanceMatches(parsed.query, result?.matches || []);
+    if (!ranked.length) {
+      const fallbackToken = normalizeFinanceText(parsed.query).split(" ").find((t) => t.length >= 3);
+      if (fallbackToken && fallbackToken !== financeSearchToken(parsed.query)) {
+        result = await callFleetDeskGateway(supabase, {
+          name: "find_finance_articles",
+          arguments: { account, date: parsed.date, query: fallbackToken },
+          contact: { phone_number: staff.phone },
+        });
+        ranked = rankFinanceMatches(parsed.query, result?.matches || []);
+      }
+    }
+
+    if (!ranked.length) {
+      return `Не нашёл строку «${parsed.query}» в ${financeAccountLabel(account)}. Напиши название или номер машины точнее.`;
+    }
+
+    const topScore = Number(ranked[0]?.score || 0);
+    const best = ranked.filter((item: any) => Number(item.score || 0) === topScore);
+    if (best.length === 1) {
+      const candidate = best[0];
+      const draftId = await createFinanceDraft(supabase, staff, normalizePhone(sender), {
+        stage: "confirm",
+        account,
+        date: parsed.date,
+        amount: parsed.amount,
+        query: parsed.query,
+        article: candidate.article,
+        row: candidate.row,
+        note: "",
+      });
+      return "__FINANCE_CONFIRM__:" + draftId;
+    }
+
+    const candidates = best.slice(0, 8).map((item: any) => ({
+      row: Number(item.row),
+      article: String(item.article || ""),
+      section: String(item.section || ""),
+    }));
+    const draftId = await createFinanceDraft(supabase, staff, normalizePhone(sender), {
+      stage: "choose_article",
+      account,
+      date: parsed.date,
+      amount: parsed.amount,
+      query: parsed.query,
+      candidates,
+      note: "",
+    });
+    return "__FINANCE_PICK__:" + draftId;
   }
 
   if (section === "handover") {
@@ -600,6 +871,106 @@ async function handleSectionMessage(
   }
 
   return "Раздел FleetDesk не настроен.";
+}
+
+async function getFinanceAccountState(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  sender: string,
+) {
+  const { data, error } = await supabase
+    .from("whatsapp_operation_requests")
+    .select("payload, created_at")
+    .eq("owner_id", ownerId)
+    .eq("actor_phone", sender)
+    .eq("action", "meta_command")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  for (const row of data || []) {
+    const text = String((row as any)?.payload?.text || "").trim();
+    const account = financeAccountFromCommand(text);
+    if (account) return account;
+
+    if (/^fd(?:\s+(?:меню|помощь|help|команды))?$/i.test(text)) return null;
+    const section = text.match(/^fd\s+section_(cars|contracts|clients|finance|handover)$/i);
+    if (section) return null;
+  }
+
+  return null;
+}
+
+async function createFinanceDraft(
+  supabase: ReturnType<typeof createClient>,
+  staff: any,
+  sender: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } = await supabase
+    .from("whatsapp_operation_requests")
+    .insert({
+      owner_id: staff.owner_id,
+      idempotency_key: "finance-draft:" + crypto.randomUUID(),
+      actor_phone: sender,
+      actor_type: "staff",
+      actor_staff_id: staff.id,
+      actor_client_id: null,
+      action: "finance_draft",
+      contract_id: null,
+      payload,
+      status: "requested",
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return String(data.id);
+}
+
+async function getFinanceDraft(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  sender: string,
+  draftId: string,
+) {
+  const { data, error } = await supabase
+    .from("whatsapp_operation_requests")
+    .select("id, payload, status, result")
+    .eq("id", draftId)
+    .eq("owner_id", ownerId)
+    .eq("actor_phone", sender)
+    .eq("action", "finance_draft")
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function updateFinanceDraft(
+  supabase: ReturnType<typeof createClient>,
+  draftId: string,
+  values: Record<string, unknown>,
+) {
+  const { error } = await supabase
+    .from("whatsapp_operation_requests")
+    .update(values)
+    .eq("id", draftId)
+    .eq("action", "finance_draft");
+  if (error) throw error;
+}
+
+function financeConfirmText(payload: any) {
+  return [
+    "Записать в «Движение денег»?",
+    `Счёт: ${financeAccountLabel(String(payload.account || ""))}`,
+    `Дата: ${payload.date}`,
+    `Статья: ${payload.article}`,
+    `Сумма: ${Number(payload.amount || 0)} ${financeCurrency(String(payload.account || ""))}`,
+  ].join("\n");
+}
+
+function truncateWhatsAppTitle(value: unknown, max = 24) {
+  const text = String(value || "").trim();
+  return text.length <= max ? text : text.slice(0, max - 1) + "…";
 }
 
 async function getConversationSection(
@@ -719,7 +1090,7 @@ async function handleCommand(
   }
 
   if (/^section_finance$/i.test(cmd)) {
-    return "ФИНАНСЫ — «ДВИЖЕНИЕ ДЕНЕГ»\nТолько текущая финансовая таблица.\n\nПример:\nfd финансы наличные 01.10 Мойка авто";
+    return "__FINANCE_MENU__";
   }
 
   if (/^section_fines$/i.test(cmd)) {
@@ -793,7 +1164,7 @@ async function handleCommand(
     const yearRaw = financeMatch[4];
     const year = yearRaw ? (yearRaw.length === 2 ? "20" + yearRaw : yearRaw) : "2026";
     const date = `${year}-${financeMatch[3]}-${financeMatch[2]}`;
-    const result = await callFleetDeskGateway({
+    const result = await callFleetDeskGateway(supabase, {
       name: "find_finance_articles",
       arguments: {
         account,
@@ -901,20 +1272,73 @@ Deno.serve(async (req: Request) => {
                   staff,
                   activeSection,
                   selectedSection ? "" : text,
+                  sender,
                 )
               : await handleCommand(supabase, staff, text);
-            const metaResult = responseText === "__MAIN_MENU__"
-              ? await sendWhatsAppList(
-                  phoneNumberId,
-                  sender,
-                  "FleetDesk",
-                  "Выбери раздел:",
-                  "Разделы",
-                  mainMenuRows(),
-                )
-              : await sendWhatsAppText(phoneNumberId, sender, responseText);
+            let metaResult: any;
+            if (responseText === "__MAIN_MENU__") {
+              metaResult = await sendWhatsAppList(
+                phoneNumberId,
+                sender,
+                "FleetDesk",
+                "Выбери раздел:",
+                "Разделы",
+                mainMenuRows(),
+              );
+            } else if (responseText === "__FINANCE_MENU__") {
+              metaResult = await sendWhatsAppList(
+                phoneNumberId,
+                sender,
+                "Финансы",
+                "«Движение денег». Выбери счёт:",
+                "Счета",
+                financeMenuRows(),
+              );
+            } else if (responseText.startsWith("__FINANCE_CONFIRM__:")) {
+              const draftId = responseText.split(":")[1];
+              const draft = await getFinanceDraft(supabase, staff.owner_id, sender, draftId);
+              if (!draft?.payload) throw new Error("Finance draft not found");
+              metaResult = await sendWhatsAppButtons(
+                phoneNumberId,
+                sender,
+                financeConfirmText(draft.payload),
+                [
+                  { id: `fd_finance_confirm_${draftId}`, title: "Записать" },
+                  { id: `fd_finance_cancel_${draftId}`, title: "Отмена" },
+                ],
+              );
+            } else if (responseText.startsWith("__FINANCE_PICK__:")) {
+              const draftId = responseText.split(":")[1];
+              const draft = await getFinanceDraft(supabase, staff.owner_id, sender, draftId);
+              const candidates = Array.isArray((draft as any)?.payload?.candidates)
+                ? (draft as any).payload.candidates
+                : [];
+              if (!candidates.length) throw new Error("Finance candidates not found");
+              metaResult = await sendWhatsAppList(
+                phoneNumberId,
+                sender,
+                "Финансы",
+                "Нашёл несколько строк. Выбери нужную:",
+                "Строки",
+                candidates.map((candidate: any) => ({
+                  id: `fd_finance_pick_${draftId}_${candidate.row}`,
+                  title: truncateWhatsAppTitle(candidate.article),
+                  description: truncateWhatsAppTitle(
+                    candidate.section ? `${candidate.section} · строка ${candidate.row}` : `Строка ${candidate.row}`,
+                    72,
+                  ),
+                })),
+              );
+            } else {
+              metaResult = await sendWhatsAppText(phoneNumberId, sender, responseText);
+            }
             await finishAudit(supabase, audit.id, "applied", {
-              reply: responseText === "__MAIN_MENU__" ? "main_menu" : responseText,
+              reply:
+                responseText === "__MAIN_MENU__" ? "main_menu" :
+                responseText === "__FINANCE_MENU__" ? "finance_menu" :
+                responseText.startsWith("__FINANCE_CONFIRM__:") ? "finance_confirmation" :
+                responseText.startsWith("__FINANCE_PICK__:") ? "finance_article_picker" :
+                responseText,
               meta_message_id: metaResult?.messages?.[0]?.id || null,
             });
           } catch (error) {
