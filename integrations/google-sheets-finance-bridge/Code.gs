@@ -1,45 +1,25 @@
 const SPREADSHEET_ID = '1XnAQPfubyv80uEUgszDZZfRVAir35yIth718r7AERps';
 const PEACH_TOKEN_SHA256 = 'a837eb5861426d57f2b47398aac8f43dc3852a4d74651aecfb0ccb6ccb73dc6f';
 
-// Verified 1:1 accounting template layout.
-const ACCOUNT_BLOCK = Object.freeze({
-  cash_aed: Object.freeze({ articleCol: 2, nextArticleCol: 68 }),
-  ajman_aed: Object.freeze({ articleCol: 68, nextArticleCol: 134 }),
-  sber_rub: Object.freeze({ articleCol: 134, nextArticleCol: 200 }),
-});
+const INPUT_SHEET = 'Ввод операций';
+const REFERENCE_SHEET = 'Справочники';
+const INPUT_FIRST_ROW = 5;
+const INPUT_LAST_ROW = 1004;
 
 const ACCOUNT_LABEL = Object.freeze({
-  cash_aed: 'Наличные AED',
-  ajman_aed: 'AJMAN AED',
-  sber_rub: 'СБЕР RUB',
+  cash_aed: 'Касса (AED)',
+  ajman_aed: 'AJMAN (AED)',
+  sber_rub: 'СБЕР (RUB)',
 });
 
-const DIRECT_WRITE_EXCEPTIONS = Object.freeze([
-  'платные дороги',
-  'мойка авто',
-]);
-
-// Amount/formula parent rows are identical in the first three verified account blocks.
-// Keeping this index in code removes a slow formula scan from every read-only lookup.
-const FORMULA_PARENT_ROWS = new Set([
-  4, 5, 85, 91, 92, 98, 104, 110, 116, 122, 128, 134, 140, 146, 155,
-  161, 162, 242, 248, 255, 256, 262, 268, 274, 280, 286, 292, 298, 305,
-  313, 319, 328, 331, 337, 343, 354, 364, 369, 384,
-]);
-
-const FIRST_ARTICLE_ROW = 3;
-const LAST_ARTICLE_ROW = 384;
-
-const MONTHS_RU = Object.freeze([
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-]);
-
 function doGet() {
+  const period = activePeriod_();
   return json_({
     ok: true,
     service: 'Al Musafir Google Sheets Finance Bridge',
     spreadsheet_id: SPREADSHEET_ID,
+    input_sheet: INPUT_SHEET,
+    period,
   });
 }
 
@@ -58,6 +38,7 @@ function doPost(e) {
 
     if (action === 'find_articles') result = findArticles_(payload);
     else if (action === 'record_entry') result = recordEntry_(payload);
+    else if (action === 'get_context') result = getContext_();
     else result = { ok: false, error: 'Unsupported finance bridge action.' };
 
     result.bridge_ms = Date.now() - startedAt;
@@ -71,33 +52,54 @@ function doPost(e) {
   }
 }
 
+function getContext_() {
+  return {
+    ok: true,
+    action: 'get_context',
+    period: activePeriod_(),
+    accounts: Object.keys(ACCOUNT_LABEL).map(function (key) {
+      return { account: key, label: ACCOUNT_LABEL[key] };
+    }),
+    input_sheet: INPUT_SHEET,
+  };
+}
+
 function findArticles_(payload) {
   const account = validateAccount_(payload.account);
-  const date = validateDate_(payload.date);
+  const date = validateActiveDate_(payload.date);
   const query = normalize_(payload.query || '');
   if (!query) throw new Error('query is required.');
 
-  const sheet = sheetForDate_(date);
-  const block = blockForAccount_(account);
-  const rowCount = LAST_ARTICLE_ROW - FIRST_ARTICLE_ROW + 1;
-  const labels = sheet
-    .getRange(FIRST_ARTICLE_ROW, block.articleCol, rowCount, 1)
-    .getDisplayValues();
-
+  const rows = referenceRows_();
+  const tokens = query.split(' ').filter(Boolean);
   const matches = [];
-  for (let i = 0; i < labels.length; i++) {
-    const label = String(labels[i][0] || '').trim();
-    if (!label || !normalize_(label).includes(query)) continue;
-    const row = i + FIRST_ARTICLE_ROW;
+
+  for (let i = 0; i < rows.length; i++) {
+    const operation = String(rows[i][0] || '').trim();
+    if (!operation) continue;
+
+    const haystack = normalize_(operation);
+    const matchedTokens = tokens.filter(function (token) {
+      return haystack.indexOf(token) !== -1;
+    }).length;
+
+    if (!haystack.includes(query) && matchedTokens === 0) continue;
+
+    const mappedRow = Number(account === 'sber_rub' ? rows[i][3] : rows[i][1]);
+    if (!Number.isFinite(mappedRow) || mappedRow <= 0) continue;
+
     matches.push({
-      row,
-      article: label,
-      section: parentContextFromRows_(labels, row),
-      formula_row: FORMULA_PARENT_ROWS.has(row),
-      direct_write_exception: isDirectWriteException_(label),
+      row: mappedRow,
+      article: operation,
+      section: String(rows[i][2] || '').trim() || null,
+      reference_row: i + 2,
+      score: haystack.includes(query) ? 100 + tokens.length : matchedTokens,
     });
-    if (matches.length >= 20) break;
   }
+
+  matches.sort(function (a, b) {
+    return b.score - a.score || a.row - b.row;
+  });
 
   return {
     ok: true,
@@ -105,85 +107,86 @@ function findArticles_(payload) {
     account,
     account_label: ACCOUNT_LABEL[account],
     date,
-    sheet: sheet.getName(),
+    period: activePeriod_(),
     count: matches.length,
-    matches,
+    matches: matches.slice(0, 20),
   };
 }
 
 function recordEntry_(payload) {
   const account = validateAccount_(payload.account);
-  const date = validateDate_(payload.date);
+  const date = validateActiveDate_(payload.date);
   const article = String(payload.article || '').trim();
   const note = String(payload.note || '').trim();
   const amount = Number(payload.amount);
 
   if (!article) throw new Error('article is required.');
-  if (article.length > 200) throw new Error('article is too long.');
+  if (article.length > 250) throw new Error('article is too long.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be greater than zero.');
   if (note.length > 500) throw new Error('note is too long.');
 
-  const sheet = sheetForDate_(date);
-  const block = blockForAccount_(account);
-  const dateCol = dateColumn_(block, date);
-  const articleRow = resolveArticleRow_(sheet, block.articleCol, article, payload.row);
-  if (!articleRow) throw new Error('Article not found in this account block.');
+  const ref = resolveReference_(article, account, payload.row);
+  if (!ref) throw new Error('Operation not found in Справочники.');
 
-  const directException = isDirectWriteException_(article);
+  const sheet = spreadsheet_().getSheetByName(INPUT_SHEET);
+  if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
+
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    const actualArticle = String(sheet.getRange(articleRow, block.articleCol).getDisplayValue() || '').trim();
-    if (normalize_(actualArticle) !== normalize_(article)) {
-      throw new Error('The selected row no longer matches the requested article.');
+    const targetRow = nextEmptyInputRow_(sheet);
+    if (!targetRow) throw new Error('В листе «Ввод операций» закончились свободные строки.');
+
+    const dateValue = parseYmd_(date);
+    sheet.getRange(targetRow, 1, 1, 5).setValues([[
+      dateValue,
+      ACCOUNT_LABEL[account],
+      ref.operation,
+      amount,
+      note,
+    ]]);
+
+    SpreadsheetApp.flush();
+
+    const status = String(sheet.getRange(targetRow, 9).getDisplayValue() || '').trim();
+    const mappedRow = Number(sheet.getRange(targetRow, 8).getValue());
+    const key = String(sheet.getRange(targetRow, 10).getDisplayValue() || '').trim();
+    const type = String(sheet.getRange(targetRow, 6).getDisplayValue() || '').trim();
+    const currency = String(sheet.getRange(targetRow, 7).getDisplayValue() || '').trim();
+
+    if (status !== '✓ Готово' || !Number.isFinite(mappedRow) || mappedRow <= 0 || !key) {
+      sheet.getRange(targetRow, 1, 1, 5).clearContent();
+      SpreadsheetApp.flush();
+      throw new Error('Таблица не подтвердила операцию. Запись отменена.');
     }
 
-    const targetRange = sheet.getRange(articleRow, dateCol, 1, 2);
-    const formulas = targetRange.getFormulas()[0];
-    const values = targetRange.getValues()[0];
-    const amountFormula = String(formulas[0] || '');
-    const noteFormula = String(formulas[1] || '');
-
-    if ((amountFormula || FORMULA_PARENT_ROWS.has(articleRow)) && !directException) {
-      throw new Error('This is an automatic parent/formula row. Write to its subrow instead.');
-    }
-    if (noteFormula) {
-      throw new Error('The note cell is calculated automatically and cannot be overwritten.');
+    if (mappedRow !== ref.mappedRow) {
+      sheet.getRange(targetRow, 1, 1, 5).clearContent();
+      SpreadsheetApp.flush();
+      throw new Error('Строка операции изменилась. Запись отменена.');
     }
 
-    const currentAmount = values[0];
-    const currentNote = values[1];
-    const amountOccupied = currentAmount !== '' && currentAmount !== null && Number(currentAmount) !== 0;
-    const noteOccupied = String(currentNote || '').trim() !== '';
-    if (amountOccupied || noteOccupied) {
-      throw new Error('This article/date cell already contains data. Nothing was overwritten.');
-    }
-
-    targetRange.setValues([[amount, note]]);
-
-    // Reading back forces pending SpreadsheetApp writes to be applied and verifies the value.
-    const written = targetRange.getValues()[0];
-    if (Math.abs(Number(written[0]) - amount) > 0.0001 || String(written[1] || '') !== note) {
-      throw new Error('Write verification failed.');
-    }
+    return {
+      ok: true,
+      action: 'record_entry',
+      account,
+      account_label: ACCOUNT_LABEL[account],
+      date,
+      period: activePeriod_(),
+      input_sheet: INPUT_SHEET,
+      input_row: targetRow,
+      article: ref.operation,
+      mapped_row: mappedRow,
+      type,
+      currency,
+      amount,
+      note: note || null,
+      status,
+      key,
+    };
   } finally {
     lock.releaseLock();
   }
-
-  return {
-    ok: true,
-    action: 'record_entry',
-    account,
-    account_label: ACCOUNT_LABEL[account],
-    date,
-    sheet: sheet.getName(),
-    article,
-    row: articleRow,
-    amount,
-    note: note || null,
-    amount_cell: a1_(articleRow, dateCol),
-    note_cell: a1_(articleRow, dateCol + 1),
-  };
 }
 
 function spreadsheet_() {
@@ -192,98 +195,120 @@ function spreadsheet_() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
-function sheetForDate_(dateString) {
-  const parts = dateString.split('-').map(Number);
-  const year = parts[0];
-  const month = parts[1];
-  const sheetName = MONTHS_RU[month - 1] + ' ' + year;
-  const sheet = spreadsheet_().getSheetByName(sheetName);
-  if (!sheet) throw new Error('No finance sheet exists for ' + sheetName + '.');
-  return sheet;
+function referenceRows_() {
+  const sheet = spreadsheet_().getSheetByName(REFERENCE_SHEET);
+  if (!sheet) throw new Error('Лист «Справочники» не найден.');
+  return sheet.getRange('A2:D256').getDisplayValues();
 }
 
-function blockForAccount_(account) {
-  const block = ACCOUNT_BLOCK[account];
-  if (!block) throw new Error('Finance account block was not found.');
-  return block;
-}
-
-function dateColumn_(block, dateString) {
-  const day = Number(dateString.slice(8, 10));
-  const dateCol = block.articleCol + (day * 2 - 1);
-  if (dateCol <= block.articleCol || dateCol >= block.nextArticleCol) {
-    throw new Error('Date ' + dateString + ' is outside this finance block.');
-  }
-  return dateCol;
-}
-
-function resolveArticleRow_(sheet, articleCol, article, requestedRow) {
+function resolveReference_(article, account, requestedRow) {
   const target = normalize_(article);
+  const rows = referenceRows_();
+  const candidates = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const operation = String(rows[i][0] || '').trim();
+    if (!operation || normalize_(operation) !== target) continue;
+
+    const mappedRow = Number(account === 'sber_rub' ? rows[i][3] : rows[i][1]);
+    if (!Number.isFinite(mappedRow) || mappedRow <= 0) continue;
+
+    candidates.push({ operation, mappedRow, referenceRow: i + 2 });
+  }
 
   if (requestedRow !== undefined && requestedRow !== null && requestedRow !== '') {
     const row = Number(requestedRow);
-    if (!Number.isInteger(row) || row < FIRST_ARTICLE_ROW || row > LAST_ARTICLE_ROW) {
-      throw new Error('row is invalid.');
-    }
-    return row;
+    const exact = candidates.find(function (candidate) {
+      return candidate.mappedRow === row;
+    });
+    if (!exact) throw new Error('Выбранная строка больше не соответствует операции.');
+    return exact;
   }
 
-  const rowCount = LAST_ARTICLE_ROW - FIRST_ARTICLE_ROW + 1;
-  const values = sheet
-    .getRange(FIRST_ARTICLE_ROW, articleCol, rowCount, 1)
-    .getDisplayValues();
-
-  const rows = [];
-  for (let i = 0; i < values.length; i++) {
-    if (normalize_(values[i][0]) === target) rows.push(i + FIRST_ARTICLE_ROW);
+  if (candidates.length > 1) {
+    throw new Error('Найдено несколько одинаковых операций. Сначала выбери строку.');
   }
-
-  if (rows.length > 1) {
-    throw new Error('More than one exact article matches. Call find_articles and pass the returned row.');
-  }
-  return rows[0] || null;
+  return candidates[0] || null;
 }
 
-function parentContextFromRows_(labels, row) {
-  const minRow = Math.max(FIRST_ARTICLE_ROW, row - 120);
-  for (let candidate = row - 1; candidate >= minRow; candidate--) {
-    if (!FORMULA_PARENT_ROWS.has(candidate)) continue;
-    const label = String((labels[candidate - FIRST_ARTICLE_ROW] || [])[0] || '').trim();
-    if (label) return label;
+function nextEmptyInputRow_(sheet) {
+  const rowCount = INPUT_LAST_ROW - INPUT_FIRST_ROW + 1;
+  const values = sheet.getRange(INPUT_FIRST_ROW, 1, rowCount, 5).getDisplayValues();
+
+  for (let i = 0; i < values.length; i++) {
+    const occupied = values[i].some(function (value) {
+      return String(value || '').trim() !== '';
+    });
+    if (!occupied) return INPUT_FIRST_ROW + i;
   }
   return null;
 }
 
-function isDirectWriteException_(article) {
-  const normalized = normalize_(article);
-  return DIRECT_WRITE_EXCEPTIONS.some(function (allowed) {
-    const target = normalize_(allowed);
-    return normalized === target || normalized.indexOf(target + ' ') === 0 || normalized.indexOf(target + '(') === 0;
-  });
+function activePeriod_() {
+  const sheet = spreadsheet_().getSheetByName(INPUT_SHEET);
+  if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
+
+  const rule = sheet.getRange('A5').getDataValidation();
+  if (!rule || rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.DATE_BETWEEN) {
+    throw new Error('Не удалось определить активный месяц финансовой таблицы.');
+  }
+
+  const values = rule.getCriteriaValues();
+  const start = values[0];
+  const end = values[1];
+  if (!(start instanceof Date) || !(end instanceof Date)) {
+    throw new Error('Некорректный период в «Ввод операций».');
+  }
+
+  const tz = spreadsheet_().getSpreadsheetTimeZone() || 'Asia/Dubai';
+  return {
+    start: Utilities.formatDate(start, tz, 'yyyy-MM-dd'),
+    end: Utilities.formatDate(end, tz, 'yyyy-MM-dd'),
+    label: Utilities.formatDate(start, tz, 'MMMM yyyy'),
+  };
 }
 
 function validateAccount_(value) {
   const account = String(value || '').trim().toLowerCase();
-  if (!Object.prototype.hasOwnProperty.call(ACCOUNT_BLOCK, account)) {
+  if (!Object.prototype.hasOwnProperty.call(ACCOUNT_LABEL, account)) {
     throw new Error('account must be cash_aed, ajman_aed, or sber_rub.');
   }
   return account;
 }
 
+function validateActiveDate_(value) {
+  const date = validateDate_(value);
+  const period = activePeriod_();
+  if (date < period.start || date > period.end) {
+    throw new Error(
+      'Дата ' + date + ' вне активного периода таблицы: ' + period.start + ' — ' + period.end + '.'
+    );
+  }
+  return date;
+}
+
 function validateDate_(value) {
   const date = String(value || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('date must be YYYY-MM-DD.');
-  const parsed = new Date(date + 'T12:00:00Z');
-  if (isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+
+  const parsed = parseYmd_(date);
+  const tz = spreadsheet_().getSpreadsheetTimeZone() || 'Asia/Dubai';
+  if (Utilities.formatDate(parsed, tz, 'yyyy-MM-dd') !== date) {
     throw new Error('date is invalid.');
   }
   return date;
+}
+
+function parseYmd_(date) {
+  const parts = String(date).split('-').map(Number);
+  return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
 }
 
 function normalize_(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]+/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -298,17 +323,6 @@ function sha256Hex_(value) {
     const n = byte < 0 ? byte + 256 : byte;
     return ('0' + n.toString(16)).slice(-2);
   }).join('');
-}
-
-function a1_(row, col) {
-  let n = col;
-  let letters = '';
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    letters = String.fromCharCode(65 + rem) + letters;
-    n = Math.floor((n - 1) / 26);
-  }
-  return letters + row;
 }
 
 function json_(body) {
