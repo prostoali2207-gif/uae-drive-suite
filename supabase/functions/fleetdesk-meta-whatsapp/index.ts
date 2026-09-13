@@ -157,9 +157,7 @@ function mainMenuRows() {
     { id: "fd_section_contracts", title: "Контракты", description: "Активные и поиск договора" },
     { id: "fd_section_clients", title: "Клиенты", description: "Поиск клиента" },
     { id: "fd_section_finance", title: "Финансы", description: "Таблица «Движение денег»" },
-    { id: "fd_section_fines", title: "Штрафы", description: "Неоплаченные штрафы" },
-    { id: "fd_section_salik", title: "Salik", description: "Неоплаченные проезды" },
-    { id: "fd_section_parking", title: "Парковки", description: "Неоплаченные парковки" },
+    { id: "fd_section_handover", title: "Сдали / приняли", description: "Выдача, возврат и замена авто" },
   ];
 }
 
