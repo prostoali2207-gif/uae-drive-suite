@@ -604,6 +604,35 @@ async function handleSectionMessage(
   return "Раздел FleetDesk не настроен.";
 }
 
+async function getConversationSection(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  sender: string,
+) {
+  const { data, error } = await supabase
+    .from("whatsapp_operation_requests")
+    .select("payload, created_at")
+    .eq("owner_id", ownerId)
+    .eq("actor_phone", sender)
+    .eq("action", "meta_command")
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (error) throw error;
+
+  for (const row of data || []) {
+    const text = String((row as any)?.payload?.text || "").trim();
+
+    if (/^fd(?:\s+(?:меню|помощь|help|команды))?$/i.test(text)) {
+      return null;
+    }
+
+    const match = text.match(/^fd\s+section_(cars|contracts|clients|finance|handover)$/i);
+    if (match) return match[1].toLowerCase();
+  }
+
+  return null;
+}
+
 async function beginAudit(
   supabase: ReturnType<typeof createClient>,
   ownerId: string,
@@ -844,21 +873,37 @@ Deno.serve(async (req: Request) => {
           if (!sender || !messageId) continue;
 
           const preSection = await getSectionChannel(supabase, phoneNumberId);
-          if (!preSection && !/^fd\b/i.test(text)) continue;
 
           const staff = await getActiveStaff(supabase, sender);
           if (!staff?.owner_id) {
-            await sendWhatsAppText(phoneNumberId, sender, "Этот номер не зарегистрирован как активный сотрудник FleetDesk.");
+            if (/^fd\b/i.test(text)) {
+              await sendWhatsAppText(phoneNumberId, sender, "Этот номер не зарегистрирован как активный сотрудник FleetDesk.");
+            }
             continue;
           }
+
+          const conversationSection = preSection
+            ? preSection.section
+            : await getConversationSection(supabase, staff.owner_id, sender);
+
+          const sectionSelection = text.match(/^fd\s+section_(cars|contracts|clients|finance|handover)$/i);
+          if (!preSection && !conversationSection && !sectionSelection && !/^fd\b/i.test(text)) continue;
 
           const sectionChannel = preSection;
           const audit = await beginAudit(supabase, staff.owner_id, messageId, staff, sender, text);
           if (audit.duplicate) continue;
 
           try {
-            const responseText = sectionChannel
-              ? await handleSectionMessage(supabase, staff, sectionChannel.section, text)
+            const selectedSection = sectionSelection?.[1]?.toLowerCase() || null;
+            const activeSection = sectionChannel?.section || selectedSection || conversationSection;
+
+            const responseText = activeSection && !/^fd(?:\s+(?:меню|помощь|help|команды))?$/i.test(text)
+              ? await handleSectionMessage(
+                  supabase,
+                  staff,
+                  activeSection,
+                  selectedSection ? "" : text,
+                )
               : await handleCommand(supabase, staff, text);
             const metaResult = responseText === "__MAIN_MENU__"
               ? await sendWhatsAppList(
