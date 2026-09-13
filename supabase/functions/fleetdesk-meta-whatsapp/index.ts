@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.105.1";
 
 const GRAPH_VERSION = "v23.0";
+const GATEWAY_URL = "https://vlcxjizieelcfunausll.supabase.co/functions/v1/fleetdesk-whatsapp-gateway";
 
 function textResponse(body: string, status = 200) {
   return new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8" } });
@@ -48,6 +49,26 @@ async function verifyMetaSignature(rawBody: string, signatureHeader: string | nu
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
   const expected = "sha256=" + hex(new Uint8Array(signature));
   return timingSafeEqual(expected, signatureHeader);
+}
+
+async function callFleetDeskGateway(body: unknown) {
+  const token = Deno.env.get("FLEETDESK_GATEWAY_TOKEN") || "";
+  if (!token) throw new Error("FLEETDESK_GATEWAY_TOKEN is not configured");
+
+  const response = await fetch(GATEWAY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Peach-Token": token,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String(data?.error || "FleetDesk gateway request failed"));
+  }
+  return data;
 }
 
 async function sendWhatsAppText(phoneNumberId: string, to: string, body: string) {
@@ -164,6 +185,14 @@ function formatContracts(rows: any[]) {
   ).join("\n");
 }
 
+function formatFinance(data: any) {
+  const matches = data?.matches || [];
+  if (!matches.length) return "Статья не найдена.";
+  return matches.slice(0, 10).map((m: any) =>
+    `• ${m.article} — строка ${m.row}${m.section ? " — " + m.section : ""}`
+  ).join("\n");
+}
+
 async function beginAudit(
   supabase: ReturnType<typeof createClient>,
   ownerId: string,
@@ -244,7 +273,33 @@ async function handleCommand(
     return formatContracts(contracts);
   }
 
-  return "Команда не распознана. Примеры:\nfd авто\nfd контракт 73558";
+
+  const financeMatch = cmd.match(/^финансы\s+(наличные|ajman|сбер)\s+(\d{2})\.(\d{2})(?:\.(\d{2,4}))?\s+(.+)$/i);
+  if (financeMatch) {
+    const account = financeMatch[1].toLowerCase() === "наличные"
+      ? "cash_aed"
+      : financeMatch[1].toLowerCase() === "ajman"
+        ? "ajman_aed"
+        : "sber_rub";
+    const yearRaw = financeMatch[4];
+    const year = yearRaw ? (yearRaw.length === 2 ? "20" + yearRaw : yearRaw) : "2026";
+    const date = `${year}-${financeMatch[3]}-${financeMatch[2]}`;
+    const result = await callFleetDeskGateway({
+      name: "find_finance_articles",
+      arguments: {
+        account,
+        date,
+        query: financeMatch[5].trim(),
+      },
+      contact: { phone_number: staff.phone },
+    });
+    return formatFinance(result);
+  }
+
+  if (/^(помощь|help|команды)$/i.test(cmd)) {
+    return "Команды FleetDesk:\nfd авто\nfd контракт 73558\nfd финансы наличные 01.10 Мойка авто";
+  }
+  return "Команда не распознана. Напиши: fd помощь";
 }
 
 Deno.serve(async (req: Request) => {
