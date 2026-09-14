@@ -323,7 +323,7 @@ async function findExistingAudit(
 ) {
   const { data, error } = await supabase
     .from("telegram_operation_requests")
-    .select("status, result")
+    .select("id, status, result, payload, processed_at")
     .eq("owner_id", ownerId)
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
@@ -331,8 +331,88 @@ async function findExistingAudit(
   return data;
 }
 
+async function processFinanceAudit(
+  supabase: ReturnType<typeof createClient>,
+  botToken: string,
+  telegramUserId: number,
+  auditId: string,
+  payload: Record<string, any>,
+  requestId: string,
+) {
+  await supabase
+    .from("telegram_operation_requests")
+    .update({
+      status: "received",
+      result: { phase: "syncing" },
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", auditId);
+
+  let lastMessage = "Не удалось записать операцию.";
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const result = await callBridge(supabase, "record_entry", {
+        account: payload.account,
+        date: payload.date,
+        article: payload.article,
+        row: payload.row,
+        amount: payload.amount,
+        note: payload.note,
+        request_id: requestId,
+      });
+
+      result.currency = payload.account === "sber_rub" ? "RUB" : "AED";
+
+      await supabase
+        .from("telegram_operation_requests")
+        .update({
+          status: "applied",
+          result,
+          processed_at: new Date().toISOString(),
+        })
+        .eq("id", auditId);
+      return;
+    } catch (error) {
+      lastMessage = error instanceof Error ? error.message : "Не удалось записать операцию.";
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+    }
+  }
+
+  await supabase
+    .from("telegram_operation_requests")
+    .update({
+      status: "failed",
+      result: { ok: false, error: lastMessage },
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", auditId);
+
+  try {
+    await sendBotMessage(
+      botToken,
+      telegramUserId,
+      "FleetDesk: финансовая операция не синхронизировалась с Google Sheet. Открой Финансы и повтори запись.",
+    );
+  } catch {
+    // The audit row remains failed even if Telegram notification cannot be delivered.
+  }
+}
+
+function scheduleFinanceAudit(task: Promise<void>) {
+  const edgeRuntime = (globalThis as any).EdgeRuntime;
+  if (edgeRuntime?.waitUntil) {
+    edgeRuntime.waitUntil(task);
+  } else {
+    void task;
+  }
+}
+
 async function recordFinance(
   supabase: ReturnType<typeof createClient>,
+  botToken: string,
   telegramUser: { id: number },
   staff: Record<string, any>,
   body: Record<string, any>,
@@ -367,10 +447,31 @@ async function recordFinance(
   const idempotencyKey = `telegram-finance:${telegramUser.id}:${requestId}`;
   const existing = await findExistingAudit(supabase, staff.owner_id, idempotencyKey);
   if (existing) {
+    if (existing.status === "failed") {
+      await supabase
+        .from("telegram_operation_requests")
+        .update({ status: "received", result: null, processed_at: null })
+        .eq("id", existing.id);
+
+      scheduleFinanceAudit(
+        processFinanceAudit(
+          supabase,
+          botToken,
+          telegramUser.id,
+          existing.id,
+          existing.payload || {},
+          requestId,
+        ),
+      );
+
+      return { duplicate: true, status: "received", result: null, request_id: requestId };
+    }
+
     return {
       duplicate: true,
       status: existing.status,
       result: existing.result,
+      request_id: requestId,
     };
   }
 
@@ -401,42 +502,33 @@ async function recordFinance(
   if (auditError) {
     if ((auditError as any).code === "23505") {
       const duplicate = await findExistingAudit(supabase, staff.owner_id, idempotencyKey);
-      return { duplicate: true, status: duplicate?.status || "received", result: duplicate?.result || null };
+      return {
+        duplicate: true,
+        status: duplicate?.status || "received",
+        result: duplicate?.result || null,
+        request_id: requestId,
+      };
     }
     throw auditError;
   }
 
-  try {
-    const result = await callBridge(supabase, "record_entry", {
-      account,
-      date,
-      article,
-      row,
-      amount,
-      note,
-      request_id: requestId,
-    });
+  scheduleFinanceAudit(
+    processFinanceAudit(
+      supabase,
+      botToken,
+      telegramUser.id,
+      audit.id,
+      payload,
+      requestId,
+    ),
+  );
 
-    result.currency = account === "sber_rub" ? "RUB" : "AED";
-
-    await supabase
-      .from("telegram_operation_requests")
-      .update({ status: "applied", result, processed_at: new Date().toISOString() })
-      .eq("id", audit.id);
-
-    return { duplicate: false, status: "applied", result };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Не удалось записать операцию.";
-    await supabase
-      .from("telegram_operation_requests")
-      .update({
-        status: "failed",
-        result: { ok: false, error: message },
-        processed_at: new Date().toISOString(),
-      })
-      .eq("id", audit.id);
-    throw new Error(message);
-  }
+  return {
+    duplicate: false,
+    status: "received",
+    result: null,
+    request_id: requestId,
+  };
 }
 
 async function telegramApi(botToken: string, method: string, payload: Record<string, unknown>) {
@@ -694,8 +786,28 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "record") {
-      const result = await recordFinance(supabase, telegramUser, staff, body);
+      const result = await recordFinance(supabase, botToken, telegramUser, staff, body);
       return json({ ok: true, ...result }, 200, origin);
+    }
+
+    if (action === "status") {
+      const requestId = normalizeText(body.request_id);
+      if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) {
+        throw new Error("Некорректный request_id.");
+      }
+
+      const idempotencyKey = `telegram-finance:${telegramUser.id}:${requestId}`;
+      const current = await findExistingAudit(supabase, staff.owner_id, idempotencyKey);
+      if (!current) {
+        return json({ ok: false, error: "Операция не найдена." }, 404, origin);
+      }
+
+      return json({
+        ok: true,
+        status: current.status,
+        result: current.result,
+        request_id: requestId,
+      }, 200, origin);
     }
 
     return json({ ok: false, error: "Unsupported action." }, 400, origin);
