@@ -7,7 +7,6 @@ const MINI_APP_URL = "https://uae-drive-suite.vercel.app/telegram-finance";
 const FINANCE_BRIDGE_URL = "https://script.google.com/macros/s/AKfycbx-Zh3OD-aXy2rpmBFWw2mXvUUOLMn69Ndxx4lf2KDBi26FgfPRvY5UPfTMj6-49wY_uA/exec";
 const GATEWAY_TOKEN_SECRET = "fleetdesk_gateway_token";
 const TELEGRAM_TOKEN_SECRET = "fleetdesk_telegram_bot_token";
-const BRIDGE_WRITE_FLAG = "fleetdesk_finance_bridge_write_enabled";
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
 
 const ACCOUNT_KEYS = new Set(["cash_aed", "ajman_aed", "sber_rub"]);
@@ -408,11 +407,6 @@ async function recordFinance(
   }
 
   try {
-    const writeEnabled = await getSecret(supabase, BRIDGE_WRITE_FLAG);
-    if (writeEnabled !== "true") {
-      throw new Error("Запись финансов временно обновляется. Попробуй после обновления bridge.");
-    }
-
     const result = await callBridge(supabase, "record_entry", {
       account,
       date,
@@ -718,8 +712,7 @@ Deno.serve(async (req: Request) => {
       message.includes("Примечание") ||
       message.includes("справочник") ||
       message.includes("таблиц") ||
-      message.includes("Дата") ||
-      message.includes("временно обновляется");
+      message.includes("Дата");
     if (!userError) console.error(error);
     return json({ ok: false, error: userError ? message : "Не удалось выполнить операцию." }, userError ? 400 : 500, origin);
   }
