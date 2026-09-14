@@ -298,6 +298,15 @@ function trimArticleLabel(article: string, direction: string) {
   return article.startsWith(prefix) ? article.slice(prefix.length) : article;
 }
 
+async function getOperationCatalog(supabase: ReturnType<typeof createClient>) {
+  const { data, error } = await supabase
+    .from("finance_operation_catalog")
+    .select("reference_row, article, direction, aed_row, sber_row")
+    .order("reference_row", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 async function requireStaff(
   supabase: ReturnType<typeof createClient>,
   telegramUserId: number,
@@ -343,19 +352,17 @@ async function recordFinance(
 
   const date = todayDubai();
 
-  const verification = await callBridge(supabase, "find_articles", {
-    account,
-    date,
-    query: article,
-    direction: direction.label,
-  });
+  const mappedField = account === "sber_rub" ? "sber_row" : "aed_row";
+  const { data: catalogMatch, error: catalogError } = await supabase
+    .from("finance_operation_catalog")
+    .select("reference_row")
+    .eq("article", article)
+    .eq("direction", direction.label)
+    .eq(mappedField, row)
+    .maybeSingle();
 
-  const exact = (Array.isArray(verification.matches) ? verification.matches : []).find((item: any) =>
-    String(item.article || "") === article &&
-    Number(item.row) === row &&
-    String(item.section || "") === direction.label
-  );
-  if (!exact) throw new Error("Операция изменилась в справочнике. Выбери её заново.");
+  if (catalogError) throw catalogError;
+  if (!catalogMatch) throw new Error("Операция изменилась в справочнике. Выбери её заново.");
 
   const idempotencyKey = `telegram-finance:${telegramUser.id}:${requestId}`;
   const existing = await findExistingAudit(supabase, staff.owner_id, idempotencyKey);
@@ -617,12 +624,12 @@ Deno.serve(async (req: Request) => {
           telegram_user: { id: telegramUser.id, first_name: telegramUser.firstName },
         }, 200, origin);
       }
-      const context = await callBridge(supabase, "get_context", {});
+      const catalog = await getOperationCatalog(supabase);
       return json({
         ok: true,
         bound: true,
         staff: { id: staff.id, full_name: staff.full_name, role: staff.role },
-        context,
+        catalog,
       }, 200, origin);
     }
 
