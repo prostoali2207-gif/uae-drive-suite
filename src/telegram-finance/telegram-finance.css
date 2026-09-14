@@ -179,7 +179,9 @@
   height: 28px;
 }
 
-@keyframes tg-finance-spin {\n  to { rotate: 360deg; }\n}
+@keyframes tg-finance-spin {
+  to { rotate: 360deg; }
+}
 
 .tg-search-results {
   position: absolute;
