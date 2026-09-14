@@ -416,6 +416,8 @@ async function recordFinance(
       note,
     });
 
+    result.currency = account === "sber_rub" ? "RUB" : "AED";
+
     await supabase
       .from("telegram_operation_requests")
       .update({ status: "applied", result, processed_at: new Date().toISOString() })
