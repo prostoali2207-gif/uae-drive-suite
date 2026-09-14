@@ -128,12 +128,39 @@ function recordEntry_(payload) {
   const ref = resolveReference_(article, account, payload.row);
   if (!ref) throw new Error('Operation not found in Справочники.');
 
+  const requestId = String(payload.request_id || '').trim();
   const sheet = spreadsheet_().getSheetByName(INPUT_SHEET);
   if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
 
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
+    if (requestId) {
+      const existingRow = findRequestRow_(sheet, requestId);
+      if (existingRow) {
+        return {
+          ok: true,
+          action: 'record_entry',
+          duplicate: true,
+          account,
+          account_label: ACCOUNT_LABEL[account],
+          date,
+          period: activePeriod_(),
+          input_sheet: INPUT_SHEET,
+          input_row: existingRow,
+          article: ref.operation,
+          mapped_row: ref.mappedRow,
+          type: ref.direction,
+          currency: account === 'sber_rub' ? 'RUB' : 'AED',
+          amount,
+          note: note || null,
+          status: '✓ Готово',
+          key: date.replace(/-/g, '') + '|' + ACCOUNT_LABEL[account] + '|' + ref.mappedRow,
+          request_id: requestId,
+        };
+      }
+    }
+
     const targetRow = nextEmptyInputRow_(sheet);
     if (!targetRow) throw new Error('В листе «Ввод операций» закончились свободные строки.');
 
@@ -146,24 +173,8 @@ function recordEntry_(payload) {
       note,
     ]]);
 
-    SpreadsheetApp.flush();
-
-    const status = String(sheet.getRange(targetRow, 9).getDisplayValue() || '').trim();
-    const mappedRow = Number(sheet.getRange(targetRow, 8).getValue());
-    const key = String(sheet.getRange(targetRow, 10).getDisplayValue() || '').trim();
-    const type = String(sheet.getRange(targetRow, 6).getDisplayValue() || '').trim();
-    const currency = String(sheet.getRange(targetRow, 7).getDisplayValue() || '').trim();
-
-    if (status !== '✓ Готово' || !Number.isFinite(mappedRow) || mappedRow <= 0 || !key) {
-      sheet.getRange(targetRow, 1, 1, 5).clearContent();
-      SpreadsheetApp.flush();
-      throw new Error('Таблица не подтвердила операцию. Запись отменена.');
-    }
-
-    if (mappedRow !== ref.mappedRow) {
-      sheet.getRange(targetRow, 1, 1, 5).clearContent();
-      SpreadsheetApp.flush();
-      throw new Error('Строка операции изменилась. Запись отменена.');
+    if (requestId) {
+      sheet.getRange(targetRow, 14).setValue(requestId);
     }
 
     return {
@@ -176,13 +187,14 @@ function recordEntry_(payload) {
       input_sheet: INPUT_SHEET,
       input_row: targetRow,
       article: ref.operation,
-      mapped_row: mappedRow,
-      type,
-      currency,
+      mapped_row: ref.mappedRow,
+      type: ref.direction,
+      currency: account === 'sber_rub' ? 'RUB' : 'AED',
       amount,
       note: note || null,
-      status,
-      key,
+      status: '✓ Готово',
+      key: date.replace(/-/g, '') + '|' + ACCOUNT_LABEL[account] + '|' + ref.mappedRow,
+      request_id: requestId || null,
     };
   } finally {
     lock.releaseLock();
@@ -213,7 +225,12 @@ function resolveReference_(article, account, requestedRow) {
     const mappedRow = Number(account === 'sber_rub' ? rows[i][3] : rows[i][1]);
     if (!Number.isFinite(mappedRow) || mappedRow <= 0) continue;
 
-    candidates.push({ operation, mappedRow, referenceRow: i + 2 });
+    candidates.push({
+      operation,
+      direction: String(rows[i][2] || '').trim(),
+      mappedRow,
+      referenceRow: i + 2,
+    });
   }
 
   if (requestedRow !== undefined && requestedRow !== null && requestedRow !== '') {
@@ -229,6 +246,15 @@ function resolveReference_(article, account, requestedRow) {
     throw new Error('Найдено несколько одинаковых операций. Сначала выбери строку.');
   }
   return candidates[0] || null;
+}
+
+function findRequestRow_(sheet, requestId) {
+  const rowCount = INPUT_LAST_ROW - INPUT_FIRST_ROW + 1;
+  const values = sheet.getRange(INPUT_FIRST_ROW, 14, rowCount, 1).getDisplayValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0] || '').trim() === requestId) return INPUT_FIRST_ROW + i;
+  }
+  return 0;
 }
 
 function nextEmptyInputRow_(sheet) {
