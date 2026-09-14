@@ -396,7 +396,6 @@ function TelegramFinanceApp() {
       telegram?.HapticFeedback?.notificationOccurred?.("success");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось записать операцию.";
-      requestIdRef.current = "";
       setSubmitError(message);
       telegram?.HapticFeedback?.notificationOccurred?.("error");
     } finally {
