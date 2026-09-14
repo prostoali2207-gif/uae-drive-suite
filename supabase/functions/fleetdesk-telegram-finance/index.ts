@@ -632,7 +632,7 @@ Deno.serve(async (req: Request) => {
       const account = validateAccount(body.account);
       const direction = validateDirection(body.direction);
       const query = normalizeText(body.query);
-      if (!query) return json({ ok: true, matches: [] }, 200, origin);
+      if (!query) return json({ ok: true, matches: [], alternate: null }, 200, origin);
       if (query.length > 120) throw new Error("Поиск слишком длинный.");
 
       const result = await callBridge(supabase, "find_articles", {
@@ -651,7 +651,36 @@ Deno.serve(async (req: Request) => {
           label: trimArticleLabel(String(item.article || ""), direction.label),
         }));
 
-      return json({ ok: true, matches }, 200, origin);
+      let alternate = null;
+      if (matches.length === 0) {
+        const alternateKey = direction.key === "income" ? "expense" : "income";
+        const alternateLabel = DIRECTIONS.get(alternateKey)!;
+        const alternateResult = await callBridge(supabase, "find_articles", {
+          account,
+          date: todayDubai(),
+          query,
+          direction: alternateLabel,
+        });
+
+        const alternateMatches = (Array.isArray(alternateResult.matches) ? alternateResult.matches : [])
+          .filter((item: any) => String(item.section || "") === alternateLabel)
+          .slice(0, 5)
+          .map((item: any) => ({
+            row: Number(item.row),
+            article: String(item.article || ""),
+            label: trimArticleLabel(String(item.article || ""), alternateLabel),
+          }));
+
+        if (alternateMatches.length > 0) {
+          alternate = {
+            direction: alternateKey,
+            direction_label: alternateLabel,
+            matches: alternateMatches,
+          };
+        }
+      }
+
+      return json({ ok: true, matches, alternate }, 200, origin);
     }
 
     if (action === "record") {
