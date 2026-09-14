@@ -414,6 +414,7 @@ async function recordFinance(
       row,
       amount,
       note,
+      request_id: requestId,
     });
 
     result.currency = account === "sber_rub" ? "RUB" : "AED";
