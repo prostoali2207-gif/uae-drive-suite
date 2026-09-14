@@ -27,6 +27,12 @@ type OperationMatch = {
   label: string;
 };
 
+type AlternateDirection = {
+  direction: DirectionKey;
+  direction_label: string;
+  matches: OperationMatch[];
+};
+
 type SessionResponse = {
   ok: boolean;
   bound: boolean;
@@ -102,6 +108,7 @@ function TelegramFinanceApp() {
   const [query, setQuery] = useState("");
   const [operation, setOperation] = useState<OperationMatch | null>(null);
   const [matches, setMatches] = useState<OperationMatch[]>([]);
+  const [alternate, setAlternate] = useState<AlternateDirection | null>(null);
   const [searching, setSearching] = useState(false);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -209,6 +216,7 @@ function TelegramFinanceApp() {
   useEffect(() => {
     if (phase !== "ready" || !account || !direction || operation || query.trim().length < 1) {
       setMatches([]);
+      setAlternate(null);
       setSearching(false);
       return;
     }
@@ -234,6 +242,7 @@ function TelegramFinanceApp() {
         if (!response.ok || data?.ok === false) {
           if (!controller.signal.aborted) {
             setMatches([]);
+            setAlternate(null);
             setSubmitError(data?.error || "Не удалось найти операции.");
           }
           return;
@@ -241,11 +250,13 @@ function TelegramFinanceApp() {
 
         if (!controller.signal.aborted) {
           setMatches(Array.isArray(data?.matches) ? data.matches : []);
+          setAlternate(data?.alternate || null);
           setSubmitError("");
         }
       } catch (error) {
         if (!controller.signal.aborted) {
           setMatches([]);
+          setAlternate(null);
           setSubmitError(error instanceof Error ? error.message : "Не удалось выполнить поиск.");
         }
       } finally {
@@ -263,6 +274,7 @@ function TelegramFinanceApp() {
     setOperation(null);
     setQuery("");
     setMatches([]);
+    setAlternate(null);
     setSubmitError("");
     requestIdRef.current = "";
   }, []);
@@ -285,6 +297,17 @@ function TelegramFinanceApp() {
     setOperation(match);
     setQuery(match.label);
     setMatches([]);
+    setAlternate(null);
+    setSubmitError("");
+    requestIdRef.current = "";
+    telegram?.HapticFeedback?.impactOccurred?.("light");
+  };
+
+  const switchToAlternate = () => {
+    if (!alternate) return;
+    setDirection(alternate.direction);
+    setMatches(alternate.matches);
+    setAlternate(null);
     setSubmitError("");
     requestIdRef.current = "";
     telegram?.HapticFeedback?.impactOccurred?.("light");
@@ -519,6 +542,7 @@ function TelegramFinanceApp() {
             onChange={(event) => {
               setQuery(event.target.value);
               setOperation(null);
+              setAlternate(null);
               requestIdRef.current = "";
             }}
           />
@@ -551,7 +575,14 @@ function TelegramFinanceApp() {
           </div>
         ) : null}
 
-        {!operation && query.trim() && !searching && matches.length === 0 && account && direction ? (
+        {!operation && alternate && matches.length === 0 ? (
+          <button className="tg-direction-suggestion" type="button" onClick={switchToAlternate}>
+            <span>Есть в «{alternate.direction_label}»</span>
+            <strong>{alternate.matches[0]?.label || "Показать"}</strong>
+          </button>
+        ) : null}
+
+        {!operation && query.trim() && !searching && matches.length === 0 && !alternate && account && direction ? (
           <div className="tg-helper">Ничего не найдено. Уточни запрос.</div>
         ) : null}
       </section>
