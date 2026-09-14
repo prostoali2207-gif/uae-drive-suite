@@ -241,6 +241,36 @@
   line-height: 1.35;
 }
 
+.tg-direction-suggestion {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--tg-theme-button-color, #2f80ed) 34%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tg-theme-button-color, #2f80ed) 8%, var(--tg-theme-section-bg-color, #ffffff));
+  color: var(--tg-theme-text-color, #111318);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tg-direction-suggestion span {
+  color: var(--tg-theme-button-color, #2f80ed);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.tg-direction-suggestion strong {
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
 .tg-amount-input {
   padding-right: 64px;
   font-size: 22px;
