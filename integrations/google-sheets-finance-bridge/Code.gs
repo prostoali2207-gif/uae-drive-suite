@@ -352,8 +352,7 @@ function validateDate_(value) {
 }
 
 function parseYmd_(date) {
-  const parts = String(date).split('-').map(Number);
-  return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+  return Utilities.parseDate(String(date), 'Asia/Dubai', 'yyyy-MM-dd');
 }
 
 function normalize_(value) {
