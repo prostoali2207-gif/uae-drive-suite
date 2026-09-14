@@ -371,6 +371,22 @@
   font-weight: 800;
 }
 
+.tg-success-mark.is-pending {
+  opacity: 0.72;
+}
+
+.tg-success-mark.is-failed {
+  background: rgba(220, 38, 38, 0.10);
+  color: #c62828;
+}
+
+.tg-sync-state {
+  margin: -8px 0 18px;
+  color: var(--tg-theme-hint-color, #69707d);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .tg-review-backdrop {
   position: fixed;
   z-index: 100;
