@@ -56,7 +56,7 @@ function getContext_() {
   return {
     ok: true,
     action: 'get_context',
-    period: activePeriod_(),
+    period,
     accounts: Object.keys(ACCOUNT_LABEL).map(function (key) {
       return { account: key, label: ACCOUNT_LABEL[key] };
     }),
@@ -107,7 +107,7 @@ function findArticles_(payload) {
     account,
     account_label: ACCOUNT_LABEL[account],
     date,
-    period: activePeriod_(),
+    period,
     count: matches.length,
     matches: matches.slice(0, 20),
   };
@@ -115,7 +115,13 @@ function findArticles_(payload) {
 
 function recordEntry_(payload) {
   const account = validateAccount_(payload.account);
-  const date = validateActiveDate_(payload.date);
+  const date = validateDate_(payload.date);
+  const period = activePeriod_();
+  if (date < period.start || date > period.end) {
+    throw new Error(
+      'Дата ' + date + ' вне активного периода таблицы: ' + period.start + ' — ' + period.end + '.'
+    );
+  }
   const article = String(payload.article || '').trim();
   const note = String(payload.note || '').trim();
   const amount = Number(payload.amount);
@@ -135,9 +141,10 @@ function recordEntry_(payload) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    if (requestId) {
-      const existingRow = findRequestRow_(sheet, requestId);
-      if (existingRow) {
+    const inputState = inspectInputRows_(sheet, requestId);
+
+    if (requestId && inputState.existingRow) {
+      const existingRow = inputState.existingRow;
         return {
           ok: true,
           action: 'record_entry',
@@ -145,7 +152,7 @@ function recordEntry_(payload) {
           account,
           account_label: ACCOUNT_LABEL[account],
           date,
-          period: activePeriod_(),
+          period,
           input_sheet: INPUT_SHEET,
           input_row: existingRow,
           article: ref.operation,
@@ -161,7 +168,7 @@ function recordEntry_(payload) {
       }
     }
 
-    const targetRow = nextEmptyInputRow_(sheet);
+    const targetRow = inputState.emptyRow;
     if (!targetRow) throw new Error('В листе «Ввод операций» закончились свободные строки.');
 
     const dateValue = parseYmd_(date);
@@ -183,7 +190,7 @@ function recordEntry_(payload) {
       account,
       account_label: ACCOUNT_LABEL[account],
       date,
-      period: activePeriod_(),
+      period,
       input_sheet: INPUT_SHEET,
       input_row: targetRow,
       article: ref.operation,
@@ -208,9 +215,16 @@ function spreadsheet_() {
 }
 
 function referenceRows_() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('finance_reference_rows_v1');
+  if (cached) return JSON.parse(cached);
+
   const sheet = spreadsheet_().getSheetByName(REFERENCE_SHEET);
   if (!sheet) throw new Error('Лист «Справочники» не найден.');
-  return sheet.getRange('A2:D256').getDisplayValues();
+
+  const rows = sheet.getRange('A2:D256').getDisplayValues();
+  cache.put('finance_reference_rows_v1', JSON.stringify(rows), 300);
+  return rows;
 }
 
 function resolveReference_(article, account, requestedRow) {
@@ -248,30 +262,38 @@ function resolveReference_(article, account, requestedRow) {
   return candidates[0] || null;
 }
 
-function findRequestRow_(sheet, requestId) {
+function inspectInputRows_(sheet, requestId) {
   const rowCount = INPUT_LAST_ROW - INPUT_FIRST_ROW + 1;
-  const values = sheet.getRange(INPUT_FIRST_ROW, 14, rowCount, 1).getDisplayValues();
-  for (let i = 0; i < values.length; i++) {
-    if (String(values[i][0] || '').trim() === requestId) return INPUT_FIRST_ROW + i;
-  }
-  return 0;
-}
+  const values = sheet.getRange(INPUT_FIRST_ROW, 1, rowCount, 14).getDisplayValues();
 
-function nextEmptyInputRow_(sheet) {
-  const rowCount = INPUT_LAST_ROW - INPUT_FIRST_ROW + 1;
-  const values = sheet.getRange(INPUT_FIRST_ROW, 1, rowCount, 5).getDisplayValues();
+  let existingRow = 0;
+  let emptyRow = 0;
 
   for (let i = 0; i < values.length; i++) {
-    const occupied = values[i].some(function (value) {
-      return String(value || '').trim() !== '';
-    });
-    if (!occupied) return INPUT_FIRST_ROW + i;
+    if (!existingRow && requestId && String(values[i][13] || '').trim() === requestId) {
+      existingRow = INPUT_FIRST_ROW + i;
+    }
+
+    if (!emptyRow) {
+      const occupied = values[i].slice(0, 5).some(function (value) {
+        return String(value || '').trim() !== '';
+      });
+      if (!occupied) emptyRow = INPUT_FIRST_ROW + i;
+    }
+
+    if (existingRow && emptyRow) break;
   }
-  return null;
+
+  return { existingRow, emptyRow };
 }
 
 function activePeriod_() {
-  const sheet = spreadsheet_().getSheetByName(INPUT_SHEET);
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('finance_active_period_v1');
+  if (cached) return JSON.parse(cached);
+
+  const ss = spreadsheet_();
+  const sheet = ss.getSheetByName(INPUT_SHEET);
   if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
 
   const rule = sheet.getRange('A5').getDataValidation();
@@ -286,12 +308,15 @@ function activePeriod_() {
     throw new Error('Некорректный период в «Ввод операций».');
   }
 
-  const tz = spreadsheet_().getSpreadsheetTimeZone() || 'Asia/Dubai';
-  return {
+  const tz = ss.getSpreadsheetTimeZone() || 'Asia/Dubai';
+  const period = {
     start: Utilities.formatDate(start, tz, 'yyyy-MM-dd'),
     end: Utilities.formatDate(end, tz, 'yyyy-MM-dd'),
     label: Utilities.formatDate(start, tz, 'MMMM yyyy'),
   };
+
+  cache.put('finance_active_period_v1', JSON.stringify(period), 300);
+  return period;
 }
 
 function validateAccount_(value) {
@@ -327,7 +352,7 @@ function validateDate_(value) {
 
 function parseYmd_(date) {
   const parts = String(date).split('-').map(Number);
-  return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+  return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
 }
 
 function normalize_(value) {
