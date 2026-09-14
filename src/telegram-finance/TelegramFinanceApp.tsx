@@ -170,6 +170,9 @@ function TelegramFinanceApp() {
     article: string;
     amount: number;
     currency: string;
+    requestId: string;
+    status: "received" | "applied" | "failed";
+    error?: string;
   } | null>(null);
   const requestIdRef = useRef("");
 
@@ -298,6 +301,74 @@ function TelegramFinanceApp() {
     );
   }, [account, catalog, direction, operation, phase, query]);
 
+  useEffect(() => {
+    if (!success || success.status !== "received") return;
+
+    let cancelled = false;
+    let timer = 0;
+
+    const poll = async () => {
+      try {
+        const data = await api<{
+          ok: true;
+          status: "received" | "applied" | "failed";
+          result?: {
+            amount?: number;
+            article?: string;
+            currency?: string;
+            error?: string;
+          } | null;
+        }>({
+          action: "status",
+          request_id: success.requestId,
+        });
+
+        if (cancelled) return;
+
+        if (data.status === "applied") {
+          setSuccess((current) =>
+            current
+              ? {
+                  ...current,
+                  status: "applied",
+                  amount: Number(data.result?.amount ?? current.amount),
+                  currency: String(data.result?.currency || current.currency),
+                  error: undefined,
+                }
+              : current,
+          );
+          telegram?.HapticFeedback?.notificationOccurred?.("success");
+          return;
+        }
+
+        if (data.status === "failed") {
+          setSuccess((current) =>
+            current
+              ? {
+                  ...current,
+                  status: "failed",
+                  error: data.result?.error || "Не удалось синхронизировать запись.",
+                }
+              : current,
+          );
+          telegram?.HapticFeedback?.notificationOccurred?.("error");
+          return;
+        }
+      } catch {
+        // Keep polling: the write itself continues on the server.
+      }
+
+      timer = window.setTimeout(poll, 900);
+    };
+
+    timer = window.setTimeout(poll, 650);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [api, success?.requestId, success?.status, telegram]);
+
   const clearOperation = useCallback(() => {
     setOperation(null);
     setQuery("");
@@ -362,15 +433,25 @@ function TelegramFinanceApp() {
     setSubmitting(true);
     setSubmitError("");
 
+    const activeRequestId = requestIdRef.current || crypto.randomUUID();
+    requestIdRef.current = activeRequestId;
+
     try {
       const data = await api<{
         ok: true;
-        status: string;
+        status: "received" | "applied" | "failed";
         duplicate?: boolean;
-        result?: { amount?: number; article?: string; currency?: string; status?: string };
+        request_id?: string;
+        result?: {
+          amount?: number;
+          article?: string;
+          currency?: string;
+          status?: string;
+          error?: string;
+        } | null;
       }>({
         action: "record",
-        request_id: requestIdRef.current || crypto.randomUUID(),
+        request_id: activeRequestId,
         account,
         direction,
         article: operation.article,
@@ -379,21 +460,24 @@ function TelegramFinanceApp() {
         note: note.trim(),
       });
 
-      if (data.status !== "applied" || !data.result) {
-        if (data.status === "failed") requestIdRef.current = "";
-        throw new Error(
-          (data.result as { error?: string } | undefined)?.error ||
-            "Таблица не подтвердила запись.",
-        );
+      if (data.status === "failed") {
+        throw new Error(data.result?.error || "Не удалось синхронизировать запись.");
       }
 
       setSuccess({
         article: operation.label,
-        amount: Number(data.result.amount ?? amount),
-        currency: String(data.result.currency || selectedAccount.currency),
+        amount: Number(data.result?.amount ?? amount),
+        currency: String(data.result?.currency || selectedAccount.currency),
+        requestId: data.request_id || activeRequestId,
+        status: data.status,
       });
       setReviewOpen(false);
-      telegram?.HapticFeedback?.notificationOccurred?.("success");
+
+      if (data.status === "applied") {
+        telegram?.HapticFeedback?.notificationOccurred?.("success");
+      } else {
+        telegram?.HapticFeedback?.impactOccurred?.("light");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось записать операцию.";
       setSubmitError(message);
@@ -495,16 +579,49 @@ function TelegramFinanceApp() {
   }
 
   if (success) {
+    const isPending = success.status === "received";
+    const isFailed = success.status === "failed";
+
     return (
       <main className="tg-finance-shell tg-finance-center">
         <section className="tg-finance-success">
-          <div className="tg-success-mark" aria-hidden="true">✓</div>
-          <div className="tg-eyebrow">Записано</div>
+          <div
+            className={`tg-success-mark${isPending ? " is-pending" : ""}${isFailed ? " is-failed" : ""}`}
+            aria-hidden="true"
+          >
+            {isFailed ? "!" : "✓"}
+          </div>
+          <div className="tg-eyebrow">
+            {isFailed ? "Не синхронизировано" : isPending ? "Принято" : "Записано"}
+          </div>
           <h1>{formatAmount(String(success.amount), success.currency)}</h1>
           <p>{success.article}</p>
-          <button className="tg-primary-button" type="button" onClick={resetForNext}>
-            Добавить ещё
-          </button>
+
+          {isPending ? (
+            <div className="tg-sync-state">Синхронизация с Google Sheet идёт в фоне…</div>
+          ) : null}
+
+          {isFailed ? (
+            <>
+              <div className="tg-inline-error">
+                {success.error || "Не удалось синхронизировать запись."}
+              </div>
+              <button
+                className="tg-primary-button"
+                type="button"
+                onClick={() => {
+                  setSuccess(null);
+                  setReviewOpen(true);
+                }}
+              >
+                Повторить
+              </button>
+            </>
+          ) : (
+            <button className="tg-primary-button" type="button" onClick={resetForNext}>
+              Добавить ещё
+            </button>
+          )}
         </section>
       </main>
     );
