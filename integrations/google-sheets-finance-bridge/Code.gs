@@ -53,6 +53,7 @@ function doPost(e) {
 }
 
 function getContext_() {
+  const period = activePeriod_();
   return {
     ok: true,
     action: 'get_context',
@@ -67,6 +68,7 @@ function getContext_() {
 function findArticles_(payload) {
   const account = validateAccount_(payload.account);
   const date = validateActiveDate_(payload.date);
+  const period = activePeriod_();
   const query = normalize_(payload.query || '');
   if (!query) throw new Error('query is required.');
 
@@ -165,7 +167,6 @@ function recordEntry_(payload) {
           key: date.replace(/-/g, '') + '|' + ACCOUNT_LABEL[account] + '|' + ref.mappedRow,
           request_id: requestId,
         };
-      }
     }
 
     const targetRow = inputState.emptyRow;
