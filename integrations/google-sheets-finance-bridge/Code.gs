@@ -12,11 +12,6 @@ const ACCOUNT_LABEL = Object.freeze({
   sber_rub: 'СБЕР (RUB)',
 });
 
-const DIRECTION = Object.freeze({
-  income: 'Приход',
-  expense: 'Расход',
-});
-
 function doGet() {
   const period = activePeriod_();
   return json_({
@@ -65,10 +60,6 @@ function getContext_() {
     accounts: Object.keys(ACCOUNT_LABEL).map(function (key) {
       return { account: key, label: ACCOUNT_LABEL[key] };
     }),
-    directions: [
-      { direction: 'income', label: DIRECTION.income },
-      { direction: 'expense', label: DIRECTION.expense },
-    ],
     input_sheet: INPUT_SHEET,
   };
 }
@@ -79,16 +70,13 @@ function findArticles_(payload) {
   const query = normalize_(payload.query || '');
   if (!query) throw new Error('query is required.');
 
-  const requestedDirection = validateOptionalDirection_(payload.direction || payload.type);
   const rows = referenceRows_();
   const tokens = query.split(' ').filter(Boolean);
   const matches = [];
 
   for (let i = 0; i < rows.length; i++) {
     const operation = String(rows[i][0] || '').trim();
-    const direction = String(rows[i][2] || '').trim();
     if (!operation) continue;
-    if (requestedDirection && direction !== requestedDirection) continue;
 
     const haystack = normalize_(operation);
     const matchedTokens = tokens.filter(function (token) {
@@ -103,7 +91,7 @@ function findArticles_(payload) {
     matches.push({
       row: mappedRow,
       article: operation,
-      section: direction || null,
+      section: String(rows[i][2] || '').trim() || null,
       reference_row: i + 2,
       score: haystack.includes(query) ? 100 + tokens.length : matchedTokens,
     });
@@ -118,7 +106,6 @@ function findArticles_(payload) {
     action: 'find_articles',
     account,
     account_label: ACCOUNT_LABEL[account],
-    direction: requestedDirection || null,
     date,
     period: activePeriod_(),
     count: matches.length,
@@ -141,7 +128,6 @@ function recordEntry_(payload) {
   const ref = resolveReference_(article, account, payload.row);
   if (!ref) throw new Error('Operation not found in Справочники.');
 
-  const parts = operationParts_(ref.operation, ref.direction);
   const sheet = spreadsheet_().getSheetByName(INPUT_SHEET);
   if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
 
@@ -152,45 +138,30 @@ function recordEntry_(payload) {
     if (!targetRow) throw new Error('В листе «Ввод операций» закончились свободные строки.');
 
     const dateValue = parseYmd_(date);
-
-    // Keep formula/service columns F and I:M untouched.
     sheet.getRange(targetRow, 1, 1, 5).setValues([[
       dateValue,
       ACCOUNT_LABEL[account],
-      parts.direction,
-      parts.category,
-      parts.detail,
-    ]]);
-    sheet.getRange(targetRow, 7, 1, 2).setValues([[
+      ref.operation,
       amount,
       note,
     ]]);
 
     SpreadsheetApp.flush();
 
-    const operation = String(sheet.getRange(targetRow, 6).getDisplayValue() || '').trim();
-    const type = String(sheet.getRange(targetRow, 9).getDisplayValue() || '').trim();
-    const currency = String(sheet.getRange(targetRow, 10).getDisplayValue() || '').trim();
-    const mappedRow = Number(sheet.getRange(targetRow, 11).getValue());
-    const status = String(sheet.getRange(targetRow, 12).getDisplayValue() || '').trim();
-    const key = String(sheet.getRange(targetRow, 13).getDisplayValue() || '').trim();
+    const status = String(sheet.getRange(targetRow, 9).getDisplayValue() || '').trim();
+    const mappedRow = Number(sheet.getRange(targetRow, 8).getValue());
+    const key = String(sheet.getRange(targetRow, 10).getDisplayValue() || '').trim();
+    const type = String(sheet.getRange(targetRow, 6).getDisplayValue() || '').trim();
+    const currency = String(sheet.getRange(targetRow, 7).getDisplayValue() || '').trim();
 
-    const valid =
-      status === '✓ ЗАПИСАНО' &&
-      Number.isFinite(mappedRow) &&
-      mappedRow > 0 &&
-      Boolean(key) &&
-      normalize_(operation) === normalize_(ref.operation) &&
-      type === ref.direction;
-
-    if (!valid) {
-      clearInputRow_(sheet, targetRow);
+    if (status !== '✓ Готово' || !Number.isFinite(mappedRow) || mappedRow <= 0 || !key) {
+      sheet.getRange(targetRow, 1, 1, 5).clearContent();
       SpreadsheetApp.flush();
       throw new Error('Таблица не подтвердила операцию. Запись отменена.');
     }
 
     if (mappedRow !== ref.mappedRow) {
-      clearInputRow_(sheet, targetRow);
+      sheet.getRange(targetRow, 1, 1, 5).clearContent();
       SpreadsheetApp.flush();
       throw new Error('Строка операции изменилась. Запись отменена.');
     }
@@ -237,19 +208,12 @@ function resolveReference_(article, account, requestedRow) {
 
   for (let i = 0; i < rows.length; i++) {
     const operation = String(rows[i][0] || '').trim();
-    const direction = String(rows[i][2] || '').trim();
     if (!operation || normalize_(operation) !== target) continue;
-    if (direction !== 'Приход' && direction !== 'Расход') continue;
 
     const mappedRow = Number(account === 'sber_rub' ? rows[i][3] : rows[i][1]);
     if (!Number.isFinite(mappedRow) || mappedRow <= 0) continue;
 
-    candidates.push({
-      operation,
-      direction,
-      mappedRow,
-      referenceRow: i + 2,
-    });
+    candidates.push({ operation, mappedRow, referenceRow: i + 2 });
   }
 
   if (requestedRow !== undefined && requestedRow !== null && requestedRow !== '') {
@@ -267,47 +231,17 @@ function resolveReference_(article, account, requestedRow) {
   return candidates[0] || null;
 }
 
-function operationParts_(operation, direction) {
-  const parts = String(operation || '')
-    .split('·')
-    .map(function (part) { return String(part || '').trim(); })
-    .filter(Boolean);
-
-  if (parts.length < 2) throw new Error('Некорректная операция в «Справочники».');
-  if (parts[0] !== direction) throw new Error('Тип операции не совпадает со справочником.');
-
-  return {
-    direction: direction,
-    category: parts[1],
-    detail: parts.slice(2).join(' · '),
-  };
-}
-
 function nextEmptyInputRow_(sheet) {
   const rowCount = INPUT_LAST_ROW - INPUT_FIRST_ROW + 1;
-  const values = sheet.getRange(INPUT_FIRST_ROW, 1, rowCount, 8).getDisplayValues();
+  const values = sheet.getRange(INPUT_FIRST_ROW, 1, rowCount, 5).getDisplayValues();
 
   for (let i = 0; i < values.length; i++) {
-    const inputValues = [
-      values[i][0],
-      values[i][1],
-      values[i][2],
-      values[i][3],
-      values[i][4],
-      values[i][6],
-      values[i][7],
-    ];
-    const occupied = inputValues.some(function (value) {
+    const occupied = values[i].some(function (value) {
       return String(value || '').trim() !== '';
     });
     if (!occupied) return INPUT_FIRST_ROW + i;
   }
   return null;
-}
-
-function clearInputRow_(sheet, row) {
-  sheet.getRange(row, 1, 1, 5).clearContent();
-  sheet.getRange(row, 7, 1, 2).clearContent();
 }
 
 function activePeriod_() {
@@ -340,16 +274,6 @@ function validateAccount_(value) {
     throw new Error('account must be cash_aed, ajman_aed, or sber_rub.');
   }
   return account;
-}
-
-function validateOptionalDirection_(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-
-  const lowered = raw.toLowerCase();
-  if (lowered === 'income' || raw === 'Приход') return 'Приход';
-  if (lowered === 'expense' || raw === 'Расход') return 'Расход';
-  throw new Error('direction must be income/expense or Приход/Расход.');
 }
 
 function validateActiveDate_(value) {
