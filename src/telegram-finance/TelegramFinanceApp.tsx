@@ -33,13 +33,19 @@ type AlternateDirection = {
   matches: OperationMatch[];
 };
 
+type CatalogItem = {
+  reference_row: number;
+  article: string;
+  direction: "Приход" | "Расход";
+  aed_row: number;
+  sber_row: number;
+};
+
 type SessionResponse = {
   ok: boolean;
   bound: boolean;
   staff?: { id: string; full_name: string; role: string };
-  context?: {
-    period?: { start: string; end: string; label?: string };
-  };
+  catalog?: CatalogItem[];
   code?: string;
   error?: string;
 };
@@ -95,6 +101,49 @@ function formatAmount(value: string, currency: string) {
   }).format(amount) + " " + currency;
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^a-zа-я0-9]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchCatalog(
+  catalog: CatalogItem[],
+  account: AccountKey,
+  directionLabel: "Приход" | "Расход",
+  query: string,
+  limit: number,
+): OperationMatch[] {
+  const normalizedQuery = normalizeSearch(query);
+  if (!normalizedQuery) return [];
+
+  const tokens = normalizedQuery.split(" ").filter(Boolean);
+  const rowField = account === "sber_rub" ? "sber_row" : "aed_row";
+
+  return catalog
+    .filter((item) => item.direction === directionLabel)
+    .map((item) => {
+      const haystack = normalizeSearch(item.article);
+      const matchedTokens = tokens.filter((token) => haystack.includes(token)).length;
+      const fullMatch = haystack.includes(normalizedQuery);
+      return {
+        item,
+        score: fullMatch ? 100 + tokens.length : matchedTokens,
+      };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || a.item.reference_row - b.item.reference_row)
+    .slice(0, limit)
+    .map(({ item }) => ({
+      row: Number(item[rowField]),
+      article: item.article,
+      label: item.article.replace(new RegExp("^" + directionLabel + "\\s*·\\s*", "i"), ""),
+    }));
+}
+
 function TelegramFinanceApp() {
   const [telegram, setTelegram] = useState<TelegramWebApp | null>(null);
   const [phase, setPhase] = useState<
@@ -102,6 +151,7 @@ function TelegramFinanceApp() {
   >("loading");
   const [sessionError, setSessionError] = useState("");
   const [staffName, setStaffName] = useState("");
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
 
   const [account, setAccount] = useState<AccountKey | "">("");
   const [direction, setDirection] = useState<DirectionKey | "">("");
@@ -174,6 +224,7 @@ function TelegramFinanceApp() {
       }
 
       setStaffName(data.staff?.full_name || "");
+      setCatalog(Array.isArray(data.catalog) ? data.catalog : []);
       setPhase("ready");
       return true;
     } catch (error) {
@@ -221,54 +272,31 @@ function TelegramFinanceApp() {
       return;
     }
 
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      setSearching(true);
-      try {
-        const response = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            action: "search",
-            initData: telegram?.initData,
-            account,
-            direction,
-            query: query.trim(),
-          }),
-        });
-        const data = await response.json().catch(() => null);
+    const directionLabel = direction === "income" ? "Приход" : "Расход";
+    const localMatches = searchCatalog(catalog, account, directionLabel, query, 12);
+    setMatches(localMatches);
+    setSearching(false);
+    setSubmitError("");
 
-        if (!response.ok || data?.ok === false) {
-          if (!controller.signal.aborted) {
-            setMatches([]);
-            setAlternate(null);
-            setSubmitError(data?.error || "Не удалось найти операции.");
+    if (localMatches.length > 0) {
+      setAlternate(null);
+      return;
+    }
+
+    const alternateDirection: DirectionKey = direction === "income" ? "expense" : "income";
+    const alternateLabel = alternateDirection === "income" ? "Приход" : "Расход";
+    const alternateMatches = searchCatalog(catalog, account, alternateLabel, query, 5);
+
+    setAlternate(
+      alternateMatches.length > 0
+        ? {
+            direction: alternateDirection,
+            direction_label: alternateLabel,
+            matches: alternateMatches,
           }
-          return;
-        }
-
-        if (!controller.signal.aborted) {
-          setMatches(Array.isArray(data?.matches) ? data.matches : []);
-          setAlternate(data?.alternate || null);
-          setSubmitError("");
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setMatches([]);
-          setAlternate(null);
-          setSubmitError(error instanceof Error ? error.message : "Не удалось выполнить поиск.");
-        }
-      } finally {
-        if (!controller.signal.aborted) setSearching(false);
-      }
-    }, 180);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [account, direction, operation, phase, query, telegram]);
+        : null,
+    );
+  }, [account, catalog, direction, operation, phase, query]);
 
   const clearOperation = useCallback(() => {
     setOperation(null);
