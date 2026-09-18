@@ -5,6 +5,9 @@ const GRAPH_VERSION = "v23.0";
 const AUTO_SALES_WABA_ID = "115166331454166";
 const AUTO_SALES_PHONE = "971503432337";
 const FUNCTION_SLUG = "auto-sales-meta-attribution";
+const SUBSCRIPTION_REFRESH_MS = 15 * 60 * 1000;
+
+let subscriptionEnsuredAt = 0;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -46,23 +49,36 @@ async function verifyMetaSignature(rawBody: string, signatureHeader: string | nu
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  return timingSafeEqual("sha256=" + hex(new Uint8Array(signature)), signatureHeader);
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(rawBody),
+  );
+  return timingSafeEqual(
+    "sha256=" + hex(new Uint8Array(signature)),
+    signatureHeader,
+  );
 }
 
 function db() {
   const url = Deno.env.get("SUPABASE_URL") || "";
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!url || !serviceRole) throw new Error("Supabase service credentials are not configured");
+  if (!url || !serviceRole) {
+    throw new Error("Supabase service credentials are not configured");
+  }
   return createClient(url, serviceRole, { auth: { persistSession: false } });
 }
 
-async function getSecret(supabase: ReturnType<typeof createClient>, name: string) {
+async function getSecret(
+  supabase: ReturnType<typeof createClient>,
+  name: string,
+) {
   const { data, error } = await supabase
     .from("service_integration_secrets")
     .select("secret_value")
     .eq("secret_name", name)
     .maybeSingle();
+
   if (error) throw error;
   return String(data?.secret_value || "");
 }
@@ -73,20 +89,26 @@ async function graph(path: string, init: RequestInit = {}) {
 
   const headers = new Headers(init.headers || {});
   headers.set("Authorization", `Bearer ${accessToken}`);
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
-  const response = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
-    ...init,
-    headers,
-  });
+  const response = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${path}`,
+    { ...init, headers },
+  );
   const data = await response.json().catch(() => ({}));
   return { ok: response.ok, status: response.status, data };
 }
 
 async function adminStatus() {
   const [subscriptions, phones] = await Promise.all([
-    graph(`${AUTO_SALES_WABA_ID}/subscribed_apps`),
-    graph(`${AUTO_SALES_WABA_ID}/phone_numbers?fields=id,display_phone_number,verified_name`),
+    graph(
+      `${AUTO_SALES_WABA_ID}/subscribed_apps?fields=id,name,override_callback_uri,subscribed_fields`,
+    ),
+    graph(
+      `${AUTO_SALES_WABA_ID}/phone_numbers?fields=id,display_phone_number,verified_name`,
+    ),
   ]);
 
   return {
@@ -105,23 +127,56 @@ async function adminStatus() {
   };
 }
 
-async function subscribeThisWebhook(supabase: ReturnType<typeof createClient>) {
-  const verifyToken = await getSecret(supabase, "auto_sales_meta_verify_token");
-  if (!verifyToken) throw new Error("auto_sales_meta_verify_token is not configured");
+async function subscribeThisWebhook(
+  supabase: ReturnType<typeof createClient>,
+) {
+  const verifyToken = await getSecret(
+    supabase,
+    "auto_sales_meta_verify_token",
+  );
+  if (!verifyToken) {
+    throw new Error("auto_sales_meta_verify_token is not configured");
+  }
 
   const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
   if (!supabaseUrl) throw new Error("SUPABASE_URL is not configured");
 
   const callbackUrl = `${supabaseUrl}/functions/v1/${FUNCTION_SLUG}`;
-  const result = await graph(`${AUTO_SALES_WABA_ID}/subscribed_apps`, {
-    method: "POST",
-    body: JSON.stringify({
-      override_callback_uri: callbackUrl,
-      verify_token: verifyToken,
-    }),
-  });
+  const result = await graph(
+    `${AUTO_SALES_WABA_ID}/subscribed_apps`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        subscribed_fields: ["messages", "smb_message_echoes"],
+        override_callback_uri: callbackUrl,
+        verify_token: verifyToken,
+      }),
+    },
+  );
 
-  return { callback_url: callbackUrl, ...result };
+  return {
+    callback_url: callbackUrl,
+    requested_fields: ["messages", "smb_message_echoes"],
+    ...result,
+  };
+}
+
+async function ensureConversationSubscription(
+  supabase: ReturnType<typeof createClient>,
+) {
+  const now = Date.now();
+  if (now - subscriptionEnsuredAt < SUBSCRIPTION_REFRESH_MS) return;
+
+  try {
+    const result = await subscribeThisWebhook(supabase);
+    if (!result.ok) {
+      console.error("auto-sales subscription refresh failed", result);
+      return;
+    }
+    subscriptionEnsuredAt = now;
+  } catch (error) {
+    console.error("auto-sales subscription refresh error", error);
+  }
 }
 
 async function handleAdmin(
@@ -136,18 +191,27 @@ async function handleAdmin(
   }
 
   const action = url.searchParams.get("admin") || "status";
-  if (action === "status" && req.method === "GET") return json(await adminStatus());
+  if (action === "status" && req.method === "GET") {
+    return json(await adminStatus());
+  }
   if (action === "subscribe" && req.method === "POST") {
     return json(await subscribeThisWebhook(supabase));
   }
+
   return json({ error: "unsupported_admin_action" }, 400);
 }
 
-async function verifyWebhook(url: URL, supabase: ReturnType<typeof createClient>) {
+async function verifyWebhook(
+  url: URL,
+  supabase: ReturnType<typeof createClient>,
+) {
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token") || "";
   const challenge = url.searchParams.get("hub.challenge") || "";
-  const expected = await getSecret(supabase, "auto_sales_meta_verify_token");
+  const expected = await getSecret(
+    supabase,
+    "auto_sales_meta_verify_token",
+  );
 
   if (mode === "subscribe" && expected && timingSafeEqual(token, expected)) {
     return text(challenge);
@@ -162,8 +226,137 @@ function toCapturedAt(timestamp: unknown) {
     : new Date().toISOString();
 }
 
-async function storeReferralPayload(payload: any, supabase: ReturnType<typeof createClient>) {
-  let stored = 0;
+function messageText(message: any) {
+  if (message?.type === "text") {
+    return message?.text?.body ? String(message.text.body) : null;
+  }
+  if (message?.type === "button") {
+    return message?.button?.text ? String(message.button.text) : null;
+  }
+  if (message?.type === "interactive") {
+    const interactive = message?.interactive || {};
+    return (
+      interactive?.button_reply?.title ||
+      interactive?.list_reply?.title ||
+      null
+    );
+  }
+  return null;
+}
+
+async function storeMessageMirror(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    capturedAt: string;
+    messageId: string;
+    contactPhone: string;
+    direction: "INBOUND" | "OUTBOUND";
+    eventField: string;
+    message: any;
+    change: any;
+    metadata: any;
+    adId?: string | null;
+    ctwaClid?: string | null;
+  },
+) {
+  const row = {
+    captured_at: params.capturedAt,
+    message_id: params.messageId,
+    contact_phone: params.contactPhone,
+    direction: params.direction,
+    event_field: params.eventField,
+    message_type: params.message?.type
+      ? String(params.message.type)
+      : null,
+    text_body: messageText(params.message),
+    waba_id: AUTO_SALES_WABA_ID,
+    business_phone_number_id: params.metadata?.phone_number_id
+      ? String(params.metadata.phone_number_id)
+      : null,
+    display_phone_number: params.metadata?.display_phone_number
+      ? String(params.metadata.display_phone_number)
+      : null,
+    ad_id: params.adId || null,
+    ctwa_clid: params.ctwaClid || null,
+    raw_message: params.message || {},
+    raw_change: params.change || {},
+  };
+
+  const { error } = await supabase
+    .from("auto_sales_whatsapp_messages")
+    .upsert(row, {
+      onConflict: "message_id",
+      ignoreDuplicates: true,
+    });
+
+  if (error) throw error;
+}
+
+async function storeAttribution(
+  supabase: ReturnType<typeof createClient>,
+  message: any,
+  metadata: any,
+) {
+  const referral = message?.referral;
+  const sourceId = String(referral?.source_id || "");
+  const messageId = String(message?.id || "");
+  const from = normalizePhone(message?.from);
+
+  if (!referral || !sourceId || !messageId || !from) return false;
+
+  const sourceType = referral?.source_type
+    ? String(referral.source_type)
+    : null;
+
+  const row = {
+    captured_at: toCapturedAt(message?.timestamp),
+    message_id: messageId,
+    contact_phone: `+${from}`,
+    waba_id: AUTO_SALES_WABA_ID,
+    business_phone_number_id: metadata?.phone_number_id
+      ? String(metadata.phone_number_id)
+      : null,
+    display_phone_number: metadata?.display_phone_number
+      ? String(metadata.display_phone_number)
+      : null,
+    source_type: sourceType,
+    source_id: sourceId,
+    ad_id: sourceType === "ad" ? sourceId : null,
+    source_url: referral?.source_url
+      ? String(referral.source_url)
+      : null,
+    headline: referral?.headline
+      ? String(referral.headline)
+      : null,
+    body: referral?.body ? String(referral.body) : null,
+    media_type: referral?.media_type
+      ? String(referral.media_type)
+      : null,
+    ctwa_clid: referral?.ctwa_clid
+      ? String(referral.ctwa_clid)
+      : null,
+    confidence: "DETERMINISTIC",
+    raw_referral: referral,
+    raw_message: message,
+  };
+
+  const { error } = await supabase
+    .from("auto_sales_whatsapp_attribution")
+    .upsert(row, {
+      onConflict: "message_id",
+      ignoreDuplicates: true,
+    });
+
+  if (error) throw error;
+  return true;
+}
+
+async function storeWebhookPayload(
+  payload: any,
+  supabase: ReturnType<typeof createClient>,
+) {
+  let messagesStored = 0;
+  let attributionsStored = 0;
   let ignored = 0;
 
   for (const entry of payload?.entry || []) {
@@ -174,61 +367,86 @@ async function storeReferralPayload(payload: any, supabase: ReturnType<typeof cr
     }
 
     for (const change of entry?.changes || []) {
-      if (change?.field !== "messages") continue;
+      const field = String(change?.field || "");
       const value = change?.value || {};
       const metadata = value?.metadata || {};
       const displayPhone = normalizePhone(metadata?.display_phone_number);
+
       if (displayPhone && displayPhone !== AUTO_SALES_PHONE) {
         ignored += 1;
         continue;
       }
 
-      for (const message of value?.messages || []) {
-        const referral = message?.referral;
-        const sourceId = String(referral?.source_id || "");
-        const messageId = String(message?.id || "");
-        const from = normalizePhone(message?.from);
+      if (field === "messages") {
+        for (const message of value?.messages || []) {
+          const messageId = String(message?.id || "");
+          const from = normalizePhone(message?.from);
+          if (!messageId || !from) {
+            ignored += 1;
+            continue;
+          }
 
-        if (!referral || !sourceId || !messageId || !from) {
-          ignored += 1;
-          continue;
+          const referral = message?.referral || null;
+          const adId =
+            referral?.source_type === "ad" && referral?.source_id
+              ? String(referral.source_id)
+              : null;
+          const ctwaClid = referral?.ctwa_clid
+            ? String(referral.ctwa_clid)
+            : null;
+
+          await storeMessageMirror(supabase, {
+            capturedAt: toCapturedAt(message?.timestamp),
+            messageId,
+            contactPhone: `+${from}`,
+            direction: "INBOUND",
+            eventField: field,
+            message,
+            change,
+            metadata,
+            adId,
+            ctwaClid,
+          });
+          messagesStored += 1;
+
+          if (await storeAttribution(supabase, message, metadata)) {
+            attributionsStored += 1;
+          }
         }
+        continue;
+      }
 
-        const sourceType = referral?.source_type ? String(referral.source_type) : null;
-        const row = {
-          captured_at: toCapturedAt(message?.timestamp),
-          message_id: messageId,
-          contact_phone: `+${from}`,
-          waba_id: AUTO_SALES_WABA_ID,
-          business_phone_number_id: metadata?.phone_number_id
-            ? String(metadata.phone_number_id)
-            : null,
-          display_phone_number: metadata?.display_phone_number
-            ? String(metadata.display_phone_number)
-            : null,
-          source_type: sourceType,
-          source_id: sourceId,
-          ad_id: sourceType === "ad" ? sourceId : null,
-          source_url: referral?.source_url ? String(referral.source_url) : null,
-          headline: referral?.headline ? String(referral.headline) : null,
-          body: referral?.body ? String(referral.body) : null,
-          media_type: referral?.media_type ? String(referral.media_type) : null,
-          ctwa_clid: referral?.ctwa_clid ? String(referral.ctwa_clid) : null,
-          confidence: "DETERMINISTIC",
-          raw_referral: referral,
-          raw_message: message,
-        };
+      if (field === "smb_message_echoes") {
+        for (const message of value?.message_echoes || []) {
+          const messageId = String(message?.id || "");
+          const to = normalizePhone(message?.to);
+          if (!messageId || !to) {
+            ignored += 1;
+            continue;
+          }
 
-        const { error } = await supabase
-          .from("auto_sales_whatsapp_attribution")
-          .upsert(row, { onConflict: "message_id", ignoreDuplicates: true });
-        if (error) throw error;
-        stored += 1;
+          await storeMessageMirror(supabase, {
+            capturedAt: toCapturedAt(message?.timestamp),
+            messageId,
+            contactPhone: `+${to}`,
+            direction: "OUTBOUND",
+            eventField: field,
+            message,
+            change,
+            metadata,
+          });
+          messagesStored += 1;
+        }
+        continue;
       }
     }
   }
 
-  return { stored, ignored };
+  return {
+    messages_stored: messagesStored,
+    attributions_stored: attributionsStored,
+    ignored,
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -240,8 +458,12 @@ Deno.serve(async (req: Request) => {
       return await handleAdmin(req, url, supabase);
     }
 
-    if (req.method === "GET") return await verifyWebhook(url, supabase);
-    if (req.method !== "POST") return text("Method Not Allowed", 405);
+    if (req.method === "GET") {
+      return await verifyWebhook(url, supabase);
+    }
+    if (req.method !== "POST") {
+      return text("Method Not Allowed", 405);
+    }
 
     const rawBody = await req.text();
     const signatureOk = await verifyMetaSignature(
@@ -251,10 +473,16 @@ Deno.serve(async (req: Request) => {
     if (!signatureOk) return text("Invalid signature", 401);
 
     const payload = JSON.parse(rawBody || "{}");
-    const result = await storeReferralPayload(payload, supabase);
+
+    await ensureConversationSubscription(supabase);
+
+    const result = await storeWebhookPayload(payload, supabase);
     return json({ ok: true, ...result });
   } catch (error) {
     console.error("auto-sales-meta-attribution", error);
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : String(error) },
+      500,
+    );
   }
 });
