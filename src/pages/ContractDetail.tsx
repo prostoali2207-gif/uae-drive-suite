@@ -6918,9 +6918,16 @@ const ContractDetail = () => {
             </div>
 
             <div className="grid gap-1.5">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Final Mileage (km)
-              </Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Final Mileage (km)
+                </Label>
+                <span className="shrink-0 font-['IBM_Plex_Mono'] text-xs font-medium tabular-nums text-foreground">
+                  {contract?.initial_mileage != null
+                    ? `Initial: ${contract.initial_mileage.toLocaleString("en-US")} km`
+                    : "Initial: —"}
+                </span>
+              </div>
               <Input
                 type="number"
                 min={contract?.initial_mileage ?? 0}
