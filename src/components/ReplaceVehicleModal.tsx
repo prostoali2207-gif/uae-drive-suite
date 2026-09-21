@@ -64,6 +64,45 @@ import { buildReplacementBillingPeriods } from "@/lib/replacementRentalPricing";
 interface ExtendedDatabase extends Database {
   public: Database["public"] & {
     Tables: Database["public"]["Tables"] & {
+      car_maintenance: {
+        Row: {
+          id: string;
+          car_id: string | null;
+          last_service_date: string | null;
+          next_service_date: string | null;
+          current_mileage: number | null;
+          notes: string | null;
+          owner_id: string | null;
+          created_at: string | null;
+          oil_change_date: string | null;
+          oil_change_mileage: number | null;
+        };
+        Insert: {
+          id?: string;
+          car_id?: string | null;
+          last_service_date?: string | null;
+          next_service_date?: string | null;
+          current_mileage?: number | null;
+          notes?: string | null;
+          owner_id?: string | null;
+          created_at?: string | null;
+          oil_change_date?: string | null;
+          oil_change_mileage?: number | null;
+        };
+        Update: {
+          id?: string;
+          car_id?: string | null;
+          last_service_date?: string | null;
+          next_service_date?: string | null;
+          current_mileage?: number | null;
+          notes?: string | null;
+          owner_id?: string | null;
+          created_at?: string | null;
+          oil_change_date?: string | null;
+          oil_change_mileage?: number | null;
+        };
+        Relationships: [];
+      };
       contract_vehicles: {
         Row: {
           id: string;
@@ -148,6 +187,7 @@ interface Car {
 
 interface ContractPeriod {
   id: string;
+  initial_mileage: number | null;
   start_date: string;
   start_time: string | null;
   end_date: string;
@@ -1196,6 +1236,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [loadingCars, setLoadingCars] = useState(false);
   const [currentCar, setCurrentCar] = useState<Car | null>(null);
   const [loadingCurrentCar, setLoadingCurrentCar] = useState(false);
+  const [currentVehicleStartMileage, setCurrentVehicleStartMileage] = useState<number | null>(null);
   const [loadingRentalPeriods, setLoadingRentalPeriods] = useState(false);
   const [rentalPeriods, setRentalPeriods] = useState<RentalPeriod[]>([]);
   const [selectedNewCarId, setSelectedNewCarId] = useState<string>("");
@@ -1208,6 +1249,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
   const [conditionNote, setConditionNote] = useState("");
   const [sentToStatus, setSentToStatus] = useState("Available");
   const [startMileage, setStartMileage] = useState("");
+  const [lastRecordedMileage, setLastRecordedMileage] = useState<number | null>(null);
+  const [loadingLastRecordedMileage, setLoadingLastRecordedMileage] = useState(false);
+  const lastMileageRequestRef = useRef(0);
   const [startFuelLevel, setStartFuelLevel] = useState("");
   const [replacementReason, setReplacementReason] = useState("");
   const [replacementType, setReplacementType] = useState("Permanent");
@@ -1277,6 +1321,43 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     });
   }, [availableCars, newVehicleSearch]);
 
+  const handleSelectNewCar = async (carId: string) => {
+    setSelectedNewCarId(carId);
+    setNewVehicleComboboxOpen(false);
+    setNewVehicleSearch("");
+    setStartMileage("");
+    setLastRecordedMileage(null);
+
+    const requestId = ++lastMileageRequestRef.current;
+    setLoadingLastRecordedMileage(true);
+
+    const extendedDb = supabase as unknown as SupabaseClient<ExtendedDatabase>;
+    const { data, error } = await extendedDb
+      .from("car_maintenance")
+      .select("current_mileage")
+      .eq("car_id", carId)
+      .not("current_mileage", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (requestId !== lastMileageRequestRef.current) return;
+
+    setLoadingLastRecordedMileage(false);
+    if (error) {
+      console.error("Failed to load last recorded mileage:", error);
+      return;
+    }
+
+    if (data?.current_mileage != null) {
+      const mileage = Number(data.current_mileage);
+      if (Number.isFinite(mileage)) {
+        setLastRecordedMileage(mileage);
+        setStartMileage(String(mileage));
+      }
+    }
+  };
+
   const handleReplacementReasonChange = (value: string) => {
     setReplacementReason(value);
 
@@ -1310,6 +1391,9 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setSelectedNewCarId("");
       setNewVehicleComboboxOpen(false);
       setNewVehicleSearch("");
+      lastMileageRequestRef.current += 1;
+      setLastRecordedMileage(null);
+      setLoadingLastRecordedMileage(false);
       setEndMileage("");
       setEndFuelLevel("");
       setConditionNote("");
@@ -1319,6 +1403,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       setReplacementReason("");
       setReplacementType("Permanent");
       setCurrentCar(null);
+      setCurrentVehicleStartMileage(null);
       setCurrentMonthlyPrice("");
       setMonthlyPrice("");
       setRentalPeriods([]);
@@ -1347,7 +1432,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               .maybeSingle(),
             extendedDb
               .from("contracts")
-              .select("id, start_date, start_time, end_date, end_time, rate_type, rate_amount")
+              .select("id, initial_mileage, start_date, start_time, end_date, end_time, rate_type, rate_amount")
               .eq("id", contractId)
               .maybeSingle(),
             (extendedDb as any)
@@ -1380,6 +1465,12 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
               : "",
           );
           const contractPeriod = contractRes.data as ContractPeriod | null;
+          const initialMileage = contractPeriod?.initial_mileage;
+          setCurrentVehicleStartMileage(
+            initialMileage != null && Number.isFinite(Number(initialMileage))
+              ? Number(initialMileage)
+              : null,
+          );
           const contractDailyRate = contractPeriod
             ? calculateContractDailyRate(contractPeriod.rate_type, contractPeriod.rate_amount)
             : 0;
@@ -1421,6 +1512,29 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
 
   const handleConfirm = async () => {
     if (!selectedNewCarId) return;
+
+    const parsedEndMileage = endMileage.trim() === "" ? null : Number(endMileage);
+    if (parsedEndMileage != null && (!Number.isFinite(parsedEndMileage) || parsedEndMileage < 0)) {
+      toast({
+        title: "Invalid end mileage",
+        description: "Enter a valid end mileage.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (
+      parsedEndMileage != null &&
+      currentVehicleStartMileage != null &&
+      parsedEndMileage < currentVehicleStartMileage
+    ) {
+      toast({
+        title: "Invalid end mileage",
+        description: "End mileage cannot be lower than the current vehicle's initial mileage.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!Number.isFinite(monthlyPriceNumber) || monthlyPriceNumber <= 0) {
       toast({
         title: "Monthly price required",
@@ -1449,7 +1563,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         await Promise.all([
           extendedDb
             .from("contracts")
-            .select("id, start_date, start_time, end_date, end_time, rate_type, rate_amount")
+            .select("id, initial_mileage, start_date, start_time, end_date, end_time, rate_type, rate_amount")
             .eq("id", contractId)
             .single(),
           extendedDb
@@ -1560,12 +1674,24 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
         return;
       }
 
+      if (parsedEndMileage != null) {
+        const { error: mileageHistoryError } = await extendedDb
+          .from("car_maintenance")
+          .insert({
+            car_id: currentCarId,
+            owner_id: userId,
+            current_mileage: parsedEndMileage,
+            notes: `Contract ${contractId.slice(0, 8).toUpperCase()} replacement return mileage`,
+          });
+        if (mileageHistoryError) throw mileageHistoryError;
+      }
+
       // a. Close the active contract_vehicles row for the old car
       const { data: closedVehicles, error: errOldVehicle } = await extendedDb
         .from("contract_vehicles")
         .update({
           ended_at: replacementTimestamp,
-          end_mileage: endMileage || null,
+          end_mileage: parsedEndMileage,
           end_fuel_level: endFuelLevel || null,
           condition_note: conditionNote || null,
           sent_to_status: sentToStatus,
@@ -1586,7 +1712,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             ended_at: replacementTimestamp,
             owner_id: userId,
             daily_rate: currentVehicleDailyRate,
-            end_mileage: endMileage || null,
+            end_mileage: parsedEndMileage,
             end_fuel_level: endFuelLevel || null,
             condition_note: conditionNote || null,
             sent_to_status: sentToStatus,
@@ -1974,13 +2100,20 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="end-mileage-page" className="text-xs text-white/50 uppercase tracking-wider">
-                    End Mileage
-                  </Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="end-mileage-page" className="text-xs text-white/50 uppercase tracking-wider">
+                      End Mileage
+                    </Label>
+                    {currentVehicleStartMileage != null && (
+                      <span className="shrink-0 font-ibm-plex-mono text-xs font-medium tabular-nums text-white/75">
+                        Initial: {currentVehicleStartMileage.toLocaleString("en-US")} km
+                      </span>
+                    )}
+                  </div>
                   <Input
                     id="end-mileage-page"
                     type="number"
-                    min="0"
+                    min={currentVehicleStartMileage ?? 0}
                     step="1"
                     inputMode="numeric"
                     value={endMileage}
@@ -2089,9 +2222,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                                   key={car.id}
                                   value={`${car.plate} ${car.make} ${car.model}`}
                                   onSelect={() => {
-                                    setSelectedNewCarId(car.id);
-                                    setNewVehicleComboboxOpen(false);
-                                    setNewVehicleSearch("");
+                                    void handleSelectNewCar(car.id);
                                   }}
                                   className="focus:bg-[#1a1a1a] focus:text-white"
                                 >
@@ -2115,9 +2246,20 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="start-mileage-page" className="text-xs text-white/50 uppercase tracking-wider">
-                    Start Mileage
-                  </Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="start-mileage-page" className="text-xs text-white/50 uppercase tracking-wider">
+                      Start Mileage
+                    </Label>
+                    {selectedNewCarId && (
+                      <span className="shrink-0 font-ibm-plex-mono text-xs font-medium tabular-nums text-white/75">
+                        {loadingLastRecordedMileage
+                          ? "Last recorded: loading…"
+                          : lastRecordedMileage != null
+                            ? `Last recorded: ${lastRecordedMileage.toLocaleString("en-US")} km`
+                            : "Last recorded: —"}
+                      </span>
+                    )}
+                  </div>
                   <Input
                     id="start-mileage-page"
                     type="number"
@@ -2371,13 +2513,20 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="end-mileage" className="text-xs text-white/50 uppercase tracking-wider">
-                End Mileage
-              </Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="end-mileage" className="text-xs text-white/50 uppercase tracking-wider">
+                  End Mileage
+                </Label>
+                {currentVehicleStartMileage != null && (
+                  <span className="shrink-0 font-ibm-plex-mono text-xs font-medium tabular-nums text-white/75">
+                    Initial: {currentVehicleStartMileage.toLocaleString("en-US")} km
+                  </span>
+                )}
+              </div>
               <Input
                 id="end-mileage"
                 type="number"
-                min="0"
+                min={currentVehicleStartMileage ?? 0}
                 step="1"
                 inputMode="numeric"
                 value={endMileage}
@@ -2487,9 +2636,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
                               key={car.id}
                               value={`${car.plate} ${car.make} ${car.model}`}
                               onSelect={() => {
-                                setSelectedNewCarId(car.id);
-                                setNewVehicleComboboxOpen(false);
-                                setNewVehicleSearch("");
+                                void handleSelectNewCar(car.id);
                               }}
                               className="focus:bg-[#1a1a1a] focus:text-white"
                             >
@@ -2513,9 +2660,20 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="start-mileage" className="text-xs text-white/50 uppercase tracking-wider">
-                Start Mileage
-              </Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="start-mileage" className="text-xs text-white/50 uppercase tracking-wider">
+                  Start Mileage
+                </Label>
+                {selectedNewCarId && (
+                  <span className="shrink-0 font-ibm-plex-mono text-xs font-medium tabular-nums text-white/75">
+                    {loadingLastRecordedMileage
+                      ? "Last recorded: loading…"
+                      : lastRecordedMileage != null
+                        ? `Last recorded: ${lastRecordedMileage.toLocaleString("en-US")} km`
+                        : "Last recorded: —"}
+                  </span>
+                )}
+              </div>
               <Input
                 id="start-mileage"
                 type="number"
