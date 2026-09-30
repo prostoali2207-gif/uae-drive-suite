@@ -6006,7 +6006,7 @@ const ContractDetail = () => {
                     size="sm"
                     className="h-8 gap-1.5"
                     onClick={() => {
-                      const defaultCloseDate = getCurrentDateTimeInput();
+                      const defaultCloseDate = `${contract.end_date}T${formatTimeDisplay(contract.end_time)}`;
                       setCloseReturnDate(defaultCloseDate);
                       setCloseReceivedBy("");
                       setCloseFinalMileage("");
