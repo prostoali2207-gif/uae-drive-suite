@@ -717,11 +717,16 @@ const Clients = () => {
   const filtered = useMemo(() => {
     let result = enriched;
     
-    const q = query.trim().toLowerCase();
+    const rawQuery = query.trim();
+    const q = rawQuery.toLowerCase();
+    const phoneQuery = rawQuery.replace(/\D/g, "");
+    const isPhoneQuery = phoneQuery.length > 0 && /^[\d\s+()\-]+$/.test(rawQuery);
+
     if (q) {
       result = result.filter(
         (c) =>
           c.full_name.toLowerCase().includes(q) ||
+          (isPhoneQuery && Boolean(c.phone?.replace(/\D/g, "").includes(phoneQuery))) ||
           (c.emirates_id && c.emirates_id.toLowerCase().includes(q)) ||
           (c.passport_number && c.passport_number.toLowerCase().includes(q)),
       );
@@ -1087,7 +1092,7 @@ const Clients = () => {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name or Emirates ID"
+              placeholder="Search by name, phone or ID"
               className="h-9 pl-9 text-sm"
             />
           </div>
