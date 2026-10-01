@@ -7,6 +7,7 @@ const MINI_APP_URL = "https://uae-drive-suite.vercel.app/telegram-finance";
 const FINANCE_BRIDGE_URL = "https://script.google.com/macros/s/AKfycbx-Zh3OD-aXy2rpmBFWw2mXvUUOLMn69Ndxx4lf2KDBi26FgfPRvY5UPfTMj6-49wY_uA/exec";
 const GATEWAY_TOKEN_SECRET = "fleetdesk_gateway_token";
 const TELEGRAM_TOKEN_SECRET = "fleetdesk_telegram_bot_token";
+const SHOWROOM_BRIDGE_ENABLED = false;
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
 
 const LEDGER_KEYS = new Set(["rental", "showroom"]);
@@ -464,6 +465,9 @@ async function recordFinance(
   body: Record<string, any>,
 ) {
   const ledger = validateLedger(body.ledger);
+  if (ledger === "showroom" && !SHOWROOM_BRIDGE_ENABLED) {
+    throw new Error("Автосалон ещё подключается. Прокат работает как обычно.");
+  }
   const account = validateAccount(body.account, ledger);
   const direction = validateDirection(body.direction);
   const article = normalizeText(body.article);
