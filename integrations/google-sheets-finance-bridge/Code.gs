@@ -1,4 +1,5 @@
-const SPREADSHEET_ID = '1XnAQPfubyv80uEUgszDZZfRVAir35yIth718r7AERps';
+const RENTAL_SPREADSHEET_ID = '1XnAQPfubyv80uEUgszDZZfRVAir35yIth718r7AERps';
+const SHOWROOM_SPREADSHEET_ID = '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA';
 const PEACH_TOKEN_SHA256 = 'a837eb5861426d57f2b47398aac8f43dc3852a4d74651aecfb0ccb6ccb73dc6f';
 
 const INPUT_SHEET = 'Ввод операций';
@@ -6,18 +7,38 @@ const REFERENCE_SHEET = 'Справочники';
 const INPUT_FIRST_ROW = 5;
 const INPUT_LAST_ROW = 1004;
 
-const ACCOUNT_LABEL = Object.freeze({
-  cash_aed: 'Касса (AED)',
-  ajman_aed: 'AJMAN (AED)',
-  sber_rub: 'СБЕР (RUB)',
+const LEDGER_CONFIG = Object.freeze({
+  rental: Object.freeze({
+    spreadsheetId: RENTAL_SPREADSHEET_ID,
+    accounts: Object.freeze({
+      cash_aed: 'Касса (AED)',
+      ajman_aed: 'AJMAN (AED)',
+      sber_rub: 'СБЕР (RUB)',
+    }),
+    referenceRange: 'A2:D256',
+    monthSheet: null,
+  }),
+  showroom: Object.freeze({
+    spreadsheetId: SHOWROOM_SPREADSHEET_ID,
+    accounts: Object.freeze({
+      cash_aed: 'Касса',
+      ajman_aed: 'AJMAN',
+    }),
+    referenceRange: 'A2:E31',
+    monthSheet: 'Октябрь 2026',
+  }),
 });
 
-function doGet() {
-  const period = activePeriod_();
+function doGet(e) {
+  const ledger = validateLedger_((e && e.parameter && e.parameter.ledger) || 'rental');
+  const config = ledgerConfig_(ledger);
+  const period = activePeriod_(ledger);
+
   return json_({
     ok: true,
     service: 'Al Musafir Google Sheets Finance Bridge',
-    spreadsheet_id: SPREADSHEET_ID,
+    ledger,
+    spreadsheet_id: config.spreadsheetId,
     input_sheet: INPUT_SHEET,
     period,
   });
@@ -38,7 +59,7 @@ function doPost(e) {
 
     if (action === 'find_articles') result = findArticles_(payload);
     else if (action === 'record_entry') result = recordEntry_(payload);
-    else if (action === 'get_context') result = getContext_();
+    else if (action === 'get_context') result = getContext_(payload);
     else result = { ok: false, error: 'Unsupported finance bridge action.' };
 
     result.bridge_ms = Date.now() - startedAt;
@@ -52,49 +73,55 @@ function doPost(e) {
   }
 }
 
-function getContext_() {
-  const period = activePeriod_();
+function getContext_(payload) {
+  const ledger = validateLedger_(payload && payload.ledger);
+  const config = ledgerConfig_(ledger);
+  const period = activePeriod_(ledger);
+
   return {
     ok: true,
     action: 'get_context',
+    ledger,
     period,
-    accounts: Object.keys(ACCOUNT_LABEL).map(function (key) {
-      return { account: key, label: ACCOUNT_LABEL[key] };
+    accounts: Object.keys(config.accounts).map(function (key) {
+      return { account: key, label: config.accounts[key] };
     }),
     input_sheet: INPUT_SHEET,
+    spreadsheet_id: config.spreadsheetId,
   };
 }
 
 function findArticles_(payload) {
-  const account = validateAccount_(payload.account);
-  const date = validateActiveDate_(payload.date);
-  const period = activePeriod_();
+  const ledger = validateLedger_(payload.ledger);
+  const account = validateAccount_(payload.account, ledger);
+  const date = validateActiveDate_(payload.date, ledger);
+  const period = activePeriod_(ledger);
   const query = normalize_(payload.query || '');
+  const requestedDirection = String(payload.direction || '').trim();
+
   if (!query) throw new Error('query is required.');
 
-  const rows = referenceRows_();
+  const rows = referenceRows_(ledger);
   const tokens = query.split(' ').filter(Boolean);
   const matches = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const operation = String(rows[i][0] || '').trim();
-    if (!operation) continue;
+    const parsed = parseReferenceRow_(rows[i], ledger, account, i + 2);
+    if (!parsed || !parsed.operation) continue;
+    if (requestedDirection && parsed.direction !== requestedDirection) continue;
 
-    const haystack = normalize_(operation);
+    const haystack = normalize_(parsed.operation + ' ' + parsed.searchTerms);
     const matchedTokens = tokens.filter(function (token) {
       return haystack.indexOf(token) !== -1;
     }).length;
 
     if (!haystack.includes(query) && matchedTokens === 0) continue;
 
-    const mappedRow = Number(account === 'sber_rub' ? rows[i][3] : rows[i][1]);
-    if (!Number.isFinite(mappedRow) || mappedRow <= 0) continue;
-
     matches.push({
-      row: mappedRow,
-      article: operation,
-      section: String(rows[i][2] || '').trim() || null,
-      reference_row: i + 2,
+      row: parsed.mappedRow,
+      article: parsed.operation,
+      section: parsed.direction || null,
+      reference_row: parsed.referenceRow,
       score: haystack.includes(query) ? 100 + tokens.length : matchedTokens,
     });
   }
@@ -103,11 +130,13 @@ function findArticles_(payload) {
     return b.score - a.score || a.row - b.row;
   });
 
+  const config = ledgerConfig_(ledger);
   return {
     ok: true,
     action: 'find_articles',
+    ledger,
     account,
-    account_label: ACCOUNT_LABEL[account],
+    account_label: config.accounts[account],
     date,
     period,
     count: matches.length,
@@ -116,14 +145,18 @@ function findArticles_(payload) {
 }
 
 function recordEntry_(payload) {
-  const account = validateAccount_(payload.account);
-  const date = validateDate_(payload.date);
-  const period = activePeriod_();
+  const ledger = validateLedger_(payload.ledger);
+  const config = ledgerConfig_(ledger);
+  const account = validateAccount_(payload.account, ledger);
+  const date = validateDate_(payload.date, ledger);
+  const period = activePeriod_(ledger);
+
   if (date < period.start || date > period.end) {
     throw new Error(
       'Дата ' + date + ' вне активного периода таблицы: ' + period.start + ' — ' + period.end + '.'
     );
   }
+
   const article = String(payload.article || '').trim();
   const note = String(payload.note || '').trim();
   const amount = Number(payload.amount);
@@ -133,40 +166,33 @@ function recordEntry_(payload) {
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be greater than zero.');
   if (note.length > 500) throw new Error('note is too long.');
 
-  const ref = resolveReference_(article, account, payload.row);
+  const ref = resolveReference_(article, account, payload.row, ledger);
   if (!ref) throw new Error('Operation not found in Справочники.');
 
   const requestId = String(payload.request_id || '').trim();
-  const sheet = spreadsheet_().getSheetByName(INPUT_SHEET);
+  const sheet = spreadsheet_(ledger).getSheetByName(INPUT_SHEET);
   if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
 
-  const lock = LockService.getDocumentLock();
+  const lock = LockService.getScriptLock();
   lock.waitLock(15000);
+
   try {
     const inputState = inspectInputRows_(sheet, requestId);
 
     if (requestId && inputState.existingRow) {
-      const existingRow = inputState.existingRow;
-        return {
-          ok: true,
-          action: 'record_entry',
-          duplicate: true,
-          account,
-          account_label: ACCOUNT_LABEL[account],
-          date,
-          period,
-          input_sheet: INPUT_SHEET,
-          input_row: existingRow,
-          article: ref.operation,
-          mapped_row: ref.mappedRow,
-          type: ref.direction,
-          currency: account === 'sber_rub' ? 'RUB' : 'AED',
-          amount,
-          note: note || null,
-          status: '✓ Готово',
-          key: date.replace(/-/g, '') + '|' + ACCOUNT_LABEL[account] + '|' + ref.mappedRow,
-          request_id: requestId,
-        };
+      return recordResult_(
+        ledger,
+        account,
+        config.accounts[account],
+        date,
+        period,
+        inputState.existingRow,
+        ref,
+        amount,
+        note,
+        requestId,
+        true
+      );
     }
 
     const targetRow = inputState.emptyRow;
@@ -175,7 +201,7 @@ function recordEntry_(payload) {
     const dateValue = parseYmd_(date);
     sheet.getRange(targetRow, 1, 1, 5).setValues([[
       dateValue,
-      ACCOUNT_LABEL[account],
+      config.accounts[account],
       ref.operation,
       amount,
       note,
@@ -185,67 +211,126 @@ function recordEntry_(payload) {
       sheet.getRange(targetRow, 14).setValue(requestId);
     }
 
-    return {
-      ok: true,
-      action: 'record_entry',
+    return recordResult_(
+      ledger,
       account,
-      account_label: ACCOUNT_LABEL[account],
+      config.accounts[account],
       date,
       period,
-      input_sheet: INPUT_SHEET,
-      input_row: targetRow,
-      article: ref.operation,
-      mapped_row: ref.mappedRow,
-      type: ref.direction,
-      currency: account === 'sber_rub' ? 'RUB' : 'AED',
+      targetRow,
+      ref,
       amount,
-      note: note || null,
-      status: '✓ Готово',
-      key: date.replace(/-/g, '') + '|' + ACCOUNT_LABEL[account] + '|' + ref.mappedRow,
-      request_id: requestId || null,
-    };
+      note,
+      requestId || null,
+      false
+    );
   } finally {
     lock.releaseLock();
   }
 }
 
-function spreadsheet_() {
-  const active = SpreadsheetApp.getActiveSpreadsheet();
-  if (active && active.getId() === SPREADSHEET_ID) return active;
-  return SpreadsheetApp.openById(SPREADSHEET_ID);
+function recordResult_(ledger, account, accountLabel, date, period, inputRow, ref, amount, note, requestId, duplicate) {
+  return {
+    ok: true,
+    action: 'record_entry',
+    ledger,
+    duplicate: Boolean(duplicate),
+    account,
+    account_label: accountLabel,
+    date,
+    period,
+    input_sheet: INPUT_SHEET,
+    input_row: inputRow,
+    article: ref.operation,
+    mapped_row: ref.mappedRow,
+    type: ref.direction,
+    currency: account === 'sber_rub' ? 'RUB' : 'AED',
+    amount,
+    note: note || null,
+    status: '✓ Готово',
+    key: date.replace(/-/g, '') + '|' + accountLabel + '|' + ref.mappedRow,
+    request_id: requestId,
+  };
 }
 
-function referenceRows_() {
+function ledgerConfig_(ledger) {
+  const config = LEDGER_CONFIG[ledger];
+  if (!config) throw new Error('Неизвестный раздел финансов.');
+  return config;
+}
+
+function validateLedger_(value) {
+  const ledger = String(value || 'rental').trim().toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(LEDGER_CONFIG, ledger)) {
+    throw new Error('ledger must be rental or showroom.');
+  }
+  return ledger;
+}
+
+function spreadsheet_(ledger) {
+  const config = ledgerConfig_(ledger);
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active && active.getId() === config.spreadsheetId) return active;
+  return SpreadsheetApp.openById(config.spreadsheetId);
+}
+
+function referenceRows_(ledger) {
+  const config = ledgerConfig_(ledger);
   const cache = CacheService.getScriptCache();
-  const cached = cache.get('finance_reference_rows_v1');
+  const cacheKey = 'finance_reference_rows_v2_' + ledger;
+  const cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  const sheet = spreadsheet_().getSheetByName(REFERENCE_SHEET);
+  const sheet = spreadsheet_(ledger).getSheetByName(REFERENCE_SHEET);
   if (!sheet) throw new Error('Лист «Справочники» не найден.');
 
-  const rows = sheet.getRange('A2:D256').getDisplayValues();
-  cache.put('finance_reference_rows_v1', JSON.stringify(rows), 300);
+  const rows = sheet.getRange(config.referenceRange).getDisplayValues();
+  cache.put(cacheKey, JSON.stringify(rows), 300);
   return rows;
 }
 
-function resolveReference_(article, account, requestedRow) {
+function parseReferenceRow_(row, ledger, account, referenceRow) {
+  if (ledger === 'showroom') {
+    const operation = String(row[0] || '').trim();
+    const direction = String(row[1] || '').trim();
+    const mappedRow = Number(account === 'cash_aed' ? row[2] : row[3]);
+    const searchTerms = String(row[4] || '').trim();
+
+    if (!operation || !Number.isFinite(mappedRow) || mappedRow <= 0) return null;
+
+    return {
+      operation,
+      direction,
+      mappedRow,
+      referenceRow,
+      searchTerms,
+    };
+  }
+
+  const operation = String(row[0] || '').trim();
+  const mappedRow = Number(account === 'sber_rub' ? row[3] : row[1]);
+  const direction = String(row[2] || '').trim();
+
+  if (!operation || !Number.isFinite(mappedRow) || mappedRow <= 0) return null;
+
+  return {
+    operation,
+    direction,
+    mappedRow,
+    referenceRow,
+    searchTerms: '',
+  };
+}
+
+function resolveReference_(article, account, requestedRow, ledger) {
   const target = normalize_(article);
-  const rows = referenceRows_();
+  const rows = referenceRows_(ledger);
   const candidates = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const operation = String(rows[i][0] || '').trim();
-    if (!operation || normalize_(operation) !== target) continue;
-
-    const mappedRow = Number(account === 'sber_rub' ? rows[i][3] : rows[i][1]);
-    if (!Number.isFinite(mappedRow) || mappedRow <= 0) continue;
-
-    candidates.push({
-      operation,
-      direction: String(rows[i][2] || '').trim(),
-      mappedRow,
-      referenceRow: i + 2,
-    });
+    const parsed = parseReferenceRow_(rows[i], ledger, account, i + 2);
+    if (!parsed || normalize_(parsed.operation) !== target) continue;
+    candidates.push(parsed);
   }
 
   if (requestedRow !== undefined && requestedRow !== null && requestedRow !== '') {
@@ -260,6 +345,7 @@ function resolveReference_(article, account, requestedRow) {
   if (candidates.length > 1) {
     throw new Error('Найдено несколько одинаковых операций. Сначала выбери строку.');
   }
+
   return candidates[0] || null;
 }
 
@@ -288,25 +374,41 @@ function inspectInputRows_(sheet, requestId) {
   return { existingRow, emptyRow };
 }
 
-function activePeriod_() {
+function activePeriod_(ledger) {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get('finance_active_period_v1');
+  const cacheKey = 'finance_active_period_v2_' + ledger;
+  const cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  const ss = spreadsheet_();
-  const sheet = ss.getSheetByName(INPUT_SHEET);
-  if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
+  const config = ledgerConfig_(ledger);
+  const ss = spreadsheet_(ledger);
+  let start;
+  let end;
 
-  const rule = sheet.getRange('A5').getDataValidation();
-  if (!rule || rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.DATE_BETWEEN) {
-    throw new Error('Не удалось определить активный месяц финансовой таблицы.');
-  }
+  if (ledger === 'showroom') {
+    const monthSheet = ss.getSheetByName(config.monthSheet);
+    if (!monthSheet) throw new Error('Активный лист автосалона не найден.');
 
-  const values = rule.getCriteriaValues();
-  const start = values[0];
-  const end = values[1];
-  if (!(start instanceof Date) || !(end instanceof Date)) {
-    throw new Error('Некорректный период в «Ввод операций».');
+    start = monthSheet.getRange('C2').getValue();
+    if (!(start instanceof Date)) throw new Error('Не удалось определить активный месяц автосалона.');
+
+    end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  } else {
+    const sheet = ss.getSheetByName(INPUT_SHEET);
+    if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
+
+    const rule = sheet.getRange('A5').getDataValidation();
+    if (!rule || rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.DATE_BETWEEN) {
+      throw new Error('Не удалось определить активный месяц финансовой таблицы.');
+    }
+
+    const values = rule.getCriteriaValues();
+    start = values[0];
+    end = values[1];
+
+    if (!(start instanceof Date) || !(end instanceof Date)) {
+      throw new Error('Некорректный период в «Ввод операций».');
+    }
   }
 
   const tz = ss.getSpreadsheetTimeZone() || 'Asia/Dubai';
@@ -316,38 +418,45 @@ function activePeriod_() {
     label: Utilities.formatDate(start, tz, 'MMMM yyyy'),
   };
 
-  cache.put('finance_active_period_v1', JSON.stringify(period), 300);
+  cache.put(cacheKey, JSON.stringify(period), 300);
   return period;
 }
 
-function validateAccount_(value) {
+function validateAccount_(value, ledger) {
   const account = String(value || '').trim().toLowerCase();
-  if (!Object.prototype.hasOwnProperty.call(ACCOUNT_LABEL, account)) {
-    throw new Error('account must be cash_aed, ajman_aed, or sber_rub.');
+  const config = ledgerConfig_(ledger);
+
+  if (!Object.prototype.hasOwnProperty.call(config.accounts, account)) {
+    throw new Error('Выбери счёт.');
   }
+
   return account;
 }
 
-function validateActiveDate_(value) {
-  const date = validateDate_(value);
-  const period = activePeriod_();
+function validateActiveDate_(value, ledger) {
+  const date = validateDate_(value, ledger);
+  const period = activePeriod_(ledger);
+
   if (date < period.start || date > period.end) {
     throw new Error(
       'Дата ' + date + ' вне активного периода таблицы: ' + period.start + ' — ' + period.end + '.'
     );
   }
+
   return date;
 }
 
-function validateDate_(value) {
+function validateDate_(value, ledger) {
   const date = String(value || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('date must be YYYY-MM-DD.');
 
   const parsed = parseYmd_(date);
-  const tz = spreadsheet_().getSpreadsheetTimeZone() || 'Asia/Dubai';
+  const tz = spreadsheet_(ledger).getSpreadsheetTimeZone() || 'Asia/Dubai';
+
   if (Utilities.formatDate(parsed, tz, 'yyyy-MM-dd') !== date) {
     throw new Error('date is invalid.');
   }
+
   return date;
 }
 
@@ -370,6 +479,7 @@ function sha256Hex_(value) {
     value,
     Utilities.Charset.UTF_8
   );
+
   return bytes.map(function (byte) {
     const n = byte < 0 ? byte + 256 : byte;
     return ('0' + n.toString(16)).slice(-2);
