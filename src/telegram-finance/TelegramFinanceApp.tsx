@@ -18,6 +18,7 @@ declare global {
   }
 }
 
+type LedgerKey = "rental" | "showroom";
 type AccountKey = "cash_aed" | "ajman_aed" | "sber_rub";
 type DirectionKey = "income" | "expense";
 
@@ -37,8 +38,8 @@ type CatalogItem = {
   reference_row: number;
   article: string;
   direction: "Приход" | "Расход";
-  aed_row: number;
-  sber_row: number;
+  search_terms?: string;
+  rows: Partial<Record<AccountKey, number | null>>;
 };
 
 type SessionResponse = {
@@ -46,6 +47,10 @@ type SessionResponse = {
   bound: boolean;
   staff?: { id: string; full_name: string; role: string };
   catalog?: CatalogItem[];
+  catalogs?: {
+    rental?: CatalogItem[];
+    showroom?: CatalogItem[];
+  };
   code?: string;
   error?: string;
 };
@@ -53,10 +58,20 @@ type SessionResponse = {
 const API_URL =
   "https://vlcxjizieelcfunausll.supabase.co/functions/v1/fleetdesk-telegram-finance";
 
-const ACCOUNTS: Array<{ key: AccountKey; label: string; currency: "AED" | "RUB" }> = [
+const LEDGERS: Array<{ key: LedgerKey; label: string }> = [
+  { key: "rental", label: "Прокат" },
+  { key: "showroom", label: "Автосалон" },
+];
+
+const RENTAL_ACCOUNTS: Array<{ key: AccountKey; label: string; currency: "AED" | "RUB" }> = [
   { key: "cash_aed", label: "Касса", currency: "AED" },
   { key: "ajman_aed", label: "AJMAN", currency: "AED" },
   { key: "sber_rub", label: "СБЕР", currency: "RUB" },
+];
+
+const SHOWROOM_ACCOUNTS: Array<{ key: AccountKey; label: string; currency: "AED" | "RUB" }> = [
+  { key: "cash_aed", label: "Касса", currency: "AED" },
+  { key: "ajman_aed", label: "AJMAN", currency: "AED" },
 ];
 
 const DIRECTIONS: Array<{ key: DirectionKey; label: string }> = [
@@ -121,12 +136,11 @@ function searchCatalog(
   if (!normalizedQuery) return [];
 
   const tokens = normalizedQuery.split(" ").filter(Boolean);
-  const rowField = account === "sber_rub" ? "sber_row" : "aed_row";
 
   return catalog
-    .filter((item) => item.direction === directionLabel)
+    .filter((item) => item.direction === directionLabel && Number(item.rows?.[account]) > 0)
     .map((item) => {
-      const haystack = normalizeSearch(item.article);
+      const haystack = normalizeSearch(`${item.article} ${item.search_terms || ""}`);
       const matchedTokens = tokens.filter((token) => haystack.includes(token)).length;
       const fullMatch = haystack.includes(normalizedQuery);
       return {
@@ -138,7 +152,7 @@ function searchCatalog(
     .sort((a, b) => b.score - a.score || a.item.reference_row - b.item.reference_row)
     .slice(0, limit)
     .map(({ item }) => ({
-      row: Number(item[rowField]),
+      row: Number(item.rows?.[account]),
       article: item.article,
       label: item.article.replace(new RegExp("^" + directionLabel + "\\s*·\\s*", "i"), ""),
     }));
@@ -151,8 +165,12 @@ function TelegramFinanceApp() {
   >("loading");
   const [sessionError, setSessionError] = useState("");
   const [staffName, setStaffName] = useState("");
-  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [catalogs, setCatalogs] = useState<Record<LedgerKey, CatalogItem[]>>({
+    rental: [],
+    showroom: [],
+  });
 
+  const [ledger, setLedger] = useState<LedgerKey>("rental");
   const [account, setAccount] = useState<AccountKey | "">("");
   const [direction, setDirection] = useState<DirectionKey | "">("");
   const [query, setQuery] = useState("");
@@ -173,12 +191,20 @@ function TelegramFinanceApp() {
     requestId: string;
     status: "received" | "applied" | "failed";
     error?: string;
+    ledger: LedgerKey;
   } | null>(null);
   const requestIdRef = useRef("");
 
+  const activeAccounts = useMemo(
+    () => (ledger === "showroom" ? SHOWROOM_ACCOUNTS : RENTAL_ACCOUNTS),
+    [ledger],
+  );
+
+  const catalog = catalogs[ledger];
+
   const selectedAccount = useMemo(
-    () => ACCOUNTS.find((item) => item.key === account) || null,
-    [account],
+    () => activeAccounts.find((item) => item.key === account) || null,
+    [account, activeAccounts],
   );
 
   const selectedDirection = useMemo(
@@ -227,7 +253,14 @@ function TelegramFinanceApp() {
       }
 
       setStaffName(data.staff?.full_name || "");
-      setCatalog(Array.isArray(data.catalog) ? data.catalog : []);
+      setCatalogs({
+        rental: Array.isArray(data.catalogs?.rental)
+          ? data.catalogs!.rental!
+          : Array.isArray(data.catalog)
+            ? data.catalog
+            : [],
+        showroom: Array.isArray(data.catalogs?.showroom) ? data.catalogs!.showroom! : [],
+      });
       setPhase("ready");
       return true;
     } catch (error) {
@@ -320,6 +353,7 @@ function TelegramFinanceApp() {
           } | null;
         }>({
           action: "status",
+          ledger: success.ledger,
           request_id: success.requestId,
         });
 
@@ -377,6 +411,20 @@ function TelegramFinanceApp() {
     setSubmitError("");
     requestIdRef.current = "";
   }, []);
+
+  const chooseLedger = (next: LedgerKey) => {
+    if (next === ledger) return;
+    setLedger(next);
+    setAccount("");
+    setDirection("");
+    clearOperation();
+    setAmount("");
+    setNote("");
+    setReviewOpen(false);
+    setSubmitError("");
+    requestIdRef.current = "";
+    telegram?.HapticFeedback?.impactOccurred?.("light");
+  };
 
   const chooseAccount = (next: AccountKey) => {
     if (next === account) return;
@@ -451,6 +499,7 @@ function TelegramFinanceApp() {
         } | null;
       }>({
         action: "record",
+        ledger,
         request_id: activeRequestId,
         account,
         direction,
@@ -470,6 +519,7 @@ function TelegramFinanceApp() {
         currency: String(data.result?.currency || selectedAccount.currency),
         requestId: data.request_id || activeRequestId,
         status: data.status,
+        ledger,
       });
       setReviewOpen(false);
 
@@ -638,9 +688,29 @@ function TelegramFinanceApp() {
       </header>
 
       <section className="tg-form-section">
+        <label className="tg-field-label">Учёт</label>
+        <div className="tg-segmented" role="group" aria-label="Раздел финансов">
+          {LEDGERS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={ledger === item.key ? "is-active" : ""}
+              onClick={() => chooseLedger(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="tg-form-section">
         <label className="tg-field-label">Счёт</label>
-        <div className="tg-segmented tg-segmented-three" role="group" aria-label="Счёт">
-          {ACCOUNTS.map((item) => (
+        <div
+          className={ledger === "showroom" ? "tg-segmented" : "tg-segmented tg-segmented-three"}
+          role="group"
+          aria-label="Счёт"
+        >
+          {activeAccounts.map((item) => (
             <button
               key={item.key}
               type="button"
@@ -682,7 +752,9 @@ function TelegramFinanceApp() {
             placeholder={
               !account || !direction
                 ? "Сначала выбери счёт и тип"
-                : "Начни печатать: аренда, ремонт, номер авто…"
+                : ledger === "showroom"
+                  ? "Начни печатать: продажа, регистрация, реклама…"
+                  : "Начни печатать: аренда, ремонт, номер авто…"
             }
             onChange={(event) => {
               setQuery(event.target.value);
@@ -799,6 +871,10 @@ function TelegramFinanceApp() {
             <h2 id="tg-review-title">{formatAmount(amount, selectedAccount.currency)}</h2>
 
             <dl className="tg-review-list">
+              <div>
+                <dt>Раздел</dt>
+                <dd>{ledger === "showroom" ? "Автосалон" : "Прокат"}</dd>
+              </div>
               <div>
                 <dt>Счёт</dt>
                 <dd>{selectedAccount.label}</dd>
