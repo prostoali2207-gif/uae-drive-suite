@@ -9,7 +9,11 @@ const GATEWAY_TOKEN_SECRET = "fleetdesk_gateway_token";
 const TELEGRAM_TOKEN_SECRET = "fleetdesk_telegram_bot_token";
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
 
-const ACCOUNT_KEYS = new Set(["cash_aed", "ajman_aed", "sber_rub"]);
+const LEDGER_KEYS = new Set(["rental", "showroom"]);
+const ACCOUNT_KEYS: Record<string, Set<string>> = {
+  rental: new Set(["cash_aed", "ajman_aed", "sber_rub"]),
+  showroom: new Set(["cash_aed", "ajman_aed"]),
+};
 const DIRECTIONS = new Map([
   ["income", "Приход"],
   ["expense", "Расход"],
@@ -280,9 +284,15 @@ async function callBridge(
   return data;
 }
 
-function validateAccount(value: unknown) {
+function validateLedger(value: unknown) {
+  const ledger = normalizeText(value || "rental").toLowerCase();
+  if (!LEDGER_KEYS.has(ledger)) throw new Error("Выбери раздел финансов.");
+  return ledger as "rental" | "showroom";
+}
+
+function validateAccount(value: unknown, ledger: "rental" | "showroom") {
   const account = normalizeText(value).toLowerCase();
-  if (!ACCOUNT_KEYS.has(account)) throw new Error("Выбери счёт.");
+  if (!ACCOUNT_KEYS[ledger].has(account)) throw new Error("Выбери счёт.");
   return account;
 }
 
@@ -298,13 +308,48 @@ function trimArticleLabel(article: string, direction: string) {
   return article.startsWith(prefix) ? article.slice(prefix.length) : article;
 }
 
-async function getOperationCatalog(supabase: ReturnType<typeof createClient>) {
+async function getOperationCatalog(
+  supabase: ReturnType<typeof createClient>,
+  ledger: "rental" | "showroom",
+) {
+  if (ledger === "showroom") {
+    const { data, error } = await supabase
+      .from("showroom_finance_operation_catalog")
+      .select("sort_order, article, direction, cash_row, ajman_row, search_terms")
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      reference_row: Number(row.sort_order),
+      article: String(row.article || ""),
+      direction: String(row.direction || ""),
+      search_terms: String(row.search_terms || ""),
+      rows: {
+        cash_aed: row.cash_row == null ? null : Number(row.cash_row),
+        ajman_aed: row.ajman_row == null ? null : Number(row.ajman_row),
+        sber_rub: null,
+      },
+    }));
+  }
+
   const { data, error } = await supabase
     .from("finance_operation_catalog")
     .select("reference_row, article, direction, aed_row, sber_row")
     .order("reference_row", { ascending: true });
   if (error) throw error;
-  return data || [];
+
+  return (data || []).map((row: any) => ({
+    reference_row: Number(row.reference_row),
+    article: String(row.article || ""),
+    direction: String(row.direction || ""),
+    search_terms: "",
+    rows: {
+      cash_aed: Number(row.aed_row),
+      ajman_aed: Number(row.aed_row),
+      sber_rub: Number(row.sber_row),
+    },
+  }));
 }
 
 async function requireStaff(
@@ -360,6 +405,7 @@ async function processFinanceAudit(
         amount: payload.amount,
         note: payload.note,
         request_id: requestId,
+        ledger: payload.ledger || "rental",
       });
 
       result.currency = payload.account === "sber_rub" ? "RUB" : "AED";
@@ -417,7 +463,8 @@ async function recordFinance(
   staff: Record<string, any>,
   body: Record<string, any>,
 ) {
-  const account = validateAccount(body.account);
+  const ledger = validateLedger(body.ledger);
+  const account = validateAccount(body.account, ledger);
   const direction = validateDirection(body.direction);
   const article = normalizeText(body.article);
   const row = Number(body.row);
@@ -432,19 +479,35 @@ async function recordFinance(
 
   const date = todayDubai();
 
-  const mappedField = account === "sber_rub" ? "sber_row" : "aed_row";
-  const { data: catalogMatch, error: catalogError } = await supabase
-    .from("finance_operation_catalog")
-    .select("reference_row")
-    .eq("article", article)
-    .eq("direction", direction.label)
-    .eq(mappedField, row)
-    .maybeSingle();
+  let catalogMatch: any = null;
+  if (ledger === "showroom") {
+    const mappedField = account === "cash_aed" ? "cash_row" : "ajman_row";
+    const { data, error } = await supabase
+      .from("showroom_finance_operation_catalog")
+      .select("sort_order")
+      .eq("active", true)
+      .eq("article", article)
+      .eq("direction", direction.label)
+      .eq(mappedField, row)
+      .maybeSingle();
+    if (error) throw error;
+    catalogMatch = data;
+  } else {
+    const mappedField = account === "sber_rub" ? "sber_row" : "aed_row";
+    const { data, error } = await supabase
+      .from("finance_operation_catalog")
+      .select("reference_row")
+      .eq("article", article)
+      .eq("direction", direction.label)
+      .eq(mappedField, row)
+      .maybeSingle();
+    if (error) throw error;
+    catalogMatch = data;
+  }
 
-  if (catalogError) throw catalogError;
   if (!catalogMatch) throw new Error("Операция изменилась в справочнике. Выбери её заново.");
 
-  const idempotencyKey = `telegram-finance:${telegramUser.id}:${requestId}`;
+  const idempotencyKey = `telegram-finance:${ledger}:${telegramUser.id}:${requestId}`;
   const existing = await findExistingAudit(supabase, staff.owner_id, idempotencyKey);
   if (existing) {
     if (existing.status === "failed") {
@@ -476,6 +539,7 @@ async function recordFinance(
   }
 
   const payload = {
+    ledger,
     account,
     direction: direction.key,
     article,
@@ -492,7 +556,7 @@ async function recordFinance(
       actor_staff_id: staff.id,
       telegram_user_id: telegramUser.id,
       idempotency_key: idempotencyKey,
-      action: "record_finance_entry",
+      action: ledger === "showroom" ? "record_showroom_finance_entry" : "record_finance_entry",
       payload,
       status: "received",
     })
@@ -719,19 +783,27 @@ Deno.serve(async (req: Request) => {
           telegram_user: { id: telegramUser.id, first_name: telegramUser.firstName },
         }, 200, origin);
       }
-      const catalog = await getOperationCatalog(supabase);
+      const [catalog, showroomCatalog] = await Promise.all([
+        getOperationCatalog(supabase, "rental"),
+        getOperationCatalog(supabase, "showroom"),
+      ]);
       return json({
         ok: true,
         bound: true,
         staff: { id: staff.id, full_name: staff.full_name, role: staff.role },
         catalog,
+        catalogs: {
+          rental: catalog,
+          showroom: showroomCatalog,
+        },
       }, 200, origin);
     }
 
     const staff = await requireStaff(supabase, telegramUser.id);
 
     if (action === "search") {
-      const account = validateAccount(body.account);
+      const ledger = validateLedger(body.ledger);
+      const account = validateAccount(body.account, ledger);
       const direction = validateDirection(body.direction);
       const query = normalizeText(body.query);
       if (!query) return json({ ok: true, matches: [], alternate: null }, 200, origin);
@@ -742,6 +814,7 @@ Deno.serve(async (req: Request) => {
         date: todayDubai(),
         query,
         direction: direction.label,
+        ledger,
       });
 
       const matches = (Array.isArray(result.matches) ? result.matches : [])
@@ -762,6 +835,7 @@ Deno.serve(async (req: Request) => {
           date: todayDubai(),
           query,
           direction: alternateLabel,
+          ledger,
         });
 
         const alternateMatches = (Array.isArray(alternateResult.matches) ? alternateResult.matches : [])
@@ -796,7 +870,8 @@ Deno.serve(async (req: Request) => {
         throw new Error("Некорректный request_id.");
       }
 
-      const idempotencyKey = `telegram-finance:${telegramUser.id}:${requestId}`;
+      const ledger = validateLedger(body.ledger);
+      const idempotencyKey = `telegram-finance:${ledger}:${telegramUser.id}:${requestId}`;
       const current = await findExistingAudit(supabase, staff.owner_id, idempotencyKey);
       if (!current) {
         return json({ ok: false, error: "Операция не найдена." }, 404, origin);
