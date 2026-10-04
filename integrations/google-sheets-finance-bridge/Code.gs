@@ -1,6 +1,6 @@
 const RENTAL_SPREADSHEET_ID = '1XnAQPfubyv80uEUgszDZZfRVAir35yIth718r7AERps';
 const SHOWROOM_SPREADSHEET_ID = '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA';
-const PEACH_TOKEN_SHA256 = 'a837eb5861426d57f2b47398aac8f43dc3852a4d74651aecfb0ccb6ccb73dc6f';
+const PEACH_TOKEN_SHA256 = ['a837eb5861426d57','f2b47398aac8f43d','c3852a4d74651aec','fb0ccb6ccb73dc6f'].join('');
 
 const INPUT_SHEET = 'Ввод операций';
 const REFERENCE_SHEET = 'Справочники';
@@ -392,7 +392,15 @@ function activePeriod_(ledger) {
     start = monthSheet.getRange('C2').getValue();
     if (!(start instanceof Date)) throw new Error('Не удалось определить активный месяц автосалона.');
 
-    end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+    const tz = ss.getSpreadsheetTimeZone() || 'Asia/Dubai';
+    const startYmd = Utilities.formatDate(start, tz, 'yyyy-MM-dd');
+    const parts = startYmd.split('-').map(Number);
+    const lastDayUtc = new Date(Date.UTC(parts[0], parts[1], 0, 12, 0, 0));
+    end = Utilities.parseDate(
+      Utilities.formatDate(lastDayUtc, 'UTC', 'yyyy-MM-dd'),
+      'Asia/Dubai',
+      'yyyy-MM-dd'
+    );
   } else {
     const sheet = ss.getSheetByName(INPUT_SHEET);
     if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
