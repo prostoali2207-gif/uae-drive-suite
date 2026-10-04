@@ -201,6 +201,7 @@ function TelegramFinanceApp() {
 
   const [view, setView] = useState<FinanceView>("entry");
   const [ledger, setLedger] = useState<LedgerKey>("rental");
+  const [historyLedger, setHistoryLedger] = useState<LedgerKey>("rental");
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -342,7 +343,7 @@ function TelegramFinanceApp() {
 
     void api<{ ok: true; items: HistoryItem[] }>({
       action: "history",
-      ledger,
+      ledger: historyLedger,
       limit: 80,
     })
       .then((data) => {
@@ -361,7 +362,7 @@ function TelegramFinanceApp() {
     return () => {
       cancelled = true;
     };
-  }, [api, ledger, phase, view]);
+  }, [api, historyLedger, phase, view]);
 
   useEffect(() => {
     if (phase !== "ready" || !account || !direction || operation || query.trim().length < 1) {
@@ -746,30 +747,32 @@ function TelegramFinanceApp() {
         <header className="tg-finance-header">
           <div>
             <div className="tg-eyebrow">FleetDesk</div>
-            <h1>Финансы</h1>
+            <h1>История</h1>
           </div>
-          {staffName ? <div className="tg-staff-name">{staffName}</div> : null}
+          <button
+            className="tg-header-icon-button"
+            type="button"
+            aria-label="Вернуться к внесению"
+            onClick={() => setView("entry")}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
         </header>
 
-        <nav className="tg-mode-tabs" aria-label="Раздел финансов">
-          <button type="button" onClick={() => setView("entry")}>Внести</button>
-          <button type="button" className="is-active">История</button>
-        </nav>
-
-        <section className="tg-form-section">
-          <label className="tg-field-label">Учёт</label>
-          <div className="tg-segmented" role="group" aria-label="Раздел финансов">
+        <section className="tg-history-toolbar">
+          <label className="tg-history-ledger-label" htmlFor="tg-history-ledger">Учёт</label>
+          <select
+            id="tg-history-ledger"
+            className="tg-history-ledger-select"
+            value={historyLedger}
+            onChange={(event) => setHistoryLedger(event.target.value as LedgerKey)}
+          >
             {LEDGERS.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className={ledger === item.key ? "is-active" : ""}
-                onClick={() => chooseLedger(item.key)}
-              >
-                {item.label}
-              </button>
+              <option key={item.key} value={item.key}>{item.label}</option>
             ))}
-          </div>
+          </select>
         </section>
 
         <section className="tg-history-section">
@@ -814,13 +817,26 @@ function TelegramFinanceApp() {
           <div className="tg-eyebrow">FleetDesk</div>
           <h1>Финансы</h1>
         </div>
-        {staffName ? <div className="tg-staff-name">{staffName}</div> : null}
+        <div className="tg-header-actions">
+          {staffName ? <div className="tg-staff-name">{staffName}</div> : null}
+          <button
+            className="tg-header-icon-button"
+            type="button"
+            aria-label="Открыть историю"
+            onClick={() => {
+              setHistoryLedger(ledger);
+              setView("history");
+              telegram?.HapticFeedback?.impactOccurred?.("light");
+            }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7" />
+              <path d="M3 4v5h5" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+          </button>
+        </div>
       </header>
-
-      <nav className="tg-mode-tabs" aria-label="Раздел финансов">
-        <button type="button" className="is-active">Внести</button>
-        <button type="button" onClick={() => setView("history")}>История</button>
-      </nav>
 
       <section className="tg-form-section">
         <label className="tg-field-label">Учёт</label>
