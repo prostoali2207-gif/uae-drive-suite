@@ -21,6 +21,7 @@ declare global {
 type LedgerKey = "rental" | "showroom";
 type AccountKey = "cash_aed" | "ajman_aed" | "sber_rub";
 type DirectionKey = "income" | "expense";
+type FinanceView = "entry" | "history";
 
 type OperationMatch = {
   row: number;
@@ -40,6 +41,22 @@ type CatalogItem = {
   direction: "Приход" | "Расход";
   search_terms?: string;
   rows: Partial<Record<AccountKey, number | null>>;
+};
+
+type HistoryItem = {
+  id: string;
+  ledger: LedgerKey;
+  account: AccountKey | string;
+  account_label: string;
+  direction: DirectionKey;
+  article: string;
+  label: string;
+  amount: number;
+  currency: string;
+  note: string;
+  date: string;
+  created_at: string;
+  actor_name: string;
 };
 
 type SessionResponse = {
@@ -116,6 +133,18 @@ function formatAmount(value: string, currency: string) {
   }).format(amount) + " " + currency;
 }
 
+function formatHistoryTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Asia/Dubai",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function normalizeSearch(value: string) {
   return value
     .toLowerCase()
@@ -170,7 +199,11 @@ function TelegramFinanceApp() {
     showroom: [],
   });
 
+  const [view, setView] = useState<FinanceView>("entry");
   const [ledger, setLedger] = useState<LedgerKey>("rental");
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [account, setAccount] = useState<AccountKey | "">("");
   const [direction, setDirection] = useState<DirectionKey | "">("");
   const [query, setQuery] = useState("");
@@ -299,6 +332,36 @@ function TelegramFinanceApp() {
     if (!telegram) return;
     void refreshSession();
   }, [telegram, refreshSession]);
+
+  useEffect(() => {
+    if (phase !== "ready" || view !== "history") return;
+
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError("");
+
+    void api<{ ok: true; items: HistoryItem[] }>({
+      action: "history",
+      ledger,
+      limit: 80,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        setHistoryItems(Array.isArray(data.items) ? data.items : []);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setHistoryItems([]);
+        setHistoryError(error instanceof Error ? error.message : "Не удалось загрузить историю.");
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, ledger, phase, view]);
 
   useEffect(() => {
     if (phase !== "ready" || !account || !direction || operation || query.trim().length < 1) {
@@ -677,6 +740,73 @@ function TelegramFinanceApp() {
     );
   }
 
+  if (view === "history") {
+    return (
+      <main className="tg-finance-shell">
+        <header className="tg-finance-header">
+          <div>
+            <div className="tg-eyebrow">FleetDesk</div>
+            <h1>Финансы</h1>
+          </div>
+          {staffName ? <div className="tg-staff-name">{staffName}</div> : null}
+        </header>
+
+        <nav className="tg-mode-tabs" aria-label="Раздел финансов">
+          <button type="button" onClick={() => setView("entry")}>Внести</button>
+          <button type="button" className="is-active">История</button>
+        </nav>
+
+        <section className="tg-form-section">
+          <label className="tg-field-label">Учёт</label>
+          <div className="tg-segmented" role="group" aria-label="Раздел финансов">
+            {LEDGERS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={ledger === item.key ? "is-active" : ""}
+                onClick={() => chooseLedger(item.key)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="tg-history-section">
+          {historyLoading ? (
+            <div className="tg-history-loading">
+              <span className="tg-finance-loader" aria-label="Загрузка истории" />
+            </div>
+          ) : historyError ? (
+            <div className="tg-inline-error">{historyError}</div>
+          ) : historyItems.length === 0 ? (
+            <div className="tg-history-empty">Пока нет записей.</div>
+          ) : (
+            <div className="tg-history-list">
+              {historyItems.map((item) => (
+                <article key={item.id} className={`tg-history-item is-${item.direction}`}>
+                  <div className="tg-history-copy">
+                    <div className="tg-history-title">{item.label || item.article}</div>
+                    {item.note ? <div className="tg-history-note">{item.note}</div> : null}
+                    <div className="tg-history-meta">
+                      {item.account_label}
+                      {item.created_at ? ` · ${formatHistoryTime(item.created_at)}` : ""}
+                      {item.actor_name ? ` · ${item.actor_name}` : ""}
+                    </div>
+                  </div>
+                  <div className={`tg-history-amount is-${item.direction}`}>
+                    {item.direction === "expense" ? "−" : "+"}
+                    {formatAmount(String(item.amount), item.currency)}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="tg-finance-shell">
       <header className="tg-finance-header">
@@ -686,6 +816,11 @@ function TelegramFinanceApp() {
         </div>
         {staffName ? <div className="tg-staff-name">{staffName}</div> : null}
       </header>
+
+      <nav className="tg-mode-tabs" aria-label="Раздел финансов">
+        <button type="button" className="is-active">Внести</button>
+        <button type="button" onClick={() => setView("history")}>История</button>
+      </nav>
 
       <section className="tg-form-section">
         <label className="tg-field-label">Учёт</label>
