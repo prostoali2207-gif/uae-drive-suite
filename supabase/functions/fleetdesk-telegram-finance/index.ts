@@ -7,7 +7,7 @@ const MINI_APP_URL = "https://uae-drive-suite.vercel.app/telegram-finance";
 const FINANCE_BRIDGE_URL = "https://script.google.com/macros/s/AKfycbx-Zh3OD-aXy2rpmBFWw2mXvUUOLMn69Ndxx4lf2KDBi26FgfPRvY5UPfTMj6-49wY_uA/exec";
 const GATEWAY_TOKEN_SECRET = "fleetdesk_gateway_token";
 const TELEGRAM_TOKEN_SECRET = "fleetdesk_telegram_bot_token";
-const SHOWROOM_BRIDGE_ENABLED = false;
+const SHOWROOM_BRIDGE_ENABLED = true;
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
 
 const LEDGER_KEYS = new Set(["rental", "showroom"]);
@@ -599,6 +599,85 @@ async function recordFinance(
   };
 }
 
+
+async function getFinanceHistory(
+  supabase: ReturnType<typeof createClient>,
+  telegramUser: { id: number },
+  staff: Record<string, any>,
+  body: Record<string, any>,
+) {
+  const ledger = validateLedger(body.ledger);
+  const rawLimit = Number(body.limit || 60);
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 60, 1), 100);
+  const action = ledger === "showroom" ? "record_showroom_finance_entry" : "record_finance_entry";
+
+  let query = supabase
+    .from("telegram_operation_requests")
+    .select("id, actor_staff_id, telegram_user_id, created_at, processed_at, payload, result")
+    .eq("owner_id", staff.owner_id)
+    .eq("status", "applied")
+    .eq("action", action)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  const role = normalizeText(staff.role).toLowerCase();
+  const canViewTeamHistory = ["owner", "admin", "manager"].includes(role);
+  if (!canViewTeamHistory) query = query.eq("telegram_user_id", telegramUser.id);
+
+  const { data: rows, error } = await query;
+  if (error) throw error;
+
+  const staffIds = Array.from(new Set(
+    (rows || []).map((row: any) => String(row.actor_staff_id || "")).filter(Boolean),
+  ));
+
+  const names = new Map<string, string>();
+  if (staffIds.length > 0) {
+    const { data: staffRows, error: staffError } = await supabase
+      .from("staff")
+      .select("id, full_name")
+      .in("id", staffIds);
+    if (staffError) throw staffError;
+    for (const row of staffRows || []) {
+      names.set(String(row.id), normalizeText(row.full_name));
+    }
+  }
+
+  const items = (rows || []).map((row: any) => {
+    const payload = row.payload || {};
+    const result = row.result || {};
+    const account = normalizeText(payload.account || result.account);
+    const direction = normalizeText(payload.direction) === "income" || result.type === "Приход"
+      ? "income"
+      : "expense";
+    const amount = Number(payload.amount ?? result.amount);
+    const article = normalizeText(payload.article || result.article);
+    const label = trimArticleLabel(article, direction === "income" ? "Приход" : "Расход");
+
+    return {
+      id: String(row.id),
+      ledger,
+      account,
+      account_label: normalizeText(result.account_label) || (
+        account === "cash_aed" ? "Касса" :
+        account === "ajman_aed" ? "AJMAN" :
+        account === "sber_rub" ? "СБЕР" : account
+      ),
+      direction,
+      article,
+      label: label || article,
+      amount,
+      currency: normalizeText(result.currency) || (account === "sber_rub" ? "RUB" : "AED"),
+      note: normalizeText(payload.note || result.note),
+      date: normalizeText(payload.date || result.date),
+      created_at: row.created_at,
+      actor_name: names.get(String(row.actor_staff_id || "")) || "Сотрудник",
+    };
+  }).filter((item: any) => item.article && Number.isFinite(item.amount) && item.amount > 0);
+
+  return { ledger, items };
+}
+
 async function telegramApi(botToken: string, method: string, payload: Record<string, unknown>) {
   const response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
     method: "POST",
@@ -804,6 +883,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const staff = await requireStaff(supabase, telegramUser.id);
+
+    if (action === "history") {
+      const history = await getFinanceHistory(supabase, telegramUser, staff, body);
+      return json({ ok: true, ...history }, 200, origin);
+    }
 
     if (action === "search") {
       const ledger = validateLedger(body.ledger);
