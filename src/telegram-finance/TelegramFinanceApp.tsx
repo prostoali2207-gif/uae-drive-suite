@@ -96,6 +96,28 @@ const DIRECTIONS: Array<{ key: DirectionKey; label: string }> = [
   { key: "expense", label: "Расход" },
 ];
 
+const SHOWROOM_VEHICLE_PURCHASE_ARTICLE = "покупка авто для перепродажи";
+const VEHICLE_OPTIONS_PATTERN = /\[\[vehicles:([^\]]*)\]\]/i;
+
+function catalogSearchTerms(value: string | undefined) {
+  return String(value || "").replace(VEHICLE_OPTIONS_PATTERN, " ").trim();
+}
+
+function vehicleOptionsFromCatalog(catalog: CatalogItem[]) {
+  const item = catalog.find((candidate) => candidate.article === SHOWROOM_VEHICLE_PURCHASE_ARTICLE);
+  const match = String(item?.search_terms || "").match(VEHICLE_OPTIONS_PATTERN);
+  if (!match?.[1]) return [];
+
+  return Array.from(
+    new Set(
+      match[1]
+        .split("|")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function loadTelegramSdk(): Promise<TelegramWebApp | null> {
   if (window.Telegram?.WebApp) return Promise.resolve(window.Telegram.WebApp);
 
@@ -169,7 +191,7 @@ function searchCatalog(
   return catalog
     .filter((item) => item.direction === directionLabel && Number(item.rows?.[account]) > 0)
     .map((item) => {
-      const haystack = normalizeSearch(`${item.article} ${item.search_terms || ""}`);
+      const haystack = normalizeSearch(`${item.article} ${catalogSearchTerms(item.search_terms)}`);
       const matchedTokens = tokens.filter((token) => haystack.includes(token)).length;
       const fullMatch = haystack.includes(normalizedQuery);
       return {
@@ -244,6 +266,14 @@ function TelegramFinanceApp() {
   const selectedDirection = useMemo(
     () => DIRECTIONS.find((item) => item.key === direction) || null,
     [direction],
+  );
+
+  const isVehiclePurchaseOperation =
+    ledger === "showroom" && operation?.article === SHOWROOM_VEHICLE_PURCHASE_ARTICLE;
+
+  const vehicleOptions = useMemo(
+    () => vehicleOptionsFromCatalog(catalog),
+    [catalog],
   );
 
   const api = useCallback(
@@ -472,6 +502,7 @@ function TelegramFinanceApp() {
     setQuery("");
     setMatches([]);
     setAlternate(null);
+    setNote("");
     setSubmitError("");
     requestIdRef.current = "";
   }, []);
@@ -509,6 +540,7 @@ function TelegramFinanceApp() {
     setQuery(match.label);
     setMatches([]);
     setAlternate(null);
+    setNote("");
     setSubmitError("");
     requestIdRef.current = "";
     telegram?.HapticFeedback?.impactOccurred?.("light");
@@ -528,6 +560,7 @@ function TelegramFinanceApp() {
     Boolean(account) &&
     Boolean(direction) &&
     Boolean(operation) &&
+    (!isVehiclePurchaseOperation || Boolean(note.trim())) &&
     Number.isFinite(Number(amount)) &&
     Number(amount) > 0;
 
@@ -541,6 +574,10 @@ function TelegramFinanceApp() {
 
   const submit = async () => {
     if (!account || !direction || !operation || !selectedAccount || submitting) return;
+    if (isVehiclePurchaseOperation && !note.trim()) {
+      setSubmitError("Выбери машину.");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError("");
@@ -980,19 +1017,44 @@ function TelegramFinanceApp() {
       </section>
 
       <section className="tg-form-section">
-        <label className="tg-field-label" htmlFor="tg-note">Примечание</label>
-        <textarea
-          id="tg-note"
-          className="tg-input tg-note"
-          value={note}
-          maxLength={500}
-          rows={3}
-          placeholder="Необязательно"
-          onChange={(event) => {
-            setNote(event.target.value);
-            requestIdRef.current = "";
-          }}
-        />
+        {isVehiclePurchaseOperation ? (
+          <>
+            <label className="tg-field-label" htmlFor="tg-vehicle-note">Машина</label>
+            <select
+              id="tg-vehicle-note"
+              className="tg-input tg-vehicle-select"
+              value={note}
+              onChange={(event) => {
+                setNote(event.target.value);
+                requestIdRef.current = "";
+              }}
+            >
+              <option value="">Выбери машину</option>
+              {vehicleOptions.map((vehicle) => (
+                <option key={vehicle} value={vehicle}>{vehicle}</option>
+              ))}
+            </select>
+            {vehicleOptions.length === 0 ? (
+              <div className="tg-helper">Список машин пока пуст.</div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <label className="tg-field-label" htmlFor="tg-note">Примечание</label>
+            <textarea
+              id="tg-note"
+              className="tg-input tg-note"
+              value={note}
+              maxLength={500}
+              rows={3}
+              placeholder="Необязательно"
+              onChange={(event) => {
+                setNote(event.target.value);
+                requestIdRef.current = "";
+              }}
+            />
+          </>
+        )}
       </section>
 
       {submitError ? <div className="tg-inline-error">{submitError}</div> : null}
@@ -1040,7 +1102,7 @@ function TelegramFinanceApp() {
               </div>
               {note.trim() ? (
                 <div>
-                  <dt>Примечание</dt>
+                  <dt>{isVehiclePurchaseOperation ? "Машина" : "Примечание"}</dt>
                   <dd>{note.trim()}</dd>
                 </div>
               ) : null}
