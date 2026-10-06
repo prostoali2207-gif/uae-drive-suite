@@ -175,40 +175,6 @@ function normalizeSearch(value: string) {
     .replace(/\s+/g, " ")
     .trim();
 }
-
-function editDistance(a: string, b: string) {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-
-  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  const current = new Array<number>(b.length + 1);
-
-  for (let i = 1; i <= a.length; i++) {
-    current[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      current[j] = Math.min(
-        previous[j] + 1,
-        current[j - 1] + 1,
-        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
-    }
-    for (let j = 0; j <= b.length; j++) previous[j] = current[j];
-  }
-
-  return previous[b.length];
-}
-
-function tokenMatchesQuery(token: string, haystackTokens: string[]) {
-  return haystackTokens.some((candidate) => {
-    if (candidate.includes(token) || token.includes(candidate)) return true;
-    if (token.length < 4 || candidate.length < 4) return false;
-
-    const maxDistance = Math.max(token.length, candidate.length) >= 8 ? 2 : 1;
-    return editDistance(token, candidate) <= maxDistance;
-  });
-}
-
 function searchCatalog(
   catalog: CatalogItem[],
   account: AccountKey,
@@ -225,8 +191,7 @@ function searchCatalog(
     .filter((item) => item.direction === directionLabel && Number(item.rows?.[account]) > 0)
     .map((item) => {
       const haystack = normalizeSearch(`${item.article} ${catalogSearchTerms(item.search_terms)}`);
-      const haystackTokens = haystack.split(" ").filter(Boolean);
-      const matchedTokens = tokens.filter((token) => tokenMatchesQuery(token, haystackTokens)).length;
+      const matchedTokens = tokens.filter((token) => haystack.includes(token)).length;
       const fullMatch = haystack.includes(normalizedQuery);
       return {
         item,
