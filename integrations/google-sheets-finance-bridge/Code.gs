@@ -553,8 +553,9 @@ function ensureMonthSheet_(ss, ledger, monthStartYmd) {
   });
 
   for (let i = 0; i < config.openingCells.length; i++) {
-    const opening = previousSheet.getRange(config.closingCells[i]).getValue();
-    sheet.getRange(config.openingCells[i]).setValue(opening);
+    sheet.getRange(config.openingCells[i]).setFormula(
+      previousMonthLinkFormula_(previousName, config.closingCells[i])
+    );
   }
 
   if (config.hideMonthSheet) sheet.hideSheet();
@@ -570,9 +571,15 @@ function refreshMonthOpeningBalances_(ss, ledger, monthSheet, monthStartYmd) {
   }
 
   for (let i = 0; i < config.openingCells.length; i++) {
-    const opening = previousSheet.getRange(config.closingCells[i]).getValue();
-    monthSheet.getRange(config.openingCells[i]).setValue(opening);
+    monthSheet.getRange(config.openingCells[i]).setFormula(
+      previousMonthLinkFormula_(previousName, config.closingCells[i])
+    );
   }
+}
+
+function previousMonthLinkFormula_(sheetName, cellA1) {
+  const escaped = String(sheetName || '').replace(/'/g, "''");
+  return "='" + escaped + "'!" + cellA1;
 }
 
 function clearLiteralCellsPreserveFormulas_(range) {
@@ -721,6 +728,19 @@ function financeMonthDryRunNovember2026() {
   const report = dates.map(function (dateYmd) {
     return financeMonthDryRun_(dateYmd);
   });
+
+  report.splice(2, 0, {
+    simulated_today: '2026-11-02',
+    scenario: 'Октябрьская операция внесена 2 ноября во время льготы',
+    result: [
+      'операция записывается в Октябрь 2026',
+      'октябрьский остаток на конец пересчитывается',
+      'остаток на начало Ноябрь 2026 связан живой формулой и обновляется автоматически',
+      'ручная повторная запись остатка 4 ноября не нужна',
+    ],
+    writes_performed: false,
+  });
+
   console.log(JSON.stringify(report, null, 2));
   return report;
 }
@@ -747,7 +767,9 @@ function financeMonthDryRun_(dateYmd) {
         opening.push({
           target: config.openingCells[i],
           source: previousMonthName + '!' + config.closingCells[i],
-          value: previousSheet.getRange(config.closingCells[i]).getDisplayValue(),
+          formula: previousMonthLinkFormula_(previousMonthName, config.closingCells[i]),
+          previous_closing_value_now: previousSheet.getRange(config.closingCells[i]).getDisplayValue(),
+          behavior_if_previous_month_changes: 'updates automatically',
         });
       }
     }
@@ -778,6 +800,7 @@ function financeMonthDryRun_(dateYmd) {
     writes_performed: false,
   };
 }
+
 
 function dubaiTodayYmd_() {
   return Utilities.formatDate(new Date(), FINANCE_TIME_ZONE, 'yyyy-MM-dd');
