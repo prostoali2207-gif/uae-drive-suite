@@ -14,6 +14,66 @@ const MONTH_NAMES_RU = Object.freeze([
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ]);
 
+const TRANSFER_PAIR_ID_COL = 17; // Q
+const TRANSFER_ROLE_COL = 18; // R
+const TRANSFER_RATE_COL = 19; // S
+const TRANSFER_AUTO_NOTE = '↔ АВТО · парная строка';
+
+const TRANSFER_DEFINITIONS = Object.freeze({
+  showroom: Object.freeze([
+    Object.freeze({
+      sourceAccount: 'cash_aed',
+      sourceArticle: 'перевод на счет в AJMAN',
+      targetAccount: 'ajman_aed',
+      targetArticle: 'приход из кассы',
+    }),
+    Object.freeze({
+      sourceAccount: 'ajman_aed',
+      sourceArticle: 'перевод в КАССУ',
+      targetAccount: 'cash_aed',
+      targetArticle: 'приход со счета AJMAN',
+    }),
+  ]),
+  rental: Object.freeze([
+    Object.freeze({
+      sourceAccount: 'cash_aed',
+      sourceArticle: 'Расход · Перевод · перевод на счет в AJMAN',
+      targetAccount: 'ajman_aed',
+      targetArticle: 'Приход · Перевод · приход из кассы',
+    }),
+    Object.freeze({
+      sourceAccount: 'ajman_aed',
+      sourceArticle: 'Расход · Перевод · перевод в КАССУ',
+      targetAccount: 'cash_aed',
+      targetArticle: 'Приход · Перевод · приход со счета AJMAN',
+    }),
+    Object.freeze({
+      sourceAccount: 'cash_aed',
+      sourceArticle: 'Расход · Перевод · перевод на счет в СБЕР',
+      targetAccount: 'sber_rub',
+      targetArticle: 'Приход · Перевод · приход из кассы',
+    }),
+    Object.freeze({
+      sourceAccount: 'ajman_aed',
+      sourceArticle: 'Расход · Перевод · перевод на счет в СБЕР',
+      targetAccount: 'sber_rub',
+      targetArticle: 'Приход · Перевод · приход со счета AJMAN',
+    }),
+    Object.freeze({
+      sourceAccount: 'sber_rub',
+      sourceArticle: 'Расход · Перевод · перевод в КАССУ',
+      targetAccount: 'cash_aed',
+      targetArticle: 'Приход · Перевод · приход со счета в сбере',
+    }),
+    Object.freeze({
+      sourceAccount: 'sber_rub',
+      sourceArticle: 'Расход · Перевод · перевод на счет в AJMAN',
+      targetAccount: 'ajman_aed',
+      targetArticle: 'Приход · Перевод · приход со счета в сбере',
+    }),
+  ]),
+});
+
 const LEDGER_CONFIG = Object.freeze({
   rental: Object.freeze({
     spreadsheetId: RENTAL_SPREADSHEET_ID,
@@ -207,6 +267,13 @@ function recordEntry_(payload) {
     const inputState = inspectInputRows_(sheet, requestId);
 
     if (requestId && inputState.existingRow) {
+      const duplicateTransfer = ensureTransferPairForRow_(
+        sheet,
+        ledger,
+        inputState.existingRow,
+        payload.received_amount,
+        'bridge'
+      );
       return recordResult_(
         ledger,
         account,
@@ -218,7 +285,8 @@ function recordEntry_(payload) {
         amount,
         note,
         requestId,
-        true
+        true,
+        duplicateTransfer
       );
     }
 
@@ -238,6 +306,14 @@ function recordEntry_(payload) {
       sheet.getRange(targetRow, 14).setValue(requestId);
     }
 
+    const transfer = ensureTransferPairForRow_(
+      sheet,
+      ledger,
+      targetRow,
+      payload.received_amount,
+      'bridge'
+    );
+
     return recordResult_(
       ledger,
       account,
@@ -249,14 +325,15 @@ function recordEntry_(payload) {
       amount,
       note,
       requestId || null,
-      false
+      false,
+      transfer
     );
   } finally {
     lock.releaseLock();
   }
 }
 
-function recordResult_(ledger, account, accountLabel, date, period, inputRow, ref, amount, note, requestId, duplicate) {
+function recordResult_(ledger, account, accountLabel, date, period, inputRow, ref, amount, note, requestId, duplicate, transfer) {
   return {
     ok: true,
     action: 'record_entry',
@@ -277,6 +354,7 @@ function recordResult_(ledger, account, accountLabel, date, period, inputRow, re
     status: '✓ Готово',
     key: date.replace(/-/g, '') + '|' + accountLabel + '|' + ref.mappedRow,
     request_id: requestId,
+    transfer_pair: transfer || null,
   };
 }
 
@@ -401,6 +479,516 @@ function inspectInputRows_(sheet, requestId) {
   return { existingRow, emptyRow };
 }
 
+
+function ensureTransferColumns_(ledger) {
+  const sheet = spreadsheet_(ledger).getSheetByName(INPUT_SHEET);
+  if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
+
+  if (sheet.getMaxColumns() < TRANSFER_RATE_COL) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), TRANSFER_RATE_COL - sheet.getMaxColumns());
+  }
+
+  sheet.getRange(4, TRANSFER_PAIR_ID_COL, 1, 3).setValues([[
+    'Pair ID · служебный',
+    'Pair роль · служебная',
+    'Pair курс · служебный',
+  ]]);
+  sheet.hideColumns(TRANSFER_PAIR_ID_COL, 3);
+}
+
+function ensureFinanceTransferTriggers_() {
+  const existing = {};
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    existing[trigger.getHandlerFunction()] = true;
+  });
+
+  const specs = [
+    { handler: 'financeTransferOnEditRental', spreadsheetId: RENTAL_SPREADSHEET_ID, event: 'edit' },
+    { handler: 'financeTransferOnChangeRental', spreadsheetId: RENTAL_SPREADSHEET_ID, event: 'change' },
+    { handler: 'financeTransferOnEditShowroom', spreadsheetId: SHOWROOM_SPREADSHEET_ID, event: 'edit' },
+    { handler: 'financeTransferOnChangeShowroom', spreadsheetId: SHOWROOM_SPREADSHEET_ID, event: 'change' },
+  ];
+
+  specs.forEach(function (spec) {
+    if (existing[spec.handler]) return;
+    const builder = ScriptApp.newTrigger(spec.handler).forSpreadsheet(spec.spreadsheetId);
+    if (spec.event === 'edit') builder.onEdit().create();
+    else builder.onChange().create();
+  });
+}
+
+function financeTransferOnEditRental(e) {
+  financeTransferOnEdit_('rental', e);
+}
+
+function financeTransferOnEditShowroom(e) {
+  financeTransferOnEdit_('showroom', e);
+}
+
+function financeTransferOnChangeRental(e) {
+  financeTransferOnChange_('rental', e);
+}
+
+function financeTransferOnChangeShowroom(e) {
+  financeTransferOnChange_('showroom', e);
+}
+
+function financeTransferOnEdit_(ledger, e) {
+  try {
+    if (!e || !e.range) return;
+    const sheet = e.range.getSheet();
+    if (sheet.getName() !== INPUT_SHEET) return;
+    if (sheet.getParent().getId() !== ledgerConfig_(ledger).spreadsheetId) return;
+
+    const firstRow = Math.max(INPUT_FIRST_ROW, e.range.getRow());
+    const lastRow = Math.min(INPUT_LAST_ROW, e.range.getLastRow());
+    if (lastRow < firstRow) return;
+
+    const firstCol = e.range.getColumn();
+    const lastCol = e.range.getLastColumn();
+    const touchesInput = firstCol <= 5 && lastCol >= 1;
+    if (!touchesInput) return;
+
+    const lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    try {
+      for (let row = firstRow; row <= lastRow; row++) {
+        if (isLegacyUnmanagedTransferRow_(ledger, row)) continue;
+        syncTransferPairFromManualEdit_(sheet, ledger, row);
+      }
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (error) {
+    try {
+      e.source.toast(
+        error instanceof Error ? error.message : String(error),
+        'Перевод между счетами',
+        8
+      );
+    } catch (_) {}
+    console.error('financeTransferOnEdit_: ' + error);
+  }
+}
+
+function financeTransferOnChange_(ledger, e) {
+  try {
+    if (!e || e.changeType !== 'REMOVE_ROW') return;
+    const ss = e.source;
+    if (!ss || ss.getId() !== ledgerConfig_(ledger).spreadsheetId) return;
+    reconcileOrphanTransferPairs_(ledger);
+  } catch (error) {
+    console.error('financeTransferOnChange_: ' + error);
+  }
+}
+
+function syncTransferPairFromManualEdit_(sheet, ledger, row) {
+  const current = readTransferRow_(sheet, ledger, row);
+
+  if (current.pairId) {
+    const peerRow = findTransferPeerRow_(sheet, current.pairId, row);
+
+    if (isTransferInputBlank_(current)) {
+      if (peerRow) clearTransferRow_(sheet, peerRow);
+      clearTransferMeta_(sheet, row);
+      return;
+    }
+
+    if (current.role === 'auto') {
+      if (!peerRow) {
+        clearTransferRow_(sheet, row);
+        return;
+      }
+      syncSourceFromAutoRow_(sheet, ledger, row, peerRow, current);
+      return;
+    }
+
+    if (current.role === 'source') {
+      const def = transferDefinitionForSource_(ledger, current.accountKey, current.article);
+      if (!def) {
+        if (peerRow) clearTransferRow_(sheet, peerRow);
+        clearTransferMeta_(sheet, row);
+        return;
+      }
+      ensureTransferPairForRow_(sheet, ledger, row, null, 'manual');
+      return;
+    }
+  }
+
+  ensureTransferPairForRow_(sheet, ledger, row, null, 'manual');
+}
+
+function ensureTransferPairForRow_(sheet, ledger, sourceRow, receivedAmount, origin) {
+  if (isLegacyUnmanagedTransferRow_(ledger, sourceRow)) return null;
+
+  const source = readTransferRow_(sheet, ledger, sourceRow);
+  if (isTransferInputBlank_(source)) return null;
+  if (!source.accountKey || !source.article || !Number.isFinite(source.amount) || source.amount <= 0 || !source.dateYmd) {
+    return null;
+  }
+
+  if (source.role === 'auto') return null;
+
+  const def = transferDefinitionForSource_(ledger, source.accountKey, source.article);
+  if (!def) {
+    if (source.pairId) {
+      const oldPeer = findTransferPeerRow_(sheet, source.pairId, sourceRow);
+      if (oldPeer) clearTransferRow_(sheet, oldPeer);
+      clearTransferMeta_(sheet, sourceRow);
+    }
+    return null;
+  }
+
+  const amounts = resolveTransferAmounts_(def, source.amount, receivedAmount, source.note, source.rate);
+  let pairId = source.pairId || Utilities.getUuid();
+  let peerRow = source.pairId ? findTransferPeerRow_(sheet, source.pairId, sourceRow) : 0;
+
+  if (!peerRow) {
+    peerRow = findMatchingTransferCounterpart_(
+      sheet,
+      ledger,
+      sourceRow,
+      source.dateYmd,
+      def,
+      amounts.targetAmount
+    );
+  }
+
+  writeTransferMeta_(sheet, sourceRow, pairId, 'source', amounts.rate);
+
+  let adopted = false;
+  if (peerRow) {
+    const peer = readTransferRow_(sheet, ledger, peerRow);
+    if (!peer.pairId) {
+      adopted = true;
+      writeTransferMeta_(sheet, peerRow, pairId, 'auto', amounts.rate);
+    } else if (peer.pairId !== pairId) {
+      peerRow = 0;
+    }
+  }
+
+  if (!peerRow) {
+    peerRow = firstEmptyInputRow_(sheet);
+    if (!peerRow) throw new Error('В листе «Ввод операций» закончились свободные строки.');
+    writeAutomaticTransferRow_(sheet, ledger, peerRow, source.dateYmd, def, amounts.targetAmount, pairId, amounts.rate);
+  } else {
+    syncAutomaticTransferRow_(sheet, ledger, peerRow, source.dateYmd, def, amounts.targetAmount, pairId, amounts.rate, adopted);
+  }
+
+  sheet.getRange(sourceRow, 5).setNote('');
+
+  return {
+    pair_id: pairId,
+    source_row: sourceRow,
+    auto_row: peerRow,
+    source_account: def.sourceAccount,
+    target_account: def.targetAccount,
+    source_amount: roundMoney_(source.amount),
+    target_amount: roundMoney_(amounts.targetAmount),
+    rate: amounts.rate,
+    cross_currency: accountCurrency_(def.sourceAccount) !== accountCurrency_(def.targetAccount),
+    origin: origin || null,
+  };
+}
+
+function syncSourceFromAutoRow_(sheet, ledger, autoRow, sourceRow, auto) {
+  const source = readTransferRow_(sheet, ledger, sourceRow);
+  if (source.role !== 'source') {
+    clearTransferRow_(sheet, autoRow);
+    return;
+  }
+
+  const def = transferDefinitionForSource_(ledger, source.accountKey, source.article);
+  if (!def) {
+    clearTransferRow_(sheet, autoRow);
+    clearTransferMeta_(sheet, sourceRow);
+    return;
+  }
+
+  const rate = Number(source.rate || auto.rate || 1);
+  if (!Number.isFinite(rate) || rate <= 0) throw new Error('Некорректный курс парного перевода.');
+
+  const sourceCurrency = accountCurrency_(def.sourceAccount);
+  const targetCurrency = accountCurrency_(def.targetAccount);
+  const sourceAmount = sourceCurrency === targetCurrency
+    ? auto.amount
+    : roundMoney_(auto.amount / rate);
+
+  const dateValue = parseYmd_(auto.dateYmd);
+  sheet.getRange(sourceRow, 1).setValue(dateValue);
+  sheet.getRange(sourceRow, 4).setValue(sourceAmount);
+
+  syncAutomaticTransferRow_(
+    sheet,
+    ledger,
+    autoRow,
+    auto.dateYmd,
+    def,
+    auto.amount,
+    source.pairId,
+    rate,
+    false
+  );
+}
+
+function writeAutomaticTransferRow_(sheet, ledger, row, dateYmd, def, amount, pairId, rate) {
+  const targetRef = resolveReference_(def.targetArticle, def.targetAccount, null, ledger);
+  if (!targetRef) throw new Error('Не найдена парная операция «' + def.targetArticle + '» в Справочниках.');
+
+  sheet.getRange(row, 1, 1, 5).setValues([[
+    parseYmd_(dateYmd),
+    ledgerConfig_(ledger).accounts[def.targetAccount],
+    targetRef.operation,
+    roundMoney_(amount),
+    TRANSFER_AUTO_NOTE,
+  ]]);
+  writeTransferMeta_(sheet, row, pairId, 'auto', rate);
+}
+
+function syncAutomaticTransferRow_(sheet, ledger, row, dateYmd, def, amount, pairId, rate, preserveNote) {
+  const targetRef = resolveReference_(def.targetArticle, def.targetAccount, null, ledger);
+  if (!targetRef) throw new Error('Не найдена парная операция «' + def.targetArticle + '» в Справочниках.');
+
+  const currentNote = preserveNote ? String(sheet.getRange(row, 5).getValue() || '') : TRANSFER_AUTO_NOTE;
+  sheet.getRange(row, 1, 1, 5).setValues([[
+    parseYmd_(dateYmd),
+    ledgerConfig_(ledger).accounts[def.targetAccount],
+    targetRef.operation,
+    roundMoney_(amount),
+    currentNote || TRANSFER_AUTO_NOTE,
+  ]]);
+  writeTransferMeta_(sheet, row, pairId, 'auto', rate);
+}
+
+function readTransferRow_(sheet, ledger, row) {
+  const input = sheet.getRange(row, 1, 1, 5).getValues()[0];
+  const meta = sheet.getRange(row, TRANSFER_PAIR_ID_COL, 1, 3).getValues()[0];
+  const accountLabel = String(input[1] || '').trim();
+
+  return {
+    row,
+    dateValue: input[0],
+    dateYmd: cellDateYmd_(input[0]),
+    accountLabel,
+    accountKey: accountKeyFromLabel_(ledger, accountLabel),
+    article: String(input[2] || '').trim(),
+    amount: Number(input[3]),
+    note: String(input[4] || ''),
+    pairId: String(meta[0] || '').trim(),
+    role: String(meta[1] || '').trim(),
+    rate: Number(meta[2] || 0),
+  };
+}
+
+function isTransferInputBlank_(row) {
+  return !row.dateValue && !row.accountLabel && !row.article &&
+    (!Number.isFinite(row.amount) || row.amount === 0) && !row.note;
+}
+
+function writeTransferMeta_(sheet, row, pairId, role, rate) {
+  sheet.getRange(row, TRANSFER_PAIR_ID_COL, 1, 3).setValues([[
+    pairId,
+    role,
+    Number(rate),
+  ]]);
+}
+
+function clearTransferMeta_(sheet, row) {
+  sheet.getRange(row, TRANSFER_PAIR_ID_COL, 1, 3).clearContent();
+}
+
+function clearTransferRow_(sheet, row) {
+  sheet.getRange(row, 1, 1, 5).clearContent();
+  clearTransferMeta_(sheet, row);
+}
+
+function findTransferPeerRow_(sheet, pairId, excludeRow) {
+  if (!pairId) return 0;
+  const values = sheet.getRange(INPUT_FIRST_ROW, TRANSFER_PAIR_ID_COL, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, 1)
+    .getDisplayValues();
+  for (let i = 0; i < values.length; i++) {
+    const row = INPUT_FIRST_ROW + i;
+    if (row === excludeRow) continue;
+    if (String(values[i][0] || '').trim() === pairId) return row;
+  }
+  return 0;
+}
+
+function findMatchingTransferCounterpart_(sheet, ledger, sourceRow, dateYmd, def, targetAmount) {
+  const rows = sheet.getRange(INPUT_FIRST_ROW, 1, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, TRANSFER_ROLE_COL)
+    .getValues();
+  const targetLabel = ledgerConfig_(ledger).accounts[def.targetAccount];
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNumber = INPUT_FIRST_ROW + i;
+    if (rowNumber === sourceRow) continue;
+    if (isLegacyUnmanagedTransferRow_(ledger, rowNumber)) continue;
+
+    const row = rows[i];
+    const rowDate = cellDateYmd_(row[0]);
+    const rowAccount = String(row[1] || '').trim();
+    const rowArticle = String(row[2] || '').trim();
+    const rowAmount = Number(row[3]);
+    const pairId = String(row[16] || '').trim();
+
+    if (
+      rowDate === dateYmd &&
+      rowAccount === targetLabel &&
+      normalize_(rowArticle) === normalize_(def.targetArticle) &&
+      Number.isFinite(rowAmount) &&
+      Math.abs(rowAmount - targetAmount) < 0.01
+    ) {
+      if (!pairId) return rowNumber;
+    }
+  }
+  return 0;
+}
+
+function firstEmptyInputRow_(sheet) {
+  return inspectInputRows_(sheet, '').emptyRow;
+}
+
+function transferDefinitionForSource_(ledger, accountKey, article) {
+  const definitions = TRANSFER_DEFINITIONS[ledger] || [];
+  const targetArticle = normalize_(article);
+  for (let i = 0; i < definitions.length; i++) {
+    const def = definitions[i];
+    if (def.sourceAccount === accountKey && normalize_(def.sourceArticle) === targetArticle) {
+      return def;
+    }
+  }
+  return null;
+}
+
+function resolveTransferAmounts_(def, sourceAmount, receivedAmount, note, existingRate) {
+  const sourceCurrency = accountCurrency_(def.sourceAccount);
+  const targetCurrency = accountCurrency_(def.targetAccount);
+  if (sourceCurrency === targetCurrency) {
+    return { targetAmount: roundMoney_(sourceAmount), rate: 1 };
+  }
+
+  let received = Number(receivedAmount);
+  if (!Number.isFinite(received) || received <= 0) {
+    received = extractReceivedAmountFromNote_(note, targetCurrency);
+  }
+
+  if (Number.isFinite(received) && received > 0) {
+    return {
+      targetAmount: roundMoney_(received),
+      rate: received / sourceAmount,
+    };
+  }
+
+  const rate = Number(existingRate);
+  if (Number.isFinite(rate) && rate > 0) {
+    return {
+      targetAmount: roundMoney_(sourceAmount * rate),
+      rate,
+    };
+  }
+
+  throw new Error(
+    'Для перевода ' + sourceCurrency + ' → ' + targetCurrency +
+    ' укажи фактически полученную сумму. В таблице: в Примечании напиши «Получено: 1234 ' +
+    targetCurrency + '».'
+  );
+}
+
+function extractReceivedAmountFromNote_(note, expectedCurrency) {
+  const match = String(note || '').match(/(?:получено|received)\s*:?\s*([0-9][0-9\s.,]*)\s*(AED|RUB|₽)?/i);
+  if (!match) return NaN;
+
+  const raw = String(match[1] || '').replace(/\s/g, '').replace(',', '.');
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount <= 0) return NaN;
+
+  const currencyRaw = String(match[2] || '').toUpperCase();
+  const currency = currencyRaw === '₽' ? 'RUB' : currencyRaw;
+  if (currency && currency !== expectedCurrency) {
+    throw new Error('В «Получено» указана валюта ' + currency + ', ожидалась ' + expectedCurrency + '.');
+  }
+  return amount;
+}
+
+function accountCurrency_(accountKey) {
+  return accountKey === 'sber_rub' ? 'RUB' : 'AED';
+}
+
+function accountKeyFromLabel_(ledger, label) {
+  const accounts = ledgerConfig_(ledger).accounts;
+  const target = String(label || '').trim();
+  const keys = Object.keys(accounts);
+  for (let i = 0; i < keys.length; i++) {
+    if (String(accounts[keys[i]]) === target) return keys[i];
+  }
+  return '';
+}
+
+function cellDateYmd_(value) {
+  if (!value) return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return Utilities.formatDate(value, FINANCE_TIME_ZONE, 'yyyy-MM-dd');
+  }
+  const text = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  return '';
+}
+
+function roundMoney_(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function isLegacyUnmanagedTransferRow_(ledger, row) {
+  return ledger === 'showroom' && (row === 9 || row === 13);
+}
+
+function reconcileOrphanTransferPairs_(ledger) {
+  const sheet = spreadsheet_(ledger).getSheetByName(INPUT_SHEET);
+  if (!sheet) return;
+
+  const values = sheet.getRange(INPUT_FIRST_ROW, TRANSFER_PAIR_ID_COL, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, 1)
+    .getDisplayValues();
+  const rowsByPair = {};
+
+  for (let i = 0; i < values.length; i++) {
+    const pairId = String(values[i][0] || '').trim();
+    if (!pairId) continue;
+    if (!rowsByPair[pairId]) rowsByPair[pairId] = [];
+    rowsByPair[pairId].push(INPUT_FIRST_ROW + i);
+  }
+
+  Object.keys(rowsByPair).forEach(function (pairId) {
+    const rows = rowsByPair[pairId];
+    if (rows.length === 1) {
+      clearTransferRow_(sheet, rows[0]);
+    }
+  });
+}
+
+function financeTransferDryRun() {
+  const result = [];
+  ['showroom', 'rental'].forEach(function (ledger) {
+    const defs = TRANSFER_DEFINITIONS[ledger] || [];
+    defs.forEach(function (def) {
+      const sourceRef = resolveReference_(def.sourceArticle, def.sourceAccount, null, ledger);
+      const targetRef = resolveReference_(def.targetArticle, def.targetAccount, null, ledger);
+      result.push({
+        ledger,
+        source_account: def.sourceAccount,
+        source_article: def.sourceArticle,
+        source_found: Boolean(sourceRef),
+        target_account: def.targetAccount,
+        target_article: def.targetArticle,
+        target_found: Boolean(targetRef),
+        cross_currency: accountCurrency_(def.sourceAccount) !== accountCurrency_(def.targetAccount),
+        writes_performed: false,
+      });
+    });
+  });
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
 function activePeriod_(ledger) {
   validateLedger_(ledger);
   const window = postingWindow_();
@@ -487,12 +1075,17 @@ function financeMonthPrecreateNext() {
 
 function installFinanceMonthAutomation() {
   ensureFinanceMonthTriggers_();
+  ensureFinanceTransferTriggers_();
+  ['rental', 'showroom'].forEach(function (ledger) {
+    ensureTransferColumns_(ledger);
+  });
   financeMonthMaintenance();
   return {
     ok: true,
     timezone: FINANCE_TIME_ZONE,
     maintenance: 'daily around 00:10',
     precreate: 'daily around 23:10; creates next month only when tomorrow is day 1',
+    transfer_sync: 'manual onEdit + row-delete reconciliation for rental and showroom',
   };
 }
 
