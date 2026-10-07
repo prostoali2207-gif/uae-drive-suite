@@ -20,6 +20,37 @@ const DIRECTIONS = new Map([
   ["expense", "Расход"],
 ]);
 
+const SYSTEM_TRANSFER_INCOMING: Record<"rental" | "showroom", Set<string>> = {
+  rental: new Set([
+    "Приход · Перевод · приход со счета AJMAN",
+    "Приход · Перевод · приход со счета в сбере",
+    "Приход · Перевод · приход из кассы",
+  ]),
+  showroom: new Set([
+    "приход со счета AJMAN",
+    "приход из кассы",
+  ]),
+};
+
+const TRANSFER_TARGETS: Record<"rental" | "showroom", Array<{
+  sourceAccount: string;
+  sourceArticle: string;
+  targetAccount: string;
+}>> = {
+  showroom: [
+    { sourceAccount: "cash_aed", sourceArticle: "перевод на счет в AJMAN", targetAccount: "ajman_aed" },
+    { sourceAccount: "ajman_aed", sourceArticle: "перевод в КАССУ", targetAccount: "cash_aed" },
+  ],
+  rental: [
+    { sourceAccount: "cash_aed", sourceArticle: "Расход · Перевод · перевод на счет в AJMAN", targetAccount: "ajman_aed" },
+    { sourceAccount: "ajman_aed", sourceArticle: "Расход · Перевод · перевод в КАССУ", targetAccount: "cash_aed" },
+    { sourceAccount: "cash_aed", sourceArticle: "Расход · Перевод · перевод на счет в СБЕР", targetAccount: "sber_rub" },
+    { sourceAccount: "ajman_aed", sourceArticle: "Расход · Перевод · перевод на счет в СБЕР", targetAccount: "sber_rub" },
+    { sourceAccount: "sber_rub", sourceArticle: "Расход · Перевод · перевод в КАССУ", targetAccount: "cash_aed" },
+    { sourceAccount: "sber_rub", sourceArticle: "Расход · Перевод · перевод на счет в AJMAN", targetAccount: "ajman_aed" },
+  ],
+};
+
 const encoder = new TextEncoder();
 
 function corsHeaders(origin: string | null) {
@@ -57,6 +88,24 @@ function amountValue(value: unknown) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Сумма должна быть больше нуля.");
   return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+function accountCurrency(account: string) {
+  return account === "sber_rub" ? "RUB" : "AED";
+}
+
+function transferTarget(
+  ledger: "rental" | "showroom",
+  account: string,
+  article: string,
+) {
+  return TRANSFER_TARGETS[ledger].find(
+    (item) => item.sourceAccount === account && item.sourceArticle === article,
+  ) || null;
+}
+
+function isSystemTransferIncoming(ledger: "rental" | "showroom", article: string) {
+  return SYSTEM_TRANSFER_INCOMING[ledger].has(article);
 }
 
 function todayDubai() {
@@ -321,17 +370,19 @@ async function getOperationCatalog(
       .order("sort_order", { ascending: true });
     if (error) throw error;
 
-    return (data || []).map((row: any) => ({
-      reference_row: Number(row.sort_order),
-      article: String(row.article || ""),
-      direction: String(row.direction || ""),
-      search_terms: String(row.search_terms || ""),
-      rows: {
-        cash_aed: row.cash_row == null ? null : Number(row.cash_row),
-        ajman_aed: row.ajman_row == null ? null : Number(row.ajman_row),
-        sber_rub: null,
-      },
-    }));
+    return (data || [])
+      .map((row: any) => ({
+        reference_row: Number(row.sort_order),
+        article: String(row.article || ""),
+        direction: String(row.direction || ""),
+        search_terms: String(row.search_terms || ""),
+        rows: {
+          cash_aed: row.cash_row == null ? null : Number(row.cash_row),
+          ajman_aed: row.ajman_row == null ? null : Number(row.ajman_row),
+          sber_rub: null,
+        },
+      }))
+      .filter((row: any) => !isSystemTransferIncoming("showroom", row.article));
   }
 
   const { data, error } = await supabase
@@ -340,17 +391,19 @@ async function getOperationCatalog(
     .order("reference_row", { ascending: true });
   if (error) throw error;
 
-  return (data || []).map((row: any) => ({
-    reference_row: Number(row.reference_row),
-    article: String(row.article || ""),
-    direction: String(row.direction || ""),
-    search_terms: "",
-    rows: {
-      cash_aed: Number(row.aed_row),
-      ajman_aed: Number(row.aed_row),
-      sber_rub: Number(row.sber_row),
-    },
-  }));
+  return (data || [])
+    .map((row: any) => ({
+      reference_row: Number(row.reference_row),
+      article: String(row.article || ""),
+      direction: String(row.direction || ""),
+      search_terms: "",
+      rows: {
+        cash_aed: Number(row.aed_row),
+        ajman_aed: Number(row.aed_row),
+        sber_rub: Number(row.sber_row),
+      },
+    }))
+    .filter((row: any) => !isSystemTransferIncoming("rental", row.article));
 }
 
 async function requireStaff(
@@ -404,6 +457,7 @@ async function processFinanceAudit(
         article: payload.article,
         row: payload.row,
         amount: payload.amount,
+        received_amount: payload.received_amount ?? null,
         note: payload.note,
         request_id: requestId,
         ledger: payload.ledger || "rental",
@@ -475,6 +529,10 @@ async function recordFinance(
   const amount = amountValue(body.amount);
   const note = normalizeText(body.note);
   const requestId = normalizeText(body.request_id);
+  const transfer = transferTarget(ledger, account, article);
+  const receivedAmount = transfer && accountCurrency(account) !== accountCurrency(transfer.targetAccount)
+    ? amountValue(body.received_amount)
+    : null;
 
   if (!article) throw new Error("Выбери операцию.");
   if (!Number.isInteger(row) || row <= 0) throw new Error("Операция устарела. Выбери её заново.");
@@ -549,6 +607,7 @@ async function recordFinance(
     article,
     row,
     amount,
+    received_amount: receivedAmount,
     note,
     date,
   };
@@ -907,6 +966,7 @@ Deno.serve(async (req: Request) => {
 
       const matches = (Array.isArray(result.matches) ? result.matches : [])
         .filter((item: any) => String(item.section || "") === direction.label)
+        .filter((item: any) => !isSystemTransferIncoming(ledger, String(item.article || "")))
         .slice(0, 12)
         .map((item: any) => ({
           row: Number(item.row),
@@ -928,6 +988,7 @@ Deno.serve(async (req: Request) => {
 
         const alternateMatches = (Array.isArray(alternateResult.matches) ? alternateResult.matches : [])
           .filter((item: any) => String(item.section || "") === alternateLabel)
+          .filter((item: any) => !isSystemTransferIncoming(ledger, String(item.article || "")))
           .slice(0, 5)
           .map((item: any) => ({
             row: Number(item.row),
