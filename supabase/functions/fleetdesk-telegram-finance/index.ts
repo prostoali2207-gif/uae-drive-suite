@@ -21,11 +21,7 @@ const DIRECTIONS = new Map([
 ]);
 
 const SYSTEM_TRANSFER_INCOMING: Record<"rental" | "showroom", Set<string>> = {
-  rental: new Set([
-    "Приход · Перевод · приход со счета AJMAN",
-    "Приход · Перевод · приход со счета в сбере",
-    "Приход · Перевод · приход из кассы",
-  ]),
+  rental: new Set([]),
   showroom: new Set([
     "приход со счета AJMAN",
     "приход из кассы",
@@ -41,14 +37,7 @@ const TRANSFER_TARGETS: Record<"rental" | "showroom", Array<{
     { sourceAccount: "cash_aed", sourceArticle: "перевод на счет в AJMAN", targetAccount: "ajman_aed" },
     { sourceAccount: "ajman_aed", sourceArticle: "перевод в КАССУ", targetAccount: "cash_aed" },
   ],
-  rental: [
-    { sourceAccount: "cash_aed", sourceArticle: "Расход · Перевод · перевод на счет в AJMAN", targetAccount: "ajman_aed" },
-    { sourceAccount: "ajman_aed", sourceArticle: "Расход · Перевод · перевод в КАССУ", targetAccount: "cash_aed" },
-    { sourceAccount: "cash_aed", sourceArticle: "Расход · Перевод · перевод на счет в СБЕР", targetAccount: "sber_rub" },
-    { sourceAccount: "ajman_aed", sourceArticle: "Расход · Перевод · перевод на счет в СБЕР", targetAccount: "sber_rub" },
-    { sourceAccount: "sber_rub", sourceArticle: "Расход · Перевод · перевод в КАССУ", targetAccount: "cash_aed" },
-    { sourceAccount: "sber_rub", sourceArticle: "Расход · Перевод · перевод на счет в AJMAN", targetAccount: "ajman_aed" },
-  ],
+  rental: [],
 };
 
 const encoder = new TextEncoder();
