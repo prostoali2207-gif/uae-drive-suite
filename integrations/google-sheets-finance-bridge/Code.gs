@@ -580,11 +580,9 @@ function ensureInputDateValidation_(ss, window) {
 function syncDashboardMonth_(ss, ledger, monthSheet) {
   const monthName = monthSheet.getName();
   const main = ss.getSheetByName('Главная');
+
   if (main) {
-    const previousName = String(main.getRange('C3').getDisplayValue() || '').trim();
-    if (previousName && previousName !== monthName) {
-      replaceMonthReferences_(main, previousName, monthName);
-    }
+    replaceDashboardMonthReferences_(main, ss, monthName);
     main.getRange('C3').setValue(monthName);
 
     if (ledger === 'rental') {
@@ -595,34 +593,43 @@ function syncDashboardMonth_(ss, ledger, monthSheet) {
   if (ledger === 'showroom') {
     const overview = ss.getSheetByName('Месяц');
     if (overview) {
-      const formula = overview.getRange('B2').getFormula();
-      const match = formula && formula.match(/='([^']+)'!B1/);
-      const previousName = match ? match[1] : '';
-      if (previousName && previousName !== monthName) {
-        replaceMonthReferences_(overview, previousName, monthName);
+      replaceDashboardMonthReferences_(overview, ss, monthName);
+    }
+  }
+}
+
+function replaceDashboardMonthReferences_(sheet, ss, monthName) {
+  const oldNames = ss.getSheets()
+    .map(function (candidate) { return candidate.getName(); })
+    .filter(function (name) {
+      return name !== monthName && isMonthSheetName_(name);
+    });
+  if (!oldNames.length) return;
+
+  const range = sheet.getDataRange();
+  const formulas = range.getFormulas();
+
+  for (let r = 0; r < formulas.length; r++) {
+    for (let c = 0; c < formulas[r].length; c++) {
+      let formula = formulas[r][c];
+      if (!formula) continue;
+
+      let next = formula;
+      oldNames.forEach(function (oldName) {
+        next = next.split("'" + oldName + "'!").join("'" + monthName + "'!");
+      });
+
+      if (next !== formula) {
+        sheet.getRange(r + 1, c + 1).setFormula(next);
       }
     }
   }
 }
 
-function replaceMonthReferences_(sheet, previousName, monthName) {
-  if (!previousName || previousName === monthName) return;
-  const range = sheet.getDataRange();
-  const formulas = range.getFormulas();
-  let changed = false;
-  const fromQuoted = "'" + previousName + "'!";
-  const toQuoted = "'" + monthName + "'!";
-
-  for (let r = 0; r < formulas.length; r++) {
-    for (let c = 0; c < formulas[r].length; c++) {
-      const formula = formulas[r][c];
-      if (!formula || formula.indexOf(fromQuoted) === -1) continue;
-      formulas[r][c] = formula.split(fromQuoted).join(toQuoted);
-      changed = true;
-    }
-  }
-
-  if (changed) range.setFormulas(formulas);
+function isMonthSheetName_(name) {
+  return /^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь) \d{4}$/.test(
+    String(name || '')
+  );
 }
 
 function updateRentalQuickLinks_(main, ss, monthSheet) {
@@ -684,19 +691,6 @@ function validateAccount_(value, ledger) {
   }
 
   return account;
-}
-
-function validateActiveDate_(value, ledger) {
-  const date = validateDate_(value, ledger);
-  const period = activePeriod_(ledger);
-
-  if (date < period.start || date > period.end) {
-    throw new Error(
-      'Дата ' + date + ' вне активного периода таблицы: ' + period.start + ' — ' + period.end + '.'
-    );
-  }
-
-  return date;
 }
 
 function validateDate_(value, ledger) {
