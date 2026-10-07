@@ -18,6 +18,7 @@ const TRANSFER_PAIR_ID_COL = 17; // Q
 const TRANSFER_ROLE_COL = 18; // R
 const TRANSFER_RATE_COL = 19; // S
 const TRANSFER_AUTO_NOTE = '↔ АВТО · парная строка';
+const SHOWROOM_TRANSFER_FALLBACK_FIRST_ROW = 900;
 
 const TRANSFER_DEFINITIONS = Object.freeze({
   showroom: Object.freeze([
@@ -798,6 +799,7 @@ function findMatchingTransferCounterpart_(sheet, ledger, sourceRow, dateYmd, def
   for (let i = 0; i < rows.length; i++) {
     const rowNumber = INPUT_FIRST_ROW + i;
     if (rowNumber === sourceRow) continue;
+    if (ledger === 'showroom' && rowNumber >= SHOWROOM_TRANSFER_FALLBACK_FIRST_ROW) continue;
     if (isLegacyUnmanagedTransferRow_(ledger, rowNumber)) continue;
 
     const row = rows[i];
