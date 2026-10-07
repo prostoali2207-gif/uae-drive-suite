@@ -96,6 +96,25 @@ const DIRECTIONS: Array<{ key: DirectionKey; label: string }> = [
   { key: "expense", label: "Расход" },
 ];
 
+const TRANSFER_TARGETS: Record<LedgerKey, Array<{
+  sourceAccount: AccountKey;
+  sourceArticle: string;
+  targetAccount: AccountKey;
+}>> = {
+  showroom: [
+    { sourceAccount: "cash_aed", sourceArticle: "перевод на счет в AJMAN", targetAccount: "ajman_aed" },
+    { sourceAccount: "ajman_aed", sourceArticle: "перевод в КАССУ", targetAccount: "cash_aed" },
+  ],
+  rental: [
+    { sourceAccount: "cash_aed", sourceArticle: "Расход · Перевод · перевод на счет в AJMAN", targetAccount: "ajman_aed" },
+    { sourceAccount: "ajman_aed", sourceArticle: "Расход · Перевод · перевод в КАССУ", targetAccount: "cash_aed" },
+    { sourceAccount: "cash_aed", sourceArticle: "Расход · Перевод · перевод на счет в СБЕР", targetAccount: "sber_rub" },
+    { sourceAccount: "ajman_aed", sourceArticle: "Расход · Перевод · перевод на счет в СБЕР", targetAccount: "sber_rub" },
+    { sourceAccount: "sber_rub", sourceArticle: "Расход · Перевод · перевод в КАССУ", targetAccount: "cash_aed" },
+    { sourceAccount: "sber_rub", sourceArticle: "Расход · Перевод · перевод на счет в AJMAN", targetAccount: "ajman_aed" },
+  ],
+};
+
 const SHOWROOM_VEHICLE_PURCHASE_ARTICLE = "покупка авто для перепродажи";
 const VEHICLE_OPTIONS_PATTERN = /\[\[vehicles:([^\]]*)\]\]/i;
 
@@ -234,6 +253,7 @@ function TelegramFinanceApp() {
   const [alternate, setAlternate] = useState<AlternateDirection | null>(null);
   const [searching, setSearching] = useState(false);
   const [amount, setAmount] = useState("");
+  const [receivedAmount, setReceivedAmount] = useState("");
   const [note, setNote] = useState("");
 
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -269,6 +289,23 @@ function TelegramFinanceApp() {
 
   const isVehiclePurchaseOperation =
     ledger === "showroom" && operation?.article === SHOWROOM_VEHICLE_PURCHASE_ARTICLE;
+
+  const transferTargetAccount = useMemo(() => {
+    if (!account || !operation) return null;
+    return TRANSFER_TARGETS[ledger].find(
+      (item) => item.sourceAccount === account && item.sourceArticle === operation.article,
+    )?.targetAccount || null;
+  }, [account, ledger, operation]);
+
+  const transferTargetAccountInfo = useMemo(() => {
+    if (!transferTargetAccount) return null;
+    return (ledger === "showroom" ? SHOWROOM_ACCOUNTS : RENTAL_ACCOUNTS)
+      .find((item) => item.key === transferTargetAccount) || null;
+  }, [ledger, transferTargetAccount]);
+
+  const needsReceivedAmount =
+    Boolean(selectedAccount && transferTargetAccountInfo) &&
+    selectedAccount!.currency !== transferTargetAccountInfo!.currency;
 
   const vehicleOptions = useMemo(
     () => vehicleOptionsFromCatalog(catalog),
@@ -502,6 +539,7 @@ function TelegramFinanceApp() {
     setMatches([]);
     setAlternate(null);
     setNote("");
+    setReceivedAmount("");
     setSubmitError("");
     requestIdRef.current = "";
   }, []);
@@ -513,6 +551,7 @@ function TelegramFinanceApp() {
     setDirection("");
     clearOperation();
     setAmount("");
+    setReceivedAmount("");
     setNote("");
     setReviewOpen(false);
     setSubmitError("");
@@ -540,6 +579,7 @@ function TelegramFinanceApp() {
     setMatches([]);
     setAlternate(null);
     setNote("");
+    setReceivedAmount("");
     setSubmitError("");
     requestIdRef.current = "";
     telegram?.HapticFeedback?.impactOccurred?.("light");
@@ -561,7 +601,8 @@ function TelegramFinanceApp() {
     Boolean(operation) &&
     (!isVehiclePurchaseOperation || Boolean(note.trim())) &&
     Number.isFinite(Number(amount)) &&
-    Number(amount) > 0;
+    Number(amount) > 0 &&
+    (!needsReceivedAmount || (Number.isFinite(Number(receivedAmount)) && Number(receivedAmount) > 0));
 
   const openReview = () => {
     if (!canReview) return;
@@ -606,6 +647,7 @@ function TelegramFinanceApp() {
         article: operation.article,
         row: operation.row,
         amount: Number(amount),
+        received_amount: needsReceivedAmount ? Number(receivedAmount) : null,
         note: note.trim(),
       });
 
@@ -641,6 +683,7 @@ function TelegramFinanceApp() {
     setSuccess(null);
     clearOperation();
     setAmount("");
+    setReceivedAmount("");
     setNote("");
     requestIdRef.current = "";
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1013,6 +1056,33 @@ function TelegramFinanceApp() {
             <span>{selectedAccount?.currency || "AED"}</span>
           </div>
         </div>
+
+        {needsReceivedAmount && transferTargetAccountInfo ? (
+          <div>
+            <label className="tg-field-label" htmlFor="tg-received-amount">Получено</label>
+            <div className="tg-amount-wrap">
+              <input
+                id="tg-received-amount"
+                className="tg-input tg-amount-input"
+                inputMode="decimal"
+                type="text"
+                value={receivedAmount}
+                placeholder="0"
+                onChange={(event) => {
+                  const next = event.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
+                  if ((next.match(/\./g) || []).length <= 1) {
+                    setReceivedAmount(next);
+                    requestIdRef.current = "";
+                  }
+                }}
+              />
+              <span>{transferTargetAccountInfo.currency}</span>
+            </div>
+            <div className="tg-helper">
+              Фактическая сумма, которая пришла на {transferTargetAccountInfo.label}.
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="tg-form-section">
@@ -1099,6 +1169,12 @@ function TelegramFinanceApp() {
                 <dt>Операция</dt>
                 <dd>{operation.label}</dd>
               </div>
+              {needsReceivedAmount && transferTargetAccountInfo ? (
+                <div>
+                  <dt>Получено на {transferTargetAccountInfo.label}</dt>
+                  <dd>{formatAmount(receivedAmount, transferTargetAccountInfo.currency)}</dd>
+                </div>
+              ) : null}
               {note.trim() ? (
                 <div>
                   <dt>{isVehiclePurchaseOperation ? "Машина" : "Примечание"}</dt>
