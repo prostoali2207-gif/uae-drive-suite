@@ -460,6 +460,7 @@ function ensureFinanceCalendar_(ledger) {
   const ss = spreadsheet_(ledger);
   const window = postingWindow_();
   const currentSheet = ensureMonthSheet_(ss, ledger, window.currentStart);
+  refreshMonthOpeningBalances_(ss, ledger, currentSheet, window.currentStart);
   ensureInputDateValidation_(ss, window);
   syncDashboardMonth_(ss, ledger, currentSheet);
   ensureFinanceMonthTrigger_();
@@ -558,6 +559,20 @@ function ensureMonthSheet_(ss, ledger, monthStartYmd) {
 
   if (config.hideMonthSheet) sheet.hideSheet();
   return sheet;
+}
+
+function refreshMonthOpeningBalances_(ss, ledger, monthSheet, monthStartYmd) {
+  const config = ledgerConfig_(ledger);
+  const previousName = monthSheetNameFromYmd_(addMonthsYmd_(monthStartYmd, -1));
+  const previousSheet = ss.getSheetByName(previousName);
+  if (!previousSheet) {
+    throw new Error('Не найден предыдущий месячный лист «' + previousName + '».');
+  }
+
+  for (let i = 0; i < config.openingCells.length; i++) {
+    const opening = previousSheet.getRange(config.closingCells[i]).getValue();
+    monthSheet.getRange(config.openingCells[i]).setValue(opening);
+  }
 }
 
 function clearLiteralCellsPreserveFormulas_(range) {
