@@ -471,20 +471,57 @@ function financeMonthMaintenance() {
   });
 }
 
-function ensureFinanceMonthTrigger_() {
-  const handler = 'financeMonthMaintenance';
-  const exists = ScriptApp.getProjectTriggers().some(function (trigger) {
-    return trigger.getHandlerFunction() === handler;
-  });
-  if (exists) return;
+function financeMonthPrecreateNext() {
+  const today = dubaiTodayYmd_();
+  const tomorrow = addDaysYmd_(today, 1);
+  if (monthStartYmd_(tomorrow) === monthStartYmd_(today)) return;
 
-  ScriptApp.newTrigger(handler)
-    .timeBased()
-    .everyDays(1)
-    .atHour(0)
-    .nearMinute(10)
-    .inTimezone(FINANCE_TIME_ZONE)
-    .create();
+  ['rental', 'showroom'].forEach(function (ledger) {
+    const ss = spreadsheet_(ledger);
+    ensureMonthSheet_(ss, ledger, monthStartYmd_(tomorrow));
+  });
+}
+
+function installFinanceMonthAutomation() {
+  ensureFinanceMonthTriggers_();
+  financeMonthMaintenance();
+  return {
+    ok: true,
+    timezone: FINANCE_TIME_ZONE,
+    maintenance: 'daily around 00:10',
+    precreate: 'daily around 23:10; creates next month only when tomorrow is day 1',
+  };
+}
+
+function ensureFinanceMonthTrigger_() {
+  ensureFinanceMonthTriggers_();
+}
+
+function ensureFinanceMonthTriggers_() {
+  const existing = {};
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    existing[trigger.getHandlerFunction()] = true;
+  });
+
+  if (!existing.financeMonthMaintenance) {
+    ScriptApp.newTrigger('financeMonthMaintenance')
+      .timeBased()
+      .everyDays(1)
+      .atHour(0)
+      .nearMinute(10)
+      .inTimezone(FINANCE_TIME_ZONE)
+      .create();
+  }
+
+  if (!existing.financeMonthPrecreateNext) {
+    ScriptApp.newTrigger('financeMonthPrecreateNext')
+      .timeBased()
+      .everyDays(1)
+      .atHour(23)
+      .nearMinute(10)
+      .inTimezone(FINANCE_TIME_ZONE)
+      .create();
+  }
 }
 
 function ensureMonthSheet_(ss, ledger, monthStartYmd) {
@@ -746,6 +783,12 @@ function addMonthsYmd_(monthStartYmd, delta) {
 function monthEndYmd_(monthStartYmd) {
   const parts = String(monthStartYmd).split('-').map(Number);
   const date = new Date(Date.UTC(parts[0], parts[1], 0, 12, 0, 0));
+  return Utilities.formatDate(date, 'UTC', 'yyyy-MM-dd');
+}
+
+function addDaysYmd_(ymd, delta) {
+  const parts = String(ymd).split('-').map(Number);
+  const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + Number(delta || 0), 12, 0, 0));
   return Utilities.formatDate(date, 'UTC', 'yyyy-MM-dd');
 }
 
