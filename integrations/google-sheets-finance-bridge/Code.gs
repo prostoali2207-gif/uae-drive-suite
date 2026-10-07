@@ -573,8 +573,19 @@ function ensureInputDateValidation_(ss, window) {
     .setHelpText(help)
     .build();
 
-  sheet.getRange(INPUT_FIRST_ROW, 1, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, 1)
-    .setDataValidation(rule);
+  const rowCount = INPUT_LAST_ROW - INPUT_FIRST_ROW + 1;
+  const dates = sheet.getRange(INPUT_FIRST_ROW, 1, rowCount, 1).getDisplayValues();
+  const emptyDateCells = [];
+
+  for (let i = 0; i < dates.length; i++) {
+    if (String(dates[i][0] || '').trim() === '') {
+      emptyDateCells.push('A' + (INPUT_FIRST_ROW + i));
+    }
+  }
+
+  if (emptyDateCells.length) {
+    sheet.getRangeList(emptyDateCells).setDataValidation(rule);
+  }
 }
 
 function syncDashboardMonth_(ss, ledger, monthSheet) {
