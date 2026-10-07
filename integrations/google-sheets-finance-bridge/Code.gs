@@ -756,20 +756,136 @@ function financeMonthDryRunNovember2026() {
     return financeMonthDryRun_(dateYmd);
   });
 
+  const audit = financeOctoberClosingAudit_();
+  const errors = audit.errors.slice();
+
   report.splice(2, 0, {
     simulated_today: '2026-11-02',
     scenario: 'Октябрьская операция внесена 2 ноября во время льготы',
     result: [
       'операция записывается в Октябрь 2026',
       'октябрьский остаток на конец пересчитывается',
-      'остаток на начало Ноябрь 2026 связан живой формулой и обновляется автоматически',
-      'ручная повторная запись остатка 4 ноября не нужна',
+      'Ноябрь 2026 ссылается живой формулой на найденную строку «остаток на конец»',
+      'остаток на начало ноября обновляется автоматически вместе с октябрём',
+      'ручной пересчёт 4 ноября не нужен',
     ],
     writes_performed: false,
   });
 
-  console.log(JSON.stringify(report, null, 2));
-  return report;
+  const output = {
+    status: errors.length
+      ? '🚨🚨🚨 ОШИБКА: ОСТАТКИ ИЛИ ССЫЛКИ НЕ СОВПАДАЮТ — НЕ РАЗВЁРТЫВАТЬ 🚨🚨🚨'
+      : 'OK: проверка остатков пройдена',
+    october_closing_audit: audit,
+    scenarios: report,
+    writes_performed: false,
+  };
+
+  if (errors.length) {
+    console.error(output.status);
+    console.error(JSON.stringify(errors, null, 2));
+  }
+  console.log(JSON.stringify(output, null, 2));
+  return output;
+}
+
+function financeOctoberClosingAudit_() {
+  const errors = [];
+  const ledgers = [];
+
+  ['rental', 'showroom'].forEach(function (ledger) {
+    const config = ledgerConfig_(ledger);
+    const ss = spreadsheet_(ledger);
+    const sheet = ss.getSheetByName('Октябрь 2026');
+    if (!sheet) {
+      errors.push(ledger + ': не найден лист «Октябрь 2026».');
+      return;
+    }
+
+    let closingRow;
+    try {
+      closingRow = findUniqueRowByLabel_(sheet, config.closingRowLabel);
+    } catch (error) {
+      errors.push(ledger + ': ' + error.message);
+      return;
+    }
+
+    const rowLabel = sheet.getRange(closingRow, 2).getDisplayValue();
+    const sources = [];
+
+    for (let i = 0; i < config.closingColumns.length; i++) {
+      const sourceCell = config.closingColumns[i] + closingRow;
+      const range = sheet.getRange(sourceCell);
+      sources.push({
+        source_cell: sourceCell,
+        row: closingRow,
+        row_label_B: rowLabel,
+        value: range.getValue(),
+        display_value: range.getDisplayValue(),
+        formula: range.getFormula(),
+      });
+    }
+
+    if (ledger === 'showroom') {
+      const expected = [
+        { account: 'Касса', value: 33749.5 },
+        { account: 'AJMAN', value: 12305.0 },
+      ];
+
+      for (let i = 0; i < expected.length; i++) {
+        const actual = Number(sources[i].value);
+        sources[i].account = expected[i].account;
+        sources[i].expected_value = expected[i].value;
+        sources[i].matches_expected = Math.abs(actual - expected[i].value) < 0.01;
+        if (!sources[i].matches_expected) {
+          errors.push(
+            'showroom ' + expected[i].account + ': ожидалось ' + expected[i].value +
+            ', найдено ' + sources[i].display_value + ' в ' + sources[i].source_cell + '.'
+          );
+        }
+      }
+    } else {
+      const baselineCells = ['BM384', 'EA384', 'GO384'];
+      for (let i = 0; i < baselineCells.length; i++) {
+        const baseline = sheet.getRange(baselineCells[i]);
+        const baselineRow = baseline.getRow();
+        const baselineLabel = sheet.getRange(baselineRow, 2).getDisplayValue();
+        const baselineValue = baseline.getValue();
+
+        sources[i].october_baseline_cell = baselineCells[i];
+        sources[i].october_baseline_value = baselineValue;
+        sources[i].october_baseline_display_value = baseline.getDisplayValue();
+        sources[i].october_baseline_row_label_B = baselineLabel;
+        sources[i].matches_october_baseline =
+          sources[i].source_cell === baselineCells[i] &&
+          String(rowLabel).trim().toLowerCase() === 'остаток на конец' &&
+          Math.abs(Number(sources[i].value) - Number(baselineValue)) < 0.01;
+
+        if (!sources[i].matches_october_baseline) {
+          errors.push(
+            'rental: динамический источник ' + sources[i].source_cell +
+            ' не совпал с контрольной октябрьской клеткой ' + baselineCells[i] + '.'
+          );
+        }
+      }
+    }
+
+    ledgers.push({
+      ledger: ledger,
+      sheet: 'Октябрь 2026',
+      closing_row_found_by_B_label: closingRow,
+      closing_row_label_B: rowLabel,
+      sources: sources,
+    });
+  });
+
+  return {
+    status: errors.length
+      ? '🚨🚨🚨 ОШИБКА: ПРОВЕРКА ОКТЯБРЬСКИХ ОСТАТКОВ НЕ ПРОЙДЕНА 🚨🚨🚨'
+      : 'OK',
+    ledgers: ledgers,
+    errors: errors,
+  };
 }
 
 function financeMonthDryRun_(dateYmd) {
@@ -790,12 +906,16 @@ function financeMonthDryRun_(dateYmd) {
     const opening = [];
 
     if (previousSheet) {
+      const closingRow = findUniqueRowByLabel_(previousSheet, config.closingRowLabel);
       for (let i = 0; i < config.openingCells.length; i++) {
+        const sourceCell = config.closingColumns[i] + closingRow;
         opening.push({
           target: config.openingCells[i],
-          source: previousMonthName + '!' + config.closingCells[i],
-          formula: previousMonthLinkFormula_(previousMonthName, config.closingCells[i]),
-          previous_closing_value_now: previousSheet.getRange(config.closingCells[i]).getDisplayValue(),
+          source: previousMonthName + '!' + sourceCell,
+          source_row_found_by_B_label: closingRow,
+          source_row_label_B: previousSheet.getRange(closingRow, 2).getDisplayValue(),
+          formula: previousMonthLinkFormula_(previousMonthName, sourceCell),
+          previous_closing_value_now: previousSheet.getRange(sourceCell).getDisplayValue(),
           behavior_if_previous_month_changes: 'updates automatically',
         });
       }
