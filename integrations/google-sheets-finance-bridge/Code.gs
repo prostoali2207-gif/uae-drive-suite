@@ -622,6 +622,7 @@ function ensureTransferPairForRow_(sheet, ledger, sourceRow, receivedAmount, ori
   if (isLegacyUnmanagedTransferRow_(ledger, sourceRow)) return null;
 
   const source = readTransferRow_(sheet, ledger, sourceRow);
+  if (isLegacyUnmanagedTransferRecord_(ledger, source)) return null;
   if (isTransferInputBlank_(source)) return null;
   if (!source.accountKey || !source.article || !Number.isFinite(source.amount) || source.amount <= 0 || !source.dateYmd) {
     return null;
@@ -639,7 +640,17 @@ function ensureTransferPairForRow_(sheet, ledger, sourceRow, receivedAmount, ori
     return null;
   }
 
-  const amounts = resolveTransferAmounts_(def, source.amount, receivedAmount, source.note, source.rate);
+  let amounts;
+  try {
+    amounts = resolveTransferAmounts_(def, source.amount, receivedAmount, source.note, source.rate);
+  } catch (error) {
+    if (origin === 'manual') {
+      sheet.getRange(sourceRow, 5).setNote(
+        '⚠ ' + (error instanceof Error ? error.message : String(error))
+      );
+    }
+    throw error;
+  }
   let pairId = source.pairId || Utilities.getUuid();
   let peerRow = source.pairId ? findTransferPeerRow_(sheet, source.pairId, sourceRow) : 0;
 
@@ -940,6 +951,18 @@ function roundMoney_(value) {
 
 function isLegacyUnmanagedTransferRow_(ledger, row) {
   return ledger === 'showroom' && (row === 9 || row === 13);
+}
+
+function isLegacyUnmanagedTransferRecord_(ledger, record) {
+  if (ledger !== 'showroom' || !record) return false;
+  return (
+    record.dateYmd === '2026-10-02' &&
+    Math.abs(Number(record.amount) - 1870) < 0.01 &&
+    (
+      (record.accountKey === 'ajman_aed' && normalize_(record.article) === normalize_('перевод в КАССУ')) ||
+      (record.accountKey === 'cash_aed' && normalize_(record.article) === normalize_('приход со счета AJMAN'))
+    )
+  );
 }
 
 function reconcileOrphanTransferPairs_(ledger) {
