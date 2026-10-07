@@ -200,6 +200,7 @@ function findArticles_(payload) {
   for (let i = 0; i < rows.length; i++) {
     const parsed = parseReferenceRow_(rows[i], ledger, account, i + 2);
     if (!parsed || !parsed.operation) continue;
+    if (isSystemIncomingTransferArticle_(ledger, parsed.operation)) continue;
     if (requestedDirection && parsed.direction !== requestedDirection) continue;
 
     const haystack = normalize_(parsed.operation + ' ' + parsed.searchTerms);
@@ -249,6 +250,9 @@ function recordEntry_(payload) {
   const amount = Number(payload.amount);
 
   if (!article) throw new Error('article is required.');
+  if (isSystemIncomingTransferArticle_(ledger, article)) {
+    throw new Error('Парную сторону перевода система создаёт сама. Внеси только исходящий перевод.');
+  }
   if (article.length > 250) throw new Error('article is too long.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be greater than zero.');
   if (note.length > 500) throw new Error('note is too long.');
@@ -857,6 +861,15 @@ function findMatchingTransferCounterpart_(sheet, ledger, sourceRow, dateYmd, def
 
 function firstEmptyInputRow_(sheet) {
   return inspectInputRows_(sheet, '').emptyRow;
+}
+
+function isSystemIncomingTransferArticle_(ledger, article) {
+  const target = normalize_(article);
+  const definitions = TRANSFER_DEFINITIONS[ledger] || [];
+  for (let i = 0; i < definitions.length; i++) {
+    if (normalize_(definitions[i].targetArticle) === target) return true;
+  }
+  return false;
 }
 
 function transferDefinitionForSource_(ledger, accountKey, article) {
