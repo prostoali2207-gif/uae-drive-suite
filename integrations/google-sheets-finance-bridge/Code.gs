@@ -664,6 +664,69 @@ function updateRentalQuickLinks_(main, ss, monthSheet) {
   });
 }
 
+function financeMonthDryRunNovember2026() {
+  const dates = ['2026-11-01', '2026-11-03', '2026-11-04'];
+  const report = dates.map(function (dateYmd) {
+    return financeMonthDryRun_(dateYmd);
+  });
+  console.log(JSON.stringify(report, null, 2));
+  return report;
+}
+
+function financeMonthDryRun_(dateYmd) {
+  const currentStart = monthStartYmd_(dateYmd);
+  const currentEnd = monthEndYmd_(currentStart);
+  const previousStart = addMonthsYmd_(currentStart, -1);
+  const previousEnd = monthEndYmd_(previousStart);
+  const day = Number(String(dateYmd).slice(8, 10));
+  const graceActive = day <= MONTH_GRACE_DAYS;
+  const currentMonthName = monthSheetNameFromYmd_(currentStart);
+  const previousMonthName = monthSheetNameFromYmd_(previousStart);
+
+  const ledgers = ['rental', 'showroom'].map(function (ledger) {
+    const config = ledgerConfig_(ledger);
+    const ss = spreadsheet_(ledger);
+    const currentSheet = ss.getSheetByName(currentMonthName);
+    const previousSheet = ss.getSheetByName(previousMonthName);
+    const opening = [];
+
+    if (previousSheet) {
+      for (let i = 0; i < config.openingCells.length; i++) {
+        opening.push({
+          target: config.openingCells[i],
+          source: previousMonthName + '!' + config.closingCells[i],
+          value: previousSheet.getRange(config.closingCells[i]).getDisplayValue(),
+        });
+      }
+    }
+
+    return {
+      ledger: ledger,
+      active_month: currentMonthName,
+      month_sheet_exists: Boolean(currentSheet),
+      would_create_month_sheet: !currentSheet,
+      template_sheet: config.templateMonthSheet,
+      previous_month_sheet: previousMonthName,
+      opening_balances: opening,
+      would_switch_main_to: currentMonthName,
+      would_switch_overview_to: ledger === 'showroom' ? currentMonthName : null,
+      allowed_posting_start: graceActive ? previousStart : currentStart,
+      allowed_posting_end: currentEnd,
+      previous_month_grace: graceActive
+        ? { start: previousStart, end: previousEnd, until: currentStart.slice(0, 8) + '03' }
+        : null,
+      writes_performed: false,
+    };
+  });
+
+  return {
+    simulated_today: dateYmd,
+    timezone: FINANCE_TIME_ZONE,
+    ledgers: ledgers,
+    writes_performed: false,
+  };
+}
+
 function dubaiTodayYmd_() {
   return Utilities.formatDate(new Date(), FINANCE_TIME_ZONE, 'yyyy-MM-dd');
 }
