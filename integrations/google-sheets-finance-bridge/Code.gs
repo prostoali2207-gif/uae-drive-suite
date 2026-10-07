@@ -6,6 +6,13 @@ const INPUT_SHEET = 'Ввод операций';
 const REFERENCE_SHEET = 'Справочники';
 const INPUT_FIRST_ROW = 5;
 const INPUT_LAST_ROW = 1004;
+const FINANCE_TIME_ZONE = 'Asia/Dubai';
+const MONTH_GRACE_DAYS = 3;
+const MONTH_TEMPLATE_SHEET = 'Октябрь 2026';
+const MONTH_NAMES_RU = Object.freeze([
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
+]);
 
 const LEDGER_CONFIG = Object.freeze({
   rental: Object.freeze({
@@ -16,7 +23,18 @@ const LEDGER_CONFIG = Object.freeze({
       sber_rub: 'СБЕР (RUB)',
     }),
     referenceRange: 'A2:D256',
-    monthSheet: null,
+    templateMonthSheet: MONTH_TEMPLATE_SHEET,
+    openingCells: Object.freeze(['C3', 'BQ3', 'EE3']),
+    closingCells: Object.freeze(['BM384', 'EA384', 'GO384']),
+    literalDataRanges: Object.freeze(['C4:BL383', 'BQ4:DZ383', 'EE4:GN383']),
+    dateHeaderGroups: Object.freeze([
+      Object.freeze({ startColumn: 3, step: 2 }),
+      Object.freeze({ startColumn: 69, step: 2 }),
+      Object.freeze({ startColumn: 135, step: 2 }),
+      Object.freeze({ startColumn: 201, step: 1 }),
+      Object.freeze({ startColumn: 236, step: 1 }),
+    ]),
+    hideMonthSheet: false,
   }),
   showroom: Object.freeze({
     spreadsheetId: SHOWROOM_SPREADSHEET_ID,
@@ -25,12 +43,22 @@ const LEDGER_CONFIG = Object.freeze({
       ajman_aed: 'AJMAN',
     }),
     referenceRange: 'A2:E31',
-    monthSheet: 'Октябрь 2026',
+    templateMonthSheet: MONTH_TEMPLATE_SHEET,
+    openingCells: Object.freeze(['C3', 'BQ3']),
+    closingCells: Object.freeze(['BM146', 'EA146']),
+    literalDataRanges: Object.freeze(['C4:BL145', 'BQ4:DZ145']),
+    dateHeaderGroups: Object.freeze([
+      Object.freeze({ startColumn: 3, step: 2 }),
+      Object.freeze({ startColumn: 69, step: 2 }),
+      Object.freeze({ startColumn: 135, step: 1 }),
+    ]),
+    hideMonthSheet: true,
   }),
 });
 
 function doGet(e) {
   const ledger = validateLedger_((e && e.parameter && e.parameter.ledger) || 'rental');
+  ensureFinanceCalendar_(ledger);
   const config = ledgerConfig_(ledger);
   const period = activePeriod_(ledger);
 
@@ -75,6 +103,7 @@ function doPost(e) {
 
 function getContext_(payload) {
   const ledger = validateLedger_(payload && payload.ledger);
+  ensureFinanceCalendar_(ledger);
   const config = ledgerConfig_(ledger);
   const period = activePeriod_(ledger);
 
@@ -93,6 +122,7 @@ function getContext_(payload) {
 
 function findArticles_(payload) {
   const ledger = validateLedger_(payload.ledger);
+  ensureFinanceCalendar_(ledger);
   const account = validateAccount_(payload.account, ledger);
   const date = validateActiveDate_(payload.date, ledger);
   const period = activePeriod_(ledger);
@@ -146,16 +176,11 @@ function findArticles_(payload) {
 
 function recordEntry_(payload) {
   const ledger = validateLedger_(payload.ledger);
+  ensureFinanceCalendar_(ledger);
   const config = ledgerConfig_(ledger);
   const account = validateAccount_(payload.account, ledger);
-  const date = validateDate_(payload.date, ledger);
+  const date = validatePostingDate_(payload.date, ledger);
   const period = activePeriod_(ledger);
-
-  if (date < period.start || date > period.end) {
-    throw new Error(
-      'Дата ' + date + ' вне активного периода таблицы: ' + period.start + ' — ' + period.end + '.'
-    );
-  }
 
   const article = String(payload.article || '').trim();
   const note = String(payload.note || '').trim();
@@ -375,59 +400,279 @@ function inspectInputRows_(sheet, requestId) {
 }
 
 function activePeriod_(ledger) {
-  const cache = CacheService.getScriptCache();
-  const cacheKey = 'finance_active_period_v2_' + ledger;
-  const cached = cache.get(cacheKey);
-  if (cached) return JSON.parse(cached);
+  validateLedger_(ledger);
+  const window = postingWindow_();
+  return {
+    start: window.currentStart,
+    end: window.currentEnd,
+    label: monthSheetNameFromYmd_(window.currentStart),
+    previous_month_grace: window.graceActive ? {
+      start: window.previousStart,
+      end: window.previousEnd,
+      until: window.graceUntil,
+    } : null,
+  };
+}
 
+function postingWindow_() {
+  const today = dubaiTodayYmd_();
+  const currentStart = monthStartYmd_(today);
+  const currentEnd = monthEndYmd_(currentStart);
+  const previousStart = addMonthsYmd_(currentStart, -1);
+  const previousEnd = monthEndYmd_(previousStart);
+  const day = Number(today.slice(8, 10));
+  const graceActive = day <= MONTH_GRACE_DAYS;
+
+  return {
+    today,
+    currentStart,
+    currentEnd,
+    previousStart,
+    previousEnd,
+    graceActive,
+    graceUntil: currentStart.slice(0, 8) + String(MONTH_GRACE_DAYS).padStart(2, '0'),
+    allowedStart: graceActive ? previousStart : currentStart,
+    allowedEnd: currentEnd,
+  };
+}
+
+function validatePostingDate_(value, ledger) {
+  const date = validateDate_(value, ledger);
+  const window = postingWindow_();
+  if (date >= window.currentStart && date <= window.currentEnd) return date;
+  if (window.graceActive && date >= window.previousStart && date <= window.previousEnd) return date;
+
+  let message = 'Дата ' + date + ' вне активного месяца: ' +
+    window.currentStart + ' — ' + window.currentEnd + '.';
+  if (window.graceActive) {
+    message += ' До ' + window.graceUntil +
+      ' также разрешён прошлый месяц: ' + window.previousStart + ' — ' + window.previousEnd + '.';
+  }
+  throw new Error(message);
+}
+
+function validateActiveDate_(value, ledger) {
+  return validatePostingDate_(value, ledger);
+}
+
+function ensureFinanceCalendar_(ledger) {
   const config = ledgerConfig_(ledger);
   const ss = spreadsheet_(ledger);
-  let start;
-  let end;
+  const window = postingWindow_();
+  const currentSheet = ensureMonthSheet_(ss, ledger, window.currentStart);
+  ensureInputDateValidation_(ss, window);
+  syncDashboardMonth_(ss, ledger, currentSheet);
+  ensureFinanceMonthTrigger_();
+}
 
-  if (ledger === 'showroom') {
-    const monthSheet = ss.getSheetByName(config.monthSheet);
-    if (!monthSheet) throw new Error('Активный лист автосалона не найден.');
+function financeMonthMaintenance() {
+  ['rental', 'showroom'].forEach(function (ledger) {
+    ensureFinanceCalendar_(ledger);
+  });
+}
 
-    start = monthSheet.getRange('C2').getValue();
-    if (!(start instanceof Date)) throw new Error('Не удалось определить активный месяц автосалона.');
+function ensureFinanceMonthTrigger_() {
+  const handler = 'financeMonthMaintenance';
+  const exists = ScriptApp.getProjectTriggers().some(function (trigger) {
+    return trigger.getHandlerFunction() === handler;
+  });
+  if (exists) return;
 
-    const tz = ss.getSpreadsheetTimeZone() || 'Asia/Dubai';
-    const startYmd = Utilities.formatDate(start, tz, 'yyyy-MM-dd');
-    const parts = startYmd.split('-').map(Number);
-    const lastDayUtc = new Date(Date.UTC(parts[0], parts[1], 0, 12, 0, 0));
-    end = Utilities.parseDate(
-      Utilities.formatDate(lastDayUtc, 'UTC', 'yyyy-MM-dd'),
-      'Asia/Dubai',
-      'yyyy-MM-dd'
-    );
-  } else {
-    const sheet = ss.getSheetByName(INPUT_SHEET);
-    if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
+  ScriptApp.newTrigger(handler)
+    .timeBased()
+    .everyDays(1)
+    .atHour(0)
+    .nearMinute(10)
+    .inTimezone(FINANCE_TIME_ZONE)
+    .create();
+}
 
-    const rule = sheet.getRange('A5').getDataValidation();
-    if (!rule || rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.DATE_BETWEEN) {
-      throw new Error('Не удалось определить активный месяц финансовой таблицы.');
-    }
+function ensureMonthSheet_(ss, ledger, monthStartYmd) {
+  const config = ledgerConfig_(ledger);
+  const monthName = monthSheetNameFromYmd_(monthStartYmd);
+  let sheet = ss.getSheetByName(monthName);
+  if (sheet) return sheet;
 
-    const values = rule.getCriteriaValues();
-    start = values[0];
-    end = values[1];
+  const previousStart = addMonthsYmd_(monthStartYmd, -1);
+  const previousName = monthSheetNameFromYmd_(previousStart);
+  const previousSheet = ss.getSheetByName(previousName);
+  if (!previousSheet) {
+    throw new Error('Не найден предыдущий месячный лист «' + previousName + '».');
+  }
 
-    if (!(start instanceof Date) || !(end instanceof Date)) {
-      throw new Error('Некорректный период в «Ввод операций».');
+  const template = ss.getSheetByName(config.templateMonthSheet);
+  if (!template) {
+    throw new Error('Не найден шаблон месячного листа «' + config.templateMonthSheet + '».');
+  }
+
+  sheet = template.copyTo(ss);
+  sheet.setName(monthName);
+  sheet.getRange('B1').setValue(parseYmd_(monthStartYmd));
+  setMonthDateHeaders_(sheet, monthStartYmd, config.dateHeaderGroups);
+
+  config.literalDataRanges.forEach(function (a1) {
+    clearLiteralCellsPreserveFormulas_(sheet.getRange(a1));
+  });
+
+  for (let i = 0; i < config.openingCells.length; i++) {
+    const opening = previousSheet.getRange(config.closingCells[i]).getValue();
+    sheet.getRange(config.openingCells[i]).setValue(opening);
+  }
+
+  if (config.hideMonthSheet) sheet.hideSheet();
+  return sheet;
+}
+
+function clearLiteralCellsPreserveFormulas_(range) {
+  const formulas = range.getFormulas();
+  const values = range.getValues();
+  const output = new Array(values.length);
+
+  for (let r = 0; r < values.length; r++) {
+    output[r] = new Array(values[r].length);
+    for (let c = 0; c < values[r].length; c++) {
+      output[r][c] = formulas[r][c] || '';
     }
   }
 
-  const tz = ss.getSpreadsheetTimeZone() || 'Asia/Dubai';
-  const period = {
-    start: Utilities.formatDate(start, tz, 'yyyy-MM-dd'),
-    end: Utilities.formatDate(end, tz, 'yyyy-MM-dd'),
-    label: Utilities.formatDate(start, tz, 'MMMM yyyy'),
-  };
+  range.clearContent();
+  range.setValues(output);
+}
 
-  cache.put(cacheKey, JSON.stringify(period), 300);
-  return period;
+function setMonthDateHeaders_(sheet, monthStartYmd, groups) {
+  const parts = monthStartYmd.split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(parts[0], parts[1], 0, 12, 0, 0)).getUTCDate();
+
+  groups.forEach(function (group) {
+    for (let day = 1; day <= 31; day++) {
+      const column = group.startColumn + (day - 1) * group.step;
+      const cell = sheet.getRange(2, column);
+      if (day <= daysInMonth) {
+        const ymd = monthStartYmd.slice(0, 8) + String(day).padStart(2, '0');
+        cell.setValue(parseYmd_(ymd));
+      } else {
+        cell.clearContent();
+      }
+    }
+  });
+}
+
+function ensureInputDateValidation_(ss, window) {
+  const sheet = ss.getSheetByName(INPUT_SHEET);
+  if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
+
+  const start = parseYmd_(window.allowedStart);
+  const end = parseYmd_(window.allowedEnd);
+  const help = window.graceActive
+    ? 'Текущий месяц + льгота на прошлый месяц до ' + window.graceUntil + '.'
+    : monthSheetNameFromYmd_(window.currentStart);
+
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireDateBetween(start, end)
+    .setAllowInvalid(false)
+    .setHelpText(help)
+    .build();
+
+  sheet.getRange(INPUT_FIRST_ROW, 1, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, 1)
+    .setDataValidation(rule);
+}
+
+function syncDashboardMonth_(ss, ledger, monthSheet) {
+  const monthName = monthSheet.getName();
+  const main = ss.getSheetByName('Главная');
+  if (main) {
+    const previousName = String(main.getRange('C3').getDisplayValue() || '').trim();
+    if (previousName && previousName !== monthName) {
+      replaceMonthReferences_(main, previousName, monthName);
+    }
+    main.getRange('C3').setValue(monthName);
+
+    if (ledger === 'rental') {
+      updateRentalQuickLinks_(main, ss, monthSheet);
+    }
+  }
+
+  if (ledger === 'showroom') {
+    const overview = ss.getSheetByName('Месяц');
+    if (overview) {
+      const formula = overview.getRange('B2').getFormula();
+      const match = formula && formula.match(/='([^']+)'!B1/);
+      const previousName = match ? match[1] : '';
+      if (previousName && previousName !== monthName) {
+        replaceMonthReferences_(overview, previousName, monthName);
+      }
+    }
+  }
+}
+
+function replaceMonthReferences_(sheet, previousName, monthName) {
+  if (!previousName || previousName === monthName) return;
+  const range = sheet.getDataRange();
+  const formulas = range.getFormulas();
+  let changed = false;
+  const fromQuoted = "'" + previousName + "'!";
+  const toQuoted = "'" + monthName + "'!";
+
+  for (let r = 0; r < formulas.length; r++) {
+    for (let c = 0; c < formulas[r].length; c++) {
+      const formula = formulas[r][c];
+      if (!formula || formula.indexOf(fromQuoted) === -1) continue;
+      formulas[r][c] = formula.split(fromQuoted).join(toQuoted);
+      changed = true;
+    }
+  }
+
+  if (changed) range.setFormulas(formulas);
+}
+
+function updateRentalQuickLinks_(main, ss, monthSheet) {
+  const spreadsheetId = ss.getId();
+  const gid = monthSheet.getSheetId();
+  const base = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/edit#gid=' + gid + '&range=';
+  const links = [
+    { cell: 'A12', range: 'A1', label: 'Касса' },
+    { cell: 'C12', range: 'BO1', label: 'AJMAN' },
+    { cell: 'E12', range: 'EC1', label: 'СБЕР ₽' },
+    { cell: 'G12', range: 'GQ1', label: 'СБЕР AED' },
+    { cell: 'I12', range: 'HZ1', label: 'Свод' },
+  ];
+
+  links.forEach(function (item) {
+    const rich = SpreadsheetApp.newRichTextValue()
+      .setText(item.label)
+      .setLinkUrl(base + item.range)
+      .build();
+    main.getRange(item.cell).setRichTextValue(rich);
+  });
+}
+
+function dubaiTodayYmd_() {
+  return Utilities.formatDate(new Date(), FINANCE_TIME_ZONE, 'yyyy-MM-dd');
+}
+
+function monthStartYmd_(ymd) {
+  const value = String(ymd || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Некорректная дата месяца.');
+  return value.slice(0, 7) + '-01';
+}
+
+function addMonthsYmd_(monthStartYmd, delta) {
+  const parts = String(monthStartYmd).split('-').map(Number);
+  const date = new Date(Date.UTC(parts[0], parts[1] - 1 + Number(delta || 0), 1, 12, 0, 0));
+  return Utilities.formatDate(date, 'UTC', 'yyyy-MM-dd');
+}
+
+function monthEndYmd_(monthStartYmd) {
+  const parts = String(monthStartYmd).split('-').map(Number);
+  const date = new Date(Date.UTC(parts[0], parts[1], 0, 12, 0, 0));
+  return Utilities.formatDate(date, 'UTC', 'yyyy-MM-dd');
+}
+
+function monthSheetNameFromYmd_(monthStartYmd) {
+  const parts = String(monthStartYmd).split('-').map(Number);
+  const monthName = MONTH_NAMES_RU[parts[1] - 1];
+  if (!monthName || !parts[0]) throw new Error('Некорректный месяц.');
+  return monthName + ' ' + parts[0];
 }
 
 function validateAccount_(value, ledger) {
