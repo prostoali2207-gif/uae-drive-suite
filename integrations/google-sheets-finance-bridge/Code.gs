@@ -34,44 +34,7 @@ const TRANSFER_DEFINITIONS = Object.freeze({
       targetArticle: 'приход со счета AJMAN',
     }),
   ]),
-  rental: Object.freeze([
-    Object.freeze({
-      sourceAccount: 'cash_aed',
-      sourceArticle: 'Расход · Перевод · перевод на счет в AJMAN',
-      targetAccount: 'ajman_aed',
-      targetArticle: 'Приход · Перевод · приход из кассы',
-    }),
-    Object.freeze({
-      sourceAccount: 'ajman_aed',
-      sourceArticle: 'Расход · Перевод · перевод в КАССУ',
-      targetAccount: 'cash_aed',
-      targetArticle: 'Приход · Перевод · приход со счета AJMAN',
-    }),
-    Object.freeze({
-      sourceAccount: 'cash_aed',
-      sourceArticle: 'Расход · Перевод · перевод на счет в СБЕР',
-      targetAccount: 'sber_rub',
-      targetArticle: 'Приход · Перевод · приход из кассы',
-    }),
-    Object.freeze({
-      sourceAccount: 'ajman_aed',
-      sourceArticle: 'Расход · Перевод · перевод на счет в СБЕР',
-      targetAccount: 'sber_rub',
-      targetArticle: 'Приход · Перевод · приход со счета AJMAN',
-    }),
-    Object.freeze({
-      sourceAccount: 'sber_rub',
-      sourceArticle: 'Расход · Перевод · перевод в КАССУ',
-      targetAccount: 'cash_aed',
-      targetArticle: 'Приход · Перевод · приход со счета в сбере',
-    }),
-    Object.freeze({
-      sourceAccount: 'sber_rub',
-      sourceArticle: 'Расход · Перевод · перевод на счет в AJMAN',
-      targetAccount: 'ajman_aed',
-      targetArticle: 'Приход · Перевод · приход со счета в сбере',
-    }),
-  ]),
+  rental: Object.freeze([]),
 });
 
 const LEDGER_CONFIG = Object.freeze({
@@ -507,8 +470,6 @@ function ensureFinanceTransferTriggers_() {
   });
 
   const specs = [
-    { handler: 'financeTransferOnEditRental', spreadsheetId: RENTAL_SPREADSHEET_ID, event: 'edit' },
-    { handler: 'financeTransferOnChangeRental', spreadsheetId: RENTAL_SPREADSHEET_ID, event: 'change' },
     { handler: 'financeTransferOnEditShowroom', spreadsheetId: SHOWROOM_SPREADSHEET_ID, event: 'edit' },
     { handler: 'financeTransferOnChangeShowroom', spreadsheetId: SHOWROOM_SPREADSHEET_ID, event: 'change' },
   ];
@@ -1112,9 +1073,7 @@ function financeMonthPrecreateNext() {
 function installFinanceMonthAutomation() {
   ensureFinanceMonthTriggers_();
   ensureFinanceTransferTriggers_();
-  ['rental', 'showroom'].forEach(function (ledger) {
-    ensureTransferColumns_(ledger);
-  });
+  ensureTransferColumns_('showroom');
   financeMonthMaintenance();
   return {
     ok: true,
