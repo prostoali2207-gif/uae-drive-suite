@@ -25,7 +25,8 @@ const LEDGER_CONFIG = Object.freeze({
     referenceRange: 'A2:D256',
     templateMonthSheet: MONTH_TEMPLATE_SHEET,
     openingCells: Object.freeze(['C3', 'BQ3', 'EE3']),
-    closingCells: Object.freeze(['BM384', 'EA384', 'GO384']),
+    closingRowLabel: 'остаток на конец',
+    closingColumns: Object.freeze(['BM', 'EA', 'GO']),
     literalDataRanges: Object.freeze(['C4:BL383', 'BQ4:DZ383', 'EE4:GN383']),
     dateHeaderGroups: Object.freeze([
       Object.freeze({ startColumn: 3, step: 2 }),
@@ -45,7 +46,8 @@ const LEDGER_CONFIG = Object.freeze({
     referenceRange: 'A2:E31',
     templateMonthSheet: MONTH_TEMPLATE_SHEET,
     openingCells: Object.freeze(['C3', 'BQ3']),
-    closingCells: Object.freeze(['BM146', 'EA146']),
+    closingRowLabel: 'остаток на конец',
+    closingColumns: Object.freeze(['BM', 'EA']),
     literalDataRanges: Object.freeze(['C4:BL145', 'BQ4:DZ145']),
     dateHeaderGroups: Object.freeze([
       Object.freeze({ startColumn: 3, step: 2 }),
@@ -552,9 +554,11 @@ function ensureMonthSheet_(ss, ledger, monthStartYmd) {
     clearLiteralCellsPreserveFormulas_(sheet.getRange(a1));
   });
 
+  const closingRow = findUniqueRowByLabel_(previousSheet, config.closingRowLabel);
   for (let i = 0; i < config.openingCells.length; i++) {
+    const sourceCell = config.closingColumns[i] + closingRow;
     sheet.getRange(config.openingCells[i]).setFormula(
-      previousMonthLinkFormula_(previousName, config.closingCells[i])
+      previousMonthLinkFormula_(previousName, sourceCell)
     );
   }
 
@@ -570,11 +574,34 @@ function refreshMonthOpeningBalances_(ss, ledger, monthSheet, monthStartYmd) {
     throw new Error('Не найден предыдущий месячный лист «' + previousName + '».');
   }
 
+  const closingRow = findUniqueRowByLabel_(previousSheet, config.closingRowLabel);
   for (let i = 0; i < config.openingCells.length; i++) {
+    const sourceCell = config.closingColumns[i] + closingRow;
     monthSheet.getRange(config.openingCells[i]).setFormula(
-      previousMonthLinkFormula_(previousName, config.closingCells[i])
+      previousMonthLinkFormula_(previousName, sourceCell)
     );
   }
+}
+
+function findUniqueRowByLabel_(sheet, label) {
+  const target = String(label || '').trim().toLowerCase();
+  const values = sheet.getRange(1, 2, sheet.getLastRow(), 1).getDisplayValues();
+  const rows = [];
+
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0] || '').trim().toLowerCase() === target) {
+      rows.push(i + 1);
+    }
+  }
+
+  if (rows.length !== 1) {
+    throw new Error(
+      'На листе «' + sheet.getName() + '» в колонке B ожидалась ровно одна строка «' +
+      label + '», найдено: ' + rows.length + '.'
+    );
+  }
+
+  return rows[0];
 }
 
 function previousMonthLinkFormula_(sheetName, cellA1) {
