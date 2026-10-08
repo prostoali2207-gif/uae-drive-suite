@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const REQUIRED_HEADERS = ["Plate", "Date", "Time", "Gate", "Amount"] as const;
 const EXPECTED_HEADERS = ["Transaction ID", ...REQUIRED_HEADERS] as const;
@@ -57,10 +59,10 @@ function readRows(sheet: XLSX.WorkSheet): DarbRow[] {
     if (!plate || !normalizePlate(plate)) errors.push("missing plate");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
         !Number.isFinite(Date.parse(`${date}T00:00:00+04:00`)) ||
-        new Date(`${date}T00:00:00+04:00`).toISOString().slice(0, 10) === "") errors.push("invalid date (use YYYY-MM-DD)");
+        !/^\\d{4}-\\d{2}-\\d{2}$/.test(new Date(`${date}T00:00:00+04:00`).toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }).replace(/\\//g, "-"))) errors.push("invalid date (use YYYY-MM-DD)");
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) errors.push("invalid time (use HH:mm)");
     if (!gate) errors.push("missing gate");
-    if (!amountString || !Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
+    if (!amountString || !Number.isFinite(amount) || amount <= 0 || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
       errors.push("invalid positive AED amount");
     }
     // Canonical source prefix prevents collisions with Salik transaction IDs.
@@ -88,8 +90,29 @@ type Car = { id: string; plate: string };
 type Contract = { id: string; client_id: string; car_id: string; start_date: string; end_date: string; start_time: string | null; end_time: string | null };
 type Segment = { contract_id: string; car_id: string; started_at: string; ended_at: string | null };
 type Client = { id: string; full_name: string };
+type BaseSalik = Database["public"]["Tables"]["salik"];
+interface DarbDatabase extends Database {
+  public: Database["public"] & {
+    Tables: Database["public"]["Tables"] & {
+      contract_vehicles: {
+        Row: Segment;
+        Insert: Segment;
+        Update: Partial<Segment>;
+        Relationships: [];
+      };
+      salik: BaseSalik & {
+        Row: BaseSalik["Row"] & { trip_time: string | null };
+        Insert: BaseSalik["Insert"] & { trip_time?: string | null };
+        Update: BaseSalik["Update"] & { trip_time?: string | null };
+      };
+    };
+  };
+}
+const extendedSupabase = supabase as SupabaseClient<DarbDatabase>;
+
 function atDubai(date: string, time: string): number {
-  return Date.parse(`${date}T${time.slice(0, 8).padEnd(8, "0")}+04:00`);
+  const hhmmss = /^\\d{2}:\\d{2}$/.test(time) ? `${time}:00` : time;
+  return Date.parse(`${date}T${hhmmss}+04:00`);
 }
 function isInContract(c: Contract, at: number): boolean {
   const start = atDubai(c.start_date, c.start_time || "00:00:00");
@@ -103,7 +126,7 @@ export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
   const [carsResult, contractsResult, segmentsResult, clientsResult] = await Promise.all([
     supabase.from("cars").select("id, plate").eq("owner_id", user.id),
     supabase.from("contracts").select("id, client_id, car_id, start_date, end_date, start_time, end_time").eq("owner_id", user.id),
-    supabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at").eq("owner_id", user.id),
+    extendedSupabase.from("contract_vehicles").select("contract_id, car_id, started_at, ended_at").eq("owner_id", user.id),
     supabase.from("clients").select("id, full_name").eq("owner_id", user.id),
   ]);
   const loadError = carsResult.error || contractsResult.error || segmentsResult.error || clientsResult.error;
@@ -186,7 +209,7 @@ export async function commitDarb(preview: DarbPreviewRow[]): Promise<DarbImportR
       contract_id: null,
       client_id: null,
     }));
-    const { data, error } = await supabase.from("salik")
+    const { data, error } = await extendedSupabase.from("salik")
       .upsert(batch, { onConflict: "transaction_id,owner_id", ignoreDuplicates: true })
       .select("id");
     if (error) {
