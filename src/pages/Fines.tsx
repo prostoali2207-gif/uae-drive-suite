@@ -1229,11 +1229,13 @@ const Fines = () => {
                               {displayedStatus}
                             </span>
                           )}
-                          {displayedStatus === "Unpaid" && (
+                          {displayedStatus === "Unpaid" && (s.contract_id ? (
                             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => chargeSalikToClient(s.id)}>
                               Charge to Client
                             </Button>
-                          )}
+                          ) : (
+                            <span className="text-xs text-tint-amber-foreground">Not linked</span>
+                          ))}
                         </div>
                       </TableCell>
                       </TableRow>
