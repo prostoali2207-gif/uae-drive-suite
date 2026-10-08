@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Check, ChevronsUpDown, Plus, Search, TriangleAlert as AlertTriangle, Wallet, Upload } from "lucide-react";
 import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
 import { ParkingChargesTab } from "@/components/ParkingChargesTab";
+import { DarbImportDialog } from "@/components/DarbImportDialog";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -578,11 +579,11 @@ const Fines = () => {
   };
 
   return (
-    <DashboardLayout title="Fines & Salik" subtitle="Traffic fines and toll charges">
+    <DashboardLayout title="Fines & Tolls" subtitle="Traffic fines and toll charges">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col gap-5">
         <TabsList className="grid w-full grid-cols-3 md:w-fit">
           <TabsTrigger value="fines">Traffic Fines</TabsTrigger>
-          <TabsTrigger value="salik">Salik Charges</TabsTrigger>
+          <TabsTrigger value="salik">Toll Charges</TabsTrigger>
           <TabsTrigger value="parking">Parking</TabsTrigger>
         </TabsList>
         {activeTab !== "parking" && (
@@ -1010,7 +1011,7 @@ const Fines = () => {
               <Wallet className="h-4 w-4" />
             </div>
             <div className="flex-1">
-              <div className="text-xs text-muted-foreground">Total Salik Charges</div>
+              <div className="text-xs text-muted-foreground">Total Toll Charges</div>
               <div className="text-base font-semibold text-foreground">AED {salikBalance.toLocaleString()}</div>
             </div>
             {totalUnpaidSalik > 0 && (
@@ -1027,6 +1028,7 @@ const Fines = () => {
               <Upload className="h-4 w-4" />
               {importing ? "Importing..." : "Import Salik (Excel)"}
             </Button>
+            <DarbImportDialog onImported={fetchData} />
             {chargeableSalik.length > 0 && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -1036,9 +1038,9 @@ const Fines = () => {
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Charge all unpaid Salik?</AlertDialogTitle>
+                    <AlertDialogTitle>Charge all unpaid toll charges?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      {chargeableSalik.length} Salik charges totalling AED {chargeableSalikTotal.toLocaleString()} will be charged to their clients.
+                      {chargeableSalik.length} toll charges totalling AED {chargeableSalikTotal.toLocaleString()} will be charged to their clients.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -1127,7 +1129,7 @@ const Fines = () => {
                         <div className="font-mono text-[11px] text-muted-foreground">
                           {formatDateOnly(s.charge_date)}{s.trip_time ? ` · ${s.trip_time}` : ""}
                         </div>
-                        <div className="mt-1 truncate font-mono text-sm font-semibold text-foreground">{s.transaction_id || "No transaction ID"}</div>
+                        <div className="mt-1 truncate font-mono text-sm font-semibold text-foreground">{s.transaction_id?.startsWith("DARB:") ? "Darb" : "Salik"} · {s.transaction_id || "No transaction ID"}</div>
                       </div>
                       <div className="shrink-0 text-right">
                         <div className="font-mono text-base font-semibold tabular-nums text-foreground">AED {Number(s.amount).toLocaleString()}</div>
@@ -1216,7 +1218,7 @@ const Fines = () => {
                           <div className="mt-0.5 font-mono text-xs text-muted-foreground">{s.trip_time}</div>
                         ) : null}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-foreground">{s.transaction_id || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground"><span className="block text-[10px] text-muted-foreground">{s.transaction_id?.startsWith("DARB:") ? "Darb" : "Salik"}</span>{s.transaction_id || "—"}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{s.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(s.amount).toLocaleString()}</TableCell>
