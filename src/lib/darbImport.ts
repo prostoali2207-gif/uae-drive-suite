@@ -41,10 +41,37 @@ function isValidDate(value: string): boolean {
   return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
 }
 
-function readRows(sheet: XLSX.WorkSheet): DarbRow[] {
-  const matrix = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, {
-    header: 1, blankrows: false, defval: "", raw: false,
-  });
+function parseCsvMatrix(text: string): string[][] {
+  const matrix: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  const source = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (char === '"') {
+      if (quoted && source[i + 1] === '"') { cell += '"'; i++; }
+      else if (!quoted && cell === "") quoted = true;
+      else if (quoted) quoted = false;
+      else throw new Error("Invalid CSV quoting.");
+    } else if (char === "," && !quoted) {
+      row.push(cell); cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && source[i + 1] === "\n") i++;
+      row.push(cell);
+      if (row.some((item) => item.trim())) matrix.push(row);
+      row = []; cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  if (quoted) throw new Error("Unclosed quoted field in Darb CSV.");
+  row.push(cell);
+  if (row.some((item) => item.trim())) matrix.push(row);
+  return matrix;
+}
+
+function readRows(matrix: (string | number)[][]): DarbRow[] {
   if (matrix.length === 0) throw new Error("The Darb file is empty.");
   const header = matrix[0].map((v) => String(v).replace(/^\uFEFF/, "").trim());
   const missing = REQUIRED_HEADERS.filter((name) => !header.includes(name));
@@ -79,15 +106,18 @@ function readRows(sheet: XLSX.WorkSheet): DarbRow[] {
 }
 
 export function parseDarbText(text: string): DarbRow[] {
-  const book = XLSX.read(text.replace(/^\uFEFF/, ""), { type: "string", raw: false });
-  return readRows(book.Sheets[book.SheetNames[0]]);
+  return readRows(parseCsvMatrix(text));
 }
 
 export async function parseDarbFile(file: File): Promise<DarbRow[]> {
   if (!/\.(csv|xlsx|xls)$/i.test(file.name)) throw new Error("Use .csv, .xlsx or .xls.");
+  if (/\.csv$/i.test(file.name)) return parseDarbText(await file.text());
   const data = await file.arrayBuffer();
   const book = XLSX.read(new Uint8Array(data), { type: "array", raw: false });
-  return readRows(book.Sheets[book.SheetNames[0]]);
+  const sheet = book.Sheets[book.SheetNames[0]];
+  return readRows(XLSX.utils.sheet_to_json<(string | number)[]>(sheet, {
+    header: 1, blankrows: false, defval: "", raw: false,
+  }));
 }
 
 type Car = { id: string; plate: string };
