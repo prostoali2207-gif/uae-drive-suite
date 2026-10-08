@@ -102,7 +102,7 @@ function readRows(matrix: (string | number)[][]): DarbRow[] {
       ? `DARB:${normalizePlate(plate)}:${externalId}`
       : `DARB:AUTO:${normalizePlate(plate)}:${date}:${time}:${gate.toUpperCase().trim()}:${amount.toFixed(2)}`;
     return { line: index + 2, key, plate, date, time, gate, amount, error: errors.join("; ") || undefined };
-  }).filter((row) => row.plate || row.date || row.time || row.gate);
+  });
 }
 
 export function parseDarbText(text: string): DarbRow[] {
