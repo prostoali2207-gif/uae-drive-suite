@@ -144,7 +144,19 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
               {counts.total} rows checked · <strong>AED {counts.amount.toFixed(2)}</strong> to import
             </div>
             <div className="max-h-60 overflow-y-auto rounded-lg border border-border">
-              <table className="w-full text-left text-xs">
+              <div className="divide-y divide-border sm:hidden">
+                {rows.slice(0, 100).map((row) => (
+                  <div key={row.line} className="space-y-1 p-3 text-xs">
+                    <div className="flex justify-between gap-2">
+                      <span className="font-mono text-foreground">{row.plate} · {row.date} {row.time}</span>
+                      <span className="shrink-0 font-mono tabular-nums">AED {row.amount.toFixed(2)}</span>
+                    </div>
+                    <div className="font-medium capitalize">{row.status} · row {row.line}</div>
+                    <div className="text-muted-foreground">{row.contractLabel || row.message}</div>
+                  </div>
+                ))}
+              </div>
+              <table className="hidden w-full text-left text-xs sm:table">
                 <thead className="sticky top-0 bg-muted text-muted-foreground">
                   <tr><th className="p-2">Row</th><th className="p-2">Plate · date / time</th><th className="p-2">AED</th><th className="p-2">Result</th></tr>
                 </thead>
