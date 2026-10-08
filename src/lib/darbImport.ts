@@ -35,6 +35,12 @@ function normalizePlate(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+function isValidDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
+}
+
 function readRows(sheet: XLSX.WorkSheet): DarbRow[] {
   const matrix = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, {
     header: 1, blankrows: false, defval: "", raw: false,
@@ -57,9 +63,7 @@ function readRows(sheet: XLSX.WorkSheet): DarbRow[] {
     const amount = Number(amountString);
     const errors: string[] = [];
     if (!plate || !normalizePlate(plate)) errors.push("missing plate");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-        !Number.isFinite(Date.parse(`${date}T00:00:00+04:00`)) ||
-        !/^\\d{4}-\\d{2}-\\d{2}$/.test(new Date(`${date}T00:00:00+04:00`).toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }).replace(/\\//g, "-"))) errors.push("invalid date (use YYYY-MM-DD)");
+    if (!isValidDate(date)) errors.push("invalid date (use YYYY-MM-DD)");
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) errors.push("invalid time (use HH:mm)");
     if (!gate) errors.push("missing gate");
     if (!amountString || !Number.isFinite(amount) || amount <= 0 || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
@@ -111,7 +115,7 @@ interface DarbDatabase extends Database {
 const extendedSupabase = supabase as SupabaseClient<DarbDatabase>;
 
 function atDubai(date: string, time: string): number {
-  const hhmmss = /^\\d{2}:\\d{2}$/.test(time) ? `${time}:00` : time;
+  const hhmmss = /^\d{2}:\d{2}$/.test(time) ? `${time}:00` : time;
   return Date.parse(`${date}T${hhmmss}+04:00`);
 }
 function isInContract(c: Contract, at: number): boolean {
