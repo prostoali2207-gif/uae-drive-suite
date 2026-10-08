@@ -21,7 +21,7 @@ describe("Darb canonical import format", () => {
   });
 
   it("preserves leading zeros and quoted commas in canonical CSV", () => {
-    const [row] = parseDarbText(`${headers}\\r\\n,00123,2026-10-08,07:45,"Gate, East",4.00`);
+    const [row] = parseDarbText(`${headers}\r\n,00123,2026-10-08,07:45,"Gate, East",4.00`);
     expect(row.plate).toBe("00123");
     expect(row.gate).toBe("Gate, East");
     expect(row.error).toBeUndefined();
