@@ -20,6 +20,13 @@ describe("Darb canonical import format", () => {
     expect(parseDarbText(input)[0].key).toContain("DARB:AUTO:");
   });
 
+  it("preserves leading zeros and quoted commas in canonical CSV", () => {
+    const [row] = parseDarbText(`${headers}\\r\\n,00123,2026-10-08,07:45,"Gate, East",4.00`);
+    expect(row.plate).toBe("00123");
+    expect(row.gate).toBe("Gate, East");
+    expect(row.error).toBeUndefined();
+  });
+
   it("rejects a missing exact crossing time", () => {
     const [row] = parseDarbText(`${headers}\nAB124,C 77108,2026-10-08,,Al Maqtaa,4`);
     expect(row.error).toContain("invalid time");
