@@ -13,7 +13,7 @@
 
 **Rejected:** silent mapping of changing headers; one-click write; deriving client from contract closure timestamp instead of actual vehicle segment; overwrite on duplicate; decorative per-row cards on desktop; automatic charging.
 
-**Risks:** missing minute/plate code, multiple identical same-minute crossings, overlapping contracts, tenant access, 390px preview width, source ID stability, Darb page changes. When an original transaction ID is unavailable, deterministic fallback may collapse truly identical crossings — these need manual review/source ID to distinguish.
+**Risks:** missing source seconds/plate code, multiple identical same-minute crossings, overlapping contracts, tenant access, 390px preview width, source ID stability, Darb page changes. When an original transaction ID is unavailable, deterministic fallback may collapse truly identical crossings — these need manual review/source ID to distinguish.
 
 **UX contract:** Toll Charges → Import Darb → file/paste → preview all rows → commit eligible → show inserted/skipped/failed. Bad format is rejected; unlinked rows stay unpaid; unknown/ambiguous vehicles are never imported. Recover by choosing a corrected file without losing the previous input before saving. On small screens preview becomes a condensed vertical list. IDs/plate/time remain readable LTR.
 
