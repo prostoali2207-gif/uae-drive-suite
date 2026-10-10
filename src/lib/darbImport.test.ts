@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
-import { parseDarbText } from "./darbImport";
+import { fleetPlateKey, parseDarbText } from "./darbImport";
 
 const headers = "Transaction ID,Plate,Date,Time,Gate,Amount";
 
 describe("Darb canonical import format", () => {
+  it("matches verified Ajman Private plate syntax without dropping the plate code", () => {
+    expect(fleetPlateKey("A AJMAN PRIVATE 73230")).toBe(fleetPlateKey("A 73230"));
+    expect(fleetPlateKey("B AJMAN PRIVATE 73230")).not.toBe(fleetPlateKey("A 73230"));
+    expect(fleetPlateKey("A DUBAI PRIVATE 73230")).not.toBe(fleetPlateKey("A 73230"));
+  });
+
   it("keeps a stable source-prefixed ID and valid crossing fields", () => {
     const [row] = parseDarbText(`${headers}\nAB123,C 77108,2026-10-08,07:45,Al Maqtaa,4.00`);
     expect(row.error).toBeUndefined();
