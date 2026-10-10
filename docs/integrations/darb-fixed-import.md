@@ -39,3 +39,9 @@ The importer validates the format itself, so changing Codex wording later cannot
 - Test import preview and final counts on 390px mobile and an Arabic/Russian mixed plate string.
 
 The supplied Codex ZIP was inspected on 2026-10-10. Its two exact-time CSV files have the required 6 headers, **90 unique source rows totaling 360 AED** (September: 60 / 240; October 1–8: 30 / 120). All IDs are blank; times are HH:mm:ss; all 10 source Ajman Private plate code/number combinations were verified as uniquely matching FleetDesk's shortened plate representation by read-only SQL. Read-only timeline checks matched **88 crossings to contracts**, while **2 are unlinked**; preview and manual review must preserve them unlinked. No customer transactions were inserted. A corrected user archive `Darb_FleetDesk_Ready.zip` contains just the original exact-time CSVs, the exporter defaulting to exact seconds, and a single installation bookmarklet. This customer-data archive is not committed to the repository. Darb browser script behavior remains **unverified on a live authenticated page**.
+
+## Verified repeat export (user-provided CSV, 2026-10-10)
+- `Darb_2026-10-02_2026-10-08_exact-time.csv` validated: **28 rows / 112 AED**, 6 canonical headers, HH:mm:ss, blank source IDs, no identical transactions. It covers Oct **2–8**, not Oct 1.
+- Against the earlier preserved export's Oct 2–8 subset (25 rows / 100 AED), all 25 original rows remain and **three Oct 8 crossings (12 AED)** are newly present. Re-export is meaningful; historical files must not be treated as permanently complete.
+- Read-only FleetDesk timeline verification gives **25 matching rentals and 3 unmatched crossings**. Unmatched all belong to car A 77302 on Oct 8 at 11:45:46, 12:30:23, 15:02:54. Do not auto-charge a client for these.
+- The new file is a successful format/integrity check of the bookmarklet output, **not yet an authenticated end-to-end import UI test**. No production writes occurred.
