@@ -35,6 +35,14 @@ function normalizePlate(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+// Darb reports "A AJMAN PRIVATE 73230"; FleetDesk stores "A 73230".
+// Only strip this verified Ajman/private qualifier, never match by digits alone.
+function fleetPlateKey(s: string): string {
+  const plate = s.toUpperCase().trim().replace(/\s+/g, " ");
+  const darbAjman = /^([A-Z0-9]+) AJMAN PRIVATE (\d+)$/.exec(plate);
+  return normalizePlate(darbAjman ? darbAjman[1] + darbAjman[2] : plate);
+}
+
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);
@@ -196,7 +204,7 @@ export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
     }
     seen.add(row.key);
     // Exact plate is preferred. Numeric-only fallback is allowed only for a unique fleet match.
-    const matches = cars.filter((car) => normalizePlate(car.plate) === normalizePlate(row.plate));
+    const matches = cars.filter((car) => fleetPlateKey(car.plate) === fleetPlateKey(row.plate));
     if (matches.length !== 1) {
       return { ...base, status: "invalid" as const, message: matches.length ? "Ambiguous plate — check fleet" : "Plate does not exactly match FleetDesk — verify emirate, type and code" };
     }
