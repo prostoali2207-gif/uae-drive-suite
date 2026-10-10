@@ -13,11 +13,11 @@ Exactly these headers (case-sensitive), preferably saved as UTF-8 CSV:
 Transaction ID,Plate,Date,Time,Gate,Amount
 ```
 
-One crossing per row. `Transaction ID` values can be blank if Darb does not expose them; the importer then constructs a deterministic key from all the remaining fields. Use full plate text including any plate code when available. Dates must be `YYYY-MM-DD`, times `HH:mm` in Abu Dhabi local time (UTC+04:00), and Amount the **actual amount in AED** from Darb. Never infer a toll charge from a gate crossing alone or insert a fabricated ID/time/amount.
+One crossing per row. `Transaction ID` values can be blank if Darb does not expose them; the importer requires original seconds and then constructs a deterministic key from all the remaining fields. Use full plate text including any plate code when available. Dates must be `YYYY-MM-DD`, times **`HH:mm:ss` when ID is blank** (and `HH:mm` or `HH:mm:ss` when source ID exists) in Abu Dhabi local time (UTC+04:00), and Amount the **actual amount in AED** from Darb. Never infer a toll charge from a gate crossing alone or insert a fabricated ID/time/amount.
 
 Codex browser task (for a logged-in Darb transaction list):
 
-> Read only real Darb toll **transaction rows** visible in the browser. For every page, append one CSV row in exactly the column order `Transaction ID,Plate,Date,Time,Gate,Amount`. Keep original IDs if shown, otherwise leave the first column empty. Normalize dates to YYYY-MM-DD, times to 24-hour HH:mm in Abu Dhabi time, and amounts to numbers in AED. If a value is missing or unclear, do not invent it; preserve a blank field so FleetDesk rejects or flags it. Escape commas/quotes using standard CSV quoting. Process every requested page, not just the visible first page. Do not include balance top-ups, fines, or wallet transactions. Do not save login credentials. Output only the CSV file.
+> Read only real Darb toll **transaction rows** visible in the browser. For every page, append one CSV row in exactly the column order `Transaction ID,Plate,Date,Time,Gate,Amount`. Keep original IDs if shown, otherwise leave the first column empty. Normalize dates to YYYY-MM-DD, times to original 24-hour HH:mm:ss in Abu Dhabi time, and amounts to numbers in AED. If a value is missing or unclear, do not invent it; preserve a blank field so FleetDesk rejects or flags it. Escape commas/quotes using standard CSV quoting. Process every requested page, not just the visible first page. Do not include balance top-ups, fines, or wallet transactions. Do not save login credentials. Output only the CSV file.
 
 The importer validates the format itself, so changing Codex wording later cannot silently remap columns.
 
@@ -38,4 +38,4 @@ The importer validates the format itself, so changing Codex wording later cannot
 - Check an unlinked row cannot be billed from the toll charges table.
 - Test import preview and final counts on 390px mobile and an Arabic/Russian mixed plate string.
 
-No live Darb account was accessed or used to verify the browser export behavior.
+Codex reported two local files: September (60 rows / 240 AED), 1–8 October (30 rows / 120 AED), plus a ZIP with original HH:mm:ss exports and browser bookmarklet. These are **not attached in this environment**, so their contents, exact totals, columns and extension are unverified. Do not import HH-truncated files without original seconds. No live Darb account was accessed or used to verify browser export behavior.
