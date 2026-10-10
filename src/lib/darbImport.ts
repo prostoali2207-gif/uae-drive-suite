@@ -91,7 +91,10 @@ function readRows(matrix: (string | number)[][]): DarbRow[] {
     const errors: string[] = [];
     if (!plate || !normalizePlate(plate)) errors.push("missing plate");
     if (!isValidDate(date)) errors.push("invalid date (use YYYY-MM-DD)");
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) errors.push("invalid time (use HH:mm)");
+    if (!/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(time)) errors.push("invalid time (use HH:mm or HH:mm:ss)");
+    if (!externalId && !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(time)) {
+      errors.push("exact HH:mm:ss required without Transaction ID");
+    }
     if (!gate) errors.push("missing gate");
     if (!amountString || !Number.isFinite(amount) || amount <= 0 || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
       errors.push("invalid positive AED amount");
@@ -185,19 +188,20 @@ export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
   return rows.map((row) => {
     const base = { ...row, carId: null, contractLabel: null };
     if (row.error) return { ...base, status: "invalid" as const, message: row.error };
-    if (seen.has(row.key) || existing.has(row.key)) {
-      return { ...base, status: "duplicate" as const, message: "Already present in the file or FleetDesk" };
+    if (seen.has(row.key)) {
+      return { ...base, status: "invalid" as const, message: "Repeated identical crossing without a unique ID; verify source rows" };
+    }
+    if (existing.has(row.key)) {
+      return { ...base, status: "duplicate" as const, message: "Already imported — will not overwrite existing charge" };
     }
     seen.add(row.key);
     // Exact plate is preferred. Numeric-only fallback is allowed only for a unique fleet match.
-    const exact = cars.filter((car) => normalizePlate(car.plate) === normalizePlate(row.plate));
-    const numeric = row.plate.replace(/\D/g, "");
-    const matches = exact.length ? exact : cars.filter((car) => numeric && car.plate.replace(/\D/g, "") === numeric);
+    const matches = cars.filter((car) => normalizePlate(car.plate) === normalizePlate(row.plate));
     if (matches.length !== 1) {
-      return { ...base, status: "invalid" as const, message: matches.length ? "Ambiguous plate — check fleet" : "Vehicle not found in fleet" };
+      return { ...base, status: "invalid" as const, message: matches.length ? "Ambiguous plate — check fleet" : "Plate does not exactly match FleetDesk — verify emirate, type and code" };
     }
     const car = matches[0];
-    const timestamp = Date.parse(`${row.date}T${row.time}:00+04:00`);
+    const timestamp = atDubai(row.date, row.time);
     const candidates = contracts.filter((contract) => isInContract(contract, timestamp) &&
       (hasSegments.has(contract.id)
         ? segments.some((seg) => seg.contract_id === contract.id && seg.car_id === car.id
