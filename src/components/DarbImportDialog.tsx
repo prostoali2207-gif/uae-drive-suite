@@ -126,8 +126,8 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
               onChange={(e) => { setText(e.target.value); setError(""); }}
             />
             <div className="text-xs text-muted-foreground">
-              Required: Plate, Date (YYYY-MM-DD), Time (HH:mm), Gate, Amount (AED). Transaction ID is optional. One crossing per row.
-              Service fee: AED 0 (only the original Darb amount is recorded).
+              Required: Plate, Date (YYYY-MM-DD), Time (HH:mm:ss if no transaction ID), Gate, Amount (AED). Transaction ID is optional. One crossing per row.
+              When no Transaction ID exists, seconds are mandatory to prevent lost crossings. Service fee: AED 0 (only the original Darb amount is recorded).
             </div>
           </div>
         )}
