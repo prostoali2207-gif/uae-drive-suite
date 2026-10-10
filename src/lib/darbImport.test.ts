@@ -28,12 +28,12 @@ describe("Darb canonical import format", () => {
   });
 
   it("rejects minute-only time when original ID is absent", () => {
-    const [row] = parseDarbText(`${headers}\\n,C 77108,2026-10-08,07:45,Al Maqtaa,4`);
+    const [row] = parseDarbText(`${headers}\n,C 77108,2026-10-08,07:45,Al Maqtaa,4`);
     expect(row.error).toContain("HH:mm:ss required");
   });
 
   it("accepts seconds when the source ID is unavailable", () => {
-    const [row] = parseDarbText(`${headers}\\n,C 77108,2026-10-08,07:45:36,Al Maqtaa,4`);
+    const [row] = parseDarbText(`${headers}\n,C 77108,2026-10-08,07:45:36,Al Maqtaa,4`);
     expect(row.error).toBeUndefined();
     expect(row.time).toBe("07:45:36");
   });
