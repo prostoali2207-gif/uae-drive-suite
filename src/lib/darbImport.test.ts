@@ -15,16 +15,27 @@ describe("Darb canonical import format", () => {
   });
 
   it("derives a deterministic ID when Darb does not show one", () => {
-    const input = `${headers}\n,C 77108,2026-10-08,07:45,Al Maqtaa,4`;
+    const input = `${headers}\n,C 77108,2026-10-08,07:45:36,Al Maqtaa,4`;
     expect(parseDarbText(input)[0].key).toBe(parseDarbText(input)[0].key);
     expect(parseDarbText(input)[0].key).toContain("DARB:AUTO:");
   });
 
   it("preserves leading zeros and quoted commas in canonical CSV", () => {
-    const [row] = parseDarbText(`${headers}\r\n,00123,2026-10-08,07:45,"Gate, East",4.00`);
+    const [row] = parseDarbText(`${headers}\r\n,00123,2026-10-08,07:45:36,"Gate, East",4.00`);
     expect(row.plate).toBe("00123");
     expect(row.gate).toBe("Gate, East");
     expect(row.error).toBeUndefined();
+  });
+
+  it("rejects minute-only time when original ID is absent", () => {
+    const [row] = parseDarbText(`${headers}\\n,C 77108,2026-10-08,07:45,Al Maqtaa,4`);
+    expect(row.error).toContain("HH:mm:ss required");
+  });
+
+  it("accepts seconds when the source ID is unavailable", () => {
+    const [row] = parseDarbText(`${headers}\\n,C 77108,2026-10-08,07:45:36,Al Maqtaa,4`);
+    expect(row.error).toBeUndefined();
+    expect(row.time).toBe("07:45:36");
   });
 
   it("rejects a missing exact crossing time", () => {
