@@ -37,7 +37,7 @@ function normalizePlate(s: string): string {
 
 // Darb reports "A AJMAN PRIVATE 73230"; FleetDesk stores "A 73230".
 // Only strip this verified Ajman/private qualifier, never match by digits alone.
-function fleetPlateKey(s: string): string {
+export function fleetPlateKey(s: string): string {
   const plate = s.toUpperCase().trim().replace(/\s+/g, " ");
   const darbAjman = /^([A-Z0-9]+) AJMAN PRIVATE (\d+)$/.exec(plate);
   return normalizePlate(darbAjman ? darbAjman[1] + darbAjman[2] : plate);
