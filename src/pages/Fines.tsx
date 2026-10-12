@@ -275,7 +275,31 @@ const Fines = () => {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    void fetchData();
+
+    const refresh = () => {
+      void fetchData();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    const channel = supabase
+      .channel("fines-salik-live-refresh")
+      .on("postgres_changes", { event: "*", schema: "public", table: "salik" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "fines" }, refresh)
+      .subscribe();
+
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     setFinesPage(1);
