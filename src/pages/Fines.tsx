@@ -4,6 +4,7 @@ import { Check, ChevronsUpDown, Plus, Search, TriangleAlert as AlertTriangle, Wa
 import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
 import { ParkingChargesTab } from "@/components/ParkingChargesTab";
 import { DarbImportDialog } from "@/components/DarbImportDialog";
+import { filterTollSource } from "@/lib/tollSource";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -217,6 +218,7 @@ const Fines = () => {
   const [activeTab, setActiveTab] = useState("fines");
   const [finesSearch, setFinesSearch] = useState("");
   const [salikSearch, setSalikSearch] = useState("");
+  const [darbSearch, setDarbSearch] = useState("");
   const [finesListFilter, setFinesListFilter] = useState<"all" | "unpaid" | "not-linked">("all");
 
   useEffect(() => {
@@ -308,7 +310,7 @@ const Fines = () => {
 
   useEffect(() => {
     setSalikPage(1);
-  }, [salikPageSize, salikSearch]);
+  }, [salikPageSize, salikSearch, darbSearch, activeTab]);
 
   const filteredFines = useMemo(() => {
     const query = finesSearch.trim().toLowerCase();
@@ -329,9 +331,16 @@ const Fines = () => {
     );
   }, [activeStatusFilter, fines, finesListFilter, finesSearch]);
 
+  const activeTollSource = activeTab === "darb" ? "darb" : "salik";
+  const tollName = activeTollSource === "darb" ? "Darb" : "Salik";
+  const sourceTolls = useMemo(() => filterTollSource(salik, activeTollSource), [salik, activeTollSource]);
+  const currentTollSearch = activeTollSource === "darb" ? darbSearch : salikSearch;
+
   const filteredSalik = useMemo(() => {
-    const query = salikSearch.trim().toLowerCase();
-    const byStatus = activeStatusFilter ? salik.filter((charge) => charge.status === activeStatusFilter) : salik;
+    const query = currentTollSearch.trim().toLowerCase();
+    const byStatus = activeStatusFilter
+      ? sourceTolls.filter((charge) => charge.status === activeStatusFilter)
+      : sourceTolls;
     if (!query) return byStatus;
 
     return byStatus.filter((charge) =>
@@ -339,7 +348,7 @@ const Fines = () => {
       matchesSearch(charge.clients?.full_name, query) ||
       matchesSearch(charge.cars?.plate, query),
     );
-  }, [activeStatusFilter, salik, salikSearch]);
+  }, [activeStatusFilter, sourceTolls, currentTollSearch]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filteredFines.length / finesPageSize));
@@ -365,11 +374,13 @@ const Fines = () => {
     setActiveTab(value);
     setFinesSearch("");
     setSalikSearch("");
+    setDarbSearch("");
+    setSalikOpen(false);
   };
 
   const totalUnpaidSalik = useMemo(
-    () => salik.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + Number(s.amount), 0),
-    [salik],
+    () => sourceTolls.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + Number(s.amount), 0),
+    [sourceTolls],
   );
 
   const chargeableFines = useMemo(
@@ -383,8 +394,8 @@ const Fines = () => {
   );
 
   const chargeableSalik = useMemo(
-    () => salik.filter((charge) => charge.status === "Unpaid" && charge.contract_id !== null),
-    [salik],
+    () => sourceTolls.filter((charge) => charge.status === "Unpaid" && charge.contract_id !== null),
+    [sourceTolls],
   );
 
   const chargeableFinesTotal = useMemo(
@@ -403,8 +414,8 @@ const Fines = () => {
   );
 
   const salikBalance = useMemo(
-    () => salik.reduce((sum, s) => sum + Number(s.amount), 0),
-    [salik],
+    () => sourceTolls.reduce((sum, s) => sum + Number(s.amount), 0),
+    [sourceTolls],
   );
   const finesEmptyMessage = activeStatusFilter === "Unpaid"
     ? "No unpaid fines found."
@@ -412,8 +423,10 @@ const Fines = () => {
       ? "No unlinked unpaid fines found."
     : "No results found";
   const salikEmptyMessage = activeStatusFilter === "Unpaid"
-    ? "No unpaid Salik charges found."
-    : "No results found";
+    ? `No unpaid ${tollName} charges found.`
+    : currentTollSearch.trim()
+      ? `No matching ${tollName} charges found.`
+      : `No ${tollName} charges recorded.`;
 
   const refetchFines = async () => {
     const { data, error } = await fetchAllFines();
@@ -453,22 +466,29 @@ const Fines = () => {
   };
 
   const chargeAllUnpaidSalik = async () => {
-    const count = chargeableSalik.length;
-    if (count === 0) return;
+    // Restrict each bulk update to eligible IDs from the currently selected toll source.
+    const chargeIds = chargeableSalik.map((charge) => charge.id);
+    if (!chargeIds.length) return;
 
     setChargingAllSalik(true);
+    let charged = 0;
     try {
-      const { error } = await supabase
-        .from("salik")
-        .update({ status: "Charged to Client" })
-        .eq("status", "Unpaid")
-        .not("contract_id", "is", null);
-
-      if (error) throw error;
+      for (let offset = 0; offset < chargeIds.length; offset += 100) {
+        const { data, error } = await supabase
+          .from("salik")
+          .update({ status: "Charged to Client" })
+          .eq("status", "Unpaid")
+          .not("contract_id", "is", null)
+          .in("id", chargeIds.slice(offset, offset + 100))
+          .select("id");
+        if (error) throw error;
+        charged += data?.length ?? 0;
+      }
       await refetchSalik();
-      toast.success(`${count} Salik charges charged to clients`);
+      toast.success(`${charged} ${tollName} charges charged to clients`);
     } catch (error) {
-      toast.error(`Failed to charge Salik: ${(error as Error).message}`);
+      await refetchSalik();
+      toast.error(`Failed to charge ${tollName} after ${charged} completed: ${(error as Error).message}`);
     } finally {
       setChargingAllSalik(false);
     }
@@ -605,17 +625,18 @@ const Fines = () => {
   return (
     <DashboardLayout title="Fines & Tolls" subtitle="Traffic fines and toll charges">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col gap-5">
-        <TabsList className="grid w-full grid-cols-3 md:w-fit">
-          <TabsTrigger value="fines">Traffic Fines</TabsTrigger>
-          <TabsTrigger value="salik">Toll Charges</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 md:w-fit">
+          <TabsTrigger value="fines">Fines</TabsTrigger>
+          <TabsTrigger value="salik">Salik</TabsTrigger>
+          <TabsTrigger value="darb">Darb</TabsTrigger>
           <TabsTrigger value="parking">Parking</TabsTrigger>
         </TabsList>
         {activeTab !== "parking" && (
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              value={activeTab === "fines" ? finesSearch : salikSearch}
-              onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : setSalikSearch(e.target.value)}
+              value={activeTab === "fines" ? finesSearch : currentTollSearch}
+              onChange={(e) => activeTab === "fines" ? setFinesSearch(e.target.value) : activeTab === "darb" ? setDarbSearch(e.target.value) : setSalikSearch(e.target.value)}
               placeholder={activeTab === "fines" ? "Search fine number, client, or plate..." : "Search transaction ID, client, or plate..."}
               className="w-full rounded-lg border border-border bg-background pl-9 text-foreground placeholder:text-muted-foreground"
             />
@@ -1029,13 +1050,13 @@ const Fines = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="salik" className="m-0 flex flex-col gap-4">
+        <TabsContent value={activeTollSource} className="m-0 flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-tint-blue text-tint-blue-foreground">
               <Wallet className="h-4 w-4" />
             </div>
             <div className="flex-1">
-              <div className="text-xs text-muted-foreground">Total Toll Charges</div>
+              <div className="text-xs text-muted-foreground">Total {tollName} Charges</div>
               <div className="text-base font-semibold text-foreground">AED {salikBalance.toLocaleString()}</div>
             </div>
             {totalUnpaidSalik > 0 && (
@@ -1047,12 +1068,16 @@ const Fines = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:justify-end">
-            <input ref={salikFileRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Salik")} />
-            <Button size="sm" variant="outline" className="w-full gap-1.5 md:w-auto" disabled={importing} onClick={() => salikFileRef.current?.click()}>
-              <Upload className="h-4 w-4" />
-              {importing ? "Importing..." : "Import Salik (Excel)"}
-            </Button>
-            <DarbImportDialog onImported={fetchData} />
+            {activeTab === "salik" && (
+              <>
+                <input ref={salikFileRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => handleImportFile(e, "Salik")} />
+                <Button size="sm" variant="outline" className="w-full gap-1.5 md:w-auto" disabled={importing} onClick={() => salikFileRef.current?.click()}>
+                  <Upload className="h-4 w-4" />
+                  {importing ? "Importing..." : "Import Salik (Excel)"}
+                </Button>
+              </>
+            )}
+            {activeTab === "darb" && <DarbImportDialog onImported={fetchData} />}
             {chargeableSalik.length > 0 && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -1062,9 +1087,9 @@ const Fines = () => {
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Charge all unpaid toll charges?</AlertDialogTitle>
+                    <AlertDialogTitle>Charge all unpaid {tollName} charges?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      {chargeableSalik.length} toll charges totalling AED {chargeableSalikTotal.toLocaleString()} will be charged to their clients.
+                      {chargeableSalik.length} {tollName} charges totalling AED {chargeableSalikTotal.toLocaleString()} will be charged to their clients.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -1076,13 +1101,13 @@ const Fines = () => {
                 </AlertDialogContent>
               </AlertDialog>
             )}
-            <Dialog open={salikOpen} onOpenChange={setSalikOpen}>
-              <DialogTrigger asChild>
+            <Dialog open={activeTab === "salik" && salikOpen} onOpenChange={setSalikOpen}>
+              {activeTab === "salik" && <DialogTrigger asChild>
                 <Button size="sm" className="col-span-2 w-full gap-1.5 md:w-auto">
                   <Plus className="h-4 w-4" />
                   Add Salik Charges
                 </Button>
-              </DialogTrigger>
+              </DialogTrigger>}
               <DialogContent className="sm:max-w-[480px]">
                 <DialogHeader>
                   <DialogTitle>Add Salik charges</DialogTitle>
@@ -1132,9 +1157,9 @@ const Fines = () => {
 
           <div className="grid gap-3 md:hidden">
             {loading ? (
-              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading Salik charges...</div>
-            ) : salik.length === 0 ? (
-              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">No Salik charges recorded.</div>
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading {tollName} charges...</div>
+            ) : sourceTolls.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">No {tollName} charges recorded.</div>
             ) : filteredSalik.length === 0 ? (
               <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">{salikEmptyMessage}</div>
             ) : (
@@ -1215,11 +1240,11 @@ const Fines = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">Loading {tollName} charges...</TableCell>
                   </TableRow>
-                ) : salik.length === 0 ? (
+                ) : sourceTolls.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No {tollName} charges recorded.</TableCell>
                   </TableRow>
                 ) : filteredSalik.length === 0 ? (
                   <TableRow>
