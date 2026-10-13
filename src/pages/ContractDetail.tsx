@@ -1364,7 +1364,7 @@ const FinancialsAccordion = ({
       {/* Salik — summary row */}
       <div className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Salik</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Salik + Darb</span>
           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
             {salik.length}
           </span>
@@ -2448,7 +2448,11 @@ const FinancialsPanel = ({
     salik.forEach((charge) => {
       lookup.set(`salik-${charge.id}`, {
         category: "salik",
-        label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+        label: charge.transaction_id?.startsWith("DARB:")
+          ? `Darb ${charge.toll_gate ?? charge.transaction_id}`
+          : charge.transaction_id
+            ? `Salik ${charge.transaction_id}`
+            : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
       });
     });
     parking.forEach((charge) => {
@@ -5786,7 +5790,11 @@ const ContractDetail = () => {
     ...salik.map((charge) => ({
         id: `salik-${charge.id}`,
         category: "salik" as const,
-        label: charge.transaction_id ? `Salik ${charge.transaction_id}` : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
+        label: charge.transaction_id?.startsWith("DARB:")
+          ? `Darb ${charge.toll_gate ?? charge.transaction_id}`
+          : charge.transaction_id
+            ? `Salik ${charge.transaction_id}`
+            : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
         due: Number(charge.amount),
         overdueImmediately: true,
       })),
