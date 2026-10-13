@@ -1382,7 +1382,7 @@ const FinancialsAccordion = ({
             </button>
           </div>
         </div>
-      ))>
+      ))}
 
       <AccordionRow
         label="Other Fees"
