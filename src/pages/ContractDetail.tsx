@@ -1926,13 +1926,16 @@ const ContractSalikBulkSheet = ({
   onOpenChange,
   transactions,
   onRefresh,
+  source,
 }: {
   contract: ContractRecord;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transactions: SalikRow[];
   onRefresh: () => void | Promise<void>;
+  source: TollSource;
 }) => {
+  const tollName = source === "darb" ? "Darb" : "Salik";
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Bank Transfer">("Cash");
@@ -2015,7 +2018,7 @@ const ContractSalikBulkSheet = ({
       .in("id", ids);
 
     if (error) {
-      toast.error("Failed to verify Salik payment status");
+      toast.error(`Failed to verify ${tollName} payment status`);
       return;
     }
 
@@ -2064,7 +2067,7 @@ const ContractSalikBulkSheet = ({
       }
 
       if (validTransactions.length === 0 || validSelectedTotal <= 0) {
-        toast.warning("No unpaid Salik trips remain for this payment");
+        toast.warning(`No unpaid ${tollName} trips remain for this payment`);
         setPaymentDialogOpen(false);
         return;
       }
@@ -2112,7 +2115,7 @@ const ContractSalikBulkSheet = ({
       setPaymentMethod("Cash");
       await onRefresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to record Salik payment";
+      const message = error instanceof Error ? error.message : `Failed to record ${tollName} payment`;
       toast.error(message);
     } finally {
       setConfirmingPayment(false);
@@ -2126,7 +2129,7 @@ const ContractSalikBulkSheet = ({
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
             <Route className="h-5 w-5 text-muted-foreground" />
-            <SheetTitle className="text-lg font-semibold text-foreground">Contract Tolls (Salik + Darb)</SheetTitle>
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract {tollName}</SheetTitle>
           </div>
           <SheetDescription className="text-xs text-foreground/55">
             {unpaidTransactions.length} unpaid {unpaidTransactions.length === 1 ? "transaction" : "transactions"} found
@@ -2136,7 +2139,7 @@ const ContractSalikBulkSheet = ({
         <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
           {unpaidTransactions.length === 0 ? (
             <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
-              No unpaid toll charges linked to this contract.
+              No unpaid {tollName} linked to this contract.
             </div>
           ) : (
             <div className="space-y-3">
@@ -2210,10 +2213,10 @@ const ContractSalikBulkSheet = ({
                       />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-foreground">
-                          {transaction.toll_gate || "Salik transaction"}
+                          {transaction.toll_gate || `${tollName} transaction`}
                         </div>
                         <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-foreground/50">
-                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
+                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""}{!isDarbTransaction(transaction.transaction_id) ? ` / ${transaction.transaction_id || "No transaction ID"}` : ""}
                         </div>
                         <div className="mt-0.5 truncate text-[11px] text-foreground/45">
                           {[transaction.cars?.plate, [transaction.cars?.make, transaction.cars?.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "No car"}
@@ -2257,9 +2260,9 @@ const ContractSalikBulkSheet = ({
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent className="sm:max-w-[380px]">
           <DialogHeader>
-            <DialogTitle>Salik Payment</DialogTitle>
+            <DialogTitle>{tollName} Payment</DialogTitle>
             <DialogDescription className="text-xs">
-              Record payment for the selected Salik transactions.
+              Record payment for the selected {tollName} transactions.
             </DialogDescription>
           </DialogHeader>
 
@@ -3838,7 +3841,16 @@ const FinancialsPanel = ({
         contract={contract}
         open={showSalikModal}
         onOpenChange={setShowSalikModal}
-        transactions={salik}
+        transactions={filterTollSource(salik, "salik")}
+        source="salik"
+        onRefresh={onInlinePaymentRecorded}
+      />
+      <ContractSalikBulkSheet
+        contract={contract}
+        open={showDarbModal}
+        onOpenChange={setShowDarbModal}
+        transactions={filterTollSource(salik, "darb")}
+        source="darb"
         onRefresh={onInlinePaymentRecorded}
       />
       <ContractFinesDetailModal
