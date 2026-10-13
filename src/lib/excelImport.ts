@@ -29,10 +29,13 @@ interface ProfileFeeSettings {
   fine_fee_value: number | null;
   salik_fee_type: ServiceFeeType | null;
   salik_fee_value: number | null;
+  darb_fee_type: ServiceFeeType | null;
+  darb_fee_value: number | null;
 }
 interface ImportFeeSettings {
   fine: { type: ServiceFeeType; value: number };
   salik: { type: ServiceFeeType; value: number };
+  darb: { type: ServiceFeeType; value: number };
 }
 
 interface ExtendedDatabase extends Database {
@@ -97,12 +100,12 @@ export async function fetchImportFeeSettings(ownerId: string): Promise<{ data: I
   };
 
   const { data, error } = await profiles
-    .select("fine_fee_type, fine_fee_value, salik_fee_type, salik_fee_value")
+    .select("fine_fee_type, fine_fee_value, salik_fee_type, salik_fee_value, darb_fee_type, darb_fee_value")
     .eq("id", ownerId)
     .maybeSingle();
 
   if (error) return { data: null, error: error.message };
-  if (!data || data.fine_fee_value == null || data.salik_fee_value == null) {
+  if (!data || data.fine_fee_value == null || data.salik_fee_value == null || data.darb_fee_value == null) {
     return { data: null, error: "Import service fee settings are missing from profile" };
   }
 
@@ -115,6 +118,10 @@ export async function fetchImportFeeSettings(ownerId: string): Promise<{ data: I
       salik: {
         type: normalizeServiceFeeType(data?.salik_fee_type),
         value: data.salik_fee_value,
+      },
+      darb: {
+        type: normalizeServiceFeeType(data?.darb_fee_type),
+        value: data.darb_fee_value,
       },
     },
     error: null,

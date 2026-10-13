@@ -173,7 +173,7 @@ export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
   if (authError || !user) throw new Error("Sign in to import Darb transactions.");
   const { data: feeSettings, error: feeSettingsError } = await fetchImportFeeSettings(user.id);
   if (feeSettingsError || !feeSettings) {
-    throw new Error(`Failed to load Salik service fee settings: ${feeSettingsError || "Unknown error"}`);
+    throw new Error(`Failed to load Darb service fee settings: ${feeSettingsError || "Unknown error"}`);
   }
   const [carsResult, contractsResult, segmentsResult, clientsResult] = await Promise.all([
     supabase.from("cars").select("id, plate").eq("owner_id", user.id),
@@ -201,7 +201,7 @@ export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
     if ((data ?? []).length < 1000) break;
   }
   return rows.map((row) => {
-    const serviceFee = calculateServiceFee(row.amount, feeSettings.salik.type, feeSettings.salik.value);
+    const serviceFee = calculateServiceFee(row.amount, feeSettings.darb.type, feeSettings.darb.value);
     const base = {
       ...row,
       serviceFee,
@@ -251,11 +251,11 @@ export async function commitDarb(preview: DarbPreviewRow[]): Promise<DarbImportR
   if (authError || !user) throw new Error("Sign in to import Darb transactions.");
   const { data: feeSettings, error: feeSettingsError } = await fetchImportFeeSettings(user.id);
   if (feeSettingsError || !feeSettings) {
-    throw new Error(`Failed to load Salik service fee settings: ${feeSettingsError || "Unknown error"}`);
+    throw new Error(`Failed to load Darb service fee settings: ${feeSettingsError || "Unknown error"}`);
   }
   const eligible = preview.filter((row) => (row.status === "ready" || row.status === "unlinked") && row.carId);
   if (eligible.some((row) => {
-    const fee = calculateServiceFee(row.amount, feeSettings.salik.type, feeSettings.salik.value);
+    const fee = calculateServiceFee(row.amount, feeSettings.darb.type, feeSettings.darb.value);
     return Math.abs(row.serviceFee - fee) > 0.00001;
   })) {
     throw new Error("The service fee settings changed. Preview the file again before importing.");

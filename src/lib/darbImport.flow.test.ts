@@ -50,7 +50,7 @@ beforeEach(() => {
 
 describe("Darb preview + commit safety", () => {
   const fixture: MockData = {
-    profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 1 }],
+    profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 1, darb_fee_type: "fixed", darb_fee_value: 1 }],
     cars: [
       { id: "car-A", plate: "A 12345" },
       { id: "car-B", plate: "B 12345" },
@@ -89,10 +89,10 @@ describe("Darb preview + commit safety", () => {
     expect(preview[2].carId).toBe("car-B");
   });
 
-  it("uses percentage Salik fee setting for Darb totals in preview and commit", async () => {
+  it("uses independently configured Darb percentage fee even when Salik has different fixed fee", async () => {
     mockDatabase({
       ...fixture,
-      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "percentage", salik_fee_value: 12.5 }],
+      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 2, darb_fee_type: "percentage", darb_fee_value: 12.5 }],
     });
     const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
     const preview = await previewDarb(parsed);
@@ -103,23 +103,35 @@ describe("Darb preview + commit safety", () => {
     });
   });
 
-  it("fails safely if the owner changes Salik fee setting after preview", async () => {
+  it("fails safely if the owner changes Darb fee setting after preview", async () => {
     mockDatabase(fixture);
     const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
     const preview = await previewDarb(parsed);
     mockDatabase({
       ...fixture,
-      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 2 }],
+      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 1, darb_fee_type: "fixed", darb_fee_value: 2 }],
     });
     await expect(commitDarb(preview)).rejects.toThrow(/service fee settings changed/);
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
-  it("never imports when company Salik fee settings are missing", async () => {
+  it("never imports when company Darb fee settings are missing", async () => {
     mockDatabase({ ...fixture, profiles: [] });
     const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
     await expect(previewDarb(parsed)).rejects.toThrow(/service fee settings/i);
     expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("changing Salik fee alone does not change a Darb preview or import", async () => {
+    mockDatabase({
+      ...fixture,
+      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 5, darb_fee_type: "fixed", darb_fee_value: 1 }],
+    });
+    const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
+    const preview = await previewDarb(parsed);
+    expect(preview[0]).toMatchObject({ amount: 4, serviceFee: 1, totalAmount: 5 });
+    await commitDarb(preview);
+    expect(upsertMock.mock.calls[0][0][0]).toMatchObject({ original_amount: 4, service_fee: 1, amount: 5 });
   });
 
   it("does not permit repeated source rows or reimported transactions", async () => {

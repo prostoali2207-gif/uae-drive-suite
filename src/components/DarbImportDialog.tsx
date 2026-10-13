@@ -131,7 +131,7 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
             />
             <div className="text-xs text-muted-foreground">
               Required: Plate, Date (YYYY-MM-DD), Time (HH:mm:ss if no transaction ID), Gate, Amount (AED). Transaction ID is optional. One crossing per row.
-              When no Transaction ID exists, seconds are mandatory to prevent lost crossings. The service fee follows your Salik settings (fixed or percentage), including for Darb.
+              When no Transaction ID exists, seconds are mandatory to prevent lost crossings. The service fee follows your separate Darb settings (fixed or percentage).
             </div>
           </div>
         )}

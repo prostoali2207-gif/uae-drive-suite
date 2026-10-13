@@ -4,6 +4,8 @@
 - Darb's official public website documents account transactions, but **no documented public customer transaction API was confirmed**. Do not call undocumented private endpoints or collect account passwords.
 - The authenticated Darb transaction list's actual HTML structure is not available in this repository. Do **not** assume a browser scraper for all pages is validated until it is tested with a real Darb session.
 - Import is available inside **Fines & Tolls → Darb → Import Darb** (Salik and Darb have separate tabs and totals).
+- Darb fee: **Settings → Import Service Fees → Darb Service Fee** (default 1 AED, independently editable).
+- A contract shows separate **Salik** and **Darb** unpaid items, payment selection sheets, account summaries and invoice lines. Accounting retains the existing salik payment allocation bucket and `salik-{id}` line IDs for compatibility. No existing payments are converted or duplicated.
 - The existing `salik` ledger is reused for compatibility with contract balances, payment allocations, and timeline reconciliation. Darb is unambiguously distinguished by a `DARB:` transaction ID prefix and `Darb —` toll gate label. No database schema changes.
 
 ## Canonical file format
@@ -28,7 +30,7 @@ The importer validates the format itself, so changing Codex wording later cannot
 4. Save explicitly; the same transaction cannot overwrite an existing paid charge.
 5. Review any unlinked/invalid operations before billing a client.
 
-**No automatic billing** on import. Entries start Unpaid. The exact crossing time is used with vehicle replacements and actual contract start/end via the existing database trigger. Ambiguous cars/contracts are excluded before saving. Darb uses **the same per-company Salik service fee settings** (fixed AED or percentage), retrieved for preview and rechecked before saving; `original_amount` stays the exact Darb charge, `service_fee` is computed using the existing Salik formula, and `amount = original_amount + service_fee`. At the currently verified 1 AED fixed fee, a 4 AED Darb crossing becomes 5 AED total. No duplicated fees on reimport. On insert and timeline changes, existing `salik` database triggers link/relink the correct rental using time-accurate vehicle replacement segments; unlinked charges remain Unpaid and may not be billed to a customer.
+**No automatic billing** on import. Entries start Unpaid. The exact crossing time is used with vehicle replacements and actual contract start/end via the existing database trigger. Ambiguous cars/contracts are excluded before saving. Darb uses its **independent per-company Darb service fee settings** (fixed AED or percentage), default AED 1, retrieved for preview and rechecked before saving; it uses the existing shared Salik calculation formula while Salik settings remain independent; `original_amount` stays the exact Darb charge, `service_fee` is computed using the existing Salik formula, and `amount = original_amount + service_fee`. At the currently verified 1 AED fixed fee, a 4 AED Darb crossing becomes 5 AED total. No duplicated fees on reimport. On insert and timeline changes, existing `salik` database triggers link/relink the correct rental using time-accurate vehicle replacement segments; unlinked charges remain Unpaid and may not be billed to a customer.
 
 ## Manual acceptance tests (do not use real customer charges as test data)
 - Upload one valid row; preview the vehicle, contract, original charge + service fee, and total; verify the saved amount and Darb label in contract ledger.

@@ -34,6 +34,7 @@ import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/Rec
 import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFeeInline";
 import { VehicleTimelineSheet } from "@/components/VehicleTimelineSheet";
 import SalikModal from "@/components/SalikModal";
+import { filterTollSource, isDarbTransaction, type TollSource } from "@/lib/tollSource";
 import SalikDetailModal from "@/components/SalikDetailModal";
 import ParkingBulkSheet from "@/components/ParkingBulkSheet";
 import ParkingDetailModal from "@/components/ParkingDetailModal";
@@ -1132,7 +1133,10 @@ const FinancialsAccordion = ({
     .filter((payment) => payment.status.toLowerCase() === "paid")
     .reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
-  const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
+  const salikOnly = filterTollSource(salik, "salik");
+  const darbOnly = filterTollSource(salik, "darb");
+  const salikTotal = salikOnly.reduce((s, x) => s + Number(x.amount), 0);
+  const darbTotal = darbOnly.reduce((s, x) => s + Number(x.amount), 0);
   const otherFees = contractFees.filter((fee) => !isRentalExtensionFee(fee));
   const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
 
@@ -1180,6 +1184,7 @@ const FinancialsAccordion = ({
 
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
+  const [showDarbModal, setShowDarbModal] = useState(false);
 
   const FINES_PAGE_SIZE = 10;
   const SALIK_PAGE_SIZE = 20;
@@ -1361,25 +1366,23 @@ const FinancialsAccordion = ({
         </div>
       </div>
 
-      {/* Salik — summary row */}
-      <div className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Salik + Darb</span>
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-            {salik.length}
-          </span>
+      {([
+        { source: "salik" as const, title: "Salik", entries: salikOnly, total: salikTotal },
+        { source: "darb" as const, title: "Darb", entries: darbOnly, total: darbTotal },
+      ]).map(({ source, title, entries, total }) => (
+        <div key={source} className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">{title}</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{entries.length}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold tabular-nums text-foreground">{fmtAed(total)}</span>
+            <button type="button" onClick={() => source === "darb" ? setShowDarbModal(true) : setShowSalikModal(true)} className="text-[11px] font-medium text-tint-blue-foreground hover:underline">
+              View All →
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold tabular-nums text-foreground">{fmtAed(salikTotal)}</span>
-          <button
-            type="button"
-            onClick={() => setShowSalikModal(true)}
-            className="text-[11px] font-medium text-tint-blue-foreground hover:underline"
-          >
-            View All →
-          </button>
-        </div>
-      </div>
+      ))}
 
       <AccordionRow
         label="Other Fees"
@@ -1432,7 +1435,8 @@ const FinancialsAccordion = ({
         onOpenChange={setShowFinesModal}
         onPaymentRecorded={() => undefined}
       />
-      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
+      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} source="salik" />
+      <SalikModal contractId={contract.id} open={showDarbModal} onOpenChange={setShowDarbModal} source="darb" />
 
     </>
   );
@@ -1922,13 +1926,16 @@ const ContractSalikBulkSheet = ({
   onOpenChange,
   transactions,
   onRefresh,
+  source,
 }: {
   contract: ContractRecord;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transactions: SalikRow[];
   onRefresh: () => void | Promise<void>;
+  source: TollSource;
 }) => {
+  const tollName = source === "darb" ? "Darb" : "Salik";
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Bank Transfer">("Cash");
@@ -2011,7 +2018,7 @@ const ContractSalikBulkSheet = ({
       .in("id", ids);
 
     if (error) {
-      toast.error("Failed to verify Salik payment status");
+      toast.error(`Failed to verify ${tollName} payment status`);
       return;
     }
 
@@ -2060,7 +2067,7 @@ const ContractSalikBulkSheet = ({
       }
 
       if (validTransactions.length === 0 || validSelectedTotal <= 0) {
-        toast.warning("No unpaid Salik trips remain for this payment");
+        toast.warning(`No unpaid ${tollName} trips remain for this payment`);
         setPaymentDialogOpen(false);
         return;
       }
@@ -2108,7 +2115,7 @@ const ContractSalikBulkSheet = ({
       setPaymentMethod("Cash");
       await onRefresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to record Salik payment";
+      const message = error instanceof Error ? error.message : `Failed to record ${tollName} payment`;
       toast.error(message);
     } finally {
       setConfirmingPayment(false);
@@ -2122,7 +2129,7 @@ const ContractSalikBulkSheet = ({
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
             <Route className="h-5 w-5 text-muted-foreground" />
-            <SheetTitle className="text-lg font-semibold text-foreground">Contract Tolls (Salik + Darb)</SheetTitle>
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract {tollName}</SheetTitle>
           </div>
           <SheetDescription className="text-xs text-foreground/55">
             {unpaidTransactions.length} unpaid {unpaidTransactions.length === 1 ? "transaction" : "transactions"} found
@@ -2132,7 +2139,7 @@ const ContractSalikBulkSheet = ({
         <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
           {unpaidTransactions.length === 0 ? (
             <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
-              No unpaid toll charges linked to this contract.
+              No unpaid {tollName} linked to this contract.
             </div>
           ) : (
             <div className="space-y-3">
@@ -2206,10 +2213,10 @@ const ContractSalikBulkSheet = ({
                       />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-foreground">
-                          {transaction.toll_gate || "Salik transaction"}
+                          {transaction.toll_gate || `${tollName} transaction`}
                         </div>
                         <div className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-foreground/50">
-                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
+                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""}{!isDarbTransaction(transaction.transaction_id) ? ` / ${transaction.transaction_id || "No transaction ID"}` : ""}
                         </div>
                         <div className="mt-0.5 truncate text-[11px] text-foreground/45">
                           {[transaction.cars?.plate, [transaction.cars?.make, transaction.cars?.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "No car"}
@@ -2253,9 +2260,9 @@ const ContractSalikBulkSheet = ({
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent className="sm:max-w-[380px]">
           <DialogHeader>
-            <DialogTitle>Salik Payment</DialogTitle>
+            <DialogTitle>{tollName} Payment</DialogTitle>
             <DialogDescription className="text-xs">
-              Record payment for the selected Salik transactions.
+              Record payment for the selected {tollName} transactions.
             </DialogDescription>
           </DialogHeader>
 
@@ -2498,9 +2505,11 @@ const FinancialsPanel = ({
     hasUnverifiedAdditionalCharges;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
+  const [showDarbModal, setShowDarbModal] = useState(false);
   const [showParkingModal, setShowParkingModal] = useState(false);
   const [finesModalOpen, setFinesModalOpen] = useState(false);
   const [salikModalOpen, setSalikModalOpen] = useState(false);
+  const [darbModalOpen, setDarbModalOpen] = useState(false);
   const [parkingModalOpen, setParkingModalOpen] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
@@ -2522,13 +2531,15 @@ const FinancialsPanel = ({
   const canConfirmDepositPartialReturn =
     depositPartialReturnValue > 0 && depositPartialReturnValue <= depositAmount;
 
+  const darbLineIds = new Set(filterTollSource(salik, "darb").map((charge) => `salik-${charge.id}`));
   const openItemGroups = useMemo(() => {
     const groups = new Map<string, OpenItemGroup>();
     const unpaidRentalLines = unpaidAllocationLines.filter((line) => line.category === "rental");
     const unpaidRentalDue = unpaidRentalLines.reduce((sum, line) => sum + Number(line.due), 0);
 
     unpaidAllocationLines.forEach((line) => {
-      const existing = groups.get(line.category);
+      const groupId = line.category === "salik" && darbLineIds.has(line.id) ? "darb" : line.category;
+      const existing = groups.get(groupId);
       const nextDue = (existing?.due ?? 0) + Number(line.due);
       const count = (unpaidAllocationLines.filter((item) => item.category === line.category).length);
 
@@ -2545,10 +2556,11 @@ const FinancialsPanel = ({
       }
 
       if (line.category === "salik") {
-        groups.set("salik", {
-          id: "salik",
-          title: "Salik",
-          detail: `${salik.filter((charge) => charge.status.toLowerCase() !== "paid").reduce((sum, charge) => sum + Number(charge.trips), 0)} trips`,
+        const charges = filterTollSource(salik, groupId === "darb" ? "darb" : "salik");
+        groups.set(groupId, {
+          id: groupId,
+          title: groupId === "darb" ? "Darb" : "Salik",
+          detail: `${charges.filter((charge) => charge.status.toLowerCase() !== "paid").reduce((sum, charge) => sum + Number(charge.trips), 0)} trips`,
           meta: salikVerificationLabel,
           due: nextDue,
           icon: Route,
@@ -2631,21 +2643,13 @@ const FinancialsPanel = ({
         const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
         return currentTime > latestTime ? fine.fine_date : latest;
       }, fines[0]?.fine_date ?? contract.start_date) || contract.start_date;
-    const latestSalikDate =
-      salik.reduce((latest, charge) => {
-        const currentTime = new Date(charge.charge_date).getTime() || 0;
-        const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
-        return currentTime > latestTime ? charge.charge_date : latest;
-      }, salik[0]?.charge_date ?? contract.start_date) || contract.start_date;
     const latestParkingDate = parking.reduce((latest, charge) => {
       const currentTime = new Date(charge.parking_date).getTime() || 0;
       const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
       return currentTime > latestTime ? charge.parking_date : latest;
     }, parking[0]?.parking_date ?? contract.start_date) || contract.start_date;
     const finesTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
-    const salikTotal = salik.reduce((sum, charge) => sum + Number(charge.amount), 0);
     const parkingTotal = parking.reduce((sum, charge) => sum + Number(charge.amount), 0);
-    const salikTripCount = salik.reduce((sum, charge) => sum + Number(charge.trips), 0);
 
     const rentalPeriods = buildRentalPeriods(contract, rentalExtensions);
     const rows: FinancialTransaction[] = [
@@ -2727,19 +2731,25 @@ const FinancialsPanel = ({
         icon: CarFront,
         iconTone: "amber" as const,
       }] : []),
-      ...(salik.length > 0 ? [{
-        id: "salik-summary",
-        date: latestSalikDate,
-        group: "charges" as const,
-        type: "Salik",
-        description: "Salik Charges",
-        details: `${salikTripCount} ${salikTripCount === 1 ? "trip" : "trips"}`,
-        amount: salikTotal,
-        amountTone: "debit" as const,
-        reference: contractNumberLabel(contract.id),
-        icon: Route,
-        iconTone: "green" as const,
-      }] : []),
+      ...(["salik", "darb"] as const).flatMap((source) => {
+        const tolls = filterTollSource(salik, source);
+        if (!tolls.length) return [];
+        const name = source === "darb" ? "Darb" : "Salik";
+        const tripCount = tolls.reduce((sum, charge) => sum + Number(charge.trips), 0);
+        return [{
+          id: `${source}-summary`,
+          date: tolls.reduce((latest, charge) => charge.charge_date > latest ? charge.charge_date : latest, contract.start_date),
+          group: "charges" as const,
+          type: name,
+          description: `${name} Charges`,
+          details: `${tripCount} ${tripCount === 1 ? "trip" : "trips"}`,
+          amount: tolls.reduce((sum, charge) => sum + Number(charge.amount), 0),
+          amountTone: "debit" as const,
+          reference: contractNumberLabel(contract.id),
+          icon: Route,
+          iconTone: "green" as const,
+        }];
+      }),
       ...(parking.length > 0 ? [{
         id: "parking-summary",
         date: latestParkingDate,
@@ -2804,7 +2814,7 @@ const FinancialsPanel = ({
   const getTransactionIconClass = (transaction: FinancialTransaction) => {
     if (transaction.type === "Payment") return "bg-green-950 text-green-300";
     if (transaction.type === "Fine") return "bg-red-950 text-red-300";
-    if (transaction.type === "Salik") return "bg-emerald-950 text-emerald-300";
+    if (transaction.type === "Salik" || transaction.type === "Darb") return "bg-emerald-950 text-emerald-300";
     if (transaction.type === "Parking") return "bg-violet-950 text-violet-300";
     if (transaction.type === "Rent") return "bg-blue-950 text-blue-300";
     return "bg-purple-950 text-purple-300";
@@ -2813,6 +2823,8 @@ const FinancialsPanel = ({
   const getOpenItemAllocationLines = (item: OpenItemGroup) => {
     if (item.id === "rental") return unpaidAllocationLines.filter((line) => line.category === "rental");
     if (item.id.startsWith("fee-")) return unpaidAllocationLines.filter((line) => line.id === item.id);
+    if (item.id === "darb") return unpaidAllocationLines.filter((line) => darbLineIds.has(line.id));
+    if (item.id === "salik") return unpaidAllocationLines.filter((line) => line.category === "salik" && !darbLineIds.has(line.id));
     return unpaidAllocationLines.filter((line) => line.category === item.id);
   };
 
@@ -3045,7 +3057,7 @@ const FinancialsPanel = ({
           {showDepositVerificationWarning ? (
             <div className="flex items-start gap-2 rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs text-tint-amber-foreground">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Fines/Salik/Parking import not verified. Review before returning deposit.</span>
+              <span>Fines/Salik/Darb/Parking import not verified. Review before returning deposit.</span>
             </div>
           ) : null}
           {openItemGroups.length === 0 ? (
@@ -3076,7 +3088,12 @@ const FinancialsPanel = ({
                       View
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
-                  ) : item.id === "parking" ? (
+                  ) : item.id === "darb" ? (
+                     <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowDarbModal(true)}>
+                       View
+                       <ExternalLink className="h-3.5 w-3.5" />
+                     </Button>
+                   ) : item.id === "parking" ? (
                     <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowParkingModal(true)}>
                       View
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -3236,7 +3253,7 @@ const FinancialsPanel = ({
               const feeTransactionNote = isFeeTransaction ? transaction.contractFee?.note?.trim() : "";
               const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
               const showsTransactionDetails =
-                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik" || transaction.type === "Parking";
+                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik" || transaction.type === "Darb" || transaction.type === "Parking";
 
               return (
               <div key={transaction.id}>
@@ -3293,13 +3310,13 @@ const FinancialsPanel = ({
                         >
                           View all →
                         </Button>
-                      ) : transaction.type === "Salik" ? (
+                      ) : transaction.type === "Salik" || transaction.type === "Darb" ? (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
-                          onClick={() => setSalikModalOpen(true)}
+                          onClick={() => transaction.type === "Darb" ? setDarbModalOpen(true) : setSalikModalOpen(true)}
                         >
                           View all →
                         </Button>
@@ -3823,7 +3840,16 @@ const FinancialsPanel = ({
         contract={contract}
         open={showSalikModal}
         onOpenChange={setShowSalikModal}
-        transactions={salik}
+        transactions={filterTollSource(salik, "salik")}
+        source="salik"
+        onRefresh={onInlinePaymentRecorded}
+      />
+      <ContractSalikBulkSheet
+        contract={contract}
+        open={showDarbModal}
+        onOpenChange={setShowDarbModal}
+        transactions={filterTollSource(salik, "darb")}
+        source="darb"
         onRefresh={onInlinePaymentRecorded}
       />
       <ContractFinesDetailModal
@@ -3832,7 +3858,8 @@ const FinancialsPanel = ({
         open={finesModalOpen}
         onClose={() => setFinesModalOpen(false)}
       />
-      <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />
+      <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} source="salik" />
+      <SalikDetailModal contractId={contract.id} open={darbModalOpen} onClose={() => setDarbModalOpen(false)} source="darb" />
       <ParkingBulkSheet
         contract={contract}
         open={showParkingModal}
@@ -4208,7 +4235,7 @@ const ContractDetail = () => {
         id: `salik-${s.id}`,
         date: s.charge_date,
         type: "Salik",
-        description: `${s.trips} toll trips`,
+        description: isDarbTransaction(s.transaction_id) ? `${s.trips} Darb toll trips` : `${s.trips} Salik toll trips`,
         debit: Number(s.amount),
         credit: 0,
         status: s.status,
@@ -4289,7 +4316,7 @@ const ContractDetail = () => {
           .eq("contract_id", contract.id),
         (supabase as any)
           .from("salik")
-          .select("id, trips, amount")
+          .select("id, transaction_id, trips, amount")
           .eq("contract_id", contract.id),
         (supabase as any)
           .from("parking_charges")
@@ -4386,7 +4413,7 @@ const ContractDetail = () => {
         ...fine,
         amount: Number(fine.amount) || 0,
       }));
-      const salikCharges = ((salikRes.data ?? []) as Array<{ id: string; trips: number; amount: number }>).map((charge) => ({
+      const salikCharges = ((salikRes.data ?? []) as Array<{ id: string; transaction_id: string | null; trips: number; amount: number }>).map((charge) => ({
         ...charge,
         trips: Number(charge.trips) || 0,
         amount: Number(charge.amount) || 0,
@@ -4402,7 +4429,8 @@ const ContractDetail = () => {
         .filter((payment) => String(payment.status || "").toLowerCase() === "paid")
         .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
       const finesTotal = chargedFines.reduce((sum, fine) => sum + fine.amount, 0);
-      const salikTrips = salikCharges.reduce((sum, charge) => sum + charge.trips, 0);
+      const salikOnlyCharges = filterTollSource(salikCharges, "salik");
+      const darbCharges = filterTollSource(salikCharges, "darb");
       const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
       const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
       const parkingTotal = parkingCharges.reduce((sum, charge) => sum + charge.amount, 0);
@@ -4446,14 +4474,14 @@ const ContractDetail = () => {
           ),
         );
       }
-      if (salikCharges.length > 0) {
-        rows.push(
-          makeInvoiceRow(
-            `Salik Charges\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
-            String(salikTrips),
-            salikTotal,
-          ),
-        );
+      for (const [name, charges] of [["Salik", salikOnlyCharges], ["Darb", darbCharges]] as const) {
+        if (!charges.length) continue;
+        const trips = charges.reduce((sum, charge) => sum + charge.trips, 0);
+        rows.push(makeInvoiceRow(
+          `${name} Charges\n${trips} ${trips === 1 ? "trip" : "trips"}`,
+          String(trips),
+          charges.reduce((sum, charge) => sum + charge.amount, 0),
+        ));
       }
       if (parkingCharges.length > 0) {
         rows.push(

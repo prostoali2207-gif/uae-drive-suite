@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { isDarbTransaction, type TollSource } from "@/lib/tollSource";
 import { CheckCircle2, Loader2, Radar, Route } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ interface SalikModalProps {
   contractId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  source: TollSource;
 }
 
 type SalikStatus = "Paid" | "Charged to Client" | "Unpaid" | string;
@@ -74,7 +76,8 @@ const formatVehicleInfo = (car: ContractSalikTransaction["cars"]) => {
   return [car.plate, modelName].filter(Boolean).join(" · ") || null;
 };
 
-export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) {
+export function SalikModal({ contractId, open, onOpenChange, source }: SalikModalProps) {
+  const tollName = source === "darb" ? "Darb" : "Salik";
   const { toast } = useToast();
   const [transactions, setTransactions] = useState<ContractSalikTransaction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -95,7 +98,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
         .order("charge_date", { ascending: false });
 
       if (error) throw error;
-      setTransactions((data ?? []) as ContractSalikTransaction[]);
+      setTransactions(((data ?? []) as ContractSalikTransaction[]).filter((charge) => isDarbTransaction(charge.transaction_id) === (source === "darb")));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("Failed to load Salik transactions:", error);
@@ -107,7 +110,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
     } finally {
       setLoading(false);
     }
-  }, [contractId, toast]);
+  }, [contractId, toast, source]);
 
   useEffect(() => {
     if (open) {
@@ -167,7 +170,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
             <Route className="h-5 w-5 text-muted-foreground" />
-            <SheetTitle className="text-lg font-semibold text-foreground">Contract Tolls (Salik + Darb)</SheetTitle>
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract {tollName}</SheetTitle>
           </div>
           <SheetDescription className="text-xs text-foreground/55">
             {loading
@@ -185,7 +188,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
           ) : transactions.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-md border border-border bg-white/[0.02] px-4 py-12 text-center">
               <Radar className="mb-3 h-5 w-5 text-foreground/45" />
-              <p className="text-sm font-medium text-foreground">No toll charges linked to this contract</p>
+              <p className="text-sm font-medium text-foreground">No {tollName} charges linked to this contract</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -197,7 +200,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
                 const transactionMeta = [
                   formatDate(transaction.transaction_date),
                   vehicleInfo,
-                  transaction.transaction_id,
+                  isDarbTransaction(transaction.transaction_id) ? null : transaction.transaction_id,
                 ].filter(Boolean);
 
                 return (
@@ -208,7 +211,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <h3 className="truncate text-sm font-semibold text-foreground">
-                          {transaction.toll_gate || "Salik transaction"}
+                          {transaction.toll_gate || `${tollName} transaction`}
                         </h3>
                         <p className="mt-1 font-ibm-plex-mono text-[11px] text-foreground/55">
                           {transactionMeta.join(" · ")}

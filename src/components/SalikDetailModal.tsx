@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { isDarbTransaction, type TollSource } from "@/lib/tollSource";
 import { Search, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ interface SalikDetailModalProps {
   contractId: string;
   open: boolean;
   onClose: () => void;
+  source: TollSource;
 }
 
 type SalikRow = {
@@ -49,7 +51,8 @@ const formatDate = (value: string | null) => {
 
 const toNumber = (value: number | string | null) => Number(value) || 0;
 
-export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModalProps) {
+export function SalikDetailModal({ contractId, open, onClose, source }: SalikDetailModalProps) {
+  const tollName = source === "darb" ? "Darb" : "Salik";
   const [transactions, setTransactions] = useState<SalikRow[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -76,7 +79,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
         setError(salikError.message || "Failed to load Salik transactions.");
         setTransactions([]);
       } else {
-        setTransactions((data ?? []) as SalikRow[]);
+        setTransactions(((data ?? []) as SalikRow[]).filter((charge) => isDarbTransaction(charge.transaction_id) === (source === "darb")));
       }
 
       setLoading(false);
@@ -87,7 +90,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
     return () => {
       active = false;
     };
-  }, [contractId, open]);
+  }, [contractId, open, source]);
 
   const summary = useMemo(
     () =>
@@ -124,7 +127,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 sm:px-6">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold leading-6 text-foreground">Salik + Darb Transactions</h2>
+            <h2 className="text-lg font-semibold leading-6 text-foreground">{tollName} Transactions</h2>
             <p className="mt-1 truncate font-ibm-plex-mono text-xs text-muted-foreground">{contractId}</p>
           </div>
           <button
@@ -170,7 +173,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
               </p>
             ) : filteredTransactions.length === 0 ? (
               <p className="rounded-md border border-border bg-muted/10 px-3 py-8 text-center text-sm text-muted-foreground">
-                No Salik transactions found.
+                No {tollName} transactions found.
               </p>
             ) : (
               <div className="space-y-2 pb-2">
@@ -186,10 +189,10 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">
-                          {transaction.toll_gate || (transaction.transaction_id?.startsWith("DARB:") ? "Darb transaction" : "Salik transaction")}
+                          {transaction.toll_gate || `${tollName} transaction`}
                         </p>
                         <p className="mt-1 truncate font-ibm-plex-mono text-[11px] tabular-nums text-muted-foreground">
-                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
+                          {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""}{!isDarbTransaction(transaction.transaction_id) ? ` / ${transaction.transaction_id || "No transaction ID"}` : ""}
                         </p>
                         <p className="mt-1 truncate text-[11px] text-muted-foreground">
                           {carLabel || "No car"}
