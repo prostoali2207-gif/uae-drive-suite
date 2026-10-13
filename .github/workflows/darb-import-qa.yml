@@ -11,6 +11,9 @@ on:
       - "src/components/SalikModal.tsx"
       - "src/components/SalikDetailModal.tsx"
       - "src/pages/ContractDetail.tsx"
+      - "supabase/migrations/20261013171500_add_darb_service_fee_settings.sql"
+      - "tsconfig.darb-client.json"
+      - "src/pages/Settings.tsx"
       - "src/pages/Fines.tsx"
       - "src/lib/tollSource*.ts"
       - ".github/workflows/darb-import-qa.yml"
@@ -24,6 +27,9 @@ on:
       - "src/components/SalikModal.tsx"
       - "src/components/SalikDetailModal.tsx"
       - "src/pages/ContractDetail.tsx"
+      - "supabase/migrations/20261013171500_add_darb_service_fee_settings.sql"
+      - "tsconfig.darb-client.json"
+      - "src/pages/Settings.tsx"
       - "src/pages/Fines.tsx"
       - "src/lib/tollSource*.ts"
       - ".github/workflows/darb-import-qa.yml"
@@ -46,5 +52,7 @@ jobs:
         run: npx vitest run src/lib/darbImport.test.ts src/lib/darbImport.flow.test.ts src/lib/tollSource.test.ts
       - name: Check TypeScript
         run: npx tsc --noEmit -p tsconfig.darb.json
+      - name: Check Darb client changes
+        run: npx tsc --noEmit -p tsconfig.darb-client.json
       - name: Build application
         run: npm run build
