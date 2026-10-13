@@ -2102,7 +2102,7 @@ const ContractSalikBulkSheet = ({
 
       if (salikError) throw salikError;
 
-      toast.success("Salik payment recorded");
+      toast.success("Toll payment recorded");
       setSelectedIds(new Set());
       setPaymentDialogOpen(false);
       setPaymentMethod("Cash");
@@ -2122,7 +2122,7 @@ const ContractSalikBulkSheet = ({
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
             <Route className="h-5 w-5 text-muted-foreground" />
-            <SheetTitle className="text-lg font-semibold text-foreground">Contract Salik</SheetTitle>
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Tolls (Salik + Darb)</SheetTitle>
           </div>
           <SheetDescription className="text-xs text-foreground/55">
             {unpaidTransactions.length} unpaid {unpaidTransactions.length === 1 ? "transaction" : "transactions"} found
@@ -2132,7 +2132,7 @@ const ContractSalikBulkSheet = ({
         <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
           {unpaidTransactions.length === 0 ? (
             <div className="rounded-md border border-border bg-white/[0.02] px-4 py-10 text-center text-sm text-foreground/60">
-              No unpaid Salik linked to this contract.
+              No unpaid toll charges linked to this contract.
             </div>
           ) : (
             <div className="space-y-3">
@@ -2449,7 +2449,7 @@ const FinancialsPanel = ({
       lookup.set(`salik-${charge.id}`, {
         category: "salik",
         label: charge.transaction_id?.startsWith("DARB:")
-          ? `Darb ${charge.toll_gate ?? charge.transaction_id}`
+          ? charge.toll_gate ?? "Darb"
           : charge.transaction_id
             ? `Salik ${charge.transaction_id}`
             : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
@@ -5791,7 +5791,7 @@ const ContractDetail = () => {
         id: `salik-${charge.id}`,
         category: "salik" as const,
         label: charge.transaction_id?.startsWith("DARB:")
-          ? `Darb ${charge.toll_gate ?? charge.transaction_id}`
+          ? charge.toll_gate ?? "Darb"
           : charge.transaction_id
             ? `Salik ${charge.transaction_id}`
             : charge.toll_gate ? `Salik ${charge.toll_gate}` : "Salik",
