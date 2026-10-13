@@ -4,6 +4,7 @@ import { Check, ChevronsUpDown, Plus, Search, TriangleAlert as AlertTriangle, Wa
 import { importFinesExcel, importSalikExcel, type ImportSummary } from "@/lib/excelImport";
 import { ParkingChargesTab } from "@/components/ParkingChargesTab";
 import { DarbImportDialog } from "@/components/DarbImportDialog";
+import { filterTollSource } from "@/lib/tollSource";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -217,6 +218,7 @@ const Fines = () => {
   const [activeTab, setActiveTab] = useState("fines");
   const [finesSearch, setFinesSearch] = useState("");
   const [salikSearch, setSalikSearch] = useState("");
+  const [darbSearch, setDarbSearch] = useState("");
   const [finesListFilter, setFinesListFilter] = useState<"all" | "unpaid" | "not-linked">("all");
 
   useEffect(() => {
@@ -308,7 +310,7 @@ const Fines = () => {
 
   useEffect(() => {
     setSalikPage(1);
-  }, [salikPageSize, salikSearch]);
+  }, [salikPageSize, salikSearch, darbSearch, activeTab]);
 
   const filteredFines = useMemo(() => {
     const query = finesSearch.trim().toLowerCase();
@@ -329,9 +331,16 @@ const Fines = () => {
     );
   }, [activeStatusFilter, fines, finesListFilter, finesSearch]);
 
+  const activeTollSource = activeTab === "darb" ? "darb" : "salik";
+  const tollName = activeTollSource === "darb" ? "Darb" : "Salik";
+  const sourceTolls = useMemo(() => filterTollSource(salik, activeTollSource), [salik, activeTollSource]);
+  const currentTollSearch = activeTollSource === "darb" ? darbSearch : salikSearch;
+
   const filteredSalik = useMemo(() => {
-    const query = salikSearch.trim().toLowerCase();
-    const byStatus = activeStatusFilter ? salik.filter((charge) => charge.status === activeStatusFilter) : salik;
+    const query = currentTollSearch.trim().toLowerCase();
+    const byStatus = activeStatusFilter
+      ? sourceTolls.filter((charge) => charge.status === activeStatusFilter)
+      : sourceTolls;
     if (!query) return byStatus;
 
     return byStatus.filter((charge) =>
@@ -339,7 +348,7 @@ const Fines = () => {
       matchesSearch(charge.clients?.full_name, query) ||
       matchesSearch(charge.cars?.plate, query),
     );
-  }, [activeStatusFilter, salik, salikSearch]);
+  }, [activeStatusFilter, sourceTolls, currentTollSearch]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filteredFines.length / finesPageSize));
@@ -365,11 +374,13 @@ const Fines = () => {
     setActiveTab(value);
     setFinesSearch("");
     setSalikSearch("");
+    setDarbSearch("");
+    setSalikOpen(false);
   };
 
   const totalUnpaidSalik = useMemo(
-    () => salik.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + Number(s.amount), 0),
-    [salik],
+    () => sourceTolls.filter((s) => s.status === "Unpaid").reduce((sum, s) => sum + Number(s.amount), 0),
+    [sourceTolls],
   );
 
   const chargeableFines = useMemo(
@@ -383,8 +394,8 @@ const Fines = () => {
   );
 
   const chargeableSalik = useMemo(
-    () => salik.filter((charge) => charge.status === "Unpaid" && charge.contract_id !== null),
-    [salik],
+    () => sourceTolls.filter((charge) => charge.status === "Unpaid" && charge.contract_id !== null),
+    [sourceTolls],
   );
 
   const chargeableFinesTotal = useMemo(
@@ -403,8 +414,8 @@ const Fines = () => {
   );
 
   const salikBalance = useMemo(
-    () => salik.reduce((sum, s) => sum + Number(s.amount), 0),
-    [salik],
+    () => sourceTolls.reduce((sum, s) => sum + Number(s.amount), 0),
+    [sourceTolls],
   );
   const finesEmptyMessage = activeStatusFilter === "Unpaid"
     ? "No unpaid fines found."
@@ -412,8 +423,10 @@ const Fines = () => {
       ? "No unlinked unpaid fines found."
     : "No results found";
   const salikEmptyMessage = activeStatusFilter === "Unpaid"
-    ? "No unpaid Salik charges found."
-    : "No results found";
+    ? `No unpaid ${tollName} charges found.`
+    : currentTollSearch.trim()
+      ? `No matching ${tollName} charges found.`
+      : `No ${tollName} charges recorded.`;
 
   const refetchFines = async () => {
     const { data, error } = await fetchAllFines();
