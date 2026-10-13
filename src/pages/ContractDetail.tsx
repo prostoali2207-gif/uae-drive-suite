@@ -2527,13 +2527,15 @@ const FinancialsPanel = ({
   const canConfirmDepositPartialReturn =
     depositPartialReturnValue > 0 && depositPartialReturnValue <= depositAmount;
 
+  const darbLineIds = new Set(filterTollSource(salik, "darb").map((charge) => `salik-${charge.id}`));
   const openItemGroups = useMemo(() => {
     const groups = new Map<string, OpenItemGroup>();
     const unpaidRentalLines = unpaidAllocationLines.filter((line) => line.category === "rental");
     const unpaidRentalDue = unpaidRentalLines.reduce((sum, line) => sum + Number(line.due), 0);
 
     unpaidAllocationLines.forEach((line) => {
-      const existing = groups.get(line.category);
+      const groupId = line.category === "salik" && darbLineIds.has(line.id) ? "darb" : line.category;
+      const existing = groups.get(groupId);
       const nextDue = (existing?.due ?? 0) + Number(line.due);
       const count = (unpaidAllocationLines.filter((item) => item.category === line.category).length);
 
@@ -2550,10 +2552,11 @@ const FinancialsPanel = ({
       }
 
       if (line.category === "salik") {
-        groups.set("salik", {
-          id: "salik",
-          title: "Salik",
-          detail: `${salik.filter((charge) => charge.status.toLowerCase() !== "paid").reduce((sum, charge) => sum + Number(charge.trips), 0)} trips`,
+        const charges = filterTollSource(salik, groupId === "darb" ? "darb" : "salik");
+        groups.set(groupId, {
+          id: groupId,
+          title: groupId === "darb" ? "Darb" : "Salik",
+          detail: `${charges.filter((charge) => charge.status.toLowerCase() !== "paid").reduce((sum, charge) => sum + Number(charge.trips), 0)} trips`,
           meta: salikVerificationLabel,
           due: nextDue,
           icon: Route,
@@ -2818,6 +2821,8 @@ const FinancialsPanel = ({
   const getOpenItemAllocationLines = (item: OpenItemGroup) => {
     if (item.id === "rental") return unpaidAllocationLines.filter((line) => line.category === "rental");
     if (item.id.startsWith("fee-")) return unpaidAllocationLines.filter((line) => line.id === item.id);
+    if (item.id === "darb") return unpaidAllocationLines.filter((line) => darbLineIds.has(line.id));
+    if (item.id === "salik") return unpaidAllocationLines.filter((line) => line.category === "salik" && !darbLineIds.has(line.id));
     return unpaidAllocationLines.filter((line) => line.category === item.id);
   };
 
@@ -3050,7 +3055,7 @@ const FinancialsPanel = ({
           {showDepositVerificationWarning ? (
             <div className="flex items-start gap-2 rounded-md border border-tint-amber-foreground/25 bg-tint-amber px-3 py-2 text-xs text-tint-amber-foreground">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Fines/Salik/Parking import not verified. Review before returning deposit.</span>
+              <span>Fines/Salik/Darb/Parking import not verified. Review before returning deposit.</span>
             </div>
           ) : null}
           {openItemGroups.length === 0 ? (
@@ -3081,7 +3086,12 @@ const FinancialsPanel = ({
                       View
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
-                  ) : item.id === "parking" ? (
+                  ) : item.id === "darb" ? (
+                     <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowDarbModal(true)}>
+                       View
+                       <ExternalLink className="h-3.5 w-3.5" />
+                     </Button>
+                   ) : item.id === "parking" ? (
                     <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => setShowParkingModal(true)}>
                       View
                       <ExternalLink className="h-3.5 w-3.5" />
