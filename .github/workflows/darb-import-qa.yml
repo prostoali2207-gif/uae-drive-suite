@@ -2,11 +2,15 @@ name: Darb import QA
 
 on:
   push:
-    branches: [feature/darb-fixed-import, feature/separate-salik-darb-tabs]
+    branches: [feature/darb-fixed-import, feature/separate-salik-darb-tabs, feature/darb-salik-shared-fee]
     paths:
       - "src/lib/darbImport.ts"
+      - "src/lib/excelImport.ts"
       - "src/lib/darbImport*.test.ts"
       - "src/components/DarbImportDialog.tsx"
+      - "src/components/SalikModal.tsx"
+      - "src/components/SalikDetailModal.tsx"
+      - "src/pages/ContractDetail.tsx"
       - "src/pages/Fines.tsx"
       - "src/lib/tollSource*.ts"
       - ".github/workflows/darb-import-qa.yml"
@@ -14,8 +18,12 @@ on:
   pull_request:
     paths:
       - "src/lib/darbImport.ts"
+      - "src/lib/excelImport.ts"
       - "src/lib/darbImport*.test.ts"
       - "src/components/DarbImportDialog.tsx"
+      - "src/components/SalikModal.tsx"
+      - "src/components/SalikDetailModal.tsx"
+      - "src/pages/ContractDetail.tsx"
       - "src/pages/Fines.tsx"
       - "src/lib/tollSource*.ts"
       - ".github/workflows/darb-import-qa.yml"

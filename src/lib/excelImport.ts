@@ -79,7 +79,7 @@ function normalizeServiceFeeType(value: string | null | undefined): ServiceFeeTy
   return value === "percentage" ? "percentage" : "fixed";
 }
 
-function calculateServiceFee(baseAmount: number, type: ServiceFeeType, value: number): number {
+export function calculateServiceFee(baseAmount: number, type: ServiceFeeType, value: number): number {
   if (type === "percentage") {
     return Math.round((baseAmount * value / 100) * 100) / 100;
   }
@@ -87,7 +87,7 @@ function calculateServiceFee(baseAmount: number, type: ServiceFeeType, value: nu
   return value;
 }
 
-async function fetchImportFeeSettings(ownerId: string): Promise<{ data: ImportFeeSettings | null; error: string | null }> {
+export async function fetchImportFeeSettings(ownerId: string): Promise<{ data: ImportFeeSettings | null; error: string | null }> {
   const profiles = supabase.from("profiles") as unknown as {
     select: (columns: string) => {
       eq: (column: "id", value: string) => {

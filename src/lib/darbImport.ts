@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { calculateServiceFee, fetchImportFeeSettings } from "@/lib/excelImport";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,6 +19,8 @@ export interface DarbRow {
 }
 
 export interface DarbPreviewRow extends DarbRow {
+  serviceFee: number;
+  totalAmount: number;
   status: "ready" | "unlinked" | "duplicate" | "invalid";
   carId: string | null;
   contractLabel: string | null;
@@ -168,6 +171,10 @@ function isInContract(c: Contract, at: number): boolean {
 export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Sign in to import Darb transactions.");
+  const { data: feeSettings, error: feeSettingsError } = await fetchImportFeeSettings(user.id);
+  if (feeSettingsError || !feeSettings) {
+    throw new Error(`Failed to load Salik service fee settings: ${feeSettingsError || "Unknown error"}`);
+  }
   const [carsResult, contractsResult, segmentsResult, clientsResult] = await Promise.all([
     supabase.from("cars").select("id, plate").eq("owner_id", user.id),
     supabase.from("contracts").select("id, client_id, car_id, start_date, end_date, start_time, end_time").eq("owner_id", user.id),
@@ -194,7 +201,14 @@ export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
     if ((data ?? []).length < 1000) break;
   }
   return rows.map((row) => {
-    const base = { ...row, carId: null, contractLabel: null };
+    const serviceFee = calculateServiceFee(row.amount, feeSettings.salik.type, feeSettings.salik.value);
+    const base = {
+      ...row,
+      serviceFee,
+      totalAmount: Math.round((row.amount + serviceFee) * 100) / 100,
+      carId: null,
+      contractLabel: null,
+    };
     if (row.error) return { ...base, status: "invalid" as const, message: row.error };
     if (seen.has(row.key)) {
       return { ...base, status: "invalid" as const, message: "Repeated identical crossing without a unique ID; verify source rows" };
@@ -235,7 +249,17 @@ export async function previewDarb(rows: DarbRow[]): Promise<DarbPreviewRow[]> {
 export async function commitDarb(preview: DarbPreviewRow[]): Promise<DarbImportResult> {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Sign in to import Darb transactions.");
+  const { data: feeSettings, error: feeSettingsError } = await fetchImportFeeSettings(user.id);
+  if (feeSettingsError || !feeSettings) {
+    throw new Error(`Failed to load Salik service fee settings: ${feeSettingsError || "Unknown error"}`);
+  }
   const eligible = preview.filter((row) => (row.status === "ready" || row.status === "unlinked") && row.carId);
+  if (eligible.some((row) => {
+    const fee = calculateServiceFee(row.amount, feeSettings.salik.type, feeSettings.salik.value);
+    return Math.abs(row.serviceFee - fee) > 0.00001;
+  })) {
+    throw new Error("The service fee settings changed. Preview the file again before importing.");
+  }
   const result: DarbImportResult = { inserted: 0, duplicate: preview.filter((row) => row.status === "duplicate").length, failed: 0, errors: [] };
   // Ignore existing IDs on conflict. NEVER update an existing charge/payment.
   for (let start = 0; start < eligible.length; start += 100) {
@@ -249,8 +273,8 @@ export async function commitDarb(preview: DarbPreviewRow[]): Promise<DarbImportR
       tag_number: null,
       trips: 1,
       original_amount: row.amount,
-      service_fee: 0,
-      amount: row.amount,
+      service_fee: row.serviceFee,
+      amount: row.totalAmount,
       status: "Unpaid",
       contract_id: null,
       client_id: null,

@@ -3,7 +3,7 @@
 ## Status
 - Darb's official public website documents account transactions, but **no documented public customer transaction API was confirmed**. Do not call undocumented private endpoints or collect account passwords.
 - The authenticated Darb transaction list's actual HTML structure is not available in this repository. Do **not** assume a browser scraper for all pages is validated until it is tested with a real Darb session.
-- Import is available inside **Fines & Tolls → Toll Charges → Import Darb**.
+- Import is available inside **Fines & Tolls → Darb → Import Darb** (Salik and Darb have separate tabs and totals).
 - The existing `salik` ledger is reused for compatibility with contract balances, payment allocations, and timeline reconciliation. Darb is unambiguously distinguished by a `DARB:` transaction ID prefix and `Darb —` toll gate label. No database schema changes.
 
 ## Canonical file format
@@ -28,14 +28,14 @@ The importer validates the format itself, so changing Codex wording later cannot
 4. Save explicitly; the same transaction cannot overwrite an existing paid charge.
 5. Review any unlinked/invalid operations before billing a client.
 
-**No automatic billing** on import. Entries start Unpaid. The exact crossing time is used with vehicle replacements and actual contract start/end via the existing database trigger. Ambiguous cars/contracts are excluded before saving. Original Darb amount is recorded without an added FleetDesk service fee (0 AED) until a separately specified policy exists.
+**No automatic billing** on import. Entries start Unpaid. The exact crossing time is used with vehicle replacements and actual contract start/end via the existing database trigger. Ambiguous cars/contracts are excluded before saving. Darb uses **the same per-company Salik service fee settings** (fixed AED or percentage), retrieved for preview and rechecked before saving; `original_amount` stays the exact Darb charge, `service_fee` is computed using the existing Salik formula, and `amount = original_amount + service_fee`. At the currently verified 1 AED fixed fee, a 4 AED Darb crossing becomes 5 AED total. No duplicated fees on reimport. On insert and timeline changes, existing `salik` database triggers link/relink the correct rental using time-accurate vehicle replacement segments; unlinked charges remain Unpaid and may not be billed to a customer.
 
 ## Manual acceptance tests (do not use real customer charges as test data)
-- Upload one valid row; preview the vehicle and contract; verify saved amount and Darb label.
+- Upload one valid row; preview the vehicle, contract, original charge + service fee, and total; verify the saved amount and Darb label in contract ledger.
 - Import the same file again; ensure zero newly inserted rows and no status/amount change.
 - Try a wrong/missing header, zero amount, impossible date, unknown/ambiguous plate, and empty time.
 - Use a crossing before collection, after actual vehicle return, and around a vehicle swap; ensure it is not charged to the wrong contract.
-- Check an unlinked row cannot be billed from the toll charges table.
+- Check an unlinked row cannot be billed from the toll charges table; test a later replacement-timeline correction reassigns the shared toll ledger correctly without changing amount or fee.
 - Test import preview and final counts on 390px mobile and an Arabic/Russian mixed plate string.
 
 The supplied Codex ZIP was inspected on 2026-10-10. Its two exact-time CSV files have the required 6 headers, **90 unique source rows totaling 360 AED** (September: 60 / 240; October 1–8: 30 / 120). All IDs are blank; times are HH:mm:ss; all 10 source Ajman Private plate code/number combinations were verified as uniquely matching FleetDesk's shortened plate representation by read-only SQL. Read-only timeline checks matched **88 crossings to contracts**, while **2 are unlinked**; preview and manual review must preserve them unlinked. No customer transactions were inserted. A corrected user archive `Darb_FleetDesk_Ready.zip` contains just the original exact-time CSVs, the exporter defaulting to exact seconds, and a single installation bookmarklet. This customer-data archive is not committed to the repository. Darb browser script behavior remains **unverified on a live authenticated page**.
