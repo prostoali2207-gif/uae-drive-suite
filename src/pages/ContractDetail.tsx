@@ -4316,7 +4316,7 @@ const ContractDetail = () => {
           .eq("contract_id", contract.id),
         (supabase as any)
           .from("salik")
-          .select("id, trips, amount")
+          .select("id, transaction_id, trips, amount")
           .eq("contract_id", contract.id),
         (supabase as any)
           .from("parking_charges")
@@ -4413,7 +4413,7 @@ const ContractDetail = () => {
         ...fine,
         amount: Number(fine.amount) || 0,
       }));
-      const salikCharges = ((salikRes.data ?? []) as Array<{ id: string; trips: number; amount: number }>).map((charge) => ({
+      const salikCharges = ((salikRes.data ?? []) as Array<{ id: string; transaction_id: string | null; trips: number; amount: number }>).map((charge) => ({
         ...charge,
         trips: Number(charge.trips) || 0,
         amount: Number(charge.amount) || 0,
@@ -4429,7 +4429,8 @@ const ContractDetail = () => {
         .filter((payment) => String(payment.status || "").toLowerCase() === "paid")
         .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
       const finesTotal = chargedFines.reduce((sum, fine) => sum + fine.amount, 0);
-      const salikTrips = salikCharges.reduce((sum, charge) => sum + charge.trips, 0);
+      const salikOnlyCharges = filterTollSource(salikCharges, "salik");
+      const darbCharges = filterTollSource(salikCharges, "darb");
       const salikTotal = salikCharges.reduce((sum, charge) => sum + charge.amount, 0);
       const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0);
       const parkingTotal = parkingCharges.reduce((sum, charge) => sum + charge.amount, 0);
@@ -4473,14 +4474,14 @@ const ContractDetail = () => {
           ),
         );
       }
-      if (salikCharges.length > 0) {
-        rows.push(
-          makeInvoiceRow(
-            `Salik Charges\n${salikTrips} ${salikTrips === 1 ? "trip" : "trips"}`,
-            String(salikTrips),
-            salikTotal,
-          ),
-        );
+      for (const [name, charges] of [["Salik", salikOnlyCharges], ["Darb", darbCharges]] as const) {
+        if (!charges.length) continue;
+        const trips = charges.reduce((sum, charge) => sum + charge.trips, 0);
+        rows.push(makeInvoiceRow(
+          `${name} Charges\n${trips} ${trips === 1 ? "trip" : "trips"}`,
+          String(trips),
+          charges.reduce((sum, charge) => sum + charge.amount, 0),
+        ));
       }
       if (parkingCharges.length > 0) {
         rows.push(
