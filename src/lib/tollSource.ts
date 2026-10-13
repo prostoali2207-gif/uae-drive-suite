@@ -6,7 +6,7 @@ export function isDarbTransaction(transactionId: string | null | undefined): boo
   return transactionId?.startsWith("DARB:") ?? false;
 }
 
-export function filterTollSource<T extends { transaction_id: string | null }>(
+export function filterTollSource<T extends { transaction_id?: string | null }>(
   charges: T[],
   source: TollSource,
 ): T[] {
