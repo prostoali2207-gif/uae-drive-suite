@@ -133,7 +133,7 @@ export async function parseDarbFile(file: File): Promise<DarbRow[]> {
 
 type Car = { id: string; plate: string };
 type Contract = { id: string; client_id: string; car_id: string; start_date: string; end_date: string; start_time: string | null; end_time: string | null };
-type Segment = { contract_id: string; car_id: string; started_at: string; ended_at: string | null };
+type Segment = { owner_id: string; contract_id: string; car_id: string; started_at: string; ended_at: string | null };
 type Client = { id: string; full_name: string };
 type BaseSalik = Database["public"]["Tables"]["salik"];
 interface DarbDatabase extends Database {
