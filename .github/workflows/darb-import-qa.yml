@@ -9,6 +9,7 @@ on:
       - "src/components/DarbImportDialog.tsx"
       - "src/pages/Fines.tsx"
       - ".github/workflows/darb-import-qa.yml"
+      - "tsconfig.darb.json"
   pull_request:
     paths:
       - "src/lib/darbImport.ts"
@@ -34,6 +35,6 @@ jobs:
       - name: Focused Darb tests
         run: npx vitest run src/lib/darbImport.test.ts
       - name: Check TypeScript
-        run: npx tsc --noEmit -p tsconfig.app.json
+        run: npx tsc --noEmit -p tsconfig.darb.json
       - name: Build application
         run: npm run build
