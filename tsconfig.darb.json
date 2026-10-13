@@ -3,6 +3,7 @@
   "include": [
     "src/lib/darbImport.ts",
     "src/lib/darbImport.test.ts",
+    "src/lib/darbImport.flow.test.ts",
     "src/components/DarbImportDialog.tsx"
   ]
 }
