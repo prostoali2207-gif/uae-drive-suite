@@ -1157,9 +1157,9 @@ const Fines = () => {
 
           <div className="grid gap-3 md:hidden">
             {loading ? (
-              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading Salik charges...</div>
-            ) : salik.length === 0 ? (
-              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">No Salik charges recorded.</div>
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading {tollName} charges...</div>
+            ) : sourceTolls.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">No {tollName} charges recorded.</div>
             ) : filteredSalik.length === 0 ? (
               <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">{salikEmptyMessage}</div>
             ) : (
@@ -1240,11 +1240,11 @@ const Fines = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">Loading Salik charges...</TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">Loading {tollName} charges...</TableCell>
                   </TableRow>
-                ) : salik.length === 0 ? (
+                ) : sourceTolls.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No Salik charges recorded.</TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">No {tollName} charges recorded.</TableCell>
                   </TableRow>
                 ) : filteredSalik.length === 0 ? (
                   <TableRow>
