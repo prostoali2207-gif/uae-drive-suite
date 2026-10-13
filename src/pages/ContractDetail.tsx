@@ -300,7 +300,7 @@ type DepositReconciliationInfo = {
 type LedgerEntry = {
   id: string;
   date: string;
-  type: "Rental" | "Salik" | "Parking" | "Payment" | "Fine" | "Deposit";
+  type: "Rental" | "Salik" | "Darb" | "Parking" | "Payment" | "Fine" | "Deposit";
   description: string;
   debit: number;
   credit: number;
@@ -2509,6 +2509,7 @@ const FinancialsPanel = ({
   const [showParkingModal, setShowParkingModal] = useState(false);
   const [finesModalOpen, setFinesModalOpen] = useState(false);
   const [salikModalOpen, setSalikModalOpen] = useState(false);
+  const [darbModalOpen, setDarbModalOpen] = useState(false);
   const [parkingModalOpen, setParkingModalOpen] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [transactionSearch, setTransactionSearch] = useState("");
@@ -2642,21 +2643,13 @@ const FinancialsPanel = ({
         const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
         return currentTime > latestTime ? fine.fine_date : latest;
       }, fines[0]?.fine_date ?? contract.start_date) || contract.start_date;
-    const latestSalikDate =
-      salik.reduce((latest, charge) => {
-        const currentTime = new Date(charge.charge_date).getTime() || 0;
-        const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
-        return currentTime > latestTime ? charge.charge_date : latest;
-      }, salik[0]?.charge_date ?? contract.start_date) || contract.start_date;
     const latestParkingDate = parking.reduce((latest, charge) => {
       const currentTime = new Date(charge.parking_date).getTime() || 0;
       const latestTime = latest ? new Date(latest).getTime() || 0 : 0;
       return currentTime > latestTime ? charge.parking_date : latest;
     }, parking[0]?.parking_date ?? contract.start_date) || contract.start_date;
     const finesTotal = fines.reduce((sum, fine) => sum + Number(fine.amount), 0);
-    const salikTotal = salik.reduce((sum, charge) => sum + Number(charge.amount), 0);
     const parkingTotal = parking.reduce((sum, charge) => sum + Number(charge.amount), 0);
-    const salikTripCount = salik.reduce((sum, charge) => sum + Number(charge.trips), 0);
 
     const rentalPeriods = buildRentalPeriods(contract, rentalExtensions);
     const rows: FinancialTransaction[] = [
@@ -2738,19 +2731,25 @@ const FinancialsPanel = ({
         icon: CarFront,
         iconTone: "amber" as const,
       }] : []),
-      ...(salik.length > 0 ? [{
-        id: "salik-summary",
-        date: latestSalikDate,
-        group: "charges" as const,
-        type: "Salik",
-        description: "Salik Charges",
-        details: `${salikTripCount} ${salikTripCount === 1 ? "trip" : "trips"}`,
-        amount: salikTotal,
-        amountTone: "debit" as const,
-        reference: contractNumberLabel(contract.id),
-        icon: Route,
-        iconTone: "green" as const,
-      }] : []),
+      ...(["salik", "darb"] as const).flatMap((source) => {
+        const tolls = filterTollSource(salik, source);
+        if (!tolls.length) return [];
+        const name = source === "darb" ? "Darb" : "Salik";
+        const tripCount = tolls.reduce((sum, charge) => sum + Number(charge.trips), 0);
+        return [{
+          id: `${source}-summary`,
+          date: tolls.reduce((latest, charge) => charge.charge_date > latest ? charge.charge_date : latest, contract.start_date),
+          group: "charges" as const,
+          type: name,
+          description: `${name} Charges`,
+          details: `${tripCount} ${tripCount === 1 ? "trip" : "trips"}`,
+          amount: tolls.reduce((sum, charge) => sum + Number(charge.amount), 0),
+          amountTone: "debit" as const,
+          reference: contractNumberLabel(contract.id),
+          icon: Route,
+          iconTone: "green" as const,
+        }];
+      }),
       ...(parking.length > 0 ? [{
         id: "parking-summary",
         date: latestParkingDate,
@@ -2815,7 +2814,7 @@ const FinancialsPanel = ({
   const getTransactionIconClass = (transaction: FinancialTransaction) => {
     if (transaction.type === "Payment") return "bg-green-950 text-green-300";
     if (transaction.type === "Fine") return "bg-red-950 text-red-300";
-    if (transaction.type === "Salik") return "bg-emerald-950 text-emerald-300";
+    if (transaction.type === "Salik" || transaction.type === "Darb") return "bg-emerald-950 text-emerald-300";
     if (transaction.type === "Parking") return "bg-violet-950 text-violet-300";
     if (transaction.type === "Rent") return "bg-blue-950 text-blue-300";
     return "bg-purple-950 text-purple-300";
@@ -3254,7 +3253,7 @@ const FinancialsPanel = ({
               const feeTransactionNote = isFeeTransaction ? transaction.contractFee?.note?.trim() : "";
               const showsTransactionDate = isFeeTransaction || isPaymentTransaction;
               const showsTransactionDetails =
-                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik" || transaction.type === "Parking";
+                transaction.type === "Rent" || transaction.type === "Fine" || transaction.type === "Salik" || transaction.type === "Darb" || transaction.type === "Parking";
 
               return (
               <div key={transaction.id}>
@@ -3311,13 +3310,13 @@ const FinancialsPanel = ({
                         >
                           View all →
                         </Button>
-                      ) : transaction.type === "Salik" ? (
+                      ) : transaction.type === "Salik" || transaction.type === "Darb" ? (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="h-8 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
-                          onClick={() => setSalikModalOpen(true)}
+                          onClick={() => transaction.type === "Darb" ? setDarbModalOpen(true) : setSalikModalOpen(true)}
                         >
                           View all →
                         </Button>
@@ -3859,7 +3858,8 @@ const FinancialsPanel = ({
         open={finesModalOpen}
         onClose={() => setFinesModalOpen(false)}
       />
-      <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} />
+      <SalikDetailModal contractId={contract.id} open={salikModalOpen} onClose={() => setSalikModalOpen(false)} source="salik" />
+      <SalikDetailModal contractId={contract.id} open={darbModalOpen} onClose={() => setDarbModalOpen(false)} source="darb" />
       <ParkingBulkSheet
         contract={contract}
         open={showParkingModal}
@@ -4234,7 +4234,7 @@ const ContractDetail = () => {
       entries.push({
         id: `salik-${s.id}`,
         date: s.charge_date,
-        type: "Salik",
+        type: isDarbTransaction(s.transaction_id) ? "Darb" : "Salik",
         description: `${s.trips} toll trips`,
         debit: Number(s.amount),
         credit: 0,
