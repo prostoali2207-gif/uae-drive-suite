@@ -29,6 +29,7 @@ function mockDatabase(data: MockData, existingIds: string[] = []) {
         error: null,
       })),
       upsert: upsertMock,
+      maybeSingle: vi.fn(async () => ({ data: (data[table] ?? [])[0] ?? null, error: null })),
       then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
         Promise.resolve({ data: data[table] ?? [], error: null }).then(resolve, reject),
     };
@@ -49,6 +50,7 @@ beforeEach(() => {
 
 describe("Darb preview + commit safety", () => {
   const fixture: MockData = {
+    profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 1 }],
     cars: [
       { id: "car-A", plate: "A 12345" },
       { id: "car-B", plate: "B 12345" },
@@ -85,6 +87,32 @@ describe("Darb preview + commit safety", () => {
     expect(preview[0].contractLabel).toBe("Test Client");
     expect(preview[1].contractLabel).toBeNull();
     expect(preview[2].carId).toBe("car-B");
+  });
+
+  it("uses percentage Salik fee setting for Darb totals in preview and commit", async () => {
+    mockDatabase({
+      ...fixture,
+      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "percentage", salik_fee_value: 25 }],
+    });
+    const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
+    const preview = await previewDarb(parsed);
+    expect(preview[0]).toMatchObject({ amount: 4, serviceFee: 1, totalAmount: 5, status: "ready" });
+    await commitDarb(preview);
+    expect(upsertMock.mock.calls[0][0][0]).toMatchObject({
+      original_amount: 4, service_fee: 1, amount: 5, status: "Unpaid",
+    });
+  });
+
+  it("fails safely if the owner changes Salik fee setting after preview", async () => {
+    mockDatabase(fixture);
+    const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
+    const preview = await previewDarb(parsed);
+    mockDatabase({
+      ...fixture,
+      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 2 }],
+    });
+    await expect(commitDarb(preview)).rejects.toThrow(/service fee settings changed/);
+    expect(upsertMock).not.toHaveBeenCalled();
   });
 
   it("does not permit repeated source rows or reimported transactions", async () => {
@@ -124,9 +152,9 @@ describe("Darb preview + commit safety", () => {
     for (const charge of savedRows) {
       expect(charge).toMatchObject({
         owner_id: "owner-1",
-        amount: 4,
+        amount: 5,
         original_amount: 4,
-        service_fee: 0,
+        service_fee: 1,
         status: "Unpaid",
         contract_id: null,
         client_id: null,
