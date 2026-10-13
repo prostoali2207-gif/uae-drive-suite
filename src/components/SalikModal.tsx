@@ -167,7 +167,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <div className="flex items-center gap-2">
             <Route className="h-5 w-5 text-muted-foreground" />
-            <SheetTitle className="text-lg font-semibold text-foreground">Contract Salik</SheetTitle>
+            <SheetTitle className="text-lg font-semibold text-foreground">Contract Tolls (Salik + Darb)</SheetTitle>
           </div>
           <SheetDescription className="text-xs text-foreground/55">
             {loading
@@ -185,7 +185,7 @@ export function SalikModal({ contractId, open, onOpenChange }: SalikModalProps) 
           ) : transactions.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-md border border-border bg-white/[0.02] px-4 py-12 text-center">
               <Radar className="mb-3 h-5 w-5 text-foreground/45" />
-              <p className="text-sm font-medium text-foreground">No Salik linked to this contract</p>
+              <p className="text-sm font-medium text-foreground">No toll charges linked to this contract</p>
             </div>
           ) : (
             <div className="space-y-3">
