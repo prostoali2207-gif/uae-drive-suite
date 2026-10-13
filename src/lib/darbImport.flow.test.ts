@@ -92,14 +92,14 @@ describe("Darb preview + commit safety", () => {
   it("uses percentage Salik fee setting for Darb totals in preview and commit", async () => {
     mockDatabase({
       ...fixture,
-      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "percentage", salik_fee_value: 25 }],
+      profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "percentage", salik_fee_value: 12.5 }],
     });
     const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
     const preview = await previewDarb(parsed);
-    expect(preview[0]).toMatchObject({ amount: 4, serviceFee: 1, totalAmount: 5, status: "ready" });
+    expect(preview[0]).toMatchObject({ amount: 4, serviceFee: 0.5, totalAmount: 4.5, status: "ready" });
     await commitDarb(preview);
     expect(upsertMock.mock.calls[0][0][0]).toMatchObject({
-      original_amount: 4, service_fee: 1, amount: 5, status: "Unpaid",
+      original_amount: 4, service_fee: 0.5, amount: 4.5, status: "Unpaid",
     });
   });
 
@@ -112,6 +112,13 @@ describe("Darb preview + commit safety", () => {
       profiles: [{ fine_fee_type: "fixed", fine_fee_value: 20, salik_fee_type: "fixed", salik_fee_value: 2 }],
     });
     await expect(commitDarb(preview)).rejects.toThrow(/service fee settings changed/);
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("never imports when company Salik fee settings are missing", async () => {
+    mockDatabase({ ...fixture, profiles: [] });
+    const parsed = parseDarbText([header, line("A AJMAN PRIVATE 12345", "11:45:46")].join("\n"));
+    await expect(previewDarb(parsed)).rejects.toThrow(/service fee settings/i);
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
