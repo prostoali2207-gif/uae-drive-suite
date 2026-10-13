@@ -2,12 +2,13 @@ name: Darb import QA
 
 on:
   push:
-    branches: [feature/darb-fixed-import]
+    branches: [feature/darb-fixed-import, feature/separate-salik-darb-tabs]
     paths:
       - "src/lib/darbImport.ts"
       - "src/lib/darbImport*.test.ts"
       - "src/components/DarbImportDialog.tsx"
       - "src/pages/Fines.tsx"
+      - "src/lib/tollSource*.ts"
       - ".github/workflows/darb-import-qa.yml"
       - "tsconfig.darb.json"
   pull_request:
@@ -16,6 +17,7 @@ on:
       - "src/lib/darbImport*.test.ts"
       - "src/components/DarbImportDialog.tsx"
       - "src/pages/Fines.tsx"
+      - "src/lib/tollSource*.ts"
       - ".github/workflows/darb-import-qa.yml"
 
 jobs:
@@ -33,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Focused Darb tests
-        run: npx vitest run src/lib/darbImport.test.ts src/lib/darbImport.flow.test.ts
+        run: npx vitest run src/lib/darbImport.test.ts src/lib/darbImport.flow.test.ts src/lib/tollSource.test.ts
       - name: Check TypeScript
         run: npx tsc --noEmit -p tsconfig.darb.json
       - name: Build application
