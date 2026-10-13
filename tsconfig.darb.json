@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/lib/darbImport.ts",
+    "src/lib/darbImport.test.ts",
+    "src/components/DarbImportDialog.tsx"
+  ]
+}
