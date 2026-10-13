@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/vite-env.d.ts",
+    "src/lib/tollSource.ts",
+    "src/lib/tollSource.test.ts",
+    "src/lib/excelImport.ts",
+    "src/lib/darbImport.ts",
+    "src/lib/darbImport.test.ts",
+    "src/lib/darbImport.flow.test.ts",
+    "src/components/DarbImportDialog.tsx",
+    "src/components/SalikModal.tsx",
+    "src/components/SalikDetailModal.tsx",
+    "src/pages/Settings.tsx",
+    "src/pages/Fines.tsx",
+    "src/pages/ContractDetail.tsx"
+  ]
+}
