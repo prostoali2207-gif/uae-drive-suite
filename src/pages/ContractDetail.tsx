@@ -34,6 +34,7 @@ import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/Rec
 import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFeeInline";
 import { VehicleTimelineSheet } from "@/components/VehicleTimelineSheet";
 import SalikModal from "@/components/SalikModal";
+import { filterTollSource, isDarbTransaction, type TollSource } from "@/lib/tollSource";
 import SalikDetailModal from "@/components/SalikDetailModal";
 import ParkingBulkSheet from "@/components/ParkingBulkSheet";
 import ParkingDetailModal from "@/components/ParkingDetailModal";
@@ -1132,7 +1133,10 @@ const FinancialsAccordion = ({
     .filter((payment) => payment.status.toLowerCase() === "paid")
     .reduce((s, p) => s + Number(p.amount), 0);
   const finesTotal = fines.reduce((s, f) => s + Number(f.amount), 0);
-  const salikTotal = salik.reduce((s, x) => s + Number(x.amount), 0);
+  const salikOnly = filterTollSource(salik, "salik");
+  const darbOnly = filterTollSource(salik, "darb");
+  const salikTotal = salikOnly.reduce((s, x) => s + Number(x.amount), 0);
+  const darbTotal = darbOnly.reduce((s, x) => s + Number(x.amount), 0);
   const otherFees = contractFees.filter((fee) => !isRentalExtensionFee(fee));
   const otherTotal = otherFees.reduce((s, o) => s + o.amount, 0);
 
@@ -1180,6 +1184,7 @@ const FinancialsAccordion = ({
 
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
+  const [showDarbModal, setShowDarbModal] = useState(false);
 
   const FINES_PAGE_SIZE = 10;
   const SALIK_PAGE_SIZE = 20;
@@ -1361,25 +1366,23 @@ const FinancialsAccordion = ({
         </div>
       </div>
 
-      {/* Salik — summary row */}
-      <div className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Salik + Darb</span>
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-            {salik.length}
-          </span>
+      {([
+        { source: "salik" as const, title: "Salik", entries: salikOnly, total: salikTotal },
+        { source: "darb" as const, title: "Darb", entries: darbOnly, total: darbTotal },
+      ]).map(({ source, title, entries, total }) => (
+        <div key={source} className="flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">{title}</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{entries.length}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold tabular-nums text-foreground">{fmtAed(total)}</span>
+            <button type="button" onClick={() => source === "darb" ? setShowDarbModal(true) : setShowSalikModal(true)} className="text-[11px] font-medium text-tint-blue-foreground hover:underline">
+              View All →
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold tabular-nums text-foreground">{fmtAed(salikTotal)}</span>
-          <button
-            type="button"
-            onClick={() => setShowSalikModal(true)}
-            className="text-[11px] font-medium text-tint-blue-foreground hover:underline"
-          >
-            View All →
-          </button>
-        </div>
-      </div>
+      ))>
 
       <AccordionRow
         label="Other Fees"
@@ -1432,7 +1435,8 @@ const FinancialsAccordion = ({
         onOpenChange={setShowFinesModal}
         onPaymentRecorded={() => undefined}
       />
-      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} />
+      <SalikModal contractId={contract.id} open={showSalikModal} onOpenChange={setShowSalikModal} source="salik" />
+      <SalikModal contractId={contract.id} open={showDarbModal} onOpenChange={setShowDarbModal} source="darb" />
 
     </>
   );
@@ -2498,6 +2502,7 @@ const FinancialsPanel = ({
     hasUnverifiedAdditionalCharges;
   const [showFinesModal, setShowFinesModal] = useState(false);
   const [showSalikModal, setShowSalikModal] = useState(false);
+  const [showDarbModal, setShowDarbModal] = useState(false);
   const [showParkingModal, setShowParkingModal] = useState(false);
   const [finesModalOpen, setFinesModalOpen] = useState(false);
   const [salikModalOpen, setSalikModalOpen] = useState(false);
