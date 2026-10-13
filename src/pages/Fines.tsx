@@ -84,6 +84,7 @@ interface FineRow {
 interface SalikRow {
   id: string;
   transaction_id: string | null;
+  toll_gate?: string | null;
   charge_date: string;
   trip_time: string | null;
   trips: number;
@@ -1178,7 +1179,7 @@ const Fines = () => {
                         <div className="font-mono text-[11px] text-muted-foreground">
                           {formatDateOnly(s.charge_date)}{s.trip_time ? ` · ${s.trip_time}` : ""}
                         </div>
-                        <div className="mt-1 truncate font-mono text-sm font-semibold text-foreground">{s.transaction_id?.startsWith("DARB:") ? "Darb" : "Salik"} · {s.transaction_id || "No transaction ID"}</div>
+                        <div className="mt-1 truncate font-mono text-sm font-semibold text-foreground">{s.transaction_id?.startsWith("DARB:") ? (s.toll_gate?.replace(/^Darb\s*[—-]\s*/i, "") || "Darb crossing") : `Salik · ${s.transaction_id || "No transaction ID"}`}</div>
                       </div>
                       <div className="shrink-0 text-right">
                         <div className="font-mono text-base font-semibold tabular-nums text-foreground">AED {Number(s.amount).toLocaleString()}</div>
@@ -1267,7 +1268,7 @@ const Fines = () => {
                           <div className="mt-0.5 font-mono text-xs text-muted-foreground">{s.trip_time}</div>
                         ) : null}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-foreground"><span className="block text-[10px] text-muted-foreground">{s.transaction_id?.startsWith("DARB:") ? "Darb" : "Salik"}</span>{s.transaction_id || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground"><span className="block text-[10px] text-muted-foreground">{s.transaction_id?.startsWith("DARB:") ? "Darb" : "Salik"}</span>{s.transaction_id?.startsWith("DARB:") ? (s.toll_gate?.replace(/^Darb\s*[—-]\s*/i, "") || "Toll crossing") : (s.transaction_id || "—")}</TableCell>
                       <TableCell className="font-mono text-xs text-foreground">{s.cars?.plate ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">{s.clients?.full_name ?? "—"}</TableCell>
                       <TableCell className="text-sm font-medium text-foreground">AED {Number(s.amount).toLocaleString()}</TableCell>
