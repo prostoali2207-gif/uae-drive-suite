@@ -27,8 +27,12 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
       unlinked: all.filter((r) => r.status === "unlinked").length,
       duplicate: all.filter((r) => r.status === "duplicate").length,
       invalid: all.filter((r) => r.status === "invalid").length,
-      amount: all.filter((r) => r.status === "ready" || r.status === "unlinked")
+      tollAmount: all.filter((r) => r.status === "ready" || r.status === "unlinked")
         .reduce((sum, r) => sum + r.amount, 0),
+      serviceFees: all.filter((r) => r.status === "ready" || r.status === "unlinked")
+        .reduce((sum, r) => sum + r.serviceFee, 0),
+      amount: all.filter((r) => r.status === "ready" || r.status === "unlinked")
+        .reduce((sum, r) => sum + r.totalAmount, 0),
     };
   }, [rows]);
 
@@ -127,7 +131,7 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
             />
             <div className="text-xs text-muted-foreground">
               Required: Plate, Date (YYYY-MM-DD), Time (HH:mm:ss if no transaction ID), Gate, Amount (AED). Transaction ID is optional. One crossing per row.
-              When no Transaction ID exists, seconds are mandatory to prevent lost crossings. Service fee: AED 0 (only the original Darb amount is recorded).
+              When no Transaction ID exists, seconds are mandatory to prevent lost crossings. The service fee follows your Salik settings (fixed or percentage), including for Darb.
             </div>
           </div>
         )}
@@ -142,6 +146,9 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
             </div>
             <div className="text-sm text-foreground">
               {counts.total} rows checked · <strong>AED {counts.amount.toFixed(2)}</strong> to import
+              <div className="text-xs text-muted-foreground">
+                Darb tolls AED {counts.tollAmount.toFixed(2)} + service fees AED {counts.serviceFees.toFixed(2)}
+              </div>
             </div>
             <div className="max-h-60 overflow-y-auto rounded-lg border border-border">
               <div className="divide-y divide-border sm:hidden">
@@ -149,10 +156,10 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
                   <div key={row.line} className="space-y-1 p-3 text-xs">
                     <div className="flex justify-between gap-2">
                       <span className="font-mono text-foreground">{row.plate} · {row.date} {row.time}</span>
-                      <span className="shrink-0 font-mono tabular-nums">AED {row.amount.toFixed(2)}</span>
+                      <span className="shrink-0 font-mono tabular-nums">AED {row.totalAmount.toFixed(2)}</span>
                     </div>
                     <div className="font-medium capitalize">{row.status} · row {row.line}</div>
-                    <div className="text-muted-foreground">{row.contractLabel || row.message}</div>
+                    <div className="text-muted-foreground">{row.contractLabel || row.message} · Toll {row.amount.toFixed(2)} + fee {row.serviceFee.toFixed(2)}</div>
                   </div>
                 ))}
               </div>
@@ -165,8 +172,8 @@ export function DarbImportDialog({ onImported }: DarbImportDialogProps) {
                     <tr key={row.line} className="border-t border-border">
                       <td className="p-2 font-mono">{row.line}</td>
                       <td className="p-2"><span className="font-mono">{row.plate}</span><div className="text-muted-foreground">{row.date} · {row.time}</div></td>
-                      <td className="p-2 font-mono tabular-nums">{row.amount.toFixed(2)}</td>
-                      <td className="p-2"><div className="font-medium">{row.status}</div><div className="text-muted-foreground">{row.contractLabel || row.message}</div></td>
+                      <td className="p-2 font-mono tabular-nums">{row.totalAmount.toFixed(2)}<div className="text-muted-foreground">Toll {row.amount.toFixed(2)} + fee {row.serviceFee.toFixed(2)}</div></td>
+                      <td className="p-2"><div className="font-medium">{row.status}</div><div className="text-muted-foreground">{row.contractLabel || row.message} · Toll {row.amount.toFixed(2)} + fee {row.serviceFee.toFixed(2)}</div></td>
                     </tr>
                   ))}
                 </tbody>
