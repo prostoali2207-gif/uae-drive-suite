@@ -300,7 +300,7 @@ type DepositReconciliationInfo = {
 type LedgerEntry = {
   id: string;
   date: string;
-  type: "Rental" | "Salik" | "Darb" | "Parking" | "Payment" | "Fine" | "Deposit";
+  type: "Rental" | "Salik" | "Parking" | "Payment" | "Fine" | "Deposit";
   description: string;
   debit: number;
   credit: number;
@@ -4234,8 +4234,8 @@ const ContractDetail = () => {
       entries.push({
         id: `salik-${s.id}`,
         date: s.charge_date,
-        type: isDarbTransaction(s.transaction_id) ? "Darb" : "Salik",
-        description: `${s.trips} toll trips`,
+        type: "Salik",
+        description: isDarbTransaction(s.transaction_id) ? `${s.trips} Darb toll trips` : `${s.trips} Salik toll trips`,
         debit: Number(s.amount),
         credit: 0,
         status: s.status,
