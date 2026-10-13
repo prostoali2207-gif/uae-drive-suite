@@ -40,6 +40,8 @@ interface Profile {
   fine_fee_value?: number | null;
   salik_fee_type?: ServiceFeeType | null;
   salik_fee_value?: number | null;
+  darb_fee_type?: ServiceFeeType | null;
+  darb_fee_value?: number | null;
   parking_fee_type?: ServiceFeeType | null;
   parking_fee_value?: number | null;
   terms_en?: string | null;
@@ -73,6 +75,8 @@ const Settings = () => {
   const [fineFeeValue, setFineFeeValue] = useState(20);
   const [salikFeeType, setSalikFeeType] = useState<ServiceFeeType>("fixed");
   const [salikFeeValue, setSalikFeeValue] = useState(1);
+  const [darbFeeType, setDarbFeeType] = useState<ServiceFeeType>("fixed");
+  const [darbFeeValue, setDarbFeeValue] = useState(1);
   const [parkingFeeType, setParkingFeeType] = useState<ServiceFeeType>("fixed");
   const [parkingFeeValue, setParkingFeeValue] = useState(0);
   const [termsEn, setTermsEn] = useState("");
@@ -150,6 +154,8 @@ const Settings = () => {
       setFineFeeValue(p.fine_fee_value ?? 20);
       setSalikFeeType(p.salik_fee_type || "fixed");
       setSalikFeeValue(p.salik_fee_value ?? 1);
+      setDarbFeeType(p.darb_fee_type || "fixed");
+      setDarbFeeValue(p.darb_fee_value ?? 1);
       setParkingFeeType(p.parking_fee_type || "fixed");
       setParkingFeeValue(p.parking_fee_value ?? 0);
       setTermsEn(p.terms_en || "");
@@ -195,6 +201,8 @@ const Settings = () => {
       fine_fee_value: fineFeeValue,
       salik_fee_type: salikFeeType,
       salik_fee_value: salikFeeValue,
+      darb_fee_type: darbFeeType,
+      darb_fee_value: Math.max(0, darbFeeValue),
       parking_fee_type: parkingFeeType,
       parking_fee_value: parkingFeeValue,
       terms_en: termsEn.trim() || null,
@@ -583,9 +591,9 @@ const Settings = () => {
                   <Card>
               <CardHeader>
                 <CardTitle className="text-base">Import Service Fees</CardTitle>
-                <CardDescription>Default service fees applied when importing fines, Salik and parking charges.</CardDescription>
+                <CardDescription>Default service fees applied when importing fines, Salik, Darb and parking charges.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-6 md:grid-cols-3">
+              <CardContent className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="grid gap-3">
                   <Label>Fine Service Fee</Label>
                   <RadioGroup
@@ -641,6 +649,36 @@ const Settings = () => {
                       step="0.01"
                       value={salikFeeValue}
                       onChange={(e) => setSalikFeeValue(Number(e.target.value))}
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  <Label>Darb Service Fee</Label>
+                  <RadioGroup
+                    value={darbFeeType}
+                    onValueChange={(value) => setDarbFeeType(value as ServiceFeeType)}
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="fixed" />
+                      Fixed (AED)
+                    </Label>
+                    <Label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-normal">
+                      <RadioGroupItem value="percentage" />
+                      Percentage (%)
+                    </Label>
+                  </RadioGroup>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="darb-fee-value">Value</Label>
+                    <Input
+                      id="darb-fee-value"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={darbFeeValue}
+                      onChange={(e) => setDarbFeeValue(Number(e.target.value))}
                       className="font-mono"
                     />
                   </div>
