@@ -124,7 +124,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 sm:px-6">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold leading-6 text-foreground">Salik Transactions</h2>
+            <h2 className="text-lg font-semibold leading-6 text-foreground">Salik + Darb Transactions</h2>
             <p className="mt-1 truncate font-ibm-plex-mono text-xs text-muted-foreground">{contractId}</p>
           </div>
           <button
@@ -186,7 +186,7 @@ export function SalikDetailModal({ contractId, open, onClose }: SalikDetailModal
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">
-                          {transaction.toll_gate || "Salik transaction"}
+                          {transaction.toll_gate || (transaction.transaction_id?.startsWith("DARB:") ? "Darb transaction" : "Salik transaction")}
                         </p>
                         <p className="mt-1 truncate font-ibm-plex-mono text-[11px] tabular-nums text-muted-foreground">
                           {formatDate(transaction.charge_date)}{transaction.trip_time ? ` · ${transaction.trip_time}` : ""} / {transaction.transaction_id || "No transaction ID"}
