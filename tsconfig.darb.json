@@ -5,6 +5,8 @@
     "src/lib/darbImport.ts",
     "src/lib/darbImport.test.ts",
     "src/lib/darbImport.flow.test.ts",
+    "src/lib/tollSource.ts",
+    "src/lib/tollSource.test.ts",
     "src/components/DarbImportDialog.tsx"
   ]
 }
