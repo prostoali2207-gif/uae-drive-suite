@@ -479,7 +479,7 @@ async function driverWalletData(db: ReturnType<typeof createClient>, staff: Reco
     const returned = total("return"), reimbursed = total("reimbursement");
     return { staff_id: driver.id, name: driver.full_name, issued, spent, returned, reimbursed,
       balance: Math.round((issued + reimbursed - spent - returned) * 100) / 100,
-      pending_sync: movements.filter((e: any) => e.status === "applied" && e.sheet_sync_status !== "synced").length,
+      pending_sync: movements.filter((e: any) => e.status !== "applied" || e.sheet_sync_status !== "synced").length,
       movements: movements.slice(0, 80),
     };
   });
@@ -507,6 +507,34 @@ async function mirrorDriverMovement(db: ReturnType<typeof createClient>, movemen
     throw error;
   }
 }
+async function driverWalletReconcile(db: ReturnType<typeof createClient>, staff: Record<string, any>) {
+  if (!staffCanManageDrivers(staff)) throw new Error("Только менеджер может проверить синхронизацию.");
+  if (!await driverFeatureReady(db)) throw new Error("Google Sheets ещё не подключён для водителей.");
+  const { data: pending, error } = await db.from("showroom_driver_movements")
+    .select("*").eq("owner_id", staff.owner_id).neq("sheet_sync_status", "synced")
+    .order("created_at", { ascending: true }).limit(100);
+  if (error) throw error;
+  let synced = 0, waiting = 0, failed = 0;
+  for (const movement of pending || []) {
+    try {
+      if (movement.kind === "expense") {
+        if (!movement.finance_audit_id) { failed++; continue; }
+        const { data: audit, error: auditError } = await db.from("telegram_operation_requests")
+          .select("status").eq("owner_id", staff.owner_id)
+          .eq("id", movement.finance_audit_id).maybeSingle();
+        if (auditError) throw auditError;
+        if (audit?.status !== "applied") { waiting++; continue; }
+      }
+      await mirrorDriverMovement(db, movement);
+      synced++;
+    } catch (reconcileError) {
+      console.error("Showroom driver reconciliation failed:", reconcileError);
+      failed++;
+    }
+  }
+  return { synced, waiting, failed };
+}
+
 async function driverWalletAdjust(db: ReturnType<typeof createClient>, staff: Record<string, any>, body: Record<string, any>) {
   if (!staffCanManageDrivers(staff)) throw new Error("Только менеджер может выдавать и возвращать деньги.");
   if (!await driverFeatureReady(db)) throw new Error("Учёт водителей ещё не синхронизирован с Google Sheets.");
@@ -1124,6 +1152,9 @@ Deno.serve(async (req: Request) => {
     }
     if (action === "wallet_adjust") {
       return json({ ok: true, ...await driverWalletAdjust(supabase, staff, body) }, 200, origin);
+    }
+    if (action === "wallet_reconcile") {
+      return json({ ok: true, ...await driverWalletReconcile(supabase, staff) }, 200, origin);
     }
     if (action === "history") {
       if (staffIsDriver(staff) && validateLedger(body.ledger) !== "showroom") {
