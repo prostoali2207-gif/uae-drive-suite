@@ -522,6 +522,14 @@ async function driverWalletAdjust(db: ReturnType<typeof createClient>, staff: Re
   }
   let movement = existing;
   if (!movement) {
+    const current = await driverWalletData(db, staff);
+    const balance = current.wallets.find((w: any) => w.staff_id === driverId)?.balance ?? 0;
+    if (kind === "return" && (balance <= 0 || amount > balance + 0.001)) {
+      throw new Error("Возврат не может превышать деньги на руках у водителя.");
+    }
+    if (kind === "reimbursement" && (balance >= 0 || amount > -balance + 0.001)) {
+      throw new Error("Компенсация не может превышать долг компании водителю.");
+    }
     const { data, error } = await db.from("showroom_driver_movements").insert({
       owner_id: staff.owner_id, driver_staff_id: driverId, actor_staff_id: staff.id,
       kind, amount, note, event_key: key, status: "pending", sheet_sync_status: "pending",
