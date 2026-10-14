@@ -203,6 +203,7 @@ function getContext_(payload) {
     }),
     input_sheet: INPUT_SHEET,
     spreadsheet_id: config.spreadsheetId,
+    driver_wallet_supported: ledger === 'showroom' && Boolean(spreadsheet_(ledger).getSheetByName('Водители')),
   };
 }
 
