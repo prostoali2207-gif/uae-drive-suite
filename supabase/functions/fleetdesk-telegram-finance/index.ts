@@ -458,14 +458,21 @@ async function driverWalletData(db: ReturnType<typeof createClient>, staff: Reco
     .eq("owner_id", staff.owner_id).eq("role", "driver").eq("status", "active");
   if (driversError) throw driversError;
   const drivers = manager ? (allDrivers || []) : (allDrivers || []).filter((d: any) => d.id === staff.id);
-  let query = db.from("showroom_driver_movements")
-    .select("id, driver_staff_id, kind, amount, status, sheet_sync_status, article, vehicle, note, created_at, error_message")
-    .eq("owner_id", staff.owner_id).order("created_at", { ascending: false }).limit(900);
-  if (!manager) query = query.eq("driver_staff_id", staff.id);
-  const { data: entries, error } = await query;
-  if (error) throw error;
+  const entries: any[] = [];
+  for (let offset = 0; offset < 100000; offset += 1000) {
+    let query = db.from("showroom_driver_movements")
+      .select("id, driver_staff_id, kind, amount, status, sheet_sync_status, article, vehicle, note, created_at, error_message")
+      .eq("owner_id", staff.owner_id)
+      .order("created_at", { ascending: false }).range(offset, offset + 999);
+    if (!manager) query = query.eq("driver_staff_id", staff.id);
+    const { data: batch, error } = await query;
+    if (error) throw error;
+    entries.push(...(batch || []));
+    if (!batch || batch.length < 1000) break;
+    if (offset >= 99000) throw new Error("История водителей слишком большая для сводки.");
+  }
   const wallets = drivers.map((driver: any) => {
-    const movements = (entries || []).filter((e: any) => e.driver_staff_id === driver.id);
+    const movements = entries.filter((e: any) => e.driver_staff_id === driver.id);
     const total = (kind: string) => movements.filter((e: any) => e.kind === kind && e.status === "applied")
       .reduce((sum: number, e: any) => sum + Number(e.amount), 0);
     const issued = total("advance"), spent = total("expense");
