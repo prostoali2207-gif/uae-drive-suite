@@ -114,6 +114,7 @@ function doPost(e) {
     if (action === 'find_articles') result = findArticles_(payload);
     else if (action === 'record_entry') result = recordEntry_(payload);
     else if (action === 'get_context') result = getContext_(payload);
+    else if (action === 'record_driver_movement') result = recordDriverMovement_(payload);
     else result = { ok: false, error: 'Unsupported finance bridge action.' };
 
     result.bridge_ms = Date.now() - startedAt;
@@ -124,6 +125,65 @@ function doPost(e) {
       error: error instanceof Error ? error.message : String(error),
       bridge_ms: Date.now() - startedAt,
     });
+  }
+}
+
+
+/** Showroom driver cash ledger; never changes the main A:E journal or Rental. */
+function recordDriverMovement_(payload) {
+  if (String(payload.ledger || '') !== 'showroom') throw new Error('Only showroom driver ledger is supported.');
+  const kind = String(payload.kind || '');
+  const names = {
+    advance: 'Выдача',
+    expense: 'Расход',
+    return: 'Возврат',
+    reimbursement: 'Компенсация'
+  };
+  if (!Object.prototype.hasOwnProperty.call(names, kind)) throw new Error('Unknown driver movement.');
+  const requestId = String(payload.request_id || '').trim();
+  if (!/^[a-zA-Z0-9:_-]{8,200}$/.test(requestId)) throw new Error('Invalid request_id.');
+  const driver = String(payload.driver_name || '').trim();
+  if (!driver || driver.length > 140) throw new Error('Driver name is required.');
+  const amount = Number(payload.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive.');
+  const article = String(payload.article || '').trim();
+  const vehicle = String(payload.vehicle || '').trim();
+  const note = String(payload.note || '').trim();
+  if (article.length > 250 || vehicle.length > 160 || note.length > 500) throw new Error('Movement fields too long.');
+
+  const ss = SpreadsheetApp.openById(SHOWROOM_SPREADSHEET_ID);
+  const sh = ss.getSheetByName('Водители');
+  if (!sh) throw new Error('Лист «Водители» не найден.');
+  const registered = sh.getRange('A4:A5').getDisplayValues().flat().map(String);
+  if (registered.indexOf(driver) < 0) throw new Error('Водитель не зарегистрирован в листе.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const firstRow = 11;
+    const lastRow = sh.getMaxRows();
+    const rows = sh.getRange(firstRow, 1, lastRow - firstRow + 1, 9).getValues();
+    const duplicateIndex = rows.findIndex(function (r) { return String(r[8] || '') === requestId; });
+    if (duplicateIndex >= 0) return {
+      ok: true, duplicate: true, input_sheet: 'Водители', input_row: firstRow + duplicateIndex
+    };
+    const emptyIndex = rows.findIndex(function (r) {
+      return r.every(function (v) { return v === '' || v === null; });
+    });
+    if (emptyIndex < 0) throw new Error('Лист «Водители» заполнен.');
+    const targetRow = firstRow + emptyIndex;
+    // Always record actual processing date, so historic driver balances are auditable.
+    const date = Utilities.parseDate(String(payload.date || ''), 'Asia/Dubai', 'yyyy-MM-dd');
+    if (Utilities.formatDate(date, 'Asia/Dubai', 'yyyy-MM-dd') !== String(payload.date)) {
+      throw new Error('Invalid movement date.');
+    }
+    sh.getRange(targetRow, 1, 1, 9).setValues([[
+      date, driver, names[kind], amount, article, vehicle, note, 'Учтено', requestId
+    ]]);
+    sh.getRange(targetRow, 1).setNumberFormat('dd.mm.yyyy');
+    SpreadsheetApp.flush();
+    return { ok: true, duplicate: false, input_sheet: 'Водители', input_row: targetRow };
+  } finally {
+    lock.releaseLock();
   }
 }
 
