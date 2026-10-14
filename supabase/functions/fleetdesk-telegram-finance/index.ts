@@ -40,6 +40,20 @@ const TRANSFER_TARGETS: Record<"rental" | "showroom", Array<{
   rental: [],
 };
 
+const DRIVER_EXPENSE_ARTICLES = new Set([
+  "расходы связанные с подгатовкой авто",
+  "Расходы связанные с регистрацией авто",
+  "телефон", "интернет", "вода", "реклама автосалона",
+  "мойка авто", "Прочие (мелочь)",
+]);
+const MANAGER_ROLES = new Set(["owner", "admin", "manager"]);
+function staffIsDriver(staff: Record<string, any>) {
+  return normalizeText(staff.role).toLowerCase() === "driver";
+}
+function staffCanManageDrivers(staff: Record<string, any>) {
+  return MANAGER_ROLES.has(normalizeText(staff.role).toLowerCase());
+}
+
 const encoder = new TextEncoder();
 
 function corsHeaders(origin: string | null) {
@@ -528,6 +542,11 @@ async function recordFinance(
   if (note.length > 500) throw new Error("Примечание слишком длинное.");
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) throw new Error("Некорректный request_id.");
 
+  if (staffIsDriver(staff) &&
+      (ledger !== "showroom" || account !== "cash_aed" ||
+       direction.key !== "expense" || !DRIVER_EXPENSE_ARTICLES.has(article))) {
+    throw new Error("Водителю доступны только разрешённые расходы автосалона.");
+  }
   const date = todayDubai();
 
   let catalogMatch: any = null;
@@ -914,8 +933,9 @@ Deno.serve(async (req: Request) => {
           telegram_user: { id: telegramUser.id, first_name: telegramUser.firstName },
         }, 200, origin);
       }
+      const driver = staffIsDriver(staff);
       const [catalog, showroomCatalog] = await Promise.all([
-        getOperationCatalog(supabase, "rental"),
+        driver ? Promise.resolve([]) : getOperationCatalog(supabase, "rental"),
         getOperationCatalog(supabase, "showroom"),
       ]);
       return json({
@@ -925,7 +945,9 @@ Deno.serve(async (req: Request) => {
         catalog,
         catalogs: {
           rental: catalog,
-          showroom: showroomCatalog,
+          showroom: driver ? showroomCatalog.filter((item: any) =>
+            item.direction === "Расход" && Number(item.rows?.cash_aed) > 0 &&
+            DRIVER_EXPENSE_ARTICLES.has(item.article)) : showroomCatalog,
         },
       }, 200, origin);
     }
@@ -933,6 +955,9 @@ Deno.serve(async (req: Request) => {
     const staff = await requireStaff(supabase, telegramUser.id);
 
     if (action === "history") {
+      if (staffIsDriver(staff) && validateLedger(body.ledger) !== "showroom") {
+        throw new Error("Водителю доступен только автосалон.");
+      }
       const history = await getFinanceHistory(supabase, telegramUser, staff, body);
       return json({ ok: true, ...history }, 200, origin);
     }
@@ -942,6 +967,9 @@ Deno.serve(async (req: Request) => {
       const account = validateAccount(body.account, ledger);
       const direction = validateDirection(body.direction);
       const query = normalizeText(body.query);
+      if (staffIsDriver(staff) && (ledger !== "showroom" || account !== "cash_aed" || direction.key !== "expense")) {
+        throw new Error("Водителю доступны только расходы автосалона.");
+      }
       if (!query) return json({ ok: true, matches: [], alternate: null }, 200, origin);
       if (query.length > 120) throw new Error("Поиск слишком длинный.");
 
@@ -956,6 +984,7 @@ Deno.serve(async (req: Request) => {
       const matches = (Array.isArray(result.matches) ? result.matches : [])
         .filter((item: any) => String(item.section || "") === direction.label)
         .filter((item: any) => !isSystemTransferIncoming(ledger, String(item.article || "")))
+        .filter((item: any) => !staffIsDriver(staff) || DRIVER_EXPENSE_ARTICLES.has(String(item.article || "")))
         .slice(0, 12)
         .map((item: any) => ({
           row: Number(item.row),
@@ -964,7 +993,7 @@ Deno.serve(async (req: Request) => {
         }));
 
       let alternate = null;
-      if (matches.length === 0) {
+      if (matches.length === 0 && !staffIsDriver(staff)) {
         const alternateKey = direction.key === "income" ? "expense" : "income";
         const alternateLabel = DIRECTIONS.get(alternateKey)!;
         const alternateResult = await callBridge(supabase, "find_articles", {
