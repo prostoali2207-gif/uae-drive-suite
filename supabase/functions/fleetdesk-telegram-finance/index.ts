@@ -433,6 +433,121 @@ async function findExistingAudit(
   return data;
 }
 
+
+async function showroomDriverById(db: ReturnType<typeof createClient>, ownerId: string, id: string) {
+  const { data, error } = await db.from("staff").select("id, full_name, role, status")
+    .eq("owner_id", ownerId).eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data || data.role !== "driver" || data.status !== "active") {
+    throw new Error("Водитель не найден.");
+  }
+  return data;
+}
+async function driverWalletData(db: ReturnType<typeof createClient>, staff: Record<string, any>) {
+  const manager = staffCanManageDrivers(staff);
+  const { data: allDrivers, error: driversError } = await db.from("staff")
+    .select("id, full_name, role, status")
+    .eq("owner_id", staff.owner_id).eq("role", "driver").eq("status", "active");
+  if (driversError) throw driversError;
+  const drivers = manager ? (allDrivers || []) : (allDrivers || []).filter((d: any) => d.id === staff.id);
+  let query = db.from("showroom_driver_movements")
+    .select("id, driver_staff_id, kind, amount, status, sheet_sync_status, article, vehicle, note, created_at, error_message")
+    .eq("owner_id", staff.owner_id).order("created_at", { ascending: false }).limit(900);
+  if (!manager) query = query.eq("driver_staff_id", staff.id);
+  const { data: entries, error } = await query;
+  if (error) throw error;
+  const wallets = drivers.map((driver: any) => {
+    const movements = (entries || []).filter((e: any) => e.driver_staff_id === driver.id);
+    const total = (kind: string) => movements.filter((e: any) => e.kind === kind && e.status === "applied")
+      .reduce((sum: number, e: any) => sum + Number(e.amount), 0);
+    const issued = total("advance"), spent = total("expense");
+    const returned = total("return"), reimbursed = total("reimbursement");
+    return { staff_id: driver.id, name: driver.full_name, issued, spent, returned, reimbursed,
+      balance: Math.round((issued + reimbursed - spent - returned) * 100) / 100,
+      pending_sync: movements.filter((e: any) => e.status === "applied" && e.sheet_sync_status !== "synced").length,
+      movements: movements.slice(0, 80),
+    };
+  });
+  return { wallets, can_manage: manager };
+}
+async function mirrorDriverMovement(db: ReturnType<typeof createClient>, movement: Record<string, any>) {
+  const driver = await showroomDriverById(db, movement.owner_id, movement.driver_staff_id);
+  try {
+    const result = await callBridge(db, "record_driver_movement", {
+      ledger: "showroom", driver_id: movement.driver_staff_id, driver_name: driver.full_name,
+      kind: movement.kind, date: todayDubai(), amount: movement.amount,
+      article: movement.article || "", vehicle: movement.vehicle || "",
+      note: movement.note || "", request_id: movement.event_key,
+    });
+    const { error } = await db.from("showroom_driver_movements").update({
+      status: "applied", sheet_sync_status: "synced", sheet_row: Number(result.input_row || 0) || null,
+      error_message: null, applied_at: new Date().toISOString(),
+    }).eq("id", movement.id);
+    if (error) throw error;
+  } catch (error) {
+    await db.from("showroom_driver_movements").update({
+      sheet_sync_status: "failed",
+      error_message: error instanceof Error ? error.message.slice(0, 350) : "Ошибка синхронизации",
+    }).eq("id", movement.id);
+    throw error;
+  }
+}
+async function driverWalletAdjust(db: ReturnType<typeof createClient>, staff: Record<string, any>, body: Record<string, any>) {
+  if (!staffCanManageDrivers(staff)) throw new Error("Только менеджер может выдавать и возвращать деньги.");
+  const driverId = normalizeText(body.driver_staff_id);
+  await showroomDriverById(db, staff.owner_id, driverId);
+  const kind = normalizeText(body.kind);
+  if (!["advance", "return", "reimbursement"].includes(kind)) throw new Error("Недопустимое движение денег.");
+  const amount = amountValue(body.amount);
+  const note = normalizeText(body.note);
+  if (note.length > 500) throw new Error("Примечание слишком длинное.");
+  const requestId = normalizeText(body.request_id);
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) throw new Error("Некорректный request_id.");
+  const key = "wallet:" + staff.id + ":" + requestId;
+  const { data: existing, error: lookupError } = await db.from("showroom_driver_movements")
+    .select("*").eq("owner_id", staff.owner_id).eq("event_key", key).maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing && (existing.kind !== kind || existing.driver_staff_id !== driverId ||
+                   Number(existing.amount) !== amount || String(existing.note || "") !== note)) {
+    throw new Error("Запрос с этим ID уже использован для другой операции.");
+  }
+  let movement = existing;
+  if (!movement) {
+    const { data, error } = await db.from("showroom_driver_movements").insert({
+      owner_id: staff.owner_id, driver_staff_id: driverId, actor_staff_id: staff.id,
+      kind, amount, note, event_key: key, status: "pending", sheet_sync_status: "pending",
+    }).select("*").single();
+    if (error) throw error;
+    movement = data;
+  }
+  if (movement.status !== "applied" || movement.sheet_sync_status !== "synced") {
+    await mirrorDriverMovement(db, movement);
+  }
+  return { duplicate: Boolean(existing), status: "applied" };
+}
+async function ensureDriverExpense(db: ReturnType<typeof createClient>, staff: Record<string, any>, auditId: string, payload: Record<string, any>) {
+  const { error } = await db.from("showroom_driver_movements").upsert({
+    owner_id: staff.owner_id, driver_staff_id: staff.id, actor_staff_id: staff.id,
+    kind: "expense", amount: payload.amount, event_key: "expense:" + auditId,
+    finance_audit_id: auditId, article: payload.article, note: payload.note,
+    status: "pending", sheet_sync_status: "pending",
+  }, { onConflict: "finance_audit_id" });
+  if (error) throw error;
+}
+async function completeDriverExpense(db: ReturnType<typeof createClient>, auditId: string) {
+  const { data: movement, error } = await db.from("showroom_driver_movements")
+    .select("*").eq("finance_audit_id", auditId).maybeSingle();
+  if (error) throw error;
+  if (!movement) return;
+  if (movement.status === "applied" && movement.sheet_sync_status === "synced") return;
+  // The main showroom expense was already applied successfully by the finance bridge.
+  const { error: updateError } = await db.from("showroom_driver_movements").update({
+    status: "applied", applied_at: new Date().toISOString(),
+  }).eq("id", movement.id);
+  if (updateError) throw updateError;
+  await mirrorDriverMovement(db, movement);
+}
+
 async function processFinanceAudit(
   supabase: ReturnType<typeof createClient>,
   botToken: string,
@@ -467,6 +582,12 @@ async function processFinanceAudit(
       });
 
       result.currency = payload.account === "sber_rub" ? "RUB" : "AED";
+      try {
+        await completeDriverExpense(supabase, auditId);
+      } catch (syncError) {
+        // Main expense is already written. Keep the driver's unapplied mirror visible as failed.
+        console.error("Driver movement mirror requires reconciliation:", syncError);
+      }
 
       await supabase
         .from("telegram_operation_requests")
@@ -485,6 +606,9 @@ async function processFinanceAudit(
     }
   }
 
+  await supabase.from("showroom_driver_movements")
+    .update({ status: "failed", error_message: lastMessage })
+    .eq("finance_audit_id", auditId);
   await supabase
     .from("telegram_operation_requests")
     .update({
@@ -586,6 +710,9 @@ async function recordFinance(
         .update({ status: "received", result: null, processed_at: null })
         .eq("id", existing.id);
 
+      if (staffIsDriver(staff)) {
+        await ensureDriverExpense(supabase, staff, existing.id, existing.payload || {});
+      }
       scheduleFinanceAudit(
         processFinanceAudit(
           supabase,
@@ -647,6 +774,16 @@ async function recordFinance(
     throw auditError;
   }
 
+  if (staffIsDriver(staff)) {
+    try {
+      await ensureDriverExpense(supabase, staff, audit.id, payload);
+    } catch (error) {
+      await supabase.from("telegram_operation_requests").update({
+        status: "failed", result: { error: "Не удалось создать учёт водителя." },
+      }).eq("id", audit.id);
+      throw error;
+    }
+  }
   scheduleFinanceAudit(
     processFinanceAudit(
       supabase,
@@ -954,6 +1091,12 @@ Deno.serve(async (req: Request) => {
 
     const staff = await requireStaff(supabase, telegramUser.id);
 
+    if (action === "wallet") {
+      return json({ ok: true, ...await driverWalletData(supabase, staff) }, 200, origin);
+    }
+    if (action === "wallet_adjust") {
+      return json({ ok: true, ...await driverWalletAdjust(supabase, staff, body) }, 200, origin);
+    }
     if (action === "history") {
       if (staffIsDriver(staff) && validateLedger(body.ledger) !== "showroom") {
         throw new Error("Водителю доступен только автосалон.");
