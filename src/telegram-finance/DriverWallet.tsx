@@ -49,6 +49,7 @@ export default function DriverWallet({ api, onBack, onNewExpense }: Props) {
   const [confirm, setConfirm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
   const [error, setError] = useState("");
   const requestId = useRef("");
 
@@ -95,6 +96,21 @@ export default function DriverWallet({ api, onBack, onNewExpense }: Props) {
     }
   };
 
+  const reconcile = async () => {
+    if (reconciling) return;
+    setReconciling(true);
+    setError("");
+    try {
+      const result = await api<{ synced: number; waiting: number; failed: number }>({ action: "wallet_reconcile" });
+      await refresh();
+      if (result.failed) setError("Не удалось синхронизировать " + result.failed + " операций. Проверь Google Sheets.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сверить операции.");
+    } finally {
+      setReconciling(false);
+    }
+  };
+
   return (
     <main className="tg-finance-shell driver-wallet">
       <header className="tg-finance-header">
@@ -118,7 +134,11 @@ export default function DriverWallet({ api, onBack, onNewExpense }: Props) {
               <p>{wallet.balance < 0 ? "Компания должна водителю" : "У водителя на руках"}</p>
             </div>
             {wallet.pending_sync > 0 && (
-              <div className="tg-inline-error">Есть операции без подтверждённой синхронизации с Google Sheets: {wallet.pending_sync}</div>
+              <div className="tg-inline-error">
+                Не завершена синхронизация с таблицей: {wallet.pending_sync}.
+                {canManage && <button className="tg-secondary-button" type="button" disabled={reconciling}
+                  onClick={() => void reconcile()}>{reconciling ? "Проверяю…" : "Повторить синхронизацию"}</button>}
+              </div>
             )}
             {canManage ? (
               <section className="driver-wallet-panel">
