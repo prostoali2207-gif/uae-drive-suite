@@ -20,3 +20,6 @@
 .driver-wallet-list small{display:block;color:var(--tg-theme-hint-color,#69707d);font-size:11px;margin-top:3px}
 .driver-wallet-amount{text-align:right;white-space:nowrap;font-weight:700}
 @media(max-width:390px){.driver-wallet-balance strong{font-size:26px}.driver-wallet-panel{padding:14px}.driver-wallet-list li{font-size:13px}}
+
+.tg-wallet-shortcut{border:1px solid rgba(120,125,130,.2);border-radius:12px;padding:11px 13px;min-height:42px;background:var(--tg-theme-section-bg-color,#fff);color:var(--tg-theme-text-color,#111318);font-size:13px;font-weight:700;cursor:pointer}
+.tg-wallet-shortcut:focus-visible{outline:3px solid var(--tg-theme-link-color,#2470d3);outline-offset:2px}
