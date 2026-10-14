@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./telegram-finance.css";
+import DriverWallet from "./DriverWallet";
 
 type TelegramWebApp = {
   initData: string;
@@ -21,7 +22,7 @@ declare global {
 type LedgerKey = "rental" | "showroom";
 type AccountKey = "cash_aed" | "ajman_aed" | "sber_rub";
 type DirectionKey = "income" | "expense";
-type FinanceView = "entry" | "history";
+type FinanceView = "entry" | "history" | "drivers";
 
 type OperationMatch = {
   row: number;
@@ -63,6 +64,7 @@ type SessionResponse = {
   ok: boolean;
   bound: boolean;
   staff?: { id: string; full_name: string; role: string };
+  driver_wallet_ready?: boolean;
   catalog?: CatalogItem[];
   catalogs?: {
     rental?: CatalogItem[];
@@ -227,6 +229,8 @@ function TelegramFinanceApp() {
   >("loading");
   const [sessionError, setSessionError] = useState("");
   const [staffName, setStaffName] = useState("");
+  const [staffRole, setStaffRole] = useState("");
+  const [driverWalletReady, setDriverWalletReady] = useState(false);
   const [catalogs, setCatalogs] = useState<Record<LedgerKey, CatalogItem[]>>({
     rental: [],
     showroom: [],
@@ -346,6 +350,15 @@ function TelegramFinanceApp() {
       }
 
       setStaffName(data.staff?.full_name || "");
+      setStaffRole(data.staff?.role || "");
+      setDriverWalletReady(Boolean(data.driver_wallet_ready));
+      if (data.staff?.role === "driver") {
+        setLedger("showroom");
+        setHistoryLedger("showroom");
+        setAccount("cash_aed");
+        setDirection("expense");
+        if (data.driver_wallet_ready) setView("drivers");
+      }
       setCatalogs({
         rental: Array.isArray(data.catalogs?.rental)
           ? data.catalogs!.rental!
@@ -764,6 +777,18 @@ function TelegramFinanceApp() {
     );
   }
 
+  if (staffRole === "driver" && !driverWalletReady) {
+    return <main className="tg-finance-shell tg-finance-center"><section className="tg-finance-state">
+      <h1>Учёт водителей подключается</h1>
+      <p>Баланс и расходы станут доступны после завершения синхронизации с таблицей.</p>
+      <button className="tg-primary-button" type="button" onClick={() => void refreshSession()}>Проверить</button>
+    </section></main>;
+  }
+
+  if (view === "drivers" && driverWalletReady) {
+    return <DriverWallet api={api} onBack={() => setView("entry")} onNewExpense={() => setView("entry")} />;
+  }
+
   if (success) {
     const isPending = success.status === "received";
     const isFailed = success.status === "failed";
@@ -841,7 +866,7 @@ function TelegramFinanceApp() {
             value={historyLedger}
             onChange={(event) => setHistoryLedger(event.target.value as LedgerKey)}
           >
-            {LEDGERS.map((item) => (
+            {(staffRole === "driver" ? LEDGERS.filter((x) => x.key === "showroom") : LEDGERS).map((item) => (
               <option key={item.key} value={item.key}>{item.label}</option>
             ))}
           </select>
@@ -891,6 +916,7 @@ function TelegramFinanceApp() {
         </div>
         <div className="tg-header-actions">
           {staffName ? <div className="tg-staff-name">{staffName}</div> : null}
+          {driverWalletReady ? <button className="tg-header-icon-button" type="button" aria-label="Баланс водителей" onClick={() => setView("drivers")}>₳</button> : null}
           <button
             className="tg-header-icon-button"
             type="button"
@@ -910,7 +936,7 @@ function TelegramFinanceApp() {
         </div>
       </header>
 
-      <section className="tg-form-section">
+      {staffRole !== "driver" && <section className="tg-form-section">
         <label className="tg-field-label">Учёт</label>
         <div className="tg-segmented" role="group" aria-label="Раздел финансов">
           {LEDGERS.map((item) => (
@@ -924,9 +950,9 @@ function TelegramFinanceApp() {
             </button>
           ))}
         </div>
-      </section>
+      </section>}
 
-      <section className="tg-form-section">
+      {staffRole !== "driver" && <section className="tg-form-section">
         <label className="tg-field-label">Счёт</label>
         <div
           className={ledger === "showroom" ? "tg-segmented" : "tg-segmented tg-segmented-three"}
@@ -944,9 +970,9 @@ function TelegramFinanceApp() {
             </button>
           ))}
         </div>
-      </section>
+      </section>}
 
-      <section className="tg-form-section">
+      {staffRole !== "driver" && <section className="tg-form-section">
         <label className="tg-field-label">Тип</label>
         <div className="tg-segmented" role="group" aria-label="Приход или расход">
           {DIRECTIONS.map((item) => (
@@ -960,7 +986,7 @@ function TelegramFinanceApp() {
             </button>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="tg-form-section tg-operation-section">
         <label className="tg-field-label" htmlFor="tg-operation-search">Операция</label>
