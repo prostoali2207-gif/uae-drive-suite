@@ -915,8 +915,8 @@ function TelegramFinanceApp() {
           <h1>Финансы</h1>
         </div>
         <div className="tg-header-actions">
-          {staffName ? <div className="tg-staff-name">{staffName}</div> : null}
-          {driverWalletReady ? <button className="tg-header-icon-button" type="button" aria-label="Баланс водителей" onClick={() => setView("drivers")}>₳</button> : null}
+          {staffName && !driverWalletReady ? <div className="tg-staff-name">{staffName}</div> : null}
+          {driverWalletReady ? <button className="tg-wallet-shortcut" type="button" onClick={() => setView("drivers")}>Водители</button> : null}
           <button
             className="tg-header-icon-button"
             type="button"
