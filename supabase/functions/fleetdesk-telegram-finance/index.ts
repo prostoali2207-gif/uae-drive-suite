@@ -443,6 +443,14 @@ async function showroomDriverById(db: ReturnType<typeof createClient>, ownerId: 
   }
   return data;
 }
+async function driverFeatureReady(db: ReturnType<typeof createClient>) {
+  try {
+    const result = await callBridge(db, "get_context", { ledger: "showroom" });
+    return result.driver_wallet_supported === true;
+  } catch {
+    return false;
+  }
+}
 async function driverWalletData(db: ReturnType<typeof createClient>, staff: Record<string, any>) {
   const manager = staffCanManageDrivers(staff);
   const { data: allDrivers, error: driversError } = await db.from("staff")
@@ -494,6 +502,7 @@ async function mirrorDriverMovement(db: ReturnType<typeof createClient>, movemen
 }
 async function driverWalletAdjust(db: ReturnType<typeof createClient>, staff: Record<string, any>, body: Record<string, any>) {
   if (!staffCanManageDrivers(staff)) throw new Error("Только менеджер может выдавать и возвращать деньги.");
+  if (!await driverFeatureReady(db)) throw new Error("Учёт водителей ещё не синхронизирован с Google Sheets.");
   const driverId = normalizeText(body.driver_staff_id);
   await showroomDriverById(db, staff.owner_id, driverId);
   const kind = normalizeText(body.kind);
@@ -666,10 +675,12 @@ async function recordFinance(
   if (note.length > 500) throw new Error("Примечание слишком длинное.");
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) throw new Error("Некорректный request_id.");
 
-  if (staffIsDriver(staff) &&
-      (ledger !== "showroom" || account !== "cash_aed" ||
-       direction.key !== "expense" || !DRIVER_EXPENSE_ARTICLES.has(article))) {
-    throw new Error("Водителю доступны только разрешённые расходы автосалона.");
+  if (staffIsDriver(staff)) {
+    if (!await driverFeatureReady(supabase)) throw new Error("Учёт водителей ещё не синхронизирован с Google Sheets.");
+    if (ledger !== "showroom" || account !== "cash_aed" ||
+        direction.key !== "expense" || !DRIVER_EXPENSE_ARTICLES.has(article)) {
+      throw new Error("Водителю доступны только разрешённые расходы автосалона.");
+    }
   }
   const date = todayDubai();
 
@@ -1071,6 +1082,7 @@ Deno.serve(async (req: Request) => {
         }, 200, origin);
       }
       const driver = staffIsDriver(staff);
+      const walletReady = await driverFeatureReady(supabase);
       const [catalog, showroomCatalog] = await Promise.all([
         driver ? Promise.resolve([]) : getOperationCatalog(supabase, "rental"),
         getOperationCatalog(supabase, "showroom"),
@@ -1079,6 +1091,7 @@ Deno.serve(async (req: Request) => {
         ok: true,
         bound: true,
         staff: { id: staff.id, full_name: staff.full_name, role: staff.role },
+        driver_wallet_ready: walletReady,
         catalog,
         catalogs: {
           rental: catalog,
