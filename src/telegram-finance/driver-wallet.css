@@ -1,0 +1,22 @@
+.driver-wallet-body{max-width:560px;margin:0 auto;display:grid;gap:18px}
+.driver-wallet .tg-finance-header{align-items:center}
+.driver-wallet .tg-finance-header .tg-secondary-button{width:auto;min-width:90px}
+.driver-wallet-balance{background:var(--tg-theme-section-bg-color,#fff);border-radius:16px;padding:22px 20px;border:1px solid rgba(120,125,130,.16)}
+.driver-wallet-balance strong{font-size:30px;line-height:1.3;display:block;margin-top:8px;letter-spacing:-.02em}
+.driver-wallet-balance p{margin:4px 0 0;color:var(--tg-theme-hint-color,#69707d)}
+.driver-wallet-panel{background:var(--tg-theme-section-bg-color,#fff);border:1px solid rgba(120,125,130,.16);border-radius:16px;padding:18px;display:grid;gap:14px}
+.driver-wallet-panel h2{font-size:17px;margin:0}
+.driver-wallet-field{display:grid;gap:7px;font-size:13px;font-weight:650}
+.driver-wallet-field .tg-input{width:100%;min-height:46px;margin:0;font-weight:450}
+.driver-wallet-panel .tg-primary-button,.driver-wallet-panel .tg-secondary-button{width:100%}
+.driver-wallet-confirm{border-top:1px solid rgba(120,125,130,.18);padding-top:12px;display:grid;gap:8px}
+.driver-wallet-confirm p{margin:0;font-size:13px}
+.driver-wallet-confirm p+ p{color:var(--tg-theme-hint-color,#69707d)}
+.driver-wallet-history-header{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.driver-wallet-history-header button{color:var(--tg-theme-link-color,#2470d3);background:none;border:0;font:inherit;cursor:pointer;padding:8px}
+.driver-wallet-list{list-style:none;padding:0;margin:0;display:grid}
+.driver-wallet-list li{display:flex;align-items:start;justify-content:space-between;gap:8px;padding:12px 0;border-bottom:1px solid rgba(120,125,130,.15);font-size:14px}
+.driver-wallet-list li:last-child{border-bottom:0}
+.driver-wallet-list small{display:block;color:var(--tg-theme-hint-color,#69707d);font-size:11px;margin-top:3px}
+.driver-wallet-amount{text-align:right;white-space:nowrap;font-weight:700}
+@media(max-width:390px){.driver-wallet-balance strong{font-size:26px}.driver-wallet-panel{padding:14px}.driver-wallet-list li{font-size:13px}}
