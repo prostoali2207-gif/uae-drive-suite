@@ -115,6 +115,8 @@ function doPost(e) {
     else if (action === 'record_entry') result = recordEntry_(payload);
     else if (action === 'get_context') result = getContext_(payload);
     else if (action === 'record_driver_movement') result = recordDriverMovement_(payload);
+    else if (action === 'inspect_showroom_entries') result = inspectShowroomEntries_(payload);
+    else if (action === 'correct_showroom_entry') result = correctShowroomEntry_(payload);
     else result = { ok: false, error: 'Unsupported finance bridge action.' };
 
     result.bridge_ms = Date.now() - startedAt;
@@ -204,6 +206,7 @@ function getContext_(payload) {
     input_sheet: INPUT_SHEET,
     spreadsheet_id: config.spreadsheetId,
     driver_wallet_supported: ledger === 'showroom' && Boolean(spreadsheet_(ledger).getSheetByName('Водители')),
+    showroom_corrections_supported: ledger === 'showroom',
   };
 }
 

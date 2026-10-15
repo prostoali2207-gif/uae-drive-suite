@@ -1,0 +1,12 @@
+.tg-finance-shell.tg-correction-shell { box-sizing: border-box; width: 100%; max-width: 100%; }
+.tg-correction { width: 100%; max-width: 560px; min-width: 0; margin: 0 auto; overflow-wrap: anywhere; }
+.tg-correction h1 { font-size: 24px; margin-block: 8px 16px; }
+.tg-correction .tg-field-label { margin-block: 16px 6px; }
+.tg-correction .tg-primary-button { margin-top: 16px; }
+.tg-correction-review > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 16px; padding-block: 12px; border-bottom: 1px solid var(--tg-theme-hint-color, #69707d); }
+.tg-correction-review strong { grid-column: 1 / -1; }
+.tg-correction-review small { display: block; margin-bottom: 4px; color: var(--tg-theme-hint-color, #69707d); }
+.tg-history-correction { grid-column: 1 / -1; font-size: 13px; }
+.tg-history-correction-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tg-history-correction-actions button { width: auto; min-height: 44px; }
+.tg-correction button:focus-visible, .tg-history-correction button:focus-visible { outline: 2px solid var(--tg-theme-button-color, #2f80ed); outline-offset: 3px; }

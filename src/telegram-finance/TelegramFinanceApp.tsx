@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./telegram-finance.css";
 import DriverWallet from "./DriverWallet";
+import FinanceCorrection, { type CorrectableRecord } from "./FinanceCorrection";
 
 type TelegramWebApp = {
   initData: string;
@@ -44,7 +45,7 @@ type CatalogItem = {
   rows: Partial<Record<AccountKey, number | null>>;
 };
 
-type HistoryItem = {
+type HistoryItem = CorrectableRecord & {
   id: string;
   ledger: LedgerKey;
   account: AccountKey | string;
@@ -242,6 +243,8 @@ function TelegramFinanceApp() {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const [correction, setCorrection] = useState<{ item: HistoryItem; kind: "edit" | "cancel" } | null>(null);
   const [account, setAccount] = useState<AccountKey | "">("");
   const [direction, setDirection] = useState<DirectionKey | "">("");
   const [query, setQuery] = useState("");
@@ -320,14 +323,16 @@ function TelegramFinanceApp() {
       });
 
       const data = (await response.json().catch(() => null)) as
-        | (T & { ok?: boolean; code?: string; error?: string })
+        | (T & { ok?: boolean; code?: string; error?: string; correction_rejected?: boolean })
         | null;
 
       if (!response.ok || data?.ok === false) {
         const error = new Error(data?.error || "Не удалось выполнить операцию.") as Error & {
           code?: string;
+          correction_rejected?: boolean;
         };
         error.code = data?.code;
+        error.correction_rejected = data?.correction_rejected === true;
         throw error;
       }
 
@@ -434,7 +439,7 @@ function TelegramFinanceApp() {
     return () => {
       cancelled = true;
     };
-  }, [api, historyLedger, phase, view]);
+  }, [api, historyLedger, phase, view, historyRevision]);
 
   useEffect(() => {
     if (phase !== "ready" || !account || !direction || operation || query.trim().length < 1) {
@@ -838,6 +843,11 @@ function TelegramFinanceApp() {
     );
   }
 
+  if (view === "history" && correction) {
+    return <FinanceCorrection item={correction.item} kind={correction.kind} catalog={catalogs.showroom} api={api}
+      onClose={() => { setCorrection(null); setHistoryRevision(value => value + 1); }} />;
+  }
+
   if (view === "history") {
     return (
       <main className="tg-finance-shell">
@@ -887,6 +897,7 @@ function TelegramFinanceApp() {
                 <article key={item.id} className={`tg-history-item is-${item.direction}`}>
                   <div className="tg-history-copy">
                     <div className="tg-history-title">{item.label || item.article}</div>
+                    {item.vehicle ? <div className="tg-history-note">Авто / объект: {item.vehicle}</div> : null}
                     {item.note ? <div className="tg-history-note">{item.note}</div> : null}
                     <div className="tg-history-meta">
                       {item.account_label}
@@ -895,9 +906,23 @@ function TelegramFinanceApp() {
                     </div>
                   </div>
                   <div className={`tg-history-amount is-${item.direction}`}>
-                    {item.direction === "expense" ? "−" : "+"}
-                    {formatAmount(String(item.amount), item.currency)}
+                    {item.cancelled ? "" : item.direction === "expense" ? "−" : "+"}
+                    {formatAmount(String(item.cancelled ? 0 : item.amount), item.currency)}
                   </div>
+                  {item.ledger === "showroom" && <div className="tg-history-correction">
+                    {item.cancelled && <p>Отменена · исходная сумма {formatAmount(String(item.amount), item.currency)}</p>}
+                    {item.corrected_at && <p>{item.cancelled ? "Отменил" : "Изменил"}: {item.correction_actor_name || "—"} · {formatHistoryTime(item.corrected_at)}</p>}
+                    {(staffRole === "owner" || staffRole === "manager") && !item.cancelled && <>
+                      {item.pending_correction ? <><p>Исправление ожидает синхронизации. Финансовое влияние ещё не подтверждено.</p>
+                        <button className="tg-secondary-button" onClick={() => setCorrection({ item, kind: item.pending_correction!.kind })}>Продолжить синхронизацию</button></> : <>
+                        <div className="tg-history-correction-actions">
+                          <button className="tg-secondary-button" disabled={!item.can_correct} onClick={() => setCorrection({ item, kind: "edit" })}>Редактировать</button>
+                          <button className="tg-secondary-button" disabled={!item.can_correct} onClick={() => setCorrection({ item, kind: "cancel" })}>Удалить</button>
+                        </div>
+                        {!item.can_correct && <p>{item.correction_block_reason || "Изменения этой записи недоступны."}</p>}
+                      </>}
+                    </>}
+                  </div>}
                 </article>
               ))}
             </div>

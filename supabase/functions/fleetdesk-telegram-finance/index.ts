@@ -479,7 +479,7 @@ async function driverWalletData(db: ReturnType<typeof createClient>, staff: Reco
     const returned = total("return"), reimbursed = total("reimbursement");
     return { staff_id: driver.id, name: driver.full_name, issued, spent, returned, reimbursed,
       balance: Math.round((issued + reimbursed - spent - returned) * 100) / 100,
-      pending_sync: movements.filter((e: any) => e.status !== "applied" || e.sheet_sync_status !== "synced").length,
+      pending_sync: movements.filter((e: any) => e.status !== "cancelled" && (e.status !== "applied" || e.sheet_sync_status !== "synced")).length,
       movements: movements.slice(0, 80),
     };
   });
@@ -858,6 +858,117 @@ async function recordFinance(
 }
 
 
+function canCorrectFinance(staff: Record<string, any>) {
+  return ["owner", "manager"].includes(normalizeText(staff.role).toLowerCase());
+}
+
+function correctionTransfer(article: unknown) {
+  return /^(перевод|приход из кассы|приход со счета AJMAN)/i.test(normalizeText(article));
+}
+
+function sameCorrectionValue(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const keys = Object.keys(a).sort();
+  return keys.length === Object.keys(b).length && keys.every(key => sameCorrectionValue(a[key], b[key]));
+}
+
+async function finishFinanceCorrection(db: ReturnType<typeof createClient>, staff: Record<string, any>, correction: any) {
+  if (correction.status === "applied") return { status: "applied", correction_id: correction.id };
+  try {
+    const result = await callBridge(db, "correct_showroom_entry", {
+      ledger: "showroom", correction_id: correction.id, version: correction.version,
+      kind: correction.kind, before: correction.sheet_before, after: correction.after_payload,
+      driver: correction.driver_before, actor: correction.actor_name,
+    });
+    const { error } = await db.rpc("showroom_finalize_finance_correction", {
+      p_owner_id: staff.owner_id, p_actor_staff_id: staff.id,
+      p_correction_id: correction.id, p_bridge_result: result,
+    });
+    if (error) throw error;
+    return { status: "applied", correction_id: correction.id };
+  } catch (error) {
+    console.error("Showroom correction pending", correction.id, error);
+    return { status: "pending", correction_id: correction.id,
+      error: "Исправление ожидает синхронизации. " +
+        (error instanceof Error && /вручную|черновик|сверк|справочник|не синхронизирован/.test(error.message) ?
+          error.message + " Сначала устрани указанную причину в таблице, затем повтори это исправление." :
+          "Повтори его из истории; новую операцию создавать не нужно.") };
+  }
+}
+
+async function correctFinance(db: ReturnType<typeof createClient>, staff: Record<string, any>, body: Record<string, any>) {
+  if (!canCorrectFinance(staff) || body.ledger !== "showroom") throw new Error("Операция доступна только владельцу и менеджеру автосалона.");
+  if (body.action === "retry_showroom_correction") {
+    const { data, error } = await db.from("showroom_finance_corrections").select("*")
+      .eq("id", body.correction_id).eq("owner_id", staff.owner_id).eq("actor_staff_id", staff.id).single();
+    if (error || !data) throw new Error("Операция исправления не найдена для этого сотрудника.");
+    return await finishFinanceCorrection(db, staff, data);
+  }
+  const { data: existing, error: lookupError } = await db.from("showroom_finance_corrections").select("*")
+    .eq("owner_id", staff.owner_id).eq("request_id", normalizeText(body.request_id)).maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing) {
+    const values = body.values || {};
+    const expected = existing.after_payload;
+    if (existing.actor_staff_id !== staff.id || existing.original_id !== body.audit_id ||
+        existing.kind !== body.kind || existing.version !== Number(body.expected_version) + 1 ||
+        !sameCorrectionValue(existing.sheet_before, body.expected_sheet) ||
+        (body.kind === "edit" && (Number(values.amount) !== Number(expected.amount) ||
+          normalizeText(values.article) !== expected.article || Number(values.row) !== Number(expected.row) ||
+          normalizeText(values.vehicle) !== expected.vehicle || normalizeText(values.note) !== expected.note))) {
+      throw new Error("Операция с этим ID уже содержит другие значения.");
+    }
+    return await finishFinanceCorrection(db, staff, existing);
+  }
+  const { data: original, error } = await db.from("telegram_operation_requests").select("*")
+    .eq("id", body.audit_id).eq("owner_id", staff.owner_id).eq("action", "record_showroom_finance_entry").single();
+  if (error || !original) throw new Error("Операция автосалона не найдена.");
+  const before = original.payload || {};
+  const values = body.values || {};
+  let after = before;
+  if (body.kind === "edit") {
+    const note = normalizeText(values.note), vehicle = normalizeText(values.vehicle);
+    if (note.length > 500 || vehicle.length > 160 || /^=/.test(note) || /^[=+@]/.test(vehicle) ||
+        !Number.isFinite(Number(values.amount)) || Number(values.amount) <= 0) {
+      return { status: "rejected", correction_rejected: true, applied: false,
+        error: "Сумма, примечание или авто/объект содержит недопустимое значение." };
+    }
+    const article = normalizeText(values.article);
+    const sheetNote = article === "покупка авто для перепродажи" ? [vehicle, note].filter(Boolean).join(" · ") : note;
+    after = { ...before, amount: amountValue(values.amount), article,
+      row: Number(values.row), vehicle, note, sheet_note: sheetNote };
+  }
+  if (correctionTransfer(before.article) || correctionTransfer(after.article)) return {
+    status: "rejected", correction_rejected: true, applied: false,
+    error: "Операция перевода защищена: необходимо сохранить обе парные записи." };
+  const snapshot = body.expected_sheet;
+  if (!snapshot || snapshot.request_id !== original.result?.request_id) return {
+    status: "rejected", correction_rejected: true, applied: false,
+    error: "Операция не сверена с Google Sheets. Обнови историю." };
+  const inspection = await callBridge(db, "inspect_showroom_entries", { ledger: "showroom",
+    entries: [{ audit_id: original.id, request_id: original.result.request_id }] });
+  const current = inspection.entries?.[0];
+  if (!current?.snapshot || !sameCorrectionValue(current.snapshot, snapshot)) {
+    return { status: "rejected", correction_rejected: true, applied: false,
+      error: current?.error || "Операция изменилась в Google Sheets. Обнови историю и сверь значения." };
+  }
+  const { data, error: beginError } = await db.rpc("showroom_begin_finance_correction", {
+    p_owner_id: staff.owner_id, p_actor_staff_id: staff.id, p_original_id: original.id,
+    p_request_id: body.request_id, p_expected_version: body.expected_version,
+    p_kind: body.kind, p_after_payload: after, p_sheet_before: snapshot,
+  });
+  if (beginError) {
+    // Only an explicit PostgreSQL rejection proves that the transaction did not commit.
+    if (beginError.code === "P0001" || beginError.code === "23514" || beginError.code === "22P02") {
+      return { status: "rejected", correction_rejected: true, applied: false,
+        error: "Операция не может быть исправлена: " + beginError.message };
+    }
+    throw new Error("Операция исправления не подтверждена. Повтори тот же запрос.");
+  }
+  return await finishFinanceCorrection(db, staff, data);
+}
+
 async function getFinanceHistory(
   supabase: ReturnType<typeof createClient>,
   telegramUser: { id: number },
@@ -926,13 +1037,45 @@ async function getFinanceHistory(
       label: label || article,
       amount,
       currency: normalizeText(result.currency) || (account === "sber_rub" ? "RUB" : "AED"),
-      note: normalizeText(payload.note || result.note),
+      note: normalizeText(ledger === "showroom" ? payload.note ?? result.note : payload.note || result.note),
       date: normalizeText(payload.date || result.date),
       created_at: row.created_at,
       actor_name: names.get(String(row.actor_staff_id || "")) || "Сотрудник",
     };
   }).filter((item: any) => item.article && Number.isFinite(item.amount) && item.amount > 0);
 
+  if (ledger === "showroom") {
+    const ids = items.map((item: any) => item.id);
+    const { data: corrections, error: correctionError } = ids.length ? await supabase
+      .from("showroom_finance_corrections").select("id,original_id,request_id,kind,after_payload,actor_staff_id,status")
+      .eq("owner_id", staff.owner_id).eq("status", "pending").in("original_id", ids) : { data: [], error: null };
+    let snapshots: any[] = [];
+    try {
+      if (canCorrectFinance(staff) && !correctionError && ids.length) {
+        const inspection = await callBridge(supabase, "inspect_showroom_entries", { ledger,
+          entries: (rows || []).map((row: any) => ({ audit_id: row.id, request_id: row.result?.request_id })) });
+        snapshots = inspection.entries || [];
+      }
+    } catch (_) { /* History remains readable when Sheets is unavailable; corrections fail closed. */ }
+    return { ledger, items: items.map((item: any) => {
+      const original: any = (rows || []).find((row: any) => row.id === item.id);
+      const result = original.result || {}, payload = original.payload || {};
+      const pending = corrections?.find((row: any) => row.original_id === item.id);
+      const inspected = snapshots.find((row: any) => row.audit_id === item.id);
+      const snapshot = inspected?.snapshot;
+      const blocked = result.cancelled ? "Запись отменена." : correctionTransfer(item.article) || result.transfer_pair || result.transfer ?
+        "Перевод нельзя менять отдельно: необходимо сохранить обе парные записи." : pending ?
+        "Исправление ожидает синхронизации." : !snapshot || snapshot.pending || snapshot.version !== Number(result.correction_version || 0) ?
+        inspected?.error || "Нет подтверждённой сверки с Google Sheets. Обнови историю." : "";
+      return { ...item, version: Number(result.correction_version || 0), cancelled: Boolean(result.cancelled),
+        vehicle: payload.vehicle ?? (snapshot?.vehicle || (item.article === "покупка авто для перепродажи" ? payload.note : "")) ?? "",
+        note: payload.vehicle === undefined && item.article === "покупка авто для перепродажи" ? "" : item.note,
+        can_correct: canCorrectFinance(staff) && !blocked,
+        correction_block_reason: blocked, sheet_snapshot: snapshot || null,
+        pending_correction: pending?.actor_staff_id === staff.id ? pending : null,
+        correction_actor_name: result.corrected_by || null, corrected_at: result.corrected_at || null };
+    }) };
+  }
   return { ledger, items };
 }
 
@@ -1146,6 +1289,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const staff = await requireStaff(supabase, telegramUser.id);
+
+    if (action === "correct_showroom_finance" || action === "retry_showroom_correction") {
+      return json({ ok: true, ...await correctFinance(supabase, staff, body) }, 200, origin);
+    }
 
     if (action === "wallet") {
       return json({ ok: true, ...await driverWalletData(supabase, staff) }, 200, origin);
