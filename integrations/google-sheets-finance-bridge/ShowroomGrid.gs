@@ -142,21 +142,23 @@ function sgiRepairMirrors_() {
     const existing = sh.getRange(first,21,count,7).getFormulas();
     const notes = sh.getRange(first,21,count,1).getNotes();
     let start = -1, buffered = [], repaired = 0, skipped = 0;
+    const staleDraftNotes = [];
     const flush = function() {
       if (start >= 0 && buffered.length) sh.getRange(first+start,21,buffered.length,7).setFormulas(buffered);
       start = -1; buffered = [];
     };
     for (let i = 0; i < count; i++) {
-      if (String(notes[i][0] || '').startsWith('sgi:') || existing[i].some(f => !f)) {
-        flush(); skipped++; continue;
-      }
+      // A real draft has cells without formulas. Seven intact formulas mean no pending input.
+      if (existing[i].some(f => !f)) { flush(); skipped++; continue; }
       if (start < 0) start = i;
       buffered.push(SGI_COLS.map(sgiMirrorFormula_));
+      if (String(notes[i][0] || '').startsWith('sgi:')) staleDraftNotes.push(first+i);
       repaired++;
     }
     flush();
+    staleDraftNotes.forEach(row => sh.getRange(row,21).clearNote());
     SpreadsheetApp.flush();
-    return { repaired, skipped, range: 'U5:AA1004' };
+    return { repaired, skipped, stale_notes_cleared: staleDraftNotes.length, range: 'U5:AA1004' };
   } finally { lock.releaseLock(); }
 }
 
