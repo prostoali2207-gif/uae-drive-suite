@@ -61,7 +61,7 @@ check('repair migration skips draft and changes only fully mirrored rows', () =>
   const sheet = {
     getMaxRows: () => 6,
     getRange: (r, c, n, w) => ({
-      getFormulas: () => [legacy(5), legacy(6)],
+      getFormulas: () => [legacy(5), [''].concat(legacy(6).slice(1))],
       getNotes: () => [[''],['sgi:draft']],
       setFormulas: (v) => captured.push({ r, c, n, w, v }),
     }),
