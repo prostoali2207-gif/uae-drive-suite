@@ -265,6 +265,22 @@ function findArticles_(payload) {
   };
 }
 
+/** Prevent a fresh request ID from replaying an identical showroom expense. */
+function findDuplicateShowroomPosting_(sheet, dateYmd, accountLabel, article, amount, note) {
+  const count = Math.min(INPUT_LAST_ROW, sheet.getMaxRows()) - INPUT_FIRST_ROW + 1;
+  if (count <= 0) return 0;
+  const rows = sheet.getRange(INPUT_FIRST_ROW, 1, count, 18).getValues();
+  const key = function (value) { return String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' '); };
+  for (let i = 0; i < rows.length; i++) {
+    const v = rows[i];
+    if (v[17] === 'auto' || !(v[0] instanceof Date) || Number(v[3]) !== amount) continue;
+    if (Utilities.formatDate(v[0], FINANCE_TIME_ZONE, 'yyyy-MM-dd') === dateYmd &&
+        key(v[1]) === key(accountLabel) && key(v[2]) === key(article) &&
+        key(v[4]) === key(note)) return INPUT_FIRST_ROW + i;
+  }
+  return 0;
+}
+
 function recordEntry_(payload) {
   const ledger = validateLedger_(payload.ledger);
   ensureFinanceCalendar_(ledger);
@@ -336,6 +352,16 @@ function recordEntry_(payload) {
         true,
         duplicateTransfer
       );
+    }
+
+    if (ledger === 'showroom') {
+      const matchingRow = findDuplicateShowroomPosting_(
+        sheet, date, config.accounts[account], ref.operation, amount, note
+      );
+      if (matchingRow) {
+        throw new Error('Похожая операция уже есть в строке ' + matchingRow +
+          '. Повтор не сохранён. Если это отдельный платёж, укажите отдельное пояснение.');
+      }
     }
 
     const targetRow = inputState.emptyRow;
