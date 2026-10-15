@@ -84,36 +84,22 @@ function sgiChoice_(v, model, controlsChanged) {
   return next;
 }
 
-/**
- * The finance journal is authoritative. A complete inline draft must never silently
- * recreate the same transaction in another physical row (including after reordering).
- * This is a warning gate, not a claim that two identical payments are impossible.
- * For a genuine second payment, enter its own descriptive note.
- */
-function sgiDuplicateRow_(sh, currentRow, next, vehicle) {
+/** Detect accidental replay before writing the journal; a distinct note permits a real second payment. */
+function sgiDuplicateRow_(sh, currentRow, next, vehicle, ignoreNote) {
   const count = Math.min(1004, sh.getMaxRows()) - 4;
   if (count <= 0) return 0;
-  const rows = sh.getRange(5, 1, count, 20).getValues();
-  const dateKey = function(value) {
-    return value instanceof Date && !isNaN(value.getTime())
-      ? Utilities.formatDate(value, 'Asia/Dubai', 'yyyy-MM-dd') : '';
-  };
-  const textKey = function(value) { return String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g,' '); };
-  const amountKey = function(value) { return Number(value).toFixed(2); };
-  const candidate = [
-    dateKey(next[0]), textKey(next[1]), textKey(next[2]),
-    amountKey(next[3]), textKey(next[4]), textKey(vehicle)
-  ];
+  const rows = sh.getRange(5,1,count,20).getValues();
+  const dateKey = value => value instanceof Date && !isNaN(value.getTime()) ? Utilities.formatDate(value,'Asia/Dubai','yyyy-MM-dd') : '';
+  const textKey = value => String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g,' ');
+  const amountKey = value => Number(value).toFixed(2);
+  const candidate = [dateKey(next[0]),textKey(next[1]),textKey(next[2]),amountKey(next[3]),textKey(next[4]),textKey(vehicle)];
   if (!candidate[0] || !Number.isFinite(Number(next[3]))) return 0;
-  for (let i = 0; i < rows.length; i++) {
-    const rowNumber = 5 + i, row = rows[i];
+  for (let i=0; i<rows.length; i++) {
+    const row=rows[i], rowNumber=5+i;
     if (rowNumber === currentRow || row[17] === 'auto') continue;
     if (!row[0] || !row[1] || !row[2] || !Number(row[3])) continue;
-    const current = [
-      dateKey(row[0]), textKey(row[1]), textKey(row[2]),
-      amountKey(row[3]), textKey(row[4]), textKey(row[19])
-    ];
-    if (candidate.every((value, index) => value === current[index])) return rowNumber;
+    const current=[dateKey(row[0]),textKey(row[1]),textKey(row[2]),amountKey(row[3]),textKey(row[4]),textKey(row[19])];
+    if (candidate.every((v,j)=>(ignoreNote && j === 4) || v===current[j])) return rowNumber;
   }
   return 0;
 }
@@ -155,17 +141,13 @@ function sgiRow_(sh, r, edited, model) {
   const next = [v[0],v[2],v[3],Number(v[5]),v[6]];
   const same = JSON.stringify(next) === JSON.stringify(stored.slice(0,5)) && v[4] === stored[19];
   if (same) { sgiMirror_(sh,r); return; }
-  // Catch accidental replay into a different row before touching the financial ledger.
-  // All seven form fields stay visible as a draft so the manager can correct it.
-  const duplicateRow = sgiDuplicateRow_(sh, r, next, v[4]);
-  if (duplicateRow) {
-    throw new Error('Похожая операция уже есть в строке ' + duplicateRow +
-      '. Повтор не сохранён. Если это отдельный платёж, добавьте пояснение в Примечание.');
-  }
+  const duplicateRow = sgiDuplicateRow_(sh,r,next,v[4]);
+  if (duplicateRow) throw new Error('Похожая операция уже есть в строке ' + duplicateRow + '. Повтор не сохранён. Если это отдельный платёж, добавьте пояснение в Примечание.');
+  const similarRow = sgiDuplicateRow_(sh,r,next,v[4],true);
+  if (similarRow) sh.getParent().toast('Возможный дубль со строкой '+similarRow+'. Отдельный платёж сохранён с вашим пояснением.', 'Проверьте платёж', 10);
   // Keep financial storage untouched until the row is complete and valid.
   sh.getRange(r,1,1,5).setValues([next]);
   sh.getRange(r,20).setValue(v[4]);
-  // New manual postings get a stable request ID; old transactions and Telegram IDs stay intact.
   if (!occupied && !stored[13]) sh.getRange(r,14).setValue('sgi-' + Utilities.getUuid());
   if (!stored[15]) sh.getRange(r,16).setValue(new Date());
   // Existing installed handlers ignore U:AA. Invoke the same pair logic under its shared lock.
