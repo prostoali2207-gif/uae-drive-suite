@@ -114,6 +114,11 @@ check('a real second payment with its own note remains possible', () => {
   assert.equal(posting.sgiDuplicateRow_(sh, 52, sample, 'Xpander'), 0);
   assert.equal(posting.sgiDuplicateRow_(sh, 52, [...sample.slice(0, 3), 174, ''], 'Lexus'), 0);
 });
+check('similar payment warns even when its note differs', () => {
+  const fixture = duplicateFixture();
+  const sh = { getMaxRows: () => 1004, getRange: () => ({ getValues: () => fixture }) };
+  assert.equal(posting.sgiDuplicateRow_(sh,52,[...sample.slice(0,4),'отдельный платёж'],'Lexus',true),49);
+});
 check('same physical row never self-matches', () => {
   const fixture = duplicateFixture();
   fixture[47] = fixture[44];
@@ -152,3 +157,4 @@ check('attempted duplicate cannot write any A:T financial cells', () => {
 });
 
 console.log(tests + ' showroom grid regression tests passed.');
+
