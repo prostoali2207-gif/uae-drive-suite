@@ -165,6 +165,8 @@ function sgiRow_(sh, r, edited, model) {
   // Keep financial storage untouched until the row is complete and valid.
   sh.getRange(r,1,1,5).setValues([next]);
   sh.getRange(r,20).setValue(v[4]);
+  // New manual postings get a stable request ID; old transactions and Telegram IDs stay intact.
+  if (!occupied && !stored[13]) sh.getRange(r,14).setValue('sgi-' + Utilities.getUuid());
   if (!stored[15]) sh.getRange(r,16).setValue(new Date());
   // Existing installed handlers ignore U:AA. Invoke the same pair logic under its shared lock.
   if (r !== 9 && r !== 13 && (JSON.stringify(next.slice(0,4)) !== JSON.stringify(stored.slice(0,4)))) stSyncRow_(sh,r);
