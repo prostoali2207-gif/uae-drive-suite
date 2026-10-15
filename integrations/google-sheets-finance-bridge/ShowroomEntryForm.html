@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body{font:14px Arial,sans-serif;color:#202124;padding:16px;margin:0;background:#fff}
+    h2{font-size:18px;margin:0 0 16px}
+    label{display:block;font-weight:600;margin:12px 0 5px}
+    input,select,textarea{box-sizing:border-box;width:100%;font:14px Arial,sans-serif;padding:9px;border:1px solid #dadce0;border-radius:6px;background:#fff}
+    textarea{min-height:72px;resize:vertical}
+    select:disabled{background:#f5f5f5;color:#777}
+    .hint{font-size:12px;color:#5f6368;min-height:16px;margin-top:4px}
+    button{width:100%;margin-top:16px;padding:10px;border:0;border-radius:6px;background:#1a73e8;color:#fff;font-weight:600;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}
+    #message{font-size:13px;margin-top:12px;white-space:pre-wrap}
+    .error{color:#b3261e}.success{color:#137333}
+  </style>
+</head>
+<body>
+  <h2>Новая операция</h2>
+  <form id="entryForm">
+    <label for="date">Дата</label>
+    <input id="date" name="date" type="date" required>
+
+    <label for="account">Счёт</label>
+    <select id="account" name="account" required><option value="">Загрузка…</option></select>
+
+    <label for="operation">Операция</label>
+    <select id="operation" name="operation" required><option value="">Загрузка…</option></select>
+
+    <label for="subcategory">Авто / объект</label>
+    <select id="subcategory" name="subcategory" disabled><option value="">Выберите операцию</option></select>
+    <div id="subcategoryHint" class="hint"></div>
+
+    <label for="amount">Сумма</label>
+    <input id="amount" name="amount" type="number" min="0.01" step="0.01" required>
+
+    <label for="note">Примечание</label>
+    <textarea id="note" name="note" maxlength="500"></textarea>
+
+    <button id="submit" type="submit" disabled>Добавить операцию</button>
+    <div id="message" role="status" aria-live="polite"></div>
+  </form>
+  <script>
+    let model = null;
+    let requestId = null;
+    let saving = false;
+    const byId = id => document.getElementById(id);
+    const dateInput = byId('date');
+    const accountInput = byId('account');
+    const operationInput = byId('operation');
+    const subcategoryInput = byId('subcategory');
+    const hint = byId('subcategoryHint');
+    const message = byId('message');
+    const submit = byId('submit');
+
+    dateInput.value = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai'}).format(new Date());
+    function fillSelect(select, values, firstLabel) {
+      select.innerHTML = '';
+      const first = document.createElement('option');
+      first.value = '';
+      first.textContent = firstLabel;
+      select.appendChild(first);
+      values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+    }
+    function updateSubcategories() {
+      const operation = model && model.operations.find(x => x.operation === operationInput.value);
+      const options = operation ? operation.subcategories : [];
+      fillSelect(subcategoryInput, options, options.length ? 'Выберите авто / объект' : '');
+      subcategoryInput.value = '';
+      subcategoryInput.disabled = !options.length;
+      hint.textContent = operation && !options.length ? 'Для этой операции подкатегорий нет.' : '';
+      message.textContent = '';
+      message.className = '';
+    }
+    operationInput.addEventListener('change', updateSubcategories);
+
+    google.script.run.withSuccessHandler(data => {
+      model = data;
+      requestId = data.request_id;
+      fillSelect(accountInput, data.accounts, 'Выберите счёт');
+      fillSelect(operationInput, data.operations.map(x => x.operation), 'Выберите операцию');
+      updateSubcategories();
+      submit.disabled = false;
+    }).withFailureHandler(err => {
+      message.textContent = err.message || String(err);
+      message.className = 'error';
+    }).showroomEntryGetData();
+
+    byId('entryForm').addEventListener('submit', event => {
+      event.preventDefault();
+      if (saving) return;
+      saving = true;
+      message.textContent = 'Сохраняю…';
+      message.className = '';
+      submit.disabled = true;
+      const data = {
+        request_id: requestId,
+        date: dateInput.value,
+        account: accountInput.value,
+        operation: operationInput.value,
+        subcategory: subcategoryInput.disabled ? '' : subcategoryInput.value,
+        amount: byId('amount').value,
+        note: byId('note').value
+      };
+      google.script.run.withSuccessHandler(result => {
+        operationInput.value = '';
+        updateSubcategories();
+        message.textContent = result.paired
+          ? 'Записано в строку ' + result.row + '. Парная запись создана автоматически.'
+          : 'Записано в строку ' + result.row + '.';
+        if (result.warning) message.textContent += '\n' + result.warning;
+        message.className = 'success';
+        requestId = 'sge-' + crypto.randomUUID();
+        saving = false;
+        byId('amount').value = '';
+        byId('note').value = '';
+        submit.disabled = false;
+      }).withFailureHandler(err => {
+        saving = false;
+        message.textContent = err.message || String(err);
+        message.className = 'error';
+        submit.disabled = false;
+      }).showroomEntrySubmit(data);
+    });
+  </script>
+</body>
+</html>
