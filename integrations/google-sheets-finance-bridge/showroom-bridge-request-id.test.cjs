@@ -8,11 +8,21 @@ const code = fs.readFileSync(path.join(__dirname,'Code.gs'),'utf8');
 function fixture(existing = true) {
   const calls={writes:0,transfers:0,acquired:0,released:0};
   const saved=[new Date('2026-10-14T08:00:00.000Z'),'Касса','покупка авто для перепродажи',173,''];
-  const sheet={getRange:()=>({
-    getValues:()=>[saved],
-    setValues:()=>{calls.writes++;},
-    setValue:()=>{calls.writes++;}
-  })};
+  const sheet={
+    getMaxRows:()=>1004,
+    getRange:(r,c,h,w)=>({
+      getValues:()=>{
+        if (r===5 && c===1 && h===1000 && w===18) {
+          const rows=Array.from({length:1000},()=>Array(18).fill(''));
+          rows[44]=saved.slice(0,5).concat(Array(13).fill('')); // Existing posting A49:E49
+          return rows;
+        }
+        return [saved];
+      },
+      setValues:()=>{calls.writes++;},
+      setValue:()=>{calls.writes++;}
+    })
+  };
   const context=vm.createContext({
     Date, sheet, calls,
     Utilities:{formatDate:d=>d.toISOString().slice(0,10)},
@@ -52,6 +62,11 @@ assert.equal(a.calls.writes,0);
 assert.equal(a.calls.acquired,a.calls.released);
 
 const b=fixture(false);
-assert.doesNotThrow(()=>b.context.recordEntry_({...b.entry,ledger:'rental',request_id:''}));
-assert.equal(b.calls.writes,1);
-console.log('PASS: showroom ID required, exact retry safe, mismatched retry rejected; Rental remains optional.');
+assert.throws(()=>b.context.recordEntry_({...b.entry,request_id:'different-event-123'}),/Похожая операция уже есть в строке 49/);
+assert.equal(b.calls.writes,0,'Different request ID with identical payment must not duplicate');
+assert.doesNotThrow(()=>b.context.recordEntry_({...b.entry,request_id:'different-event-456',note:'second independent payment'}));
+assert.equal(b.calls.writes,2,'Separate explained payment writes journal and request ID');
+const c=fixture(false);
+assert.doesNotThrow(()=>c.context.recordEntry_({...c.entry,ledger:'rental',request_id:''}));
+assert.equal(c.calls.writes,1,'Rental keeps its established flow');
+console.log('PASS: showroom ID required; repeat or mismatched IDs fail; explained payment allowed; Rental unchanged.');
