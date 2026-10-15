@@ -289,6 +289,11 @@ function recordEntry_(payload) {
   if (!ref) throw new Error('Operation not found in Справочники.');
 
   const requestId = String(payload.request_id || '').trim();
+  // Showroom money must never be posted from an external request without a stable replay key.
+  // Rental keeps its existing contract and optional-ID behavior.
+  if (ledger === 'showroom' && !/^[a-zA-Z0-9:_-]{8,200}$/.test(requestId)) {
+    throw new Error('Автосалон: request_id обязателен. Повторите запрос с тем же ID; не создавайте новый.');
+  }
   const sheet = spreadsheet_(ledger).getSheetByName(INPUT_SHEET);
   if (!sheet) throw new Error('Лист «Ввод операций» не найден.');
 
@@ -299,6 +304,17 @@ function recordEntry_(payload) {
     const inputState = inspectInputRows_(sheet, requestId);
 
     if (requestId && inputState.existingRow) {
+      if (ledger === 'showroom') {
+        const saved = sheet.getRange(inputState.existingRow, 1, 1, 5).getValues()[0];
+        const savedDate = saved[0] instanceof Date
+          ? Utilities.formatDate(saved[0], FINANCE_TIME_ZONE, 'yyyy-MM-dd')
+          : '';
+        if (savedDate !== date || String(saved[1]) !== config.accounts[account] ||
+            String(saved[2]) !== ref.operation || Number(saved[3]) !== amount ||
+            String(saved[4] || '') !== note) {
+          throw new Error('Этот request_id уже относится к другой операции. Повторите исходный запрос.');
+        }
+      }
       const duplicateTransfer = ensureTransferPairForRow_(
         sheet,
         ledger,
