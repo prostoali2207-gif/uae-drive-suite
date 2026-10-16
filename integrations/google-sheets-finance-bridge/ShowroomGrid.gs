@@ -46,12 +46,17 @@ function sgiMirrorFormula_(col) {
 }
 
 function sgiMirror_(sh, r) {
-  sh.getRange(r,21,1,7).setFormulas([SGI_COLS.map(sgiMirrorFormula_)]);
+  const stored = sh.getRange(r,1,1,20).getValues()[0];
+  const sourceIndexes = [0,5,1,2,19,3,4];
+  // Strict date/number/dropdown rules accept a real blank, not a formula returning an empty string.
+  const formulas = SGI_COLS.map((col,i) => stored[sourceIndexes[i]] === '' || stored[sourceIndexes[i]] === null ? '' : sgiMirrorFormula_(col));
+  sh.getRange(r,21,1,7).clearContent();
+  formulas.forEach((formula,i) => { if (formula) sh.getRange(r,21+i).setFormula(formula); });
   sh.getRange(r,21).clearNote();
 }
 
 /** Never copy stale mirror values into a different financial record. */
-function sgiCheckMirrors_(sh, r, edited, draft) {
+function sgiCheckMirrors_(sh, r, edited, draft, newRow, emptyMirrors) {
   const formulas = sh.getRange(r,21,1,7).getFormulas()[0];
   const from = edited.getColumn(), to = edited.getLastColumn();
   const clean = function(value) { return String(value || '').replace(/\s/g,'').replace(/,/g,';'); };
@@ -61,7 +66,7 @@ function sgiCheckMirrors_(sh, r, edited, draft) {
     const legacy = '=IF(' + SGI_COLS[i] + r + '="";"";' + SGI_COLS[i] + r + ')';
     const correct = sgiMirrorFormula_(SGI_COLS[i]);
     if ((formulas[i] && clean(formulas[i]) !== clean(legacy) && clean(formulas[i]) !== clean(correct)) ||
-        (!formulas[i] && !draft)) {
+        (!formulas[i] && !draft && !newRow && !(emptyMirrors || []).includes(i))) {
       sgiMirror_(sh,r);
       throw new Error('В строке ' + r + ' была повреждена связь с данными. Показаны исходные значения; повторите ввод.');
     }
@@ -112,20 +117,27 @@ function sgiRow_(sh, r, edited, model) {
     sgiMirror_(sh,r);
     throw new Error('Строка '+r+' обновлена другим источником. Показаны актуальные данные; повторите правку.');
   }
-  sgiCheckMirrors_(sh,r,edited,oldNote.startsWith('sgi:'));
+  const occupied = stored.slice(0,5).some(x => x !== '' && x !== null);
+  const visible = area.getValues()[0];
+  const sourceIndexes = [0,5,1,2,19,3,4];
+  const emptyMirrors = sourceIndexes.map((index,i) =>
+    (stored[index] === '' || stored[index] === null) && (visible[i] === '' || visible[i] === null) ? i : -1);
+  sgiCheckMirrors_(sh,r,edited,oldNote.startsWith('sgi:'),!occupied && !stored[13] && !stored[16] && !stored[17],emptyMirrors);
 
   const from = edited.getColumn(), to = edited.getLastColumn();
   const controls = from <= 24 && to >= 22;
-  let v = area.getValues()[0];
-  const occupied = stored.slice(0,5).some(x => x !== '' && x !== null);
+  let v = visible;
   if (stored[17] === 'auto' && !(from === to && (from === 21 || from === 26))) {
     sgiMirror_(sh,r);
     throw new Error('Строка '+r+' — автоматическая пара. Меняйте здесь только дату или сумму.');
   }
+  const beforeChoice = v.slice();
   v = sgiChoice_(v,model,controls || (from <= 25 && to >= 25));
-  // Incomplete input is an intentional draft; it is marked below and never changes A:T.
-  area.setValues([v]);
+  // Mark first; never rewrite all seven input cells while the manager is typing.
   cell.setNote('sgi:'+base);
+  for (let i=1; i<=4; i++) {
+    if (v[i] !== beforeChoice[i]) sh.getRange(r,21+i).clearContent();
+  }
   if (v.every(x => x === '' || x === null)) { sgiMirror_(sh,r); return; }
   const op = model.find(op => op.name === v[3] && op.type === v[1] && op.accounts.includes(v[2]));
   if (!op || !(v[0] instanceof Date) || !Number.isFinite(Number(v[5])) || Number(v[5]) <= 0) return;
@@ -140,7 +152,12 @@ function sgiRow_(sh, r, edited, model) {
   if (String(v[6]).length > 500) throw new Error('Примечание должно быть не длиннее 500 символов.');
   const next = [v[0],v[2],v[3],Number(v[5]),v[6]];
   const same = JSON.stringify(next) === JSON.stringify(stored.slice(0,5)) && v[4] === stored[19];
-  if (same) { sgiMirror_(sh,r); return; }
+  if (same) {
+    // Retry must finish a pair interrupted after its source was saved.
+    if (r !== 9 && r !== 13) stSyncRow_(sh,r);
+    SpreadsheetApp.flush();
+    sgiMirror_(sh,r); return;
+  }
   const duplicateRow = sgiDuplicateRow_(sh,r,next,v[4]);
   if (duplicateRow) throw new Error('Похожая операция уже есть в строке ' + duplicateRow + '. Повтор не сохранён. Если это отдельный платёж, добавьте пояснение в Примечание.');
   const similarRow = sgiDuplicateRow_(sh,r,next,v[4],true);
