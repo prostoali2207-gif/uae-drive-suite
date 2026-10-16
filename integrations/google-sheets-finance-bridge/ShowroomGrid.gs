@@ -2,7 +2,20 @@
 const SGI_ID = '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA';
 const SGI_COLS = ['A','F','B','C','T','D','E'];
 
-function onEdit(e) {
+/** Run once from the bound editor. Creates only this handler; leaves all other triggers intact. */
+function showroomInstallGridTrigger() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss || ss.getId() !== SGI_ID) throw new Error('Неверная таблица для установки автосохранения.');
+  const existing = ScriptApp.getUserTriggers(ss).filter(t => t.getHandlerFunction() === 'showroomGridOnEdit');
+  if (existing.length > 1 || (existing.length === 1 && existing[0].getEventType() !== ScriptApp.EventType.ON_EDIT)) {
+    throw new Error('Проверьте дубли или тип триггера showroomGridOnEdit.');
+  }
+  if (existing.length === 1) return existing[0].getUniqueId();
+  return ScriptApp.newTrigger('showroomGridOnEdit').forSpreadsheet(ss).onEdit().create().getUniqueId();
+}
+
+/** Install as spreadsheet On edit; a simple trigger can time out before its pair is saved. */
+function showroomGridOnEdit(e) {
   if (!e || !e.range || !e.source || e.source.getId() !== SGI_ID) return;
   const sh = e.range.getSheet();
   if (sh.getName() !== 'Ввод операций' || sh.getMaxColumns() < 27) return;
