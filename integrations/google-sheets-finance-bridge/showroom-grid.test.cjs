@@ -177,6 +177,31 @@ check('attempted duplicate cannot write any A:T financial cells', () => {
   assert.deepEqual(draft[5], 173);
 });
 
+function installerFixture(existing, target = '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA') {
+  const calls = [];
+  const sheet = {getId: () => target};
+  const builder = {forSpreadsheet: ss => {assert.equal(ss,sheet);return builder;},onEdit:()=>builder,create:()=>{calls.push('create');return {getUniqueId:()=> 'new-trigger'};}};
+  const install = vm.runInNewContext(src + '\nshowroomInstallGridTrigger', {
+    SpreadsheetApp:{getActiveSpreadsheet:()=>sheet},
+    ScriptApp:{EventType:{ON_EDIT:'edit'},getUserTriggers:ss=>{assert.equal(ss,sheet);return existing;},newTrigger:name=>{calls.push(name);return builder;}}
+  });
+  return {install,calls};
+}
+check('installer binds only its own handler to the expected current spreadsheet',()=>{
+  const f=installerFixture([{getHandlerFunction:()=> 'ddsOnEditStamp'}]);
+  assert.equal(f.install(),'new-trigger');assert.deepEqual(f.calls,['showroomGridOnEdit','create']);
+});
+check('installer replay reuses its trigger and leaves unrelated triggers alone',()=>{
+  const f=installerFixture([{getHandlerFunction:()=> 'showroomGridOnEdit',getEventType:()=> 'edit',getUniqueId:()=> 'existing'}]);
+  assert.equal(f.install(),'existing');assert.deepEqual(f.calls,[]);
+});
+check('installer refuses a different spreadsheet before reading or creating triggers',()=>{
+  const f=installerFixture([],'wrong-copy');assert.throws(f.install,/Неверная таблица/);assert.deepEqual(f.calls,[]);
+});
+check('installer refuses duplicate handlers instead of deleting triggers',()=>{
+  const f=installerFixture([1,2].map(()=>({getHandlerFunction:()=> 'showroomGridOnEdit'})));
+  assert.throws(f.install,/дубли/);assert.deepEqual(f.calls,[]);
+});
 console.log(tests + ' showroom grid regression tests passed.');
 
 
