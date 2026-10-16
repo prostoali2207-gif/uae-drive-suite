@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
 const src = fs.readFileSync(path.join(__dirname, 'ShowroomGrid.gs'), 'utf8');
-const api = vm.runInNewContext(src + '\n({sgiMirrorFormula_,sgiCheckMirrors_,sgiRow_,sgiRepairMirrors_})');
+const api = vm.runInNewContext(src + '\n({sgiMirror_,sgiMirrorFormula_,sgiCheckMirrors_,sgiRow_,sgiRepairMirrors_})', {SpreadsheetApp:{flush(){}}});
 const cols = ['A','F','B','C','T','D','E'];
 const legacy = (row) => cols.map(c => '=IF(' + c + row + '="";"";' + c + row + ')');
 const editingAmount = { getColumn: () => 26, getLastColumn: () => 26 };
@@ -13,9 +13,12 @@ let tests = 0;
 function check(what, fn) { fn(); tests++; process.stdout.write('✓ ' + what + '\n'); }
 function grid(formulas) {
   const state = { repairs: 0, clearedNotes: 0, saved: null };
-  state.sheet = { getRange: () => ({
+  state.sheet = { getRange: (r,c,h,w) => ({
     getFormulas: () => [formulas],
+    getValues: () => [[new Date('2026-10-16'), '', '', 100, '']],
     setFormulas: (next) => { state.repairs++; state.saved = next[0]; },
+    clearContent: () => { state.repairs++; state.saved=Array(7).fill(''); },
+    setFormula: (f) => { state.saved[c-21]=f; },
     clearNote: () => { state.clearedNotes++; },
   }) };
   return state;
@@ -55,6 +58,24 @@ check('marked in-progress draft remains editable', () => {
   const s = grid(vals);
   api.sgiCheckMirrors_(s.sheet, 51, editingAmount, true);
   assert.equal(s.repairs, 0);
+});
+check('rapid new-row edits before draft note do not get discarded', () => {
+  const vals = legacy(51); vals[0] = ''; vals[1] = '';
+  const s = grid(vals);
+  api.sgiCheckMirrors_(s.sheet,51,editingAmount,false,true);
+  assert.equal(s.repairs,0);
+});
+check('new-row allowance still rejects a shifted formula', () => {
+  const vals=legacy(51);vals[0]='=IF(A53="";"";A53)';
+  const s=grid(vals);
+  assert.throws(()=>api.sgiCheckMirrors_(s.sheet,51,editingAmount,false,true),/повреждена связь/);
+});
+check('empty dates and amounts restore as real blanks under strict validation', () => {
+  let mirrors=Array(7).fill('old');
+  const sh={getRange:(r,c)=>c===1?{getValues:()=>[Array(20).fill('')]}:{clearContent:()=>{mirrors.fill('');},setFormula:f=>{mirrors[c-21]=f;},clearNote(){}}};
+  api.sgiMirror_(sh,51);
+  assert.equal(mirrors[0],'');assert.equal(mirrors[5],'');
+  assert.ok(mirrors.every(v=>v===''));
 });
 check('repair migration skips draft and changes only fully mirrored rows', () => {
   const captured = [];
@@ -157,4 +178,5 @@ check('attempted duplicate cannot write any A:T financial cells', () => {
 });
 
 console.log(tests + ' showroom grid regression tests passed.');
+
 
