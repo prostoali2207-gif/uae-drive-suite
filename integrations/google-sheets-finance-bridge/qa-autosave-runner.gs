@@ -32,8 +32,9 @@ function qaAutosaveRun() {
   dirs.forEach((d,i)=>{if(i!==stage-3)return;const op=model.find(x=>x.name===d[1]&&x.accounts.includes(d[0]));const r=904+i;enter(r,{...op,accounts:[d[0]]},7204+i);const v=ledger(r),peer=stFindPeer_(sh,v[16],r);ok('transfer '+d[0],v[17]==='source'&&peer>0&&Number(ledger(peer)[3])===7204+i);const n=count();edit(r,26,7204+i);ok('transfer retry '+d[0],count()===n&&stFindPeer_(sh,v[16],r)===peer);});
 
   } else if(stage===5){
-  reset(906);const op=model.find(x=>x.name==='перевод в КАССУ');const a=sh.getRange(906,1,1,5),rule=sh.getRange(906,3).getDataValidation();sh.getRange(906,3).clearDataValidations();a.setValues([[date,'AJMAN',op.name,7306,'']]);SpreadsheetApp.flush();sh.getRange(906,3).setDataValidation(rule);sgiMirror_(sh,906);
-  edit(906,26,7306);ok('retry repairs missing pair',ledger(906)[17]==='source'&&stFindPeer_(sh,ledger(906)[16],906)>0);
+  const source=ledger(905),peer=stFindPeer_(sh,source[16],905);ok('recovery source and peer available',source[17]==='source'&&peer>0);
+  sh.getRange(peer,1,1,5).clearContent();sh.getRange(peer,17,1,3).clearContent();SpreadsheetApp.flush();
+  edit(905,26,7205);ok('retry repairs missing pair',ledger(905)[17]==='source'&&stFindPeer_(sh,ledger(905)[16],905)>0);
   reset(907);ok('empty mirrors restore strict validation',sh.getRange(907,21).getFormula()===''&&sh.getRange(907,21).getDataValidation().getAllowInvalid()===false);
 
   } else { console.log('ALL QA STAGES ALREADY COMPLETE'); return; }
