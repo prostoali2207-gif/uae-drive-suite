@@ -40,3 +40,22 @@ function qaAutosaveRun() {
   } else { console.log('ALL QA STAGES ALREADY COMPLETE'); return; }
  console.log('QA STAGE PASS '+stage+' '+JSON.stringify(results));props.setProperty('QA_AUTOSAVE_STAGE',String(stage+1));
 }
+
+/** Read-only release audit of real per-cell UI edits; QA target only. */
+function qaAutosaveVerifyUI() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getId() !== '104iWDidknXzuYrNe8bQtf4lRUFsdJVCgWRQ06jTRr3s' || ss.getId() !== SGI_ID) throw Error('UNSAFE QA TARGET');
+  const all = ss.getSheetByName('Ввод операций').getRange(5,1,1000,20).getValues();
+  [[908,'Касса',7908.88],[910,'AJMAN',7910.1],[914,'AJMAN',7914.14],[918,'Касса',7918.18]].forEach(test => {
+    const v = all[test[0]-5];
+    if (!(v[0] instanceof Date) || v[1] !== test[1] || Math.abs(Number(v[3])-test[2]) > 0.001 || v[17] !== 'source' || !v[16]) throw Error('FAIL UI source '+test[0]);
+    const linked = all.filter(x => x[16] === v[16]), peers = linked.filter(x => x[17] === 'auto');
+    if (linked.length !== 2 || peers.length !== 1 || Math.abs(Number(peers[0][3])-test[2]) > 0.001) throw Error('FAIL UI pair '+test[0]);
+    const peer = peers[0];
+    if (peer[1] !== (v[1] === 'Касса' ? 'AJMAN' : 'Касса') || peer[2] !== (v[1] === 'Касса' ? 'приход из кассы' : 'приход со счета AJMAN') || peer[5] !== 'Приход' || v[5] !== 'Расход' || String(peer[0]) !== String(v[0])) throw Error('FAIL UI peer direction/date '+test[0]);
+    if (all.filter(x => x[1] === v[1] && x[2] === v[2] && Math.abs(Number(x[3])-test[2]) < 0.001 && x[4] === v[4] && x[17] !== 'auto').length !== 1) throw Error('FAIL UI duplicate '+test[0]);
+    console.log('QA UI PASS row '+test[0]+' '+test[1]+' '+test[2]+' source, one peer, no duplicate');
+  });
+  if (ScriptApp.getUserTriggers(ss).filter(t => t.getHandlerFunction() === 'showroomGridOnEdit').length !== 1) throw Error('FAIL UI trigger count');
+  console.log('QA UI PASS one installed trigger');
+}
