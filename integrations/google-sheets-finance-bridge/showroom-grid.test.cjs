@@ -177,6 +177,25 @@ check('attempted duplicate cannot write any A:T financial cells', () => {
   assert.deepEqual(draft[5], 173);
 });
 
+check('queued restored input is ignored, but a real value retry repairs its pair', () => {
+  let syncs=0, mirrors=0, retry=false;
+  const ctx={SpreadsheetApp:{flush(){}},stSyncRow_:()=>{syncs++;}};
+  const f=vm.runInNewContext(src+'\n({sgiRow_,sgiMirrorFormula_,Date})',ctx);
+  const date=new f.Date('2026-10-16T08:00:00Z');
+  const stored=[date,'AJMAN','перевод в КАССУ',100,'', 'Расход',...Array(14).fill('')];
+  const visible=[date,'Расход','AJMAN','перевод в КАССУ','',100,''];
+  const area={getValues:()=>[visible],getFormulas:()=>[cols.map((c,i)=>retry&&i===5?'':f.sgiMirrorFormula_(c))],clearContent:()=>{mirrors++;}};
+  const sh={getRange:(r,c,h,w)=>{
+    if(r==='A5')return {getDataValidation:()=>null};
+    if(c===1)return {getValues:()=>[stored]};
+    if(c===21&&w===7)return area;
+    return {getNote:()=>'',setNote(){},clearNote(){},setFormula(){}};
+  }};
+  const model=[{name:'перевод в КАССУ',type:'Расход',accounts:['AJMAN'],sub:[]}];
+  f.sgiRow_(sh,52,editingAmount,model);assert.equal(syncs,0);assert.equal(mirrors,0);
+  retry=true;f.sgiRow_(sh,52,editingAmount,model);assert.equal(syncs,1);assert.equal(mirrors,1);
+});
+
 function installerFixture(existing, target = '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA') {
   const calls = [];
   const sheet = {getId: () => target};
