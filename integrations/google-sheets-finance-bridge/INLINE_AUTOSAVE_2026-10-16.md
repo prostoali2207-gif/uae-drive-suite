@@ -1,5 +1,23 @@
 # Inline autosave investigation — 2026-10-16
 
+## Final status — INSTALLED AND VERIFIED, October 17
+
+The earlier browser blocker below is resolved. QA passed and the candidate was installed in the production bound project on October 17, 2026 (Asia/Dubai). No production test payment was created and no existing operation was edited.
+
+- Re-ran all 20 `showroom-grid.test.cjs` regressions: PASS. Request-ID, deployed Bridge and form retry tests also PASS.
+- Read-only live QA audits at 07:05:20 and 07:06:10 verified rows 908, 910, 914 and 918: one source and exactly one same-ID auto peer, matching amounts, no duplicate.
+- Re-entered 7918.18 in QA Z918 through the actual Sheets UI; subsequent audit remained PASS.
+- Strengthened the read-only QA audit to verify opposite account, correct incoming operation, income/expense direction and equal dates. All four rows and the single installed trigger passed at 07:07:50–07:07:51. Saved the reusable verifier in `qa-autosave-runner.gs`.
+- Installed only the production-ID `ShowroomGrid.gs` candidate. After reopening the editor, its full trimmed text matched the tested candidate (12,570 characters; repository candidate SHA-256 `10750a8350d541246de74dfeac89f8bf8b63340978432b16d5d90ca38bad9f14`). No QA functions/IDs or reserved simple `onEdit` remain in that production file.
+- Production installer completed at 07:10:31–07:10:33 (execution list duration 1.404 seconds). Trigger UI confirmed exactly four triggers: one new owned `showroomGridOnEdit`, plus the unchanged `ddsOnEditStamp`, `showroomTransferOnEdit` and `showroomTransferOnChange` owned by the other user. No new consent/scopes were requested during this installation.
+- Safe production smoke test: changed V3 from `Все` to `Приход` and back to `Все` through the Sheets UI. New installed handler completed at 07:11:17 (9.462 seconds) and 07:11:32 (8.096 seconds). Existing handlers also completed. No payment row was used for this check.
+- Fresh connected Sheets API reads of **userEnteredValue in A5:E1004 and N5:T1004** before and after installation compare exactly equal. This includes 49–52 and repaired 57/58. The final filter value was separately checked as `Все`.
+- No standalone Finance Bridge deployment, API URL, Rental code/data or Telegram code was changed in this continuation. This fix is a bound-sheet edit trigger; it uses saved project code and does not need a new web-app deployment.
+
+Release decision: **PASS for the tested autosave and transfer scenarios; installed in production**. A physical phone/native Sheets app was not available; no physical-device test is claimed. Per-cell and queued-edit behavior was exercised in actual desktop Sheets UI. General existing cross-project writer/race boundaries documented in `SHOWROOM_DEPLOYMENT_2026-10-16.md` remain outside this fix.
+
+Manual follow-up when next entering a real authorized operation: on a phone, enter fields one at a time, finish with amount, wait for save, and verify one operation (plus one peer for a transfer). Do not create a test payment in production. If repeating QA, use only the isolated copy linked below.
+
 ## Confirmed causes
 Production bound project: 1NuFbHLkGWDcU570lTeq_Uz4DouFapBAtEPPBSlmycT9XyrOkMl2YtPih. Its ShowroomGrid matched main before any installation.
 
@@ -50,7 +68,7 @@ Real UI results on October 17 (Asia/Dubai):
 - A fresh per-cell Cash → AJMAN input was entered in row 918, amount 7918.18, using the final queued-event optimization. Its final source/pair audit is pending. An over-fast UI automation batch in row 916 was rejected by Sheets validation; it is not counted as a successful scenario.
 - Physical phone/native Sheets app has not been tested; desktop per-cell event behavior was exercised only.
 
-## Current release gate: BLOCKED
+## Earlier release gate: BLOCKED (resolved above)
 The cloud-browser transport disconnected during the final audit attempt. A following DOM read and availability check both timed out at the tool transport layer. No Google authorization prompt caused this interruption. The connected Drive API cannot inspect the Ali-owned QA copy (403 caller has no permission), so it cannot independently close the pending QA gate. Do not request broader Google scopes or change sharing just to work around this.
 
 Resume by reading the QA editor's latest qaAutosaveVerifyUI execution and the queued showroomGridOnEdit results. Verify rows 908, 910, 914 and 918: each valid source must have exactly one same-ID auto peer, correct account/direction/amount and no duplicate. Repeat an amount through the real UI and re-audit. Then install only the production-ID ShowroomGrid candidate, create exactly one new edit trigger, preserve the existing three triggers, verify production source and a nonfinancial event, and compare financial snapshots. No production deployment or main merge until QA PASS.
