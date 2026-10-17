@@ -669,7 +669,8 @@ export async function importSalikExcel(file: File): Promise<ImportSummary> {
   if (toInsert.length) {
     const { error, data } = await supabase
       .from("salik")
-      .upsert(toInsert as never, { onConflict: "transaction_id,owner_id" })
+      // Keep previously imported transactions, especially paid statuses and allocations, unchanged.
+      .upsert(toInsert as never, { onConflict: "transaction_id,owner_id", ignoreDuplicates: true })
       .select("id");
     if (error) summary.errors.push(error.message);
     else summary.imported = data?.length ?? toInsert.length;
