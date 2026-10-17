@@ -26,7 +26,8 @@ function showroomGridOnEdit(e) {
   const first = Math.max(5, e.range.getRow()), last = Math.min(1004, e.range.getLastRow());
   if (last < first) return;
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) { e.source.toast('Строка ещё не сохранена. Повторите правку после завершения предыдущей.', 'Ввод операций', 8); return; }
+  // Installable events may queue while another edit is recalculating; keep the last input event.
+  if (!lock.tryLock(120000)) { e.source.toast('Строка ещё не сохранена. Повторите правку после завершения предыдущей.', 'Ввод операций', 8); return; }
   try {
     const model = sgiModel_(e.source);
     for (let r = first; r <= last; r++) sgiRow_(sh, r, e.range, model);
@@ -138,6 +139,11 @@ function sgiRow_(sh, r, edited, model) {
   sgiCheckMirrors_(sh,r,edited,oldNote.startsWith('sgi:'),!occupied && !stored[13] && !stored[16] && !stored[17],emptyMirrors);
 
   const from = edited.getColumn(), to = edited.getLastColumn();
+  // A queued event can arrive after an earlier event has already saved and restored this input.
+  // A real retry replaces the formula with a value and still reaches pair recovery below.
+  const inputFormulas = area.getFormulas()[0];
+  if (!oldNote.startsWith('sgi:') && occupied &&
+      inputFormulas.slice(Math.max(21,from)-21, Math.min(27,to)-20).every(Boolean)) return;
   const controls = from <= 24 && to >= 22;
   let v = visible;
   if (stored[17] === 'auto' && !(from === to && (from === 21 || from === 26))) {
