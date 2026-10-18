@@ -12,9 +12,9 @@ function fixture(existing = true) {
     getMaxRows:()=>1004,
     getRange:(r,c,h,w)=>({
       getValues:()=>{
-        if (r===5 && c===1 && h===1000 && w===18) {
-          const rows=Array.from({length:1000},()=>Array(18).fill(''));
-          rows[44]=saved.slice(0,5).concat(Array(13).fill('')); // Existing posting A49:E49
+        if (r===5 && c===1 && h===1000 && w===20) {
+          const rows=Array.from({length:1000},()=>Array(20).fill(''));
+          rows[44]=saved.slice(0,5).concat(Array(15).fill('')); // Existing posting A49:E49
           return rows;
         }
         return [saved];
