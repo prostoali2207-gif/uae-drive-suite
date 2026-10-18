@@ -776,6 +776,14 @@ async function recordFinance(
         (note !== vehicle && !note.startsWith(vehicle + ": "))) {
       throw new Error("Выбери машину из списка для этой операции.");
     }
+    // The bound Apps Script is deployed separately. Never record a driver's purchase
+    // until its journal can persist the car in the T (subcategory) column.
+    if (staffIsDriver(staff)) {
+      const bridge = await callBridge(supabase, "get_context", { ledger: "showroom" });
+      if (bridge.showroom_vehicle_subcategory_supported !== true) {
+        throw new Error("Учёт расходов по автомобилям обновляется. Попробуй позже.");
+      }
+    }
   }
 
   const idempotencyKey = `telegram-finance:${ledger}:${telegramUser.id}:${requestId}`;
