@@ -291,6 +291,7 @@ function recordEntry_(payload) {
 
   const article = String(payload.article || '').trim();
   const note = String(payload.note || '').trim();
+  const vehicle = ledger === 'showroom' ? String(payload.vehicle || '').trim() : '';
   const amount = Number(payload.amount);
 
   if (!article) throw new Error('article is required.');
@@ -300,6 +301,17 @@ function recordEntry_(payload) {
   if (article.length > 250) throw new Error('article is too long.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be greater than zero.');
   if (note.length > 500) throw new Error('note is too long.');
+  if (vehicle.length > 160 || (vehicle && article !== 'покупка авто для перепродажи')) {
+    throw new Error('Некорректная подкатегория автомобиля.');
+  }
+  if (vehicle) {
+    // Use the existing Excel-derived showroom subcategory list, not free-form text.
+    const available = spreadsheet_(ledger).getSheetByName(REFERENCE_SHEET)
+      .getRange('H2:I100').getDisplayValues();
+    if (!available.some(function(r) { return r[0].trim() === article && r[1].trim() === vehicle; })) {
+      throw new Error('Выбранного автомобиля нет в справочнике подкатегорий.');
+    }
+  }
 
   const ref = resolveReference_(article, account, payload.row, ledger);
   if (!ref) throw new Error('Operation not found in Справочники.');
@@ -329,6 +341,14 @@ function recordEntry_(payload) {
             String(saved[2]) !== ref.operation || Number(saved[3]) !== amount ||
             String(saved[4] || '') !== note) {
           throw new Error('Этот request_id уже относится к другой операции. Повторите исходный запрос.');
+        }
+        // Safe retry after an interrupted A:E write can finish the missing car subcategory.
+        if (vehicle) {
+          const storedVehicle = String(sheet.getRange(inputState.existingRow, 20).getValue() || '');
+          if (storedVehicle && storedVehicle !== vehicle) {
+            throw new Error('Этот request_id уже относится к другому автомобилю.');
+          }
+          if (!storedVehicle) sheet.getRange(inputState.existingRow, 20).setValue(vehicle);
         }
       }
       const duplicateTransfer = ensureTransferPairForRow_(
@@ -379,6 +399,7 @@ function recordEntry_(payload) {
     if (requestId) {
       sheet.getRange(targetRow, 14).setValue(requestId);
     }
+    if (vehicle) sheet.getRange(targetRow, 20).setValue(vehicle);
 
     const transfer = ensureTransferPairForRow_(
       sheet,
