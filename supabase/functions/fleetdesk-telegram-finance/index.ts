@@ -40,12 +40,22 @@ const TRANSFER_TARGETS: Record<"rental" | "showroom", Array<{
   rental: [],
 };
 
-const DRIVER_EXPENSE_ARTICLES = new Set([
-  "расходы связанные с подгатовкой авто",
-  "Расходы связанные с регистрацией авто",
-  "телефон", "интернет", "вода", "реклама автосалона",
-  "мойка авто", "Прочие (мелочь)",
+// Drivers spend their own cash wallet: allow every active, cash-mapped showroom expense.
+// Account transfers are not expenses and must never debit a driver's wallet.
+const DRIVER_NON_EXPENSE_ARTICLES = new Set([
+  "перевод на счет в AJMAN",
+  "перевод на счет в СБЕР",
+  "перевод в КАССУ",
 ]);
+function driverCashExpenseAllowed(item: { article: string; direction: string; rows: { cash_aed?: number | null } }) {
+  return item.direction === "Расход" && Number(item.rows?.cash_aed) > 0 &&
+    !DRIVER_NON_EXPENSE_ARTICLES.has(item.article);
+}
+const SHOWROOM_PURCHASE_ARTICLE = "покупка авто для перепродажи";
+function showroomVehicleOptions(searchTerms: string) {
+  const match = searchTerms.match(/\[\[vehicles:([^\]]*)\]\]/i);
+  return match ? match[1].split("|").map(v => v.trim()).filter(Boolean) : [];
+}
 const MANAGER_ROLES = new Set(["owner", "admin", "manager"]);
 function staffIsDriver(staff: Record<string, any>) {
   return normalizeText(staff.role).toLowerCase() === "driver";
@@ -581,7 +591,7 @@ async function ensureDriverExpense(db: ReturnType<typeof createClient>, staff: R
   const { error } = await db.from("showroom_driver_movements").upsert({
     owner_id: staff.owner_id, driver_staff_id: staff.id, actor_staff_id: staff.id,
     kind: "expense", amount: payload.amount, event_key: "expense:" + auditId,
-    finance_audit_id: auditId, article: payload.article, note: payload.note,
+    finance_audit_id: auditId, article: payload.article, vehicle: payload.vehicle || "", note: payload.note,
     status: "pending", sheet_sync_status: "pending",
   }, { onConflict: "finance_audit_id" });
   if (error) throw error;
@@ -629,6 +639,7 @@ async function processFinanceAudit(
         amount: payload.amount,
         received_amount: payload.received_amount ?? null,
         note: payload.note,
+        vehicle: payload.vehicle || "",
         request_id: requestId,
         ledger: payload.ledger || "rental",
       });
@@ -707,6 +718,7 @@ async function recordFinance(
   const row = Number(body.row);
   const amount = amountValue(body.amount);
   const note = normalizeText(body.note);
+  const vehicle = normalizeText(body.vehicle);
   const requestId = normalizeText(body.request_id);
   const transfer = transferTarget(ledger, account, article);
   const receivedAmount = transfer && accountCurrency(account) !== accountCurrency(transfer.targetAccount)
@@ -721,8 +733,8 @@ async function recordFinance(
   if (staffIsDriver(staff)) {
     if (!await driverFeatureReady(supabase)) throw new Error("Учёт водителей ещё не синхронизирован с Google Sheets.");
     if (ledger !== "showroom" || account !== "cash_aed" ||
-        direction.key !== "expense" || !DRIVER_EXPENSE_ARTICLES.has(article)) {
-      throw new Error("Водителю доступны только разрешённые расходы автосалона.");
+        direction.key !== "expense" || DRIVER_NON_EXPENSE_ARTICLES.has(article)) {
+      throw new Error("Водителю доступны только расходы из Кассы автосалона.");
     }
   }
   const date = todayDubai();
@@ -732,7 +744,7 @@ async function recordFinance(
     const mappedField = account === "cash_aed" ? "cash_row" : "ajman_row";
     const { data, error } = await supabase
       .from("showroom_finance_operation_catalog")
-      .select("sort_order")
+      .select("sort_order, search_terms")
       .eq("active", true)
       .eq("article", article)
       .eq("direction", direction.label)
@@ -754,6 +766,16 @@ async function recordFinance(
   }
 
   if (!catalogMatch) throw new Error("Операция изменилась в справочнике. Выбери её заново.");
+  if (vehicle.length > 160 || (vehicle && (ledger !== "showroom" || article !== SHOWROOM_PURCHASE_ARTICLE))) {
+    throw new Error("Некорректная подкатегория автомобиля.");
+  }
+  if (ledger === "showroom" && article === SHOWROOM_PURCHASE_ARTICLE &&
+      (staffIsDriver(staff) || vehicle)) {
+    const options = showroomVehicleOptions(String(catalogMatch.search_terms || ""));
+    if (!vehicle || !options.includes(vehicle) || note !== vehicle) {
+      throw new Error("Выбери машину из списка для этой операции.");
+    }
+  }
 
   const idempotencyKey = `telegram-finance:${ledger}:${telegramUser.id}:${requestId}`;
   const existing = await findExistingAudit(supabase, staff.owner_id, idempotencyKey);
@@ -798,6 +820,7 @@ async function recordFinance(
     amount,
     received_amount: receivedAmount,
     note,
+    vehicle,
     date,
   };
 
@@ -1281,9 +1304,7 @@ Deno.serve(async (req: Request) => {
         catalog,
         catalogs: {
           rental: catalog,
-          showroom: driver ? showroomCatalog.filter((item: any) =>
-            item.direction === "Расход" && Number(item.rows?.cash_aed) > 0 &&
-            DRIVER_EXPENSE_ARTICLES.has(item.article)) : showroomCatalog,
+          showroom: driver ? showroomCatalog.filter(driverCashExpenseAllowed) : showroomCatalog,
         },
       }, 200, origin);
     }
@@ -1333,7 +1354,8 @@ Deno.serve(async (req: Request) => {
       const matches = (Array.isArray(result.matches) ? result.matches : [])
         .filter((item: any) => String(item.section || "") === direction.label)
         .filter((item: any) => !isSystemTransferIncoming(ledger, String(item.article || "")))
-        .filter((item: any) => !staffIsDriver(staff) || DRIVER_EXPENSE_ARTICLES.has(String(item.article || "")))
+        .filter((item: any) => !staffIsDriver(staff) ||
+          !DRIVER_NON_EXPENSE_ARTICLES.has(String(item.article || "")))
         .slice(0, 12)
         .map((item: any) => ({
           row: Number(item.row),
