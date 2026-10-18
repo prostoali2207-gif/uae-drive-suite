@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { isDarbTransaction, type TollSource } from "@/lib/tollSource";
-import { CheckCircle2, Loader2, Radar, Route } from "lucide-react";
+import { Loader2, Radar, Route } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -81,7 +80,6 @@ export function SalikModal({ contractId, open, onOpenChange, source }: SalikModa
   const { toast } = useToast();
   const [transactions, setTransactions] = useState<ContractSalikTransaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [payingTransactionId, setPayingTransactionId] = useState<string | null>(null);
 
   const fetchTransactions = useCallback(async () => {
     if (!contractId) {
@@ -133,37 +131,6 @@ export function SalikModal({ contractId, open, onOpenChange, source }: SalikModa
     );
   }, [transactions]);
 
-  const markTransactionPaid = async (transactionId: string) => {
-    setPayingTransactionId(transactionId);
-    try {
-      const { error } = await (supabaseClient as any)
-        .from("salik")
-        .update({
-          status: "Paid",
-          paid_at: new Date().toISOString(),
-        })
-        .eq("id", transactionId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Salik marked paid",
-        description: "The transaction status was updated successfully.",
-      });
-      await fetchTransactions();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.error("Failed to mark Salik paid:", error);
-      toast({
-        title: "Failed to mark paid",
-        description: message,
-        variant: "destructive",
-      });
-    } finally {
-      setPayingTransactionId(null);
-    }
-  };
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full w-full flex-col border-l border-border bg-card p-0 text-foreground sm:max-w-[460px]">
@@ -177,6 +144,7 @@ export function SalikModal({ contractId, open, onOpenChange, source }: SalikModa
               ? "Loading transactions..."
               : `${transactions.length} ${transactions.length === 1 ? "transaction" : "transactions"} found`}
           </SheetDescription>
+          <p className="mt-2 text-xs text-foreground/65">Record Salik/Darb payments through Financials → Record Payment.</p>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -194,8 +162,6 @@ export function SalikModal({ contractId, open, onOpenChange, source }: SalikModa
             <div className="space-y-3">
               {transactions.map((transaction) => {
                 const statusClass = statusStyles[transaction.status] ?? statusStyles.Unpaid;
-                const isPaid = transaction.status === "Paid";
-                const isPaying = payingTransactionId === transaction.id;
                 const vehicleInfo = formatVehicleInfo(transaction.cars);
                 const transactionMeta = [
                   formatDate(transaction.transaction_date),
@@ -230,24 +196,7 @@ export function SalikModal({ contractId, open, onOpenChange, source }: SalikModa
                       </div>
                     </div>
 
-                    {!isPaid ? (
-                      <div className="mt-3 flex justify-end">
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => markTransactionPaid(transaction.id)}
-                          disabled={payingTransactionId !== null}
-                          className="h-8 border border-tint-green-foreground/20 bg-tint-green px-3 text-xs font-medium text-tint-green-foreground hover:bg-tint-green/80"
-                        >
-                          {isPaying ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          )}
-                          Mark Paid
-                        </Button>
-                      </div>
-                    ) : null}
+
                   </div>
                 );
               })}
