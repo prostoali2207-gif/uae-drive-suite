@@ -255,6 +255,7 @@ function TelegramFinanceApp() {
   const [amount, setAmount] = useState("");
   const [receivedAmount, setReceivedAmount] = useState("");
   const [note, setNote] = useState("");
+  const [purchaseDetails, setPurchaseDetails] = useState("");
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -550,6 +551,7 @@ function TelegramFinanceApp() {
     setMatches([]);
     setAlternate(null);
     setNote("");
+    setPurchaseDetails("");
     setReceivedAmount("");
     setSubmitError("");
     requestIdRef.current = "";
@@ -564,6 +566,7 @@ function TelegramFinanceApp() {
     setAmount("");
     setReceivedAmount("");
     setNote("");
+    setPurchaseDetails("");
     setReviewOpen(false);
     setSubmitError("");
     requestIdRef.current = "";
@@ -629,6 +632,12 @@ function TelegramFinanceApp() {
       setSubmitError("Выбери машину.");
       return;
     }
+    const description = isVehiclePurchaseOperation && purchaseDetails.trim()
+      ? note.trim() + ": " + purchaseDetails.trim() : note.trim();
+    if (description.length > 500) {
+      setSubmitError("Примечание слишком длинное.");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError("");
@@ -659,7 +668,8 @@ function TelegramFinanceApp() {
         row: operation.row,
         amount: Number(amount),
         received_amount: needsReceivedAmount ? Number(receivedAmount) : null,
-        note: note.trim(),
+        note: description,
+        vehicle: isVehiclePurchaseOperation ? note.trim() : "",
       });
 
       if (data.status === "failed") {
@@ -1150,6 +1160,19 @@ function TelegramFinanceApp() {
             {vehicleOptions.length === 0 ? (
               <div className="tg-helper">Список машин пока пуст.</div>
             ) : null}
+            <label className="tg-field-label" htmlFor="tg-purchase-details">Примечание</label>
+            <textarea
+              id="tg-purchase-details"
+              className="tg-input tg-note"
+              value={purchaseDetails}
+              maxLength={400}
+              rows={2}
+              placeholder="Например, запчасти для выбранного авто"
+              onChange={(event) => {
+                setPurchaseDetails(event.target.value);
+                requestIdRef.current = "";
+              }}
+            />
           </>
         ) : (
           <>
@@ -1224,6 +1247,9 @@ function TelegramFinanceApp() {
                   <dt>{isVehiclePurchaseOperation ? "Машина" : "Примечание"}</dt>
                   <dd>{note.trim()}</dd>
                 </div>
+              ) : null}
+              {isVehiclePurchaseOperation && purchaseDetails.trim() ? (
+                <div><dt>Примечание</dt><dd>{purchaseDetails.trim()}</dd></div>
               ) : null}
             </dl>
 
