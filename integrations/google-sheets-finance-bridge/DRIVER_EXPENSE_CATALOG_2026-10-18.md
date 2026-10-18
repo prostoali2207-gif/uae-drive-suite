@@ -1,28 +1,35 @@
-# Driver expenses — partial rollout and remaining finance checks (2026-10-18)
+# Driver expense catalog — Bridge/report verification 2026-10-18
 
-Scope: Showroom Telegram Mini App only. No Rental changes, no production test payments.
+Scope: showroom. Existing payments, Rental and balances unchanged. Edge v20 unchanged.
 
-## Completed and independently verified
+## Production installed and verified
 
-- Supabase project: `vlcxjizieelcfunausll`. Edge Function `fleetdesk-telegram-finance` production v20, `verify_jwt=false` preserved, reread as ACTIVE.
-- Session/search/record use the active showroom catalog rather than old eight-item `DRIVER_EXPENSE_ARTICLES` allowlist. Drivers remain `cash_aed` + `expense` only. Account transfers deliberately excluded: they are not driver expenses.
-- All 15 active cash-mapped non-transfer expenses are eligible (incl. purchase car, salary and investor payments); three bank-only catalog entries have no Cash mapping and are not opened. **Do not invent Cash mappings**.
-- `src/telegram-finance/TelegramFinanceApp.tsx` has car dropdown and optional item note for purchase. Frontend deploy on Vercel was READY.
-- Live Supabase catalog purchase search terms aligned with eight Excel-derived vehicle labels. Applied migration committed as `20261018115500_sync_showroom_purchase_vehicle_choices.sql`. Case in first four *display* labels is title case; Google Sheets source is lower case; Bridge code normalizes to canonical workbook spelling before storing.
-- `supabase/functions/fleetdesk-telegram-finance/index.ts` sends `vehicle` separately to Bridge, audit and driver-wallet movement. It rejects invalid purchase vehicles. For driver purchase it requires `showroom_vehicle_subcategory_supported===true` from live Bridge context: **until bound Apps Script is published, car purchases fail safely**, not silently without T attribution.
-- `integrations/google-sheets-finance-bridge/Code.gs` contains optional `vehicle` support, validation against live `Справочники!H:I`, storage in column T, idempotent retry repair, and the get_context capability flag.
-- Tests passed: `scripts/test-telegram-driver-expense-catalog.cjs`, `integrations/google-sheets-finance-bridge/showroom-driver-vehicle.test.cjs`, `showroom-bridge-request-id.test.cjs` (executed with focused JS mocks). No live Telegram posting test.
+- Existing Apps Script project 15st3EDVyLrETA8EttAeA0lfsbf9DYMN7KwTNmNktLDke3jPYIgcSWq1u, existing deployment updated from v14 to **v15**.
+- API URL retained: https://script.google.com/macros/s/AKfycbx-Zh3OD-aXy2rpmBFWw2mXvUUOLMn69Ndxx4lf2KDBi26FgfPRvY5UPfTMj6-49wY_uA/exec
+- Authenticated get_context against published /exec: HTTP 200, ok=true, showroom_vehicle_subcategory_supported=true, driver_wallet_supported=true, showroom_corrections_supported=true; correct showroom spreadsheet ID.
+- Exact deployed source: FinanceBridgeLive_2026-10-18.gs. Vehicle support from prepared Code.gs merged into live v14. Unrelated calendar implementation in prepared Code.gs was not deployed because it changes shared Rental behavior. Transfers, corrections, mirrors and Rental implementation retained.
+- Duplicate identity now includes T. Different cars can have equal amount/note. A legacy match with blank T blocks conservatively. Separate identical payments for the same car still require different explanations, as before.
+- October car rows 66:73: eight canonical cars, matching T + date + account + purchase operation. Notes use identical filtering. Row 74: unallocated/unknown-T exception, parent purchase total minus assigned cars. Monthly totals populated for eight cars and exception. Removed stale nth-row purchase formulas in row 79.
+- Removed obsolete strict dropdown validation only from calculated note outputs. Input validation retained.
+- All 1,276 intended cell edits reread exactly: zero mismatches, zero calculated errors in B65:EA84.
+- Journal A:T compared before/after: unchanged. Driver movements and driver summary unchanged. Cash closing 11,044.50 AED; AJMAN closing -15,572 AED; driver balances 411 / 0 AED unchanged. These are observed baseline controls, not historical financial reconciliation.
+- Supabase vlcxjizieelcfunausll: fleetdesk-telegram-finance v20 ACTIVE, verify_jwt=false retained.
+- Vercel production dpl_DvzRUwXxc6C7TDowBKxDNEnLFuxc READY.
 
-## Remaining before FULL PASS
+## Real spreadsheet QA
 
-1. **Publish the latest Code.gs in the real Finance Bridge Apps Script**. Compare to live code and preserve recent updates. Update the existing /exec deployment, keeping URL and Rental behavior. Do not deploy a second duplicate Bridge. After publication, call `get_context` for showroom and verify `showroom_vehicle_subcategory_supported=true`. No test payments in production.
-2. **Correct car subtotal formulas on a test spreadsheet copy** before production: Current `Октябрь 2026!C66` sums all purchases without checking T, and `C67:C69` / other rows use nth-row `INDEX(FILTER(...))`, so a payment can display under the wrong car. Use car name in B and `Ввод операций!T` as matching criterion for car subtotals, with date, account and operation constraints. Map eight real car names; preserve month daily total, financial balance, and existing reports. Explicitly handle historical rows lacking T as exceptions, not invented allocations. Reconcile all months / future-month template only as necessary. Avoid unrelated refactoring.
-3. On QA copy test driver real car expense (purchase auto + note) -> one audit, one main A:E entry, correct car in T, one driver wallet movement with vehicle and correct balance, no double posting on retry, and per-car monthly amount. Test a generic expense and cash-only restrictions, transfers, Rental unchanged.
-4. After successful QA, apply only required report/formula changes to live Sheets and confirm ledger A:E financial transactions unchanged. Recheck production Supabase Edge v20 and Vercel READY, then report exact PASS/BLOCKED with evidence.
+Successful execution completed at browser-log time 14:27:41 on 2026-10-18. QA spreadsheet: 1OeclYHyPz2PrtpPnpV55SCVMpozR19yrjN9VpeX1EGc. Candidate functions executed with QA showroom ID and disabled Rental ID, no production API writes.
 
-Important sources:
-- Production Google spreadsheet: `16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA`
-- Apps Script bound project (known): `15st3EDVyLrETA8EttAeA0lfsbf9DYMN7KwTNmNktLDke3jPYIgcSWq1u`
-- Repo: `prostoali2207-gif/uae-drive-suite`
+PASS: purchase and note in A:E; Lexus in T; same-ID retry; new-ID duplicate blocked; unknown car blocked; same ID/different car blocked; different cars/equal amount and note accepted; canonical Yaris spelling; one wallet movement on retry; balance reduced exactly 17.39 AED; Lexus and Yaris subtotals correct; other cars unchanged; note under Lexus; generic expense; transfer retry; exactly two paired transfer rows; capability flag.
 
-Do not change historical financial data or driver balances. Do not open AJMAN-only rows to a Cash wallet without separate validated accounting requirements.
+Focused regressions rerun successfully: scripts/test-telegram-driver-expense-catalog.cjs against published Edge v20 source and frontend; showroom-bridge-request-id.test.cjs against updated prepared Code.gs. Replay fixture updated from 18 to 20 columns to cover T.
+
+## Limits and manual verification
+
+- No production test payment created. Real phone/Telegram submission and a Supabase audit insertion were not end-to-end executed. Authorization/vehicle forwarding/wallet integration checked by focused regression; journal/report/wallet tested on real QA spreadsheet.
+- Native Sheets screenshot/DOM verification timed out in connected browser. Formula/effective-value verification succeeded. No styling changes made.
+- August/September reports not rewritten. October is the prepared month template; no future month existed. Calendar automation remains outside scope.
+- With next genuine driver expense: select purchase, choose car, enter note; verify one history/audit item, T, matching car report row and one wallet debit; retry must not add another item. Do not create live test payments.
+- QA runner removed from production project before release. Editor contents reread and exactly matched deployed-source snapshot.
+
+Skills: Browser, Google Sheets, FleetDesk Rental Ops, QA, Supabase, FleetDesk Supabase Agent. No delegated agents.
