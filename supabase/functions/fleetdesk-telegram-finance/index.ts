@@ -772,7 +772,8 @@ async function recordFinance(
   if (ledger === "showroom" && article === SHOWROOM_PURCHASE_ARTICLE &&
       (staffIsDriver(staff) || vehicle)) {
     const options = showroomVehicleOptions(String(catalogMatch.search_terms || ""));
-    if (!vehicle || !options.includes(vehicle) || note !== vehicle) {
+    if (!vehicle || !options.includes(vehicle) ||
+        (note !== vehicle && !note.startsWith(vehicle + ": "))) {
       throw new Error("Выбери машину из списка для этой операции.");
     }
   }
