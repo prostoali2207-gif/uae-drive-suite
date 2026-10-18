@@ -654,19 +654,29 @@ function bridgeTransferDefinition_(account, operation) {
 function bridgeTransferEmptyRow_(sheet, excludeRow) {
   const range = sheet.getRange(INPUT_FIRST_ROW, 1, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, 27);
   const values = range.getValues(), formulas = range.getFormulas();
-  const notes = sheet.getRange(INPUT_FIRST_ROW,21,INPUT_LAST_ROW-INPUT_FIRST_ROW+1,1).getNotes();
+  const notes = sheet.getRange(INPUT_FIRST_ROW, 21, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, 1).getNotes();
+  const free = [];
+  let lastOccupied = INPUT_FIRST_ROW - 1;
   for (let i = 0; i < values.length; i++) {
-    const row = INPUT_FIRST_ROW + i;
-    if (row === excludeRow || row === 9 || row === 13) continue;
-    const v = values[i];
-    const displayDraft = v.slice(20,27).some(function(x,j) { return !formulas[i][20+j] && String(x == null ? '' : x).trim() !== ''; });
-    const pendingDraft = String(notes[i][0] || '').indexOf('sgi:') === 0 && formulas[i].slice(20,27).some(function(f) { return !f; });
-    if (displayDraft || pendingDraft) continue;
-    if (!v.slice(0, 5).concat(v.slice(13, 14), v.slice(15, 20)).some(function(x) { return String(x == null ? '' : x).trim() !== ''; })) return row;
+    const row = INPUT_FIRST_ROW + i, v = values[i];
+    const occupied = v.slice(0, 5).concat(v.slice(13, 14), v.slice(15, 20))
+      .some(function(x) { return String(x == null ? '' : x).trim() !== ''; });
+    if (occupied) lastOccupied = row;
+    if (row === excludeRow || row === 9 || row === 13 || occupied) continue;
+    const displayDraft = v.slice(20,27).some(function(x,j) {
+      return !formulas[i][20+j] && String(x == null ? '' : x).trim() !== '';
+    });
+    const pendingDraft = String(notes[i][0] || '').indexOf('sgi:') === 0 &&
+      formulas[i].slice(20,27).some(function(f) { return !f; });
+    if (!displayDraft && !pendingDraft) free.push(row);
   }
+  // Prefer chronological journal order; do not overwrite drafts or re-use
+  // old holes from deleted duplicates while a free trailing row exists.
+  const next = free.find(function(row) { return row > lastOccupied; });
+  if (next) return next;
+  if (free.length) return free[0]; // Full journal: safely reuse a blank hole.
   throw new Error('Нет свободных строк для автоперевода.');
 }
-
 function bridgeEnsureTransfer_(sheet, sourceRow) {
   const source = sheet.getRange(sourceRow, 1, 1, 20).getValues()[0];
   const def = bridgeTransferDefinition_(String(source[1] || '').trim(), String(source[2] || '').trim());
