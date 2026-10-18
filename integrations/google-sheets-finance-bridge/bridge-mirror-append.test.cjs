@@ -31,7 +31,7 @@ function rowFixture({draftAt64=false,tailUsed=false}={}) {
   const notes=Array.from({length:1000},()=>['']);
   for(let i=0;i<1000;i++)for(let k=0;k<7;k++)
     formulas[i][20+k]=rowStyle()[k];
-  for(const r of [49,50,51,53,54,55,56,57,58,59,60,61,62,63]) {
+  for(const r of [...Array.from({length:47},(_,i)=>i+5),53,54,55,56,57,58,59,60,61,62,63]) {
     values[r-5][0]=new Date('2026-10-18T08:00:00Z');
     values[r-5][1]='Касса';
     values[r-5][2]='Прочие (мелочь)';
