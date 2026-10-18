@@ -655,18 +655,26 @@ function bridgeTransferEmptyRow_(sheet, excludeRow) {
   const range = sheet.getRange(INPUT_FIRST_ROW, 1, INPUT_LAST_ROW - INPUT_FIRST_ROW + 1, 27);
   const values = range.getValues(), formulas = range.getFormulas();
   const notes = sheet.getRange(INPUT_FIRST_ROW,21,INPUT_LAST_ROW-INPUT_FIRST_ROW+1,1).getNotes();
+  let lastOccupied = INPUT_FIRST_ROW - 1;
+  const free = [];
   for (let i = 0; i < values.length; i++) {
-    const row = INPUT_FIRST_ROW + i;
-    if (row === excludeRow || row === 9 || row === 13) continue;
-    const v = values[i];
-    const displayDraft = v.slice(20,27).some(function(x,j) { return !formulas[i][20+j] && String(x == null ? '' : x).trim() !== ''; });
-    const pendingDraft = String(notes[i][0] || '').indexOf('sgi:') === 0 && formulas[i].slice(20,27).some(function(f) { return !f; });
-    if (displayDraft || pendingDraft) continue;
-    if (!v.slice(0, 5).concat(v.slice(13, 14), v.slice(15, 20)).some(function(x) { return String(x == null ? '' : x).trim() !== ''; })) return row;
+    const row = INPUT_FIRST_ROW + i, v = values[i];
+    const occupied = v.slice(0,5).concat(v.slice(13,14),v.slice(15,20))
+      .some(function(x) { return String(x == null ? '' : x).trim() !== ''; });
+    if (occupied) lastOccupied = row;
+    if (row === excludeRow || row === 9 || row === 13 || occupied) continue;
+    const displayDraft = v.slice(20,27).some(function(x,j) {
+      return !formulas[i][20+j] && String(x == null ? '' : x).trim() !== '';
+    });
+    const pendingDraft = String(notes[i][0] || '').indexOf('sgi:') === 0 &&
+      formulas[i].slice(20,27).some(function(f) { return !f; });
+    if (!displayDraft && !pendingDraft) free.push(row);
   }
+  const next = free.find(function(row) { return row > lastOccupied; });
+  if (next) return next;
+  if (free.length) return free[0];
   throw new Error('Нет свободных строк для автоперевода.');
 }
-
 function bridgeEnsureTransfer_(sheet, sourceRow) {
   const source = sheet.getRange(sourceRow, 1, 1, 20).getValues()[0];
   const def = bridgeTransferDefinition_(String(source[1] || '').trim(), String(source[2] || '').trim());
@@ -704,6 +712,17 @@ function bridgeEnsureTransfer_(sheet, sourceRow) {
   SpreadsheetApp.flush();
 }
 
+// Both direct and ROW()-based formulas are valid; manual literals are drafts.
+function bridgeMirrorsAreSafe_(row, formulas, values) {
+  const columns = ['A','F','B','C','T','D','E'];
+  return !formulas.some(function(f,i) {
+    if (!f) return values[i] !== '' && values[i] !== null;
+    const c = columns[i];
+    const oldFormula = '=IF(' + c + row + '="";"";' + c + row + ')';
+    const indexedFormula = '=IF(INDEX($' + c + ':$' + c + ';ROW())="";"";INDEX($' + c + ':$' + c + ';ROW()))';
+    return f !== oldFormula && f !== indexedFormula;
+  });
+}
 // Restore missing display formulas without replacing manual values or existing formulas.
 function bridgeDisplayRow_(sheet, row) {
   const columns = ['A','F','B','C','T','D','E'];
@@ -715,7 +734,7 @@ function bridgeDisplayRow_(sheet, row) {
   }
   // Only a fully mirrored row has no active manual draft.
   const formulas = sheet.getRange(row, 21, 1, 7).getFormulas()[0];
-  if (formulas.every(function(f,i) { return f === '=IF(' + columns[i] + row + '="";"";' + columns[i] + row + ')'; })) {
+  if (formulas.every(Boolean) && bridgeMirrorsAreSafe_(row, formulas, sheet.getRange(row,21,1,7).getValues()[0])) {
     const cell = sheet.getRange(row,21);
     if (cell.getNote().indexOf('sgi:') === 0) cell.clearNote();
   }
@@ -760,9 +779,8 @@ function inspectShowroomEntries_(payload) {
     }
     const display = sheet.getRange(row,21,1,7), columns = ['A','F','B','C','T','D','E'];
     const displayValues = display.getValues()[0];
-    if (display.getFormulas()[0].some(function(f,i) {
-      return f ? f !== '=IF(' + columns[i] + row + '="";"";' + columns[i] + row + ')' : displayValues[i] !== '' && displayValues[i] !== null;
-    })) return { audit_id: entry.audit_id, error: 'В строке есть ручной черновик. Заверши его в таблице перед исправлением.' };
+    if (!bridgeMirrorsAreSafe_(row, display.getFormulas()[0], displayValues))
+      return { audit_id: entry.audit_id, error: 'В строке есть ручной черновик. Заверши его в таблице перед исправлением.' };
     return { audit_id: entry.audit_id, snapshot: showroomCorrectionSnapshot_(sheet, INPUT_FIRST_ROW + index, rows[index]) };
   }) };
 }
@@ -828,9 +846,8 @@ function correctShowroomEntry_(payload) {
     const displayColumns = ['A','F','B','C','T','D','E'];
     const display = sheet.getRange(row,21,1,7);
     const displayValues = display.getValues()[0], formulas = display.getFormulas()[0];
-    if (formulas.some(function(f,i) {
-      return f ? f !== '=IF(' + displayColumns[i] + row + '="";"";' + displayColumns[i] + row + ')' : displayValues[i] !== '' && displayValues[i] !== null;
-    })) throw new Error('В строке есть ручной черновик. Сначала заверши его в таблице.');
+    if (!bridgeMirrorsAreSafe_(row, formulas, displayValues))
+      throw new Error('В строке есть ручной черновик. Сначала заверши его в таблице.');
 
     let driverSheet, driverRow, driverDesired;
     if (payload.driver) {
