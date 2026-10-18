@@ -195,8 +195,6 @@ export function SalikModal({ contractId, open, onOpenChange, source }: SalikModa
                         </Badge>
                       </div>
                     </div>
-
-
                   </div>
                 );
               })}
