@@ -207,6 +207,7 @@ function getContext_(payload) {
     spreadsheet_id: config.spreadsheetId,
     driver_wallet_supported: ledger === 'showroom' && Boolean(spreadsheet_(ledger).getSheetByName('Водители')),
     showroom_corrections_supported: ledger === 'showroom',
+    showroom_vehicle_subcategory_supported: ledger === 'showroom',
   };
 }
 
