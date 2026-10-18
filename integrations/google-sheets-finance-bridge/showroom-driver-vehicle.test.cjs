@@ -14,7 +14,7 @@ function fixture(existing=false,storedVehicle='') {
     if(r===50&&c===14)return{setValue:()=>{state.requestWrites++;}};
     throw Error('Unexpected journal range: '+[r,c,h,w].join(','));
   }};
-  const references={getRange:(range)=>{assert.equal(range,'H2:I100');return{getDisplayValues:()=>[['покупка авто для перепродажи','Lexus'],['покупка авто для перепродажи','Шевролет абдуллы']]}}};
+  const references={getRange:(range)=>{assert.equal(range,'H2:I100');return{getDisplayValues:()=>[['покупка авто для перепродажи','Lexus'],['покупка авто для перепродажи','Шевролет абдуллы'],['покупка авто для перепродажи','yaris 2021 abdullah']]}}};
   const context=vm.createContext({Date,state,
     Utilities:{formatDate:d=>d.toISOString().slice(0,10)},
     LockService:{getScriptLock:()=>({waitLock:()=>{state.lockCount++;},releaseLock:()=>{state.released++;}})}
@@ -63,4 +63,7 @@ const d=fixture(true,'');
 assert.equal(d.context.recordEntry_(d.request).duplicate,true,'Interrupted write can complete car field');
 assert.equal(d.state.car,'Lexus');
 assert.equal(d.state.journalWrites,0);
-console.log('PASS showroom car accounting: journal T, safe retry, unknown vehicle blocked, mismatched car blocked.');
+const e=fixture(false);
+assert.equal(e.context.recordEntry_({...e.request,vehicle:'Yaris 2021 Abdullah',note:'Yaris 2021 Abdullah'}).duplicate,false);
+assert.equal(e.state.car,'yaris 2021 abdullah','Ledger T must use exact Excel subcategory spelling');
+console.log('PASS showroom car accounting: journal T, safe retry, unknown vehicle blocked, mismatched car blocked, canonical Excel names.');
