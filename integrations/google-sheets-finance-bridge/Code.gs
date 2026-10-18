@@ -292,6 +292,7 @@ function recordEntry_(payload) {
   const article = String(payload.article || '').trim();
   const note = String(payload.note || '').trim();
   const vehicle = ledger === 'showroom' ? String(payload.vehicle || '').trim() : '';
+  let canonicalVehicle = vehicle;
   const amount = Number(payload.amount);
 
   if (!article) throw new Error('article is required.');
@@ -308,9 +309,11 @@ function recordEntry_(payload) {
     // Use the existing Excel-derived showroom subcategory list, not free-form text.
     const available = spreadsheet_(ledger).getSheetByName(REFERENCE_SHEET)
       .getRange('H2:I100').getDisplayValues();
-    if (!available.some(function(r) { return r[0].trim() === article && r[1].trim() === vehicle; })) {
-      throw new Error('Выбранного автомобиля нет в справочнике подкатегорий.');
-    }
+    const match = available.find(function(r) {
+      return r[0].trim() === article && r[1].trim().toLowerCase() === vehicle.toLowerCase();
+    });
+    if (!match) throw new Error('Выбранного автомобиля нет в справочнике подкатегорий.');
+    canonicalVehicle = match[1].trim();
   }
 
   const ref = resolveReference_(article, account, payload.row, ledger);
@@ -345,10 +348,10 @@ function recordEntry_(payload) {
         // Safe retry after an interrupted A:E write can finish the missing car subcategory.
         if (vehicle) {
           const storedVehicle = String(sheet.getRange(inputState.existingRow, 20).getValue() || '');
-          if (storedVehicle && storedVehicle !== vehicle) {
+          if (storedVehicle && storedVehicle.toLowerCase() !== canonicalVehicle.toLowerCase()) {
             throw new Error('Этот request_id уже относится к другому автомобилю.');
           }
-          if (!storedVehicle) sheet.getRange(inputState.existingRow, 20).setValue(vehicle);
+          if (!storedVehicle) sheet.getRange(inputState.existingRow, 20).setValue(canonicalVehicle);
         }
       }
       const duplicateTransfer = ensureTransferPairForRow_(
@@ -399,7 +402,7 @@ function recordEntry_(payload) {
     if (requestId) {
       sheet.getRange(targetRow, 14).setValue(requestId);
     }
-    if (vehicle) sheet.getRange(targetRow, 20).setValue(vehicle);
+    if (vehicle) sheet.getRange(targetRow, 20).setValue(canonicalVehicle);
 
     const transfer = ensureTransferPairForRow_(
       sheet,
