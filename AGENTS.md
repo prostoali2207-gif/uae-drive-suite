@@ -2,6 +2,10 @@
 
 Read the relevant specialist before changing FleetDesk.
 
+## Top-reference discovery routing
+
+For new/uncertain workflow or explicit best-in-class UX reference requests, use `docs/ux-reference/ELITE_DISCOVERY_ROUTING.md` through `ux-benchmark` before UX Architect/Product Interface Design. The canonical maintained method lives in `professional-ai-agents/architect/methodology/excellence-reference-discovery.md`. Judge original operator flows and evidence, not popularity or award/gallery imagery. Small fixes skip broad discovery. Research never authorizes changing rental payments/contracts or live Supabase state.
+
 ## Priority
 
 1. `.agents/skills/fleetdesk-rental-ops/SKILL.md`
