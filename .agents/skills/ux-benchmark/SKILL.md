@@ -32,6 +32,10 @@ Skip it for labels, spacing, colors, a single field, a local bug, or a small vis
 3. `ux-architect` designs the FleetDesk workflow.
 4. `ui-guard` validates the implementation direction.
 
+## Evidence-led elite discovery
+
+When a task asks for best-in-class patterns, study `docs/ux-reference/ELITE_DISCOVERY_ROUTING.md` first. Its canonical upstream reference is Agent Architect's excellence-reference-discovery method. Start from the operator job and multiple independent discovery origins, trace leading examples to original real workflows, and separate documented expert craft from directly observed task success. Do not call a famous enterprise product a proven pattern when its workflow is inaccessible or the outcome unmeasured. The preferred-source list below is a candidate pool, not a preapproved elite shortlist.
+
 ## Research scope
 
 Use the smallest useful comparison set. Normally inspect 3 to 5 relevant examples, not entire products.
