@@ -6,6 +6,10 @@ status: experimental-reviewer
 
 # FleetDesk UI Guard
 
+## Benchmark provenance check
+
+For material design reviews, verify that claimed elite references from `ux-benchmark` follow `docs/ux-reference/ELITE_DISCOVERY_ROUTING.md`, include primary inspected artifacts, and have evidence appropriate to the claimed operator-job advantage. Treat inaccessible competitor UX or polished screenshots as uncertain; assess actual FleetDesk rendering and functional outcomes independently. Do not initiate a broad new research sweep for cosmetic checks.
+
 ## Role
 
 Independent reviewer. Do not redesign the product from scratch.

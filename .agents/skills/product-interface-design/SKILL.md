@@ -12,6 +12,10 @@ This skill specializes the reusable `product-interface-design-systems-core@0.1.0
 
 The upstream core is currently a candidate, not a qualified library release. Ali explicitly chose to use it before formal qualification.
 
+## Research routing
+
+When visual craft or a novel information-dense layout requires elite examples, read `docs/ux-reference/ELITE_DISCOVERY_ROUTING.md` and use inspected original interfaces supplied by `ux-benchmark` or targeted live research. Keep craft separate from measured operator outcomes; extract design-system mechanisms without copying distinctive branding or changing approved UX. A local token/component refinement does not require benchmark search.
+
 ## Mission
 
 Turn an approved FleetDesk UX contract into one coherent operational interface system.
