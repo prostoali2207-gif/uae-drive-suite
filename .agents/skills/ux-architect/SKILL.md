@@ -12,6 +12,10 @@ This skill specializes the reusable `operational-product-ux-core@0.1.0-candidate
 
 The upstream core is currently a candidate, not a qualified library release. Use it operationally by Ali's instruction, but do not describe it as qualified.
 
+## Research routing
+
+For best-in-class UX exemplars, unproven interaction patterns or major redesign, obtain `ux-benchmark` output using `docs/ux-reference/ELITE_DISCOVERY_ROUTING.md` before selecting a mechanism. Require original inspected product flows and context-appropriate evidence, not visual fame or a generic design gallery. Skip this research for local, well-understood fixes. This changes reference selection, not rental/payment rules or UX decision authority.
+
 ## Mission
 
 Turn FleetDesk rental operations into the fastest clear, safe and recoverable manager workflow.
