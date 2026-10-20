@@ -832,7 +832,9 @@ const Contracts = () => {
           ...contract,
           payment_status: balanceByContract[contract.id]?.payment_status ?? contract.payment_status,
           balance_due: balanceByContract[contract.id]?.balance_due ?? Number(contract.total_amount),
-          effective_end_date: effectiveEndDateByContract[contract.id] ?? contract.end_date,
+          effective_end_date: contract.status.trim().toLowerCase() === "closed"
+            ? contract.end_date
+            : effectiveEndDateByContract[contract.id] ?? contract.end_date,
         }));
         setContracts(nextContracts);
       }
