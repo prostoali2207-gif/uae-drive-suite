@@ -5076,6 +5076,12 @@ const ContractDetail = () => {
       return;
     }
 
+    const returnAt = new Date(closeReturnDate);
+    if (Number.isNaN(returnAt.getTime()) || returnAt > new Date()) {
+      toast.error("Return date and time cannot be in the future");
+      return;
+    }
+
     if (closeFinalMileage.trim() === "") {
       toast.error("Please enter final mileage");
       return;
@@ -6045,7 +6051,7 @@ const ContractDetail = () => {
                     size="sm"
                     className="h-8 gap-1.5"
                     onClick={() => {
-                      const defaultCloseDate = `${contract.end_date}T${formatTimeDisplay(contract.end_time)}`;
+                      const defaultCloseDate = getCurrentDateTimeInput();
                       setCloseReturnDate(defaultCloseDate);
                       setCloseReceivedBy("");
                       setCloseFinalMileage("");
