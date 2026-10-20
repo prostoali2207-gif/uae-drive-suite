@@ -170,6 +170,7 @@ const BlackPointRequestsTab = () => {
   const [search, setSearch] = useState("");
   const [prepareFine, setPrepareFine] = useState<FineRow | null>(null);
   const [fineScreenshot, setFineScreenshot] = useState<File | null>(null);
+  const [policeAgreement, setPoliceAgreement] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [reviewSubmission, setReviewSubmission] = useState<SubmissionRow | null>(null);
   const [openingGmailId, setOpeningGmailId] = useState<string | null>(null);
@@ -261,6 +262,7 @@ const BlackPointRequestsTab = () => {
       return;
     }
     setFineScreenshot(null);
+    setPoliceAgreement(null);
     setPrepareFine(fine);
   };
 
@@ -273,6 +275,16 @@ const BlackPointRequestsTab = () => {
     if (fineScreenshot.size > 10 * 1024 * 1024) {
       toast.error("Fine screenshot must be 10 MB or smaller");
       return;
+    }
+    if (policeAgreement) {
+      if (!["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(policeAgreement.type)) {
+        toast.error("Ajman Police Agreement must be a JPG, PNG, WebP or PDF");
+        return;
+      }
+      if (policeAgreement.size > 10 * 1024 * 1024) {
+        toast.error("Ajman Police Agreement must be 10 MB or smaller");
+        return;
+      }
     }
 
     const fine = prepareFine;
@@ -370,6 +382,7 @@ const BlackPointRequestsTab = () => {
         licenseBack: licenceBackBlob,
         mulkiya: mulkiyaBlob,
         fineScreenshot,
+        policeAgreement,
         companyLicense: companyLicenseBlob,
         stampPng,
       });
@@ -408,6 +421,7 @@ const BlackPointRequestsTab = () => {
       setReviewSubmission(saved);
       setPrepareFine(null);
       setFineScreenshot(null);
+      setPoliceAgreement(null);
       await loadData();
       toast.success(rebuilding ? "Black Point package rebuilt" : "Black Point package is ready");
     } catch (error) {
@@ -464,6 +478,10 @@ const BlackPointRequestsTab = () => {
     setFineScreenshot(event.target.files?.[0] ?? null);
   };
 
+  const onPoliceAgreementChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setPoliceAgreement(event.target.files?.[0] ?? null);
+  };
+
   const rebuildingCurrent = prepareFine ? submissionByFine.has(prepareFine.id) : false;
 
   return (
@@ -513,14 +531,14 @@ const BlackPointRequestsTab = () => {
         </div>
       )}
 
-      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) { setPrepareFine(null); setFineScreenshot(null); } }}>
+      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) { setPrepareFine(null); setFineScreenshot(null); setPoliceAgreement(null); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{rebuildingCurrent ? "Rebuild Black Point package" : "Prepare Black Point package"}</DialogTitle>
             <DialogDescription>
               {rebuildingCurrent
-                ? "FleetDesk will rebuild the package from the current contract and documents. The previous PDF stays unchanged until the new package is created successfully. Add the correct fine screenshot again."
-                : "FleetDesk will add the filled form, contract, passport, driving licence, Mulkiya and company Trade License automatically. Add only the fine screenshot."}
+                ? "FleetDesk will rebuild the package from the current contract and documents. The previous PDF stays unchanged until the new package is created successfully. Add the correct fine screenshot again; optionally attach Ajman Police Agreement."
+                : "FleetDesk adds the filled form, contract, passport, driving licence, Mulkiya and company Trade License automatically. Add the fine screenshot and, if available, Ajman Police Agreement."}
             </DialogDescription>
           </DialogHeader>
           {prepareFine && <div className="rounded-md border bg-muted/40 p-3 text-sm">
@@ -531,6 +549,11 @@ const BlackPointRequestsTab = () => {
             <Label htmlFor="fine-screenshot">Fine screenshot</Label>
             <Input id="fine-screenshot" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" onChange={onScreenshotChange} disabled={preparing} />
             <p className="text-xs text-muted-foreground">Image or PDF, up to 10 MB. The screenshot is used only for this package and is not stored separately.</p>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ajman-police-agreement">Ajman Police Agreement (optional)</Label>
+            <Input id="ajman-police-agreement" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" onChange={onPoliceAgreementChange} disabled={preparing} />
+            <p className="text-xs text-muted-foreground">Upload the agreement issued by Ajman Police (PDF or image, up to 10 MB). Every page will be included without adding our company stamp. The original is not stored separately.</p>
           </div>
           <Button className="min-h-10 gap-2" disabled={!fineScreenshot || preparing} onClick={() => void preparePackage()}>
             {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
