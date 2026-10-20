@@ -666,7 +666,10 @@ const buildRentalPeriods = (
   return periods;
 };
 
-const getLatestRentalPeriodEnd = (contract: Pick<ContractRecord, "end_date">, fees: ContractFeeRow[]) => {
+const getLatestRentalPeriodEnd = (contract: Pick<ContractRecord, "end_date" | "status">, fees: ContractFeeRow[]) => {
+  // A closed contract has an actual return date; extensions retain the original planned dates.
+  if (contract.status.trim().toLowerCase() === "closed") return contract.end_date;
+
   const sortedExtensionEnds = [...fees]
     .map((fee) => getRentalExtensionPeriodFromFee(fee).periodEnd)
     .filter((endDate): endDate is string => Boolean(endDate))
