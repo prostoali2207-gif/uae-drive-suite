@@ -13,6 +13,7 @@ type BuildBlackPointPackageInput = {
   licenseBack?: Blob | null;
   mulkiya: Blob;
   fineScreenshot: Blob;
+  policeAgreement?: Blob | null;
   companyLicense: Blob;
   stampPng?: Uint8Array;
 };
@@ -114,7 +115,12 @@ const appendMulkiya = async (target: PDFDocument, blob: Blob) => {
   drawSide(back, margin);
 };
 
-const stampPages = async (target: PDFDocument, stampPng?: Uint8Array, skipFirstPages = 0) => {
+const stampPages = async (
+  target: PDFDocument,
+  stampPng?: Uint8Array,
+  skipFirstPages = 0,
+  unstampedRange?: { start: number; end: number },
+) => {
   if (!stampPng?.length) return;
   const image = await target.embedPng(stampPng);
   const natural = image.scale(1);
@@ -123,7 +129,7 @@ const stampPages = async (target: PDFDocument, stampPng?: Uint8Array, skipFirstP
   const height = natural.height * scale;
 
   for (const [index, page] of target.getPages().entries()) {
-    if (index < skipFirstPages) continue;
+    if (index < skipFirstPages || (unstampedRange && index >= unstampedRange.start && index < unstampedRange.end)) continue;
     const { width: pageWidth } = page.getSize();
     page.drawImage(image, {
       x: pageWidth - width - 28,
@@ -142,24 +148,29 @@ export const buildBlackPointSubmissionPackage = async ({
   licenseBack,
   mulkiya,
   fineScreenshot,
+  policeAgreement,
   companyLicense,
   stampPng,
 }: BuildBlackPointPackageInput): Promise<Blob> => {
   const target = await PDFDocument.create();
 
-  // Required authority order:
-  // form -> contract -> passport -> driving licence -> Mulkiya -> fine screenshot -> company Trade License.
-  // The form already receives its stamp while being filled, so package stamping starts after it.
+  // Authority order: form -> FleetDesk contract -> optional Ajman Police agreement ->
+  // passport -> driving licence -> Mulkiya -> fine screenshot -> company Trade License.
+  // The authority form already has its stamp; the Ajman Police agreement must remain untouched.
   await appendPart(target, { blob: formPdf });
   const formPageCount = target.getPageCount();
   await appendPart(target, { blob: contractPdf, firstPageOnly: true });
+  const policeAgreementStart = target.getPageCount();
+  if (policeAgreement) await appendPart(target, { blob: policeAgreement });
+  const policeAgreementEnd = target.getPageCount();
   if (passport) await appendPart(target, { blob: passport });
   if (licenseFront) await appendPart(target, { blob: licenseFront });
   if (licenseBack) await appendPart(target, { blob: licenseBack });
   await appendMulkiya(target, mulkiya);
   await appendPart(target, { blob: fineScreenshot });
   await appendPart(target, { blob: companyLicense });
-  await stampPages(target, stampPng, formPageCount);
+  await stampPages(target, stampPng, formPageCount,
+    policeAgreement ? { start: policeAgreementStart, end: policeAgreementEnd } : undefined);
 
   const bytes = await target.save();
   return new Blob([bytes], { type: "application/pdf" });
