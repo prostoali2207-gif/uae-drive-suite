@@ -10,7 +10,8 @@ import { toast } from "sonner";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-const POLICE_JPEG_MAX = 200 * 1024 - 1024;
+// The police portal may interpret 200 K as decimal bytes; leave safety margin.
+const POLICE_JPEG_MAX = 195_000;
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const CLIENT_BUCKET = "client-documents";
 const VEHICLE_BUCKET = "vehicle-documents";
@@ -157,15 +158,16 @@ async function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
   throw new Error("The image cannot be reduced below 200 KB while preserving minimum resolution");
 }
 
-async function jpgPages(source: Blob): Promise<Blob[]> {
+async function jpgPages(source: Blob, firstPageOnly = false): Promise<Blob[]> {
   if (source.size > MAX_SOURCE_BYTES) throw new Error("Document exceeds the 20 MB processing limit");
   const isPdf = source.type === "application/pdf" || (await source.slice(0, 5).text()) === "%PDF-";
   if (isPdf) {
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await source.arrayBuffer()) }).promise;
     try {
-      if (doc.numPages > 12) throw new Error("Document has too many pages; review it manually");
+      const pageCount = firstPageOnly ? 1 : doc.numPages;
+      if (pageCount > 12) throw new Error("Document has too many pages; review it manually");
       const pages: Blob[] = [];
-      for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+      for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
         const page = await doc.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1.8 });
         const canvas = document.createElement("canvas");
@@ -222,8 +224,8 @@ async function buildExport(contractId: string): Promise<{ file: Blob; warnings: 
 
   const files: ZipFile[] = [];
   const warnings: string[] = [];
-  const add = async (name: string, blob: Blob) => {
-    const converted = await jpgPages(blob);
+  const add = async (name: string, blob: Blob, firstPageOnly = false) => {
+    const converted = await jpgPages(blob, firstPageOnly);
     for (let index = 0; index < converted.length; index += 1) {
       const filename = converted.length === 1 ? name + ".jpg" : name + "_Page_" + (index + 1) + ".jpg";
       files.push({ name: filename, data: new Uint8Array(await converted[index].arrayBuffer()) });
@@ -231,15 +233,15 @@ async function buildExport(contractId: string): Promise<{ file: Blob; warnings: 
   };
 
   const clientDocs: Array<[string, string | null]> = [
-    ["Passport", contract.clients.passport_photo_url],
-    ["Emirates_ID_Front", contract.clients.eid_front_url],
-    ["Emirates_ID_Back", contract.clients.eid_back_url],
-    ["Driving_Licence_Front", contract.clients.license_front_url],
-    ["Driving_Licence_Back", contract.clients.license_back_url],
+    ["1-passport", contract.clients.passport_photo_url],
+    ["emirates-id-front", contract.clients.eid_front_url],
+    ["emirates-id-back", contract.clients.eid_back_url],
+    ["2-driving-license", contract.clients.license_front_url],
+    ["driving-license-back", contract.clients.license_back_url],
   ];
   for (const [label, storedUrl] of clientDocs) {
     if (!storedUrl) {
-      if (label === "Driving_Licence_Front" || (label === "Passport" && !contract.clients.eid_front_url)) {
+      if (label === "2-driving-license" || (label === "1-passport" && !contract.clients.eid_front_url)) {
         warnings.push("Missing " + label);
       }
       continue;
@@ -255,7 +257,7 @@ async function buildExport(contractId: string): Promise<{ file: Blob; warnings: 
 
   if (contract.cars.mulkiya_pdf_path) {
     try {
-      await add("Mulkiya", await storageFile(VEHICLE_BUCKET, contract.cars.mulkiya_pdf_path));
+      await add("mulkiya", await storageFile(VEHICLE_BUCKET, contract.cars.mulkiya_pdf_path));
     } catch (err) {
       warnings.push("Mulkiya: " + (err instanceof Error ? err.message : "Conversion failed"));
     }
@@ -276,9 +278,9 @@ async function buildExport(contractId: string): Promise<{ file: Blob; warnings: 
     }
   }
   if (pdf) {
-    files.push({ name: "Contract_Full.pdf", data: new Uint8Array(await pdf.arrayBuffer()) });
     try {
-      await add("Contract_Copy", pdf);
+      // Police accepts one JPG for Contract Copy; use the first page only.
+      await add("3-contract-copy", pdf, true);
     } catch (err) {
       warnings.push("Contract JPG: " + (err instanceof Error ? err.message : "Conversion failed"));
     }
@@ -295,9 +297,10 @@ async function buildExport(contractId: string): Promise<{ file: Blob; warnings: 
     "Rental end: " + contract.end_date + " " + (contract.end_time || ""),
     "Contract total (AED): " + contract.total_amount,
     "",
-    "All JPG files are below 200 KB. Use only required fields on police portal.",
+    "Every export file intended for police upload is JPG smaller than 195,000 bytes.",
     "Police portal accepts one JPG per upload. For multi-page PDFs select the appropriate page.",
-    "The full signed agreement is preserved as Contract_Full.pdf for reference.",
+    "The original full contract PDF remains in FleetDesk and is not part of this upload-only ZIP.",
+    "Contract JPG represents its first page. Verify that the police requires this page before uploading.",
     "Document 1 / Document 2 mapping must be checked against police portal requirements.",
     "",
     "WARNINGS:",
