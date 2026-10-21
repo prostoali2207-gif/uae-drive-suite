@@ -56,6 +56,7 @@ import { diffCalendarDays, parseDateInput, parseDateTimeInput } from "@/lib/date
 import { logImageCompressionUpload, prepareImageForStorageUpload } from "@/lib/imageCompression";
 import { toast } from "sonner";
 import { SignContractModal } from "@/components/SignContractModal";
+import { AjmanPoliceExportButton } from "@/components/AjmanPoliceExportButton";
 import { AdditionalDriversField } from "@/components/AdditionalDriversField";
 import { saveContractDrivers } from "@/lib/contractDrivers";
 import { ListPagination, getPaginatedRows } from "@/components/ListPagination";
@@ -1934,6 +1935,10 @@ const Contracts = () => {
                         AED {Number(c.total_amount).toLocaleString()}
                       </span>
 
+                      <div className="col-span-2 mt-1 flex justify-end">
+                        <AjmanPoliceExportButton contractId={c.id} />
+                      </div>
+
                       {(hasBalanceDue || hasDeposit) && (
                         <div className="col-span-2 mt-1 border-t border-border/70 pt-2">
                           <div className="grid grid-cols-2 gap-3">
@@ -2007,7 +2012,7 @@ const Contracts = () => {
                   </button>
                 </TableHead>
                 <TableHead className="px-5 text-right text-xs">Deposit</TableHead>
-                <TableHead className="w-[104px] px-2 text-right text-xs">Action</TableHead>
+                <TableHead className="w-[190px] px-2 text-right text-xs">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -2086,8 +2091,9 @@ const Contracts = () => {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className="w-[104px] px-2 text-right">
+                      <TableCell className="w-[190px] px-2 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <AjmanPoliceExportButton contractId={c.id} />
                           <Button
                             size="icon"
                             variant="outline"
