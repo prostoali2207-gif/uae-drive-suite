@@ -3,6 +3,7 @@ import { Download, Loader2 } from "lucide-react";
 import * as pdfjs from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { getClientDocumentPath } from "@/lib/clientDocuments";
 import { generateContractPdf } from "@/lib/contractPdf";
@@ -59,82 +60,9 @@ interface ExportContract {
   cars: ExportCar | null;
 }
 
-interface ZipFile {
+interface PoliceDocument {
   name: string;
-  data: Uint8Array;
-}
-
-function put16(view: DataView, offset: number, value: number) {
-  view.setUint16(offset, value, true);
-}
-
-function put32(view: DataView, offset: number, value: number) {
-  view.setUint32(offset, value >>> 0, true);
-}
-
-function crc32(data: Uint8Array) {
-  let crc = 0xffffffff;
-  for (const byte of data) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-/** Standard, uncompressed ZIP: no new dependency and no external file service. */
-export function buildPoliceZip(files: ZipFile[]): Blob {
-  if (files.length === 0 || files.length > 100) throw new Error("Invalid export file count");
-  const encoder = new TextEncoder();
-  const local: BlobPart[] = [];
-  const central: BlobPart[] = [];
-  let offset = 0;
-  let centralSize = 0;
-  for (const file of files) {
-    if (!file.name || file.name.includes("..") || file.name.includes("/") || file.name.includes("\\")) {
-      throw new Error("Unsafe ZIP file name");
-    }
-    const filename = encoder.encode(file.name);
-    const bytes = file.data;
-    const checksum = crc32(bytes);
-    const localHeader = new Uint8Array(30 + filename.length);
-    const l = new DataView(localHeader.buffer);
-    put32(l, 0, 0x04034b50);
-    put16(l, 4, 20);
-    put16(l, 6, 0x0800); // UTF-8 filenames
-    put16(l, 8, 0); // STORE; image/pdf is already compressed
-    put32(l, 14, checksum);
-    put32(l, 18, bytes.byteLength);
-    put32(l, 22, bytes.byteLength);
-    put16(l, 26, filename.length);
-    localHeader.set(filename, 30);
-    local.push(localHeader, bytes);
-    const header = new Uint8Array(46 + filename.length);
-    const c = new DataView(header.buffer);
-    put32(c, 0, 0x02014b50);
-    put16(c, 4, 20);
-    put16(c, 6, 20);
-    put16(c, 8, 0x0800);
-    put16(c, 10, 0);
-    put32(c, 16, checksum);
-    put32(c, 20, bytes.byteLength);
-    put32(c, 24, bytes.byteLength);
-    put16(c, 28, filename.length);
-    put32(c, 42, offset);
-    header.set(filename, 46);
-    central.push(header);
-    centralSize += header.length;
-    offset += localHeader.length + bytes.byteLength;
-  }
-  const end = new Uint8Array(22);
-  const e = new DataView(end.buffer);
-  put32(e, 0, 0x06054b50);
-  put16(e, 8, files.length);
-  put16(e, 10, files.length);
-  put32(e, 12, centralSize);
-  put32(e, 16, offset);
-  return new Blob([...local, ...central, end], { type: "application/zip" });
+  blob: Blob;
 }
 
 async function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -208,7 +136,7 @@ async function storageFile(bucket: string, path: string): Promise<Blob> {
   return data;
 }
 
-async function buildExport(contractId: string): Promise<{ file: Blob; warnings: string[] }> {
+async function preparePoliceDocuments(contractId: string): Promise<{ files: PoliceDocument[]; warnings: string[] }> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Sign in to FleetDesk first");
 
@@ -222,13 +150,13 @@ async function buildExport(contractId: string): Promise<{ file: Blob; warnings: 
   const contract = data as unknown as ExportContract;
   if (!contract.clients || !contract.cars) throw new Error("Linked client or vehicle is missing");
 
-  const files: ZipFile[] = [];
+  const files: PoliceDocument[] = [];
   const warnings: string[] = [];
   const add = async (name: string, blob: Blob, firstPageOnly = false) => {
     const converted = await jpgPages(blob, firstPageOnly);
     for (let index = 0; index < converted.length; index += 1) {
       const filename = converted.length === 1 ? name + ".jpg" : name + "_Page_" + (index + 1) + ".jpg";
-      files.push({ name: filename, data: new Uint8Array(await converted[index].arrayBuffer()) });
+      files.push({ name: filename, blob: converted[index] });
     }
   };
 
@@ -288,66 +216,107 @@ async function buildExport(contractId: string): Promise<{ file: Blob; warnings: 
     warnings.push("Missing Contract Copy");
   }
 
-  const info = [
-    "AJMAN POLICE - DOCUMENT EXPORT",
-    "Contract: CTR-" + contract.id.slice(0, 8).toUpperCase(),
-    "Vehicle: " + contract.cars.make + " " + contract.cars.model + " / " + contract.cars.plate,
-    "Renter: " + contract.clients.full_name,
-    "Rental start: " + contract.start_date + " " + (contract.start_time || ""),
-    "Rental end: " + contract.end_date + " " + (contract.end_time || ""),
-    "Contract total (AED): " + contract.total_amount,
-    "",
-    "Every export file intended for police upload is JPG smaller than 195,000 bytes.",
-    "Police portal accepts one JPG per upload. For multi-page PDFs select the appropriate page.",
-    "The original full contract PDF remains in FleetDesk and is not part of this upload-only ZIP.",
-    "Contract JPG represents its first page. Verify that the police requires this page before uploading.",
-    "Document 1 / Document 2 mapping must be checked against police portal requirements.",
-    "",
-    "WARNINGS:",
-    ...(warnings.length ? warnings.map((value) => "- " + value) : ["None"]),
-  ].join("\n");
-  files.push({ name: "README.txt", data: new TextEncoder().encode(info) });
-  return { file: buildPoliceZip(files), warnings };
+  return { files, warnings };
 }
 
 export function AjmanPoliceExportButton({ contractId, compact = false }: { contractId: string; compact?: boolean }) {
-  const [working, setWorking] = useState(false);
-  const download = async (event: React.MouseEvent<HTMLButtonElement>) => {
+  const [open, setOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [files, setFiles] = useState<PoliceDocument[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const openDocuments = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (working) return;
-    setWorking(true);
+    if (preparing) return;
+    setOpen(true);
+    setPreparing(true);
+    setFiles([]);
+    setWarnings([]);
+    setError(null);
     try {
-      const { file, warnings } = await buildExport(contractId);
-      const url = URL.createObjectURL(file);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "Ajman_Police_CTR-" + contractId.slice(0, 8).toUpperCase() + ".zip";
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      if (warnings.length) toast.warning("Exported with " + warnings.length + " warning(s). See README.txt");
-      else toast.success("Ajman Police package downloaded");
+      const prepared = await preparePoliceDocuments(contractId);
+      setFiles(prepared.files);
+      setWarnings(prepared.warnings);
+      if (prepared.files.length === 0) setError("No documents could be prepared. Check the warnings below.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Ajman Police export failed");
+      setError(err instanceof Error ? err.message : "Police documents could not be prepared");
     } finally {
-      setWorking(false);
+      setPreparing(false);
     }
   };
 
+  const downloadDocument = (document: PoliceDocument) => {
+    // One download per explicit click: reliable even when the browser blocks multi-file downloads.
+    const url = URL.createObjectURL(document.blob);
+    const anchor = window.document.createElement("a");
+    anchor.href = url;
+    anchor.download = document.name;
+    anchor.rel = "noopener";
+    window.document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  };
+
   return (
-    <Button
-      type="button"
-      size={compact ? "icon" : "sm"}
-      variant="outline"
-      className={compact ? "h-8 w-8" : "h-8 gap-2"}
-      disabled={working}
-      aria-label="Download Ajman Police document package"
-      title="Download Ajman Police document package"
-      onClick={download}
-    >
-      {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-      {!compact && (working ? "Preparing..." : "Police ZIP")}
-    </Button>
+    <>
+      <Button
+        type="button"
+        size={compact ? "icon" : "sm"}
+        variant="outline"
+        className={compact ? "h-8 w-8" : "h-8 gap-2"}
+        disabled={preparing}
+        aria-label="Police Documents"
+        title="Police Documents"
+        onClick={openDocuments}
+      >
+        {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        {!compact && "Police Documents"}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg" onClick={(event) => event.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Police Documents · CTR-{contractId.slice(0, 8).toUpperCase()}</DialogTitle>
+            <DialogDescription>
+              Download each JPG directly for Ajman Police. No ZIP or extraction. Each prepared image is under 195 KB.
+            </DialogDescription>
+          </DialogHeader>
+          {preparing && <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Preparing documents...</div>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {files.length > 0 && (
+            <div className="grid gap-2">
+              {files.map((document) => (
+                <div key={document.name} className="flex items-center justify-between gap-3 rounded-md border p-3">
+                  <div className="min-w-0">
+                    <p className="break-all font-mono text-xs font-medium">{document.name}</p>
+                    <p className="text-xs text-muted-foreground">{(document.blob.size / 1000).toFixed(1)} KB · JPG</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={() => downloadDocument(document)}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          {warnings.length > 0 && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+              <p className="text-sm font-medium">Some documents need attention</p>
+              <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                {warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+              </ul>
+            </div>
+          )}
+          {files.length > 0 && <p className="text-xs text-muted-foreground">Check that the passport, licence and contract copy match the fields required by the police website before uploading.</p>}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
