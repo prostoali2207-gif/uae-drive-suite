@@ -2010,7 +2010,7 @@ const Contracts = () => {
                   </button>
                 </TableHead>
                 <TableHead className="px-5 text-right text-xs">Deposit</TableHead>
-                <TableHead className="w-[104px] px-2 text-right text-xs">Action</TableHead>
+                <TableHead className="w-[190px] px-2 text-right text-xs">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -2089,9 +2089,9 @@ const Contracts = () => {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className="w-[104px] px-2 text-right">
+                      <TableCell className="w-[190px] px-2 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <AjmanPoliceExportButton contractId={c.id} compact />
+                          <AjmanPoliceExportButton contractId={c.id} />
                           <Button
                             size="icon"
                             variant="outline"
