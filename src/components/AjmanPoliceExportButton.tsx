@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { supabase } from "@/integrations/supabase/client";
 import { getClientDocumentPath } from "@/lib/clientDocuments";
 import { generateContractPdf } from "@/lib/contractPdf";
-import { toast } from "sonner";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
