@@ -73,6 +73,7 @@ type FineRow = {
   contract_id: string | null;
   fine_number: string | null;
   fine_date: string;
+  fine_type: string | null;
   black_points: number | null;
   source: string;
   clients: ClientSummary | null;
@@ -182,7 +183,7 @@ const BlackPointRequestsTab = () => {
     const [finesResult, submissionsResult] = await Promise.all([
       supabase
         .from("fines")
-        .select("id, client_id, car_id, contract_id, fine_number, fine_date, black_points, source, clients(id, full_name, phone, client_type, emirates_id, passport_number, nationality, license_number, license_type, license_issuing_country, unified_number, traffic_file_number, passport_photo_url, license_front_url, license_back_url), cars(id, plate, plate_emirate, make, model, year, color, mulkiya_pdf_path)")
+        .select("id, client_id, car_id, contract_id, fine_number, fine_date, fine_type, black_points, source, clients(id, full_name, phone, client_type, emirates_id, passport_number, nationality, license_number, license_type, license_issuing_country, unified_number, traffic_file_number, passport_photo_url, license_front_url, license_back_url), cars(id, plate, plate_emirate, make, model, year, color, mulkiya_pdf_path)")
         .gt("black_points", 0)
         .order("fine_date", { ascending: false })
         .limit(300),
@@ -353,6 +354,7 @@ const BlackPointRequestsTab = () => {
         vehicleType: `${car.make} ${car.model}`.trim(),
         fineNumber: fine.fine_number,
         fineDate: new Date(fine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
+        fineDescription: fine.fine_type ?? "",
         rentalStart: toDubaiDateTime(contract.start_date, contract.start_time, "00:00"),
         rentalEnd: toDubaiDateTime(contract.end_date, contract.end_time, "23:59"),
         phone: profile.phone_number?.trim() ?? "",
