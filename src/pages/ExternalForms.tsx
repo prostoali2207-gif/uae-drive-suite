@@ -32,6 +32,7 @@ type FineOption = {
   id: string;
   fine_number: string | null;
   fine_date: string;
+  fine_type: string | null;
   black_points: number | null;
   source: string;
   contract_id: string | null;
@@ -336,7 +337,7 @@ const ExternalForms = () => {
     setLoadingFines(true);
     const { data: fines, error: finesError } = await supabase
       .from("fines")
-      .select("id, fine_number, fine_date, black_points, source, contract_id, clients(full_name, phone, license_number, nationality, unified_number, license_type, license_issuing_country, traffic_file_number), cars(plate, make, model)")
+      .select("id, fine_number, fine_date, fine_type, black_points, source, contract_id, clients(full_name, phone, license_number, nationality, unified_number, license_type, license_issuing_country, traffic_file_number), cars(plate, make, model)")
       .gt("black_points", 0)
       .order("fine_date", { ascending: false })
       .limit(200);
@@ -423,6 +424,7 @@ const ExternalForms = () => {
         vehicleType: `${selectedFine.cars.make} ${selectedFine.cars.model}`.trim(),
         fineNumber: selectedFine.fine_number ?? "",
         fineDate: new Date(selectedFine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
+        fineDescription: selectedFine.fine_type ?? "",
         rentalStart: start,
         rentalEnd: end,
         phone: profile?.phone_number?.trim() ?? "",
