@@ -14,6 +14,7 @@ export type SharjahBlackPointsValues = {
   vehicleType: string;
   fineNumber: string;
   fineDate: string;
+  fineDescription: string;
   rentalStart: string;
   rentalEnd: string;
   phone: string;
@@ -107,6 +108,78 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     context.fillText(output, x * scale, (pageHeight - y) * scale);
   };
 
+  // The authority form has two fine-data columns. Keep its numbered rows,
+  // but divide the fine-data area into date, violation, and fine number.
+  const fineGridX = [18, 83, 177, 246];
+  const fineGridTop = 612;
+  const fineGridHeaderBottom = 594;
+  const fineGridRowHeight = 16.5;
+  const fineGridBottom = fineGridHeaderBottom - 10 * fineGridRowHeight;
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(
+    fineGridX[0] * scale,
+    (pageHeight - fineGridTop) * scale,
+    (fineGridX[3] - fineGridX[0]) * scale,
+    (fineGridTop - fineGridBottom) * scale,
+  );
+  context.strokeStyle = "#767676";
+  context.lineWidth = 0.55 * scale;
+  context.beginPath();
+  for (const x of fineGridX) {
+    context.moveTo(x * scale, (pageHeight - fineGridTop) * scale);
+    context.lineTo(x * scale, (pageHeight - fineGridBottom) * scale);
+  }
+  for (let row = 0; row <= 10; row += 1) {
+    const y = row === 0 ? fineGridTop : fineGridHeaderBottom - (row - 1) * fineGridRowHeight;
+    context.moveTo(fineGridX[0] * scale, (pageHeight - y) * scale);
+    context.lineTo(fineGridX[3] * scale, (pageHeight - y) * scale);
+  }
+  context.stroke();
+
+  context.fillStyle = "#0d0d0d";
+  context.textAlign = "center";
+  context.direction = "rtl";
+  context.font = `600 ${8.2 * scale}px Arial, sans-serif`;
+  ["التاريخ", "نوع المخالفة", "رقم المخالفة"].forEach((heading, index) => {
+    context.fillText(
+      heading,
+      ((fineGridX[index] + fineGridX[index + 1]) / 2) * scale,
+      (pageHeight - 598.5) * scale,
+      (fineGridX[index + 1] - fineGridX[index] - 4) * scale,
+    );
+  });
+  context.direction = "ltr";
+  context.textAlign = "left";
+
+  // A single fine occupies the first row. Wrap its description to two lines
+  // rather than allowing long text to overlap the date or fine number.
+  const fineDescription = values.fineDescription.trim();
+  if (fineDescription) {
+    const maxWidth = (fineGridX[2] - fineGridX[1] - 6) * scale;
+    context.font = `600 ${7.2 * scale}px Arial, sans-serif`;
+    const lines: string[] = [];
+    for (const word of fineDescription.split(/\\s+/)) {
+      const current = lines[lines.length - 1] ?? "";
+      const candidate = current ? `${current} ${word}` : word;
+      if (current && context.measureText(candidate).width > maxWidth) {
+        lines.push(word);
+      } else if (lines.length) {
+        lines[lines.length - 1] = candidate;
+      } else {
+        lines.push(candidate);
+      }
+    }
+    if (lines.length > 2) lines.splice(1, lines.length - 1, lines.slice(1).join(" "));
+    context.textAlign = "center";
+    lines.forEach((line, index) => {
+      const baseline = lines.length === 1 ? 583.5 : 587.2 - index * 7.5;
+      context.fillText(line, ((fineGridX[1] + fineGridX[2]) / 2) * scale,
+        (pageHeight - baseline) * scale, maxWidth);
+    });
+    context.textAlign = "left";
+  }
+
   write(values.contractNumber, 334, 650, { size: 8, bold: true, maxWidth: 126 });
   write(values.clientName, 313, 602, { size: 8, bold: true, maxWidth: 150 });
   write(values.licenseNumber, 313, 585, { size: 8, bold: true, maxWidth: 150 });
@@ -117,8 +190,8 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
   write(values.plateCode, 313, 479, { size: 8, bold: true, maxWidth: 150 });
   write(plateSource, 313, 459, { size: 8, bold: true, maxWidth: 150 });
   write(values.vehicleType, 313, 446, { size: 8, bold: true, maxWidth: 150 });
-  write(values.fineNumber, 143, 585, { size: 8, bold: true, maxWidth: 96 });
-  write(values.fineDate, 30, 585, { size: 8, bold: true, maxWidth: 100 });
+  write(values.fineNumber, 181, 584, { size: 7.5, bold: true, maxWidth: 61 });
+  write(values.fineDate, 21, 584, { size: 7.5, bold: true, maxWidth: 58 });
 
   const start = splitDateTime(values.rentalStart);
   const end = splitDateTime(values.rentalEnd);
