@@ -159,7 +159,7 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     const maxWidth = (fineGridX[2] - fineGridX[1] - 6) * scale;
     context.font = `600 ${7.2 * scale}px Arial, sans-serif`;
     const lines: string[] = [];
-    for (const word of fineDescription.split(/\\s+/)) {
+    for (const word of fineDescription.split(/\s+/)) {
       const current = lines[lines.length - 1] ?? "";
       const candidate = current ? `${current} ${word}` : word;
       if (current && context.measureText(candidate).width > maxWidth) {
