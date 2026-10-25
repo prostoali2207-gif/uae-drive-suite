@@ -1300,7 +1300,9 @@ Deno.serve(async (req: Request) => {
         }, 200, origin);
       }
       const driver = staffIsDriver(staff);
-      const walletReady = await driverFeatureReady(supabase);
+      // UI capability only. Money-changing actions still verify live bridge readiness.
+      // Opening the app must not wait for Google Sheets get_context.
+      const walletReady = SHOWROOM_BRIDGE_ENABLED && Boolean(gatewayToken);
       const [catalog, showroomCatalog] = await Promise.all([
         driver ? Promise.resolve([]) : getOperationCatalog(supabase, "rental"),
         getOperationCatalog(supabase, "showroom"),
