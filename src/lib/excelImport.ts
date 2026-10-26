@@ -550,10 +550,15 @@ export async function importFinesExcel(file: File): Promise<ImportSummary> {
   if (toInsert.length) {
     const { error, data } = await supabase
       .from("fines")
-      .upsert(toInsert as never, { onConflict: "owner_id,fine_number" })
+      // Freeze the customer's initial fine charge. A later government export can
+      // lose a discount, but must not overwrite billed/paid amounts or statuses.
+      .upsert(toInsert as never, { onConflict: "owner_id,fine_number", ignoreDuplicates: true })
       .select("id");
     if (error) summary.errors.push(error.message);
-    else summary.imported = data?.length ?? toInsert.length;
+    else {
+      summary.imported = data?.length ?? 0;
+      summary.skippedDuplicate += toInsert.length - summary.imported;
+    }
   }
   summary.unmatchedPlates = Array.from(unmatched);
   return summary;
