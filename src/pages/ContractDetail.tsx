@@ -1551,6 +1551,7 @@ const ContractFinesSheet = ({
   contract,
   fines,
   payments,
+  unpaidAllocationLines,
   open,
   onOpenChange,
   onPaymentRecorded,
@@ -1558,6 +1559,7 @@ const ContractFinesSheet = ({
   contract: ContractRecord;
   fines: FineRow[];
   payments: PaymentRow[];
+  unpaidAllocationLines?: ContractPaymentAllocationLine[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPaymentRecorded: () => void | Promise<void>;
@@ -1577,21 +1579,25 @@ const ContractFinesSheet = ({
     }
   }, [open]);
 
-  const visibleFines = useMemo(
-    () =>
-      fines
-        .filter((fine) => fine.status !== "Paid")
-        .map((fine) => {
-          const totalPaid = sumPaymentLineAllocations(payments, `fine-${fine.id}`);
-          const remainingAmount = Math.max(0, Number(fine.amount) - totalPaid);
-          return {
-            fine,
-            totalPaid,
-            displayAmount: fine.status === "Partial" ? remainingAmount : Number(fine.amount),
-          };
-        }),
-    [fines, payments],
-  );
+  const visibleFines = useMemo(() => {
+    const outstandingById = new Map(
+      (unpaidAllocationLines ?? [])
+        .filter((line) => line.category === "fines")
+        .map((line) => [line.id, Number(line.due)]),
+    );
+    return fines.flatMap((fine) => {
+      const totalAmount = Number(fine.amount);
+      const allocatedPaid = sumPaymentLineAllocations(
+        payments.filter((payment) => payment.status.toLowerCase() === "paid"),
+        `fine-${fine.id}`,
+      );
+      const remainingAmount = unpaidAllocationLines
+        ? outstandingById.get(`fine-${fine.id}`) ?? 0
+        : Math.max(0, totalAmount - allocatedPaid);
+      if (remainingAmount <= 0.01) return [];
+      return [{ fine, totalPaid: Math.max(0, totalAmount - remainingAmount), displayAmount: remainingAmount }];
+    });
+  }, [fines, payments, unpaidAllocationLines]);
   const outstandingTotal = visibleFines.reduce((sum, item) => sum + Number(item.displayAmount), 0);
 
   const toggleFinePayment = (fine: FineRow, amount: number) => {
@@ -1608,7 +1614,7 @@ const ContractFinesSheet = ({
     setOpenPaymentFineId(fine.id);
   };
 
-  const recordFinePayment = async (fine: FineRow) => {
+  const recordFinePayment = async (fine: FineRow, remainingAmount: number) => {
     const amount = Number(paymentDraft.amount);
     const taxRate = Number(paymentDraft.taxRate);
 
@@ -1621,10 +1627,14 @@ const ContractFinesSheet = ({
       toast.error("Enter a valid tax percentage");
       return;
     }
+    if (amount > remainingAmount + 0.01) {
+      toast.error("Payment exceeds remaining fine balance");
+      return;
+    }
 
     const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
     const lineId = `fine-${fine.id}`;
-    const totalPaid = sumPaymentLineAllocations(payments, lineId) + amount;
+    const totalPaid = Math.max(0, Number(fine.amount) - remainingAmount) + amount;
     const nextStatus = totalPaid >= Number(fine.amount) ? "Paid" : "Partial";
 
     setPayingFineId(fine.id);
@@ -1675,7 +1685,7 @@ const ContractFinesSheet = ({
     }
   };
 
-  const renderPaymentForm = (fine: FineRow) => {
+  const renderPaymentForm = (fine: FineRow, remainingAmount: number) => {
     const amount = Number(paymentDraft.amount) || 0;
     const taxRate = Number(paymentDraft.taxRate) || 0;
     const taxAmount = Math.round(((amount * taxRate) / 100) * 100) / 100;
@@ -1745,7 +1755,7 @@ const ContractFinesSheet = ({
               size="sm"
               className="h-9 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               disabled={isSaving}
-              onClick={() => void recordFinePayment(fine)}
+              onClick={() => void recordFinePayment(fine, remainingAmount)}
             >
               {isSaving ? "Recording..." : "Record Payment"}
             </Button>
@@ -1775,7 +1785,7 @@ const ContractFinesSheet = ({
             </div>
           ) : (
             <div className="space-y-2">
-              {visibleFines.map(({ fine, displayAmount }) => (
+              {visibleFines.map(({ fine, totalPaid, displayAmount }) => (
                 <div key={fine.id} className="rounded-md border border-border bg-white/[0.015] px-3 py-3">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                     <div className="min-w-0">
@@ -1789,7 +1799,7 @@ const ContractFinesSheet = ({
                         {getFineVehicleSourceLine(fine) || "No vehicle details"}
                       </div>
                       <div className="mt-2">
-                        <FineStatusBadge status={fine.status} />
+                        <FineStatusBadge status={totalPaid > 0.01 ? "Partial" : "Unpaid"} />
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
@@ -1806,7 +1816,7 @@ const ContractFinesSheet = ({
                       </Button>
                     </div>
                   </div>
-                  {openPaymentFineId === fine.id ? renderPaymentForm(fine) : null}
+                  {openPaymentFineId === fine.id ? renderPaymentForm(fine, displayAmount) : null}
                 </div>
               ))}
             </div>
@@ -2587,7 +2597,7 @@ const FinancialsPanel = ({
         groups.set("fines", {
           id: "fines",
           title: "Traffic Fines",
-          detail: `${fines.filter((fine) => fine.status !== "Paid").length} fines`,
+          detail: `${unpaidAllocationLines.filter((item) => item.category === "fines").length} fines`,
           meta: finesVerificationLabel,
           due: nextDue,
           icon: CarFront,
@@ -3835,6 +3845,7 @@ const FinancialsPanel = ({
         contract={contract}
         fines={fines}
         payments={payments}
+        unpaidAllocationLines={unpaidAllocationLines}
         open={showFinesModal}
         onOpenChange={setShowFinesModal}
         onPaymentRecorded={onInlinePaymentRecorded}
