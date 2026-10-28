@@ -153,6 +153,7 @@ function getContext_(payload) {
     driver_wallet_supported: ledger === 'showroom' && Boolean(spreadsheet_(ledger).getSheetByName('Водители')),
     showroom_corrections_supported: ledger === 'showroom',
     showroom_vehicle_subcategory_supported: ledger === 'showroom',
+    showroom_vehicle_sale_subcategory_supported: ledger === 'showroom',
   };
 }
 
@@ -247,7 +248,11 @@ function recordEntry_(payload) {
   if (article.length > 250) throw new Error('article is too long.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be greater than zero.');
   if (note.length > 500) throw new Error('note is too long.');
-  if (vehicle.length > 160 || (vehicle && article !== 'покупка авто для перепродажи')) {
+  if (vehicle.length > 160 || (vehicle && [
+    'покупка авто для перепродажи',
+    'Приход от продажи инвесторских авто',
+    'Приход от продажи собственных авто',
+  ].indexOf(article) === -1)) {
     throw new Error('Некорректная подкатегория автомобиля.');
   }
   if (vehicle) {
