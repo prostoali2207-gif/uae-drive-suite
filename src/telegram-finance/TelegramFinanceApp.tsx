@@ -111,15 +111,19 @@ const TRANSFER_TARGETS: Record<LedgerKey, Array<{
   rental: [],
 };
 
-const SHOWROOM_VEHICLE_PURCHASE_ARTICLE = "покупка авто для перепродажи";
+const SHOWROOM_VEHICLE_ARTICLES = new Set([
+  "покупка авто для перепродажи",
+  "Приход от продажи инвесторских авто",
+  "Приход от продажи собственных авто",
+]);
 const VEHICLE_OPTIONS_PATTERN = /\[\[vehicles:([^\]]*)\]\]/i;
 
 function catalogSearchTerms(value: string | undefined) {
   return String(value || "").replace(VEHICLE_OPTIONS_PATTERN, " ").trim();
 }
 
-function vehicleOptionsFromCatalog(catalog: CatalogItem[]) {
-  const item = catalog.find((candidate) => candidate.article === SHOWROOM_VEHICLE_PURCHASE_ARTICLE);
+function vehicleOptionsFromCatalog(catalog: CatalogItem[], article: string | undefined) {
+  const item = catalog.find((candidate) => candidate.article === article);
   const match = String(item?.search_terms || "").match(VEHICLE_OPTIONS_PATTERN);
   if (!match?.[1]) return [];
 
@@ -288,8 +292,8 @@ function TelegramFinanceApp() {
     [direction],
   );
 
-  const isVehiclePurchaseOperation =
-    ledger === "showroom" && operation?.article === SHOWROOM_VEHICLE_PURCHASE_ARTICLE;
+  const isVehicleOperation =
+    ledger === "showroom" && Boolean(operation && SHOWROOM_VEHICLE_ARTICLES.has(operation.article));
 
   const transferTargetAccount = useMemo(() => {
     if (!account || !operation) return null;
@@ -309,8 +313,8 @@ function TelegramFinanceApp() {
     selectedAccount!.currency !== transferTargetAccountInfo!.currency;
 
   const vehicleOptions = useMemo(
-    () => vehicleOptionsFromCatalog(catalog),
-    [catalog],
+    () => vehicleOptionsFromCatalog(catalog, operation?.article),
+    [catalog, operation?.article],
   );
 
   const api = useCallback(
@@ -613,7 +617,7 @@ function TelegramFinanceApp() {
     Boolean(account) &&
     Boolean(direction) &&
     Boolean(operation) &&
-    (!isVehiclePurchaseOperation || Boolean(note.trim())) &&
+    (!isVehicleOperation || Boolean(note.trim())) &&
     Number.isFinite(Number(amount)) &&
     Number(amount) > 0 &&
     (!needsReceivedAmount || (Number.isFinite(Number(receivedAmount)) && Number(receivedAmount) > 0));
@@ -628,11 +632,11 @@ function TelegramFinanceApp() {
 
   const submit = async () => {
     if (!account || !direction || !operation || !selectedAccount || submitting) return;
-    if (isVehiclePurchaseOperation && !note.trim()) {
+    if (isVehicleOperation && !note.trim()) {
       setSubmitError("Выбери машину.");
       return;
     }
-    const description = isVehiclePurchaseOperation && purchaseDetails.trim()
+    const description = isVehicleOperation && purchaseDetails.trim()
       ? note.trim() + ": " + purchaseDetails.trim() : note.trim();
     if (description.length > 500) {
       setSubmitError("Примечание слишком длинное.");
@@ -669,7 +673,7 @@ function TelegramFinanceApp() {
         amount: Number(amount),
         received_amount: needsReceivedAmount ? Number(receivedAmount) : null,
         note: description,
-        vehicle: isVehiclePurchaseOperation ? note.trim() : "",
+        vehicle: isVehicleOperation ? note.trim() : "",
       });
 
       if (data.status === "failed") {
@@ -1140,7 +1144,7 @@ function TelegramFinanceApp() {
       </section>
 
       <section className="tg-form-section">
-        {isVehiclePurchaseOperation ? (
+        {isVehicleOperation ? (
           <>
             <label className="tg-field-label" htmlFor="tg-vehicle-note">Машина</label>
             <select
@@ -1167,7 +1171,7 @@ function TelegramFinanceApp() {
               value={purchaseDetails}
               maxLength={400}
               rows={2}
-              placeholder="Например, запчасти для выбранного авто"
+              placeholder="Дополнительные сведения об операции (необязательно)"
               onChange={(event) => {
                 setPurchaseDetails(event.target.value);
                 requestIdRef.current = "";
@@ -1244,11 +1248,11 @@ function TelegramFinanceApp() {
               ) : null}
               {note.trim() ? (
                 <div>
-                  <dt>{isVehiclePurchaseOperation ? "Машина" : "Примечание"}</dt>
+                  <dt>{isVehicleOperation ? "Машина" : "Примечание"}</dt>
                   <dd>{note.trim()}</dd>
                 </div>
               ) : null}
-              {isVehiclePurchaseOperation && purchaseDetails.trim() ? (
+              {isVehicleOperation && purchaseDetails.trim() ? (
                 <div><dt>Примечание</dt><dd>{purchaseDetails.trim()}</dd></div>
               ) : null}
             </dl>
