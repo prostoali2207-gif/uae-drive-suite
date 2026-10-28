@@ -52,6 +52,11 @@ function driverCashExpenseAllowed(item: { article: string; direction: string; ro
     !DRIVER_NON_EXPENSE_ARTICLES.has(item.article);
 }
 const SHOWROOM_PURCHASE_ARTICLE = "покупка авто для перепродажи";
+const SHOWROOM_VEHICLE_ARTICLES = new Set([
+  SHOWROOM_PURCHASE_ARTICLE,
+  "Приход от продажи инвесторских авто",
+  "Приход от продажи собственных авто",
+]);
 function showroomVehicleOptions(searchTerms: string) {
   const match = searchTerms.match(/\[\[vehicles:([^\]]*)\]\]/i);
   return match ? match[1].split("|").map(v => v.trim()).filter(Boolean) : [];
@@ -766,22 +771,24 @@ async function recordFinance(
   }
 
   if (!catalogMatch) throw new Error("Операция изменилась в справочнике. Выбери её заново.");
-  if (vehicle.length > 160 || (vehicle && (ledger !== "showroom" || article !== SHOWROOM_PURCHASE_ARTICLE))) {
+  const vehicleOperation = ledger === "showroom" && SHOWROOM_VEHICLE_ARTICLES.has(article);
+  if (vehicle.length > 160 || (vehicle && !vehicleOperation)) {
     throw new Error("Некорректная подкатегория автомобиля.");
   }
-  if (ledger === "showroom" && article === SHOWROOM_PURCHASE_ARTICLE &&
-      (staffIsDriver(staff) || vehicle)) {
+  if (vehicleOperation &&
+      (staffIsDriver(staff) || vehicle || article !== SHOWROOM_PURCHASE_ARTICLE)) {
     const options = showroomVehicleOptions(String(catalogMatch.search_terms || ""));
     if (!vehicle || !options.includes(vehicle) ||
         (note !== vehicle && !note.startsWith(vehicle + ": "))) {
       throw new Error("Выбери машину из списка для этой операции.");
     }
-    // The bound Apps Script is deployed separately. Never record a driver's purchase
-    // until its journal can persist the car in the T (subcategory) column.
-    if (staffIsDriver(staff)) {
+    // Bridge and Telegram are deployed separately. Protect journal T from partial releases.
+    if (staffIsDriver(staff) || article !== SHOWROOM_PURCHASE_ARTICLE) {
       const bridge = await callBridge(supabase, "get_context", { ledger: "showroom" });
-      if (bridge.showroom_vehicle_subcategory_supported !== true) {
-        throw new Error("Учёт расходов по автомобилям обновляется. Попробуй позже.");
+      if (article === SHOWROOM_PURCHASE_ARTICLE
+        ? bridge.showroom_vehicle_subcategory_supported !== true
+        : bridge.showroom_vehicle_sale_subcategory_supported !== true) {
+        throw new Error("Учёт автомобилей в Telegram обновляется. Попробуй позже.");
       }
     }
   }

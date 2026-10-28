@@ -26,6 +26,9 @@ assert.match(source,/vehicle: payload\.vehicle \|\| ""/,'Finance Bridge sends se
 assert.match(source,/finance_audit_id: auditId, article: payload\.article, vehicle:/,'Driver wallet tracks car separately');
 assert.match(source,/!options\.includes\(vehicle\)/,'Server validates car against catalog');
 const ui=fs.readFileSync(path.join(root,'src/telegram-finance/TelegramFinanceApp.tsx'),'utf8');
-assert.match(ui,/vehicle: isVehiclePurchaseOperation \? note\.trim\(\) : ""/,'Client sends separate car');
+assert.match(ui,/vehicle: isVehicleOperation \? note\.trim\(\) : ""/,'Client sends separate car for purchase and sale');
+assert.match(ui,/Приход от продажи инвесторских авто/,'Investor sale has car selector');
+assert.match(ui,/Приход от продажи собственных авто/,'Own sale has car selector');
+assert.match(source,/showroom_vehicle_sale_subcategory_supported/,'Bridge capability protects sales until deployment');
 assert.match(ui,/id="tg-purchase-details"/,'Purchase note editable');
 console.log('PASS driver catalog: all cash expenses, no transfers/income, valid car options, wallet + Bridge integration.');
