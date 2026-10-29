@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import TelegramFinanceApp from "./TelegramFinanceApp";
 
 const groups = [
+  { article: "комиссия от продажи авто (наши средства 100%)", direction: "Приход", cars: ["b23440", "и46347", "b93453", "santafe", "b23370", "b13188", "b96275", "b62650", "b73364", "b71265", "yaris 2021 abdullah", "xpander abdullah", "ertiga abdullah", "Шевролет абдуллы"] },
   { article: "покупка авто для перепродажи", direction: "Расход", cars: ["yaris 2021 abdullah", "xpander abdullah", "ertiga abdullah", "camry 2017", "Шевролет абдуллы", "Lexus"] },
   { article: "Приход от продажи инвесторских авто", direction: "Приход", cars: ["yaris 2021 abdullah", "xpander abdullah", "ertiga abdullah", "Шевролет абдуллы"] },
   { article: "Приход от продажи собственных авто", direction: "Приход", cars: ["camry 2017", "Lexus"] },

@@ -56,6 +56,7 @@ const SHOWROOM_VEHICLE_ARTICLES = new Set([
   SHOWROOM_PURCHASE_ARTICLE,
   "Приход от продажи инвесторских авто",
   "Приход от продажи собственных авто",
+  "комиссия от продажи авто (наши средства 100%)",
 ]);
 function showroomVehicleOptions(searchTerms: string) {
   const match = searchTerms.match(/\[\[vehicles:([^\]]*)\]\]/i);
@@ -787,7 +788,9 @@ async function recordFinance(
       const bridge = await callBridge(supabase, "get_context", { ledger: "showroom" });
       if (article === SHOWROOM_PURCHASE_ARTICLE
         ? bridge.showroom_vehicle_subcategory_supported !== true
-        : bridge.showroom_vehicle_sale_subcategory_supported !== true) {
+        : article === "комиссия от продажи авто (наши средства 100%)"
+          ? bridge.showroom_vehicle_commission_subcategory_supported !== true
+          : bridge.showroom_vehicle_sale_subcategory_supported !== true) {
         throw new Error("Учёт автомобилей в Telegram обновляется. Попробуй позже.");
       }
     }

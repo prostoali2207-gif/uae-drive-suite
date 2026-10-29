@@ -6,9 +6,9 @@ import { stripTypeScriptTypes } from 'node:module';
 const source=fs.readFileSync(new URL('../supabase/functions/fleetdesk-telegram-finance/index.ts',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'');
 const context=vm.createContext({TextEncoder,console,Deno:{serve(){}},fetch(){throw Error('Network forbidden');}});
 vm.runInContext(stripTypeScriptTypes(source,{mode:'strip'})+'\nglobalThis.record=recordFinance;',context);
-const groups=[['покупка авто для перепродажи','expense',['yaris 2021 abdullah','xpander abdullah','ertiga abdullah','camry 2017','Шевролет абдуллы','Lexus']],['Приход от продажи инвесторских авто','income',['yaris 2021 abdullah','xpander abdullah','ertiga abdullah','Шевролет абдуллы']],['Приход от продажи собственных авто','income',['camry 2017','Lexus']]];
+const groups=[["комиссия от продажи авто (наши средства 100%)","income",["b23440", "и46347", "b93453", "santafe", "b23370", "b13188", "b96275", "b62650", "b73364", "b71265", "yaris 2021 abdullah", "xpander abdullah", "ertiga abdullah", "Шевролет абдуллы"]],['покупка авто для перепродажи','expense',['yaris 2021 abdullah','xpander abdullah','ertiga abdullah','camry 2017','Шевролет абдуллы','Lexus']],['Приход от продажи инвесторских авто','income',['yaris 2021 abdullah','xpander abdullah','ertiga abdullah','Шевролет абдуллы']],['Приход от продажи собственных авто','income',['camry 2017','Lexus']]];
 let capable=true,calls=0,captured;
-context.bridge=async(_db,action,payload)=>{assert.equal(action,'get_context');assert.equal(payload.ledger,'showroom');calls++;return{showroom_vehicle_sale_subcategory_supported:capable};};
+context.bridge=async(_db,action,payload)=>{assert.equal(action,'get_context');assert.equal(payload.ledger,'showroom');calls++;return{showroom_vehicle_sale_subcategory_supported:capable,showroom_vehicle_commission_subcategory_supported:capable};};
 context.existing=async()=>null;
 vm.runInContext('callBridge=bridge;findExistingAudit=existing;',context);
 const stop=new Error('LOCAL_INSERT_CAPTURED');
@@ -29,5 +29,5 @@ for(const [article,direction,cars] of groups){
   await assert.rejects(()=>run({vehicle:cars[0],note:'different car'}),/Выбери машину/);checks++;
  }
 }
-assert.equal(calls,8);
-console.log(JSON.stringify({pass:true,checks,networkCalls:0,productionWrites:0,scope:'12 vehicle/category combinations, wrong car, missing car, note mismatch, rollout capability'}));
+assert.equal(calls,23);
+console.log(JSON.stringify({pass:true,checks,networkCalls:0,productionWrites:0,scope:'26 vehicle/category combinations, wrong car, missing car, note mismatch, rollout capability'}));
