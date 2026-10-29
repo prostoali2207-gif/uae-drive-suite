@@ -172,12 +172,14 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     }
     if (lines.length > 2) lines.splice(1, lines.length - 1, lines.slice(1).join(" "));
     context.textAlign = "center";
+    context.direction = "rtl";
     lines.forEach((line, index) => {
       const baseline = lines.length === 1 ? 583.5 : 587.2 - index * 7.5;
       context.fillText(line, ((fineGridX[1] + fineGridX[2]) / 2) * scale,
         (pageHeight - baseline) * scale, maxWidth);
     });
     context.textAlign = "left";
+    context.direction = "ltr";
   }
 
   write(values.contractNumber, 334, 650, { size: 8, bold: true, maxWidth: 126 });
