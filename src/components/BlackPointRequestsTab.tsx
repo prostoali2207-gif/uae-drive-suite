@@ -1,4 +1,4 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Download, FileCheck2, Loader2, Mail, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -174,6 +174,7 @@ const BlackPointRequestsTab = () => {
   const [prepareFine, setPrepareFine] = useState<FineRow | null>(null);
   const [fineScreenshot, setFineScreenshot] = useState<File | null>(null);
   const [arabicDescription, setArabicDescription] = useState("");
+  const arabicLoadSequence = useRef(0);
   const [policeAgreement, setPoliceAgreement] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [reviewSubmission, setReviewSubmission] = useState<SubmissionRow | null>(null);
@@ -268,11 +269,12 @@ const BlackPointRequestsTab = () => {
     setFineScreenshot(null);
     setPoliceAgreement(null);
     setPrepareFine(fine);
+    const loadSequence = ++arabicLoadSequence.current;
     const fallback = getConfirmedArabicDescription(fine.fine_type);
     setArabicDescription(fallback);
     if (fine.fine_type) {
       void loadSavedArabicDescription(fine.fine_type)
-        .then((saved) => { if (saved) setArabicDescription((current) => current === fallback ? saved : current); })
+        .then((saved) => { if (saved && loadSequence === arabicLoadSequence.current) setArabicDescription((current) => current === fallback ? saved : current); })
         .catch((error) => toast.error(error instanceof Error ? error.message : "Could not load saved Arabic description"));
     }
   };
@@ -551,7 +553,7 @@ const BlackPointRequestsTab = () => {
         </div>
       )}
 
-      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) { setPrepareFine(null); setFineScreenshot(null); setPoliceAgreement(null); setArabicDescription(""); } }}>
+      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) { arabicLoadSequence.current += 1; setPrepareFine(null); setFineScreenshot(null); setPoliceAgreement(null); setArabicDescription(""); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{rebuildingCurrent ? "Rebuild Black Point package" : "Prepare Black Point package"}</DialogTitle>
