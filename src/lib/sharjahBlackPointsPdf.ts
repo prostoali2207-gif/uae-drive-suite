@@ -1,5 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import { supabase } from "@/integrations/supabase/client";
+import { isArabicFineDescription } from "@/lib/fineArabicDescriptions";
 
 export type SharjahBlackPointsValues = {
   contractNumber: string;
@@ -35,6 +36,9 @@ const splitDateTime = (value: string) => {
 };
 
 export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValues, stampPng?: Uint8Array): Promise<Blob> {
+  if (!isArabicFineDescription(values.fineDescription)) {
+    throw new Error("The Sharjah Police form requires an official Arabic violation description.");
+  }
   const response = await fetch(TEMPLATE_URL);
   if (!response.ok) throw new Error("Blank form template could not be loaded");
 
