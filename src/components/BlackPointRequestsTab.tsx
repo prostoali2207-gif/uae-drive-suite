@@ -9,11 +9,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { buildBlackPointSubmissionPackage } from "@/lib/blackPointSubmissionPackage";
 import { createClientDocumentSignedUrl } from "@/lib/clientDocuments";
 import { generateContractPdf } from "@/lib/contractPdf";
 import { createSharjahBlackPointsPdf } from "@/lib/sharjahBlackPointsPdf";
+import { getConfirmedArabicDescription, isArabicFineDescription, loadSavedArabicDescription, saveArabicDescription } from "@/lib/fineArabicDescriptions";
 
 const SUBMISSIONS_BUCKET = "external-form-submissions";
 const COMPANY_BUCKET = "company-logos";
@@ -171,6 +173,7 @@ const BlackPointRequestsTab = () => {
   const [search, setSearch] = useState("");
   const [prepareFine, setPrepareFine] = useState<FineRow | null>(null);
   const [fineScreenshot, setFineScreenshot] = useState<File | null>(null);
+  const [arabicDescription, setArabicDescription] = useState("");
   const [policeAgreement, setPoliceAgreement] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [reviewSubmission, setReviewSubmission] = useState<SubmissionRow | null>(null);
@@ -265,6 +268,13 @@ const BlackPointRequestsTab = () => {
     setFineScreenshot(null);
     setPoliceAgreement(null);
     setPrepareFine(fine);
+    const fallback = getConfirmedArabicDescription(fine.fine_type);
+    setArabicDescription(fallback);
+    if (fine.fine_type) {
+      void loadSavedArabicDescription(fine.fine_type)
+        .then((saved) => { if (saved) setArabicDescription((current) => current === fallback ? saved : current); })
+        .catch((error) => toast.error(error instanceof Error ? error.message : "Could not load saved Arabic description"));
+    }
   };
 
   const preparePackage = async () => {
@@ -294,6 +304,10 @@ const BlackPointRequestsTab = () => {
     const contract = fine.contracts;
     if (!client || !car || !contract || !fine.contract_id || !fine.fine_number || !car.mulkiya_pdf_path) return;
 
+    if (!isArabicFineDescription(arabicDescription)) {
+      toast.error("Enter the official violation description in Arabic before preparing.");
+      return;
+    }
     const rebuilding = submissionByFine.has(fine.id);
     setPreparing(true);
     try {
@@ -307,6 +321,10 @@ const BlackPointRequestsTab = () => {
       ]);
       if (profileError) throw new Error(profileError.message);
       if (templateError) throw new Error(templateError.message);
+
+      if (fine.fine_type && arabicDescription.trim() !== getConfirmedArabicDescription(fine.fine_type)) {
+        await saveArabicDescription(fine.fine_type, arabicDescription);
+      }
 
       const template = (templates ?? []).find((item) =>
         item.emirate?.toLocaleLowerCase() === "sharjah" && item.authority?.toLocaleLowerCase().includes("sharjah"),
@@ -354,7 +372,7 @@ const BlackPointRequestsTab = () => {
         vehicleType: `${car.make} ${car.model}`.trim(),
         fineNumber: fine.fine_number,
         fineDate: new Date(fine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
-        fineDescription: fine.fine_type ?? "",
+        fineDescription: arabicDescription.trim(),
         rentalStart: toDubaiDateTime(contract.start_date, contract.start_time, "00:00"),
         rentalEnd: toDubaiDateTime(contract.end_date, contract.end_time, "23:59"),
         phone: profile.phone_number?.trim() ?? "",
@@ -533,7 +551,7 @@ const BlackPointRequestsTab = () => {
         </div>
       )}
 
-      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) { setPrepareFine(null); setFineScreenshot(null); setPoliceAgreement(null); } }}>
+      <Dialog open={prepareFine !== null} onOpenChange={(open) => { if (!open && !preparing) { setPrepareFine(null); setFineScreenshot(null); setPoliceAgreement(null); setArabicDescription(""); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{rebuildingCurrent ? "Rebuild Black Point package" : "Prepare Black Point package"}</DialogTitle>
@@ -553,11 +571,16 @@ const BlackPointRequestsTab = () => {
             <p className="text-xs text-muted-foreground">Image or PDF, up to 10 MB. The screenshot is used only for this package and is not stored separately.</p>
           </div>
           <div className="grid gap-1.5">
+            <Label htmlFor="fine-arabic-description">Violation description for police (Arabic)</Label>
+            <Textarea id="fine-arabic-description" dir="rtl" lang="ar" value={arabicDescription} onChange={(event) => setArabicDescription(event.target.value)} disabled={preparing} rows={3} placeholder="وصف المخالفة" className="text-right" />
+            <p className="text-xs text-muted-foreground">Verified descriptions are filled automatically. For a new violation, copy the exact Arabic wording from the official fine. Your correction will be saved for this English violation type.</p>
+          </div>
+          <div className="grid gap-1.5">
             <Label htmlFor="ajman-police-agreement">Ajman Police Agreement (optional)</Label>
             <Input id="ajman-police-agreement" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" onChange={onPoliceAgreementChange} disabled={preparing} />
             <p className="text-xs text-muted-foreground">Upload the agreement issued by Ajman Police (PDF or image, up to 10 MB). Every page will be included without adding our company stamp. The original is not stored separately.</p>
           </div>
-          <Button className="min-h-10 gap-2" disabled={!fineScreenshot || preparing} onClick={() => void preparePackage()}>
+          <Button className="min-h-10 gap-2" disabled={!fineScreenshot || preparing || !isArabicFineDescription(arabicDescription)} onClick={() => void preparePackage()}>
             {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
             {preparing ? (rebuildingCurrent ? "Rebuilding package..." : "Preparing package...") : (rebuildingCurrent ? "Rebuild package" : "Prepare package")}
           </Button>
