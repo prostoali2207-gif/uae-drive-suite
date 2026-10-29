@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Download, FilePlus2, FileText, Loader2, Pencil, RefreshCw, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -129,6 +129,7 @@ const ExternalForms = () => {
   const [fineOptions, setFineOptions] = useState<FineOption[]>([]);
   const [selectedFineId, setSelectedFineId] = useState("");
   const [arabicDescription, setArabicDescription] = useState("");
+  const arabicLoadSequence = useRef(0);
   const [loadingFines, setLoadingFines] = useState(false);
 
   const loadTemplates = useCallback(async () => {
@@ -337,6 +338,8 @@ const ExternalForms = () => {
   const openFillDialog = async (template: ExternalFormTemplate) => {
     setFillTemplate(template);
     setSelectedFineId("");
+    setArabicDescription("");
+    arabicLoadSequence.current += 1;
     setLoadingFines(true);
     const { data: fines, error: finesError } = await supabase
       .from("fines")
@@ -379,11 +382,12 @@ const ExternalForms = () => {
   const selectFineForArabic = (fineId: string) => {
     setSelectedFineId(fineId);
     const fine = fineOptions.find((item) => item.id === fineId);
+    const loadSequence = ++arabicLoadSequence.current;
     const fallback = getConfirmedArabicDescription(fine?.fine_type);
     setArabicDescription(fallback);
     if (fine?.fine_type) {
       void loadSavedArabicDescription(fine.fine_type)
-        .then((saved) => { if (saved) setArabicDescription((current) => current === fallback ? saved : current); })
+        .then((saved) => { if (saved && loadSequence === arabicLoadSequence.current) setArabicDescription((current) => current === fallback ? saved : current); })
         .catch((error) => toast.error(error instanceof Error ? error.message : "Could not load saved Arabic description"));
     }
   };
@@ -585,7 +589,7 @@ const ExternalForms = () => {
                 </DialogContent>
               </Dialog>
 
-              <Dialog open={fillTemplate !== null} onOpenChange={(open) => { if (!open && !saving) { setFillTemplate(null); setArabicDescription(""); } }}>
+              <Dialog open={fillTemplate !== null} onOpenChange={(open) => { if (!open && !saving) { setFillTemplate(null); setArabicDescription(""); arabicLoadSequence.current += 1; } }}>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Fill black points form</DialogTitle>
