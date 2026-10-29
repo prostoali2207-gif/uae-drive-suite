@@ -13,7 +13,11 @@ let tests = 0;
 function check(what, fn) { fn(); tests++; process.stdout.write('✓ ' + what + '\n'); }
 function grid(formulas) {
   const state = { repairs: 0, clearedNotes: 0, saved: null };
-  state.sheet = { getRange: () => ({
+  state.saved = Array(7).fill('');
+  state.sheet = { getRange: (r,c) => ({
+    getValues: () => [Array(20).fill(1)],
+    setFormula: (f) => { if(c===21) state.repairs++; state.saved[c-21]=f; },
+    clearContent: () => {},
     getFormulas: () => [formulas],
     setFormulas: (next) => { state.repairs++; state.saved = next[0]; },
     clearNote: () => { state.clearedNotes++; },
@@ -156,5 +160,28 @@ check('attempted duplicate cannot write any A:T financial cells', () => {
   assert.deepEqual(draft[5], 173);
 });
 
-console.log(tests + ' showroom grid regression tests passed.');
 
+
+
+check('coalesced date and amount edits still check an untouched operation formula',()=>{
+ const formulas=cols.map(api.sgiMirrorFormula_);formulas[3]='=IF(C999="";"";C999)';
+ const s=grid(formulas);
+ const edited={getColumn:()=>21,getLastColumn:()=>26,getEditedColumns:()=>[21,26]};
+ assert.throws(()=>api.sgiCheckMirrors_(s.sheet,92,edited,false),/повреждена связь/);
+});
+check('automatic transfer accepts allowed coalesced date/amount edit',()=>{
+ const stored=Array(20).fill('');stored[0]=postingDate;stored[1]='AJMAN';stored[2]='приход из кассы';stored[3]=1;stored[16]='pair';stored[17]='auto';
+ const draft=[postingDate,'Приход','AJMAN','приход из кассы','',2,''];
+ const mirrored=cols.map(posting.sgiMirrorFormula_);mirrored[0]='';mirrored[5]='';
+ let note='sgi:'+posting.sgiSignature_(stored);
+ const sh={getRange:(r,c,h,w)=>{
+  if(c===1)return{getValues:()=>[stored]};
+  if(c===21&&w===7)return{getValues:()=>[draft],getFormulas:()=>[mirrored]};
+  return{getNote:()=>note,setNote:v=>{note=v;}};
+ }};
+ // An empty model stops before posting. This tests the auto-row authorization gate itself.
+ const edited={getColumn:()=>21,getLastColumn:()=>26,getEditedColumns:()=>[21,26]};
+ assert.doesNotThrow(()=>posting.sgiRow_(sh,92,edited,[]));
+});
+
+console.log(tests + ' showroom grid regression tests passed.');

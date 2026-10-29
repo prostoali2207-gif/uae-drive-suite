@@ -23,19 +23,93 @@ function showroomGridOnEdit(e) {
     sgiFilter_(sh); return;
   }
   if (e.range.getLastColumn() < 21 || e.range.getColumn() > 27 || e.range.getLastRow() < 5) return;
-  const first = Math.max(5, e.range.getRow()), last = Math.min(1004, e.range.getLastRow());
-  if (last < first) return;
+  sgiQueueEdit_(e);
+  try { sgiDrainGridQueue_(e.source); }
+  catch (err) {
+    e.source.toast(String(err.message || err), 'Автосохранение: требуется проверка', 10);
+    throw err; // Execution must report failure, not a misleading Completed status.
+  }
+}
+
+/** Durable work is recorded BEFORE attempting the shared lock. No financial data is stored here. */
+function sgiQueueEdit_(e) {
+  const first = Math.max(5,e.range.getRow()), last = Math.min(1004,e.range.getLastRow());
+  const columns = sgiEditedColumns_(e.range);
+  const props = PropertiesService.getScriptProperties();
+  for (let row = first; row <= last; row++) {
+    props.setProperty('sgi.queue.v1.' + row + '.' + Utilities.getUuid(), JSON.stringify({
+      row:row, columns:columns, created:Date.now(), attempts:0
+    }));
+  }
+}
+
+function sgiEditedColumns_(range) {
+  if (typeof range.getEditedColumns === 'function') return range.getEditedColumns();
+  const result = [];
+  for (let c=Math.max(21,range.getColumn());c<=Math.min(27,range.getLastColumn());c++) result.push(c);
+  return result;
+}
+
+/** Add only a recovery timer; do not duplicate another account's existing On edit trigger. */
+function showroomInstallAutosaveRecovery() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss || ss.getId() !== SGI_ID) throw new Error('Неверная таблица для установки восстановления.');
+  const timers = ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='showroomResumeGridAutosave');
+  if (timers.length > 1) throw new Error('Обнаружены повторные триггеры восстановления.');
+  if (!timers.length) ScriptApp.newTrigger('showroomResumeGridAutosave').timeBased().everyMinutes(1).create();
+  console.log('Autosave recovery installed; existing rows are not scanned or posted.');
+}
+
+function showroomResumeGridAutosave() {
+  const all = PropertiesService.getScriptProperties().getProperties();
+  if (!Object.keys(all).some(k=>k.indexOf('sgi.queue.v1.')===0)) return;
+  sgiDrainGridQueue_(SpreadsheetApp.openById(SGI_ID));
+}
+
+/** Coalesce queued edits by row; acknowledge only the captured event IDs after processing. */
+function sgiDrainGridQueue_(ss) {
+  if (!ss || ss.getId() !== SGI_ID) throw new Error('Неверная таблица очереди.');
   const lock = LockService.getScriptLock();
-  // Installable events may queue while another edit is recalculating; keep the last input event.
-  if (!lock.tryLock(120000)) { e.source.toast('Строка ещё не сохранена. Повторите правку после завершения предыдущей.', 'Ввод операций', 8); return; }
+  if (!lock.tryLock(1000)) return {pending:true}; // Timer retries; the edit is not discarded.
+  const started = Date.now(), failures = [];
+  let processed = 0;
   try {
-    const model = sgiModel_(e.source);
-    for (let r = first; r <= last; r++) sgiRow_(sh, r, e.range, model);
-    SpreadsheetApp.flush();
-    sgiFilter_(sh);
-  } catch (err) {
-    e.source.toast(String(err.message || err), 'Строка не сохранена', 10);
-    console.error(err);
+    const props = PropertiesService.getScriptProperties(), all = props.getProperties(), groups = {};
+    Object.keys(all).filter(k=>k.indexOf('sgi.queue.v1.')===0).forEach(key=>{
+      const item = JSON.parse(all[key]);
+      if (!Number.isInteger(item.row) || item.row<5 || item.row>1004 || !Array.isArray(item.columns) ||
+          !item.columns.length || item.columns.some(c=>!Number.isInteger(c)||c<21||c>27)) throw new Error('Повреждена очередь автосохранения.');
+      if (!groups[item.row]) groups[item.row] = {row:item.row,events:[],columns:[]};
+      const group=groups[item.row];group.events.push({key:key,item:item});
+      item.columns.forEach(c=>{if(!group.columns.includes(c))group.columns.push(c);});
+    });
+    const jobs = Object.keys(groups).map(k=>groups[k]).filter(g=>g.events.some(e=>!e.item.blocked));
+    jobs.sort((a,b)=>Math.min(...a.events.map(e=>e.item.created))-Math.min(...b.events.map(e=>e.item.created)));
+    if (!jobs.length) return {processed:0};
+    const sh=ss.getSheetByName('Ввод операций'), model=sgiModel_(ss);
+    for (const job of jobs) {
+      if (Date.now()-started>90000) break; // Leave the remaining durable work for the next tick.
+      const edited={getColumn:()=>Math.min(...job.columns),getLastColumn:()=>Math.max(...job.columns),
+        getEditedColumns:()=>job.columns.slice()};
+      try {
+        sgiRow_(sh,job.row,edited,model);
+        SpreadsheetApp.flush();
+        job.events.forEach(e=>props.deleteProperty(e.key));
+        processed++;
+      } catch (err) {
+        const message=String(err.message||err);
+        job.events.forEach(e=>{
+          const item=e.item;item.attempts=Number(item.attempts||0)+1;item.error=message;
+          item.blocked=item.attempts>=3 || /Похожая операция|повреждена связь|обновлена другим|Дата вне|Примечание должно|автоматическая пара/.test(message);
+          props.setProperty(e.key,JSON.stringify(item));
+        });
+        failures.push('Строка '+job.row+': '+message);
+        console.error('sgi queue row '+job.row+': '+message);
+      }
+    }
+    if (processed) sgiFilter_(sh);
+    if (failures.length) throw new Error(failures.join('\n'));
+    return {processed:processed};
   } finally { lock.releaseLock(); }
 }
 
@@ -88,7 +162,7 @@ function sgiCheckMirrors_(sh, r, edited, draft, newRow, emptyMirrors) {
   const clean = function(value) { return String(value || '').replace(/\s/g,'').replace(/,/g,';'); };
   for (let i = 0; i < 7; i++) {
     const col = 21 + i;
-    if (col >= from && col <= to) continue; // The user explicitly changed this cell.
+    if (sgiEditedColumns_(edited).includes(col)) continue; // The user explicitly changed this cell.
     const legacy = '=IF(' + SGI_COLS[i] + r + '="";"";' + SGI_COLS[i] + r + ')';
     const correct = sgiMirrorFormula_(SGI_COLS[i]);
     if ((formulas[i] && clean(formulas[i]) !== clean(legacy) && clean(formulas[i]) !== clean(correct)) ||
@@ -155,15 +229,16 @@ function sgiRow_(sh, r, edited, model) {
   // A real retry replaces the formula with a value and still reaches pair recovery below.
   const inputFormulas = area.getFormulas()[0];
   if (!oldNote.startsWith('sgi:') && occupied &&
-      inputFormulas.slice(Math.max(21,from)-21, Math.min(27,to)-20).every(Boolean)) return;
-  const controls = from <= 24 && to >= 22;
+      sgiEditedColumns_(edited).every(c=>Boolean(inputFormulas[c-21]))) return;
+  const editedColumns = sgiEditedColumns_(edited);
+  const controls = editedColumns.some(c=>c>=22&&c<=24);
   let v = visible;
-  if (stored[17] === 'auto' && !(from === to && (from === 21 || from === 26))) {
+  if (stored[17] === 'auto' && !editedColumns.every(c=>c===21||c===26)) {
     sgiMirror_(sh,r);
     throw new Error('Строка '+r+' — автоматическая пара. Меняйте здесь только дату или сумму.');
   }
   const beforeChoice = v.slice();
-  v = sgiChoice_(v,model,controls || (from <= 25 && to >= 25));
+  v = sgiChoice_(v,model,controls || editedColumns.includes(25));
   // Mark first; never rewrite all seven input cells while the manager is typing.
   cell.setNote('sgi:'+base);
   for (let i=1; i<=4; i++) {
@@ -172,7 +247,7 @@ function sgiRow_(sh, r, edited, model) {
   if (v.every(x => x === '' || x === null)) { sgiMirror_(sh,r); return; }
   const op = model.find(op => op.name === v[3] && op.type === v[1] && op.accounts.includes(v[2]));
   if (!op || !(v[0] instanceof Date) || !Number.isFinite(Number(v[5])) || Number(v[5]) <= 0) return;
-  const changingObject = controls || (from <= 25 && to >= 25) || !occupied;
+  const changingObject = controls || editedColumns.includes(25) || !occupied;
   if (changingObject && ((op.sub.length && !op.sub.includes(v[4])) || (!op.sub.length && v[4] !== ''))) return;
   const dateRule = sh.getRange('A5').getDataValidation();
   if (dateRule && dateRule.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.DATE_BETWEEN) {
