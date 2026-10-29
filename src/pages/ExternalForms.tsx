@@ -13,8 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { createSharjahBlackPointsPdf } from "@/lib/sharjahBlackPointsPdf";
+import { getConfirmedArabicDescription, isArabicFineDescription, loadSavedArabicDescription, saveArabicDescription } from "@/lib/fineArabicDescriptions";
 
 const BUCKET = "external-form-templates";
 const BUNDLED_PREFIX = "bundled:";
@@ -126,6 +128,7 @@ const ExternalForms = () => {
   const [fillTemplate, setFillTemplate] = useState<ExternalFormTemplate | null>(null);
   const [fineOptions, setFineOptions] = useState<FineOption[]>([]);
   const [selectedFineId, setSelectedFineId] = useState("");
+  const [arabicDescription, setArabicDescription] = useState("");
   const [loadingFines, setLoadingFines] = useState(false);
 
   const loadTemplates = useCallback(async () => {
@@ -373,6 +376,17 @@ const ExternalForms = () => {
   };
 
   const selectedFine = fineOptions.find((fine) => fine.id === selectedFineId) ?? null;
+  const selectFineForArabic = (fineId: string) => {
+    setSelectedFineId(fineId);
+    const fine = fineOptions.find((item) => item.id === fineId);
+    const fallback = getConfirmedArabicDescription(fine?.fine_type);
+    setArabicDescription(fallback);
+    if (fine?.fine_type) {
+      void loadSavedArabicDescription(fine.fine_type)
+        .then((saved) => { if (saved) setArabicDescription((current) => current === fallback ? saved : current); })
+        .catch((error) => toast.error(error instanceof Error ? error.message : "Could not load saved Arabic description"));
+    }
+  };
   const missingFillData = selectedFine ? [
     !selectedFine.contract_id || !selectedFine.contracts ? "linked contract" : null,
     !selectedFine.clients ? "client" : null,
@@ -390,8 +404,15 @@ const ExternalForms = () => {
       toast.error("Complete all required information first");
       return;
     }
+    if (!isArabicFineDescription(arabicDescription)) {
+      toast.error("Enter the official violation description in Arabic.");
+      return;
+    }
     setSaving(true);
     try {
+      if (selectedFine.fine_type && arabicDescription.trim() !== getConfirmedArabicDescription(selectedFine.fine_type)) {
+        await saveArabicDescription(selectedFine.fine_type, arabicDescription);
+      }
       const contract = selectedFine.contracts;
       const start = toDubaiDateTime(contract.start_date, contract.start_time, "00:00");
       const end = toDubaiDateTime(contract.end_date, contract.end_time, "23:59");
@@ -424,7 +445,7 @@ const ExternalForms = () => {
         vehicleType: `${selectedFine.cars.make} ${selectedFine.cars.model}`.trim(),
         fineNumber: selectedFine.fine_number ?? "",
         fineDate: new Date(selectedFine.fine_date).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" }),
-        fineDescription: selectedFine.fine_type ?? "",
+        fineDescription: arabicDescription.trim(),
         rentalStart: start,
         rentalEnd: end,
         phone: profile?.phone_number?.trim() ?? "",
@@ -564,7 +585,7 @@ const ExternalForms = () => {
                 </DialogContent>
               </Dialog>
 
-              <Dialog open={fillTemplate !== null} onOpenChange={(open) => { if (!open && !saving) setFillTemplate(null); }}>
+              <Dialog open={fillTemplate !== null} onOpenChange={(open) => { if (!open && !saving) { setFillTemplate(null); setArabicDescription(""); } }}>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Fill black points form</DialogTitle>
@@ -573,7 +594,7 @@ const ExternalForms = () => {
                   <form className="grid gap-4" onSubmit={handleFill}>
                     <div className="grid gap-1.5">
                       <Label>Fine</Label>
-                      <Select value={selectedFineId} onValueChange={setSelectedFineId} disabled={loadingFines}>
+                      <Select value={selectedFineId} onValueChange={selectFineForArabic} disabled={loadingFines}>
                         <SelectTrigger className="min-h-10"><SelectValue placeholder={loadingFines ? "Loading fines..." : "Select a fine with black points"} /></SelectTrigger>
                         <SelectContent>
                           {fineOptions.map((fine) => <SelectItem key={fine.id} value={fine.id}>{fine.fine_number || "No number"} · {fine.cars?.plate || "No car"} · {fine.black_points || 0} BP</SelectItem>)}
@@ -588,8 +609,13 @@ const ExternalForms = () => {
                         <p className="mt-1 font-mono text-xs text-muted-foreground" dir="ltr">{selectedFine.clients?.license_type === "uae" ? `Traffic file: ${selectedFine.clients.traffic_file_number || "Missing"}` : `UID: ${selectedFine.clients?.unified_number || "Missing"}`}</p>
                       </div>
                     )}
+                    {selectedFine && <div className="grid gap-1.5">
+                      <Label htmlFor="form-arabic-description">Violation description for police (Arabic)</Label>
+                      <Textarea id="form-arabic-description" dir="rtl" lang="ar" className="text-right" rows={3} value={arabicDescription} onChange={(event) => setArabicDescription(event.target.value)} placeholder="وصف المخالفة" disabled={saving} />
+                      <p className="text-xs text-muted-foreground">Verified descriptions are automatic. For new types, enter the official Arabic wording once; FleetDesk saves it for future forms.</p>
+                    </div>}
                     {selectedFine && missingFillData.length > 0 && <p className="text-sm text-destructive">Missing: {missingFillData.join(", ")}.</p>}
-                    <Button type="submit" disabled={saving || !selectedFine || missingFillData.length > 0} className="min-h-10 gap-2">
+                    <Button type="submit" disabled={saving || !selectedFine || missingFillData.length > 0 || !isArabicFineDescription(arabicDescription)} className="min-h-10 gap-2">
                       {saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? "Creating PDF..." : "Create filled PDF"}
                     </Button>
                   </form>
