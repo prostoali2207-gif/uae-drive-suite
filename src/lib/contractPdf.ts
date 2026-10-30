@@ -743,7 +743,9 @@ export async function generateContractPdf(
   }
 
   renderFooters();
-  const filename = `Contract_${contractNumber}_${(c?.full_name || "client").replace(/\s+/g, "_")}.pdf`;
+  const safeFilenamePart = (value: string | null | undefined, fallback: string, separator: string) =>
+    (value?.trim() || fallback).replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, separator);
+  const filename = `${contractNumber}_${safeFilenamePart(car?.plate, "NoPlate", "-")}_${safeFilenamePart(c?.full_name, "Client", "_")}.pdf`;
   if (options?.returnBlob) return doc.output("blob");
   doc.save(filename);
 }
