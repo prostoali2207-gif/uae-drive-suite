@@ -745,7 +745,7 @@ export async function generateContractPdf(
   renderFooters();
   const safeFilenamePart = (value: string | null | undefined, fallback: string, separator: string) =>
     (value?.trim() || fallback).replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, separator);
-  const filename = `${contractNumber}_${safeFilenamePart(car?.plate, "NoPlate", "-")}_${safeFilenamePart(c?.full_name, "Client", "_")}.pdf`;
+  const filename = `${safeFilenamePart(car?.plate, "NoPlate", "-")}_${safeFilenamePart(c?.full_name, "Client", "_")}_${contractNumber}.pdf`;
   if (options?.returnBlob) return doc.output("blob");
   doc.save(filename);
 }
