@@ -37,6 +37,7 @@ function sgcScanRows_(sh) {
 }
 function sgcHasDraft_(sh) {
   const area=sh.getRange(5,21,sgcScanRows_(sh),7),values=area.getValues(),formulas=area.getFormulas();
+  if(typeof sgvEnabled_==='function'&&sgvEnabled_(sh))return sgvHasDraft_(sh,values,formulas);
   return values.some((row,r)=>row.some((value,c)=>value!==''&&value!==null&&!formulas[r][c]));
 }
 /** AF is producer-owned; AG acknowledges the captured notification, AH the rendered hash.
@@ -59,13 +60,15 @@ function sgcRender_(sh) {
   const month=sgiMonth_(label);
   if(!month) throw new Error('Выберите месяц. Общий список больше не используется.');
   const previous=snapshot[0].slice(28,30),triggerToken=String(snapshot[0][31]);
-  const hasDraft=snapshot.slice(4).some((row,r)=>row.slice(20,27).some((value,c)=>value!==''&&value!==null&&!inputFormulas[r][c]));
+  const valueMode=typeof sgvEnabled_==='function'&&sgvEnabled_(sh);
+  const hasDraft=valueMode?sgvHasDraft_(sh,snapshot.slice(4).map(r=>r.slice(20,27)),inputFormulas):snapshot.slice(4).some((row,r)=>row.slice(20,27).some((value,c)=>value!==''&&value!==null&&!inputFormulas[r][c]));
   if(hasDraft) {
     sh.getRange('AG1').setValue(triggerToken); // Preserve draft; the next edit retries rendering.
     if(previous[0]&&(previous[0]!==label||previous[1]!==mode)) {
       sh.getRange('X3').setValue(previous[0]);sh.getRange('V3').setValue(previous[1]);
       sh.getParent().toast('Завершите или очистите черновик перед сменой месяца или типа.','Черновик сохранён',10);
     }
+    if(valueMode)sgvBanner_(sh);
     return {draft:true};
   }
   const key=month.year+'-'+String(month.month).padStart(2,'0');
@@ -73,6 +76,7 @@ function sgcRender_(sh) {
   const digest=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify([label,mode,plan.map(x=>[x.row,sgiSignature_(x.values)])])).map(b=>('0'+((b+256)%256).toString(16)).slice(-2)).join('');
   if(String(snapshot[0][33])===digest) {
     sh.getRange('AG1').setValue(triggerToken);
+    if(valueMode)sgvBanner_(sh);
     return {unchanged:true,count:plan.length};
   }
   const pending=Object.keys(PropertiesService.getScriptProperties().getProperties()).some(k=>k.indexOf('sgi.queue.v1.')===0&&!JSON.parse(PropertiesService.getScriptProperties().getProperty(k)).blocked);
@@ -100,7 +104,9 @@ function sgcRender_(sh) {
   if(!stage){stage=ss.insertSheet('_Ввод_месяц_буфер');stage.hideSheet();}
   if(stage.getMaxRows()<1004)stage.insertRowsAfter(stage.getMaxRows(),1004-stage.getMaxRows());
   const buffer=stage.getRange(5,1,span,7);
-  buffer.clearDataValidations();buffer.setFormulas(formulas);
+  buffer.clearDataValidations();
+  if(valueMode)buffer.setValues(sgvLiteralValues_(Array.from({length:span},(_,i)=>sourceIndexes.map(c=>plan[i]?plan[i].values[c]:''))));
+  else buffer.setFormulas(formulas);
   // Native paste skips rows hidden by an existing filter; remove it BEFORE pasting.
   const filter=sh.getFilter();if(filter)filter.remove();
   sh.showRows(5,span);
@@ -109,13 +115,15 @@ function sgcRender_(sh) {
   // Restore the guard even if native paste fails. Ready context is published only after flush.
   try {
     dates.clearDataValidations();
-    buffer.copyTo(area,SpreadsheetApp.CopyPasteType.PASTE_FORMULA,false);
+    if(valueMode)buffer.copyTo(sgvBase_(sh).getRange(5,1,span,7),SpreadsheetApp.CopyPasteType.PASTE_VALUES,false);
+    buffer.copyTo(area,valueMode?SpreadsheetApp.CopyPasteType.PASTE_VALUES:SpreadsheetApp.CopyPasteType.PASTE_FORMULA,false);
     buffer.clearContent(); // Published formulas point directly to A:T; the staging sheet need not recalculate.
   } finally { dates.setDataValidation(dateRule); }
   sh.getRange(5,21,span,1).clearNote();
   SpreadsheetApp.flush();
   sh.getRange('AC1:AE1').setValues([[label,mode,Utilities.getUuid()]]);
   sh.getRange('AG1:AH1').setValues([[triggerToken,digest]]);
+  if(valueMode)sgvBanner_(sh);
   SpreadsheetApp.flush();
   if(previous[0]!==label||previous[1]!==mode)sh.getRange('U5').activate();
   return {count:plan.length,firstRow:5,rowsWritten:span};

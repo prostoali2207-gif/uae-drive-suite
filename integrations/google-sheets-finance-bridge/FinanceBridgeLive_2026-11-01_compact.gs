@@ -669,7 +669,7 @@ function bridgeTransferEmptyRow_(sheet, excludeRow) {
     const v = values[i];
     const displayDraft = v.slice(20,27).some(function(x,j) { return !formulas[i][20+j] && String(x == null ? '' : x).trim() !== ''; });
     const pendingDraft = String(notes[i][0] || '').indexOf('sgi:') === 0 && formulas[i].slice(20,27).some(function(f) { return !f; });
-    if (displayDraft || pendingDraft) continue;
+    if (!bridgeCompactView_(sheet)&&(displayDraft || pendingDraft)) continue;
     if (!v.slice(0, 5).concat(v.slice(13, 14), v.slice(15, 20)).some(function(x) { return String(x == null ? '' : x).trim() !== ''; })) return row;
   }
   throw new Error('Нет свободных строк для автоперевода.');
@@ -714,7 +714,11 @@ function bridgeEnsureTransfer_(sheet, sourceRow) {
 
 // Restore missing display formulas without replacing manual values or existing formulas.
 function bridgeDisplayRow_(sheet, row) {
-  if (bridgeCompactView_(sheet)) { sheet.getRange('AF1').setValue('dirty:'+Utilities.getUuid()); return; } // Never write into another displayed record.
+  if (bridgeCompactView_(sheet)) {
+    sheet.getRange('AF1').setValue('dirty:'+Utilities.getUuid());
+    if(bridgeValuesView_(sheet)&&typeof sgvReportRefresh_==='function') {try{SpreadsheetApp.flush();sgvReportRefresh_(sheet.getParent());}catch(err){console.error('Report refresh pending: '+err.message);}}
+    return;
+  } // Never write into another displayed record.
   const columns = ['A','F','B','C','T','D','E'];
   for (let i = 0; i < columns.length; i++) {
     const cell = sheet.getRange(row, 21 + i);
@@ -770,7 +774,7 @@ function inspectShowroomEntries_(payload) {
     const display = bridgeDisplayArea_(sheet,row), columns = ['A','F','B','C','T','D','E'];
     const displayValues = display.getValues()[0];
     if (display.getFormulas()[0].some(function(f,i) {
-      return f ? !bridgeMirrorMatches_(sheet,row,i,f,display) : displayValues[i] !== '' && displayValues[i] !== null;
+      return bridgeValuesView_(sheet)?!bridgeValueMatches_(sheet,display,i):f ? !bridgeMirrorMatches_(sheet,row,i,f,display) : displayValues[i] !== '' && displayValues[i] !== null;
     })) return { audit_id: entry.audit_id, error: 'В строке есть ручной черновик. Заверши его в таблице перед исправлением.' };
     return { audit_id: entry.audit_id, snapshot: showroomCorrectionSnapshot_(sheet, INPUT_FIRST_ROW + index, rows[index]) };
   }) };
@@ -838,7 +842,7 @@ function correctShowroomEntry_(payload) {
     const display = bridgeDisplayArea_(sheet,row);
     const displayValues = display.getValues()[0], formulas = display.getFormulas()[0];
     if (formulas.some(function(f,i) {
-      return f ? !bridgeMirrorMatches_(sheet,row,i,f,display) : displayValues[i] !== '' && displayValues[i] !== null;
+      return bridgeValuesView_(sheet)?!bridgeValueMatches_(sheet,display,i):f ? !bridgeMirrorMatches_(sheet,row,i,f,display) : displayValues[i] !== '' && displayValues[i] !== null;
     })) throw new Error('В строке есть ручной черновик. Сначала заверши его в таблице.');
 
     let driverSheet, driverRow, driverDesired;
@@ -904,4 +908,12 @@ function bridgeMirrorMatches_(sheet,sourceRow,index,formula,display) {
  if(!display.compact)return formula==='=IF('+col+row+'="";"";'+col+row+')';
  const value="'Ввод операций'!$"+col+'$'+sourceRow;
  return formula==='=IF('+value+'="";"";'+value+')';
+}
+
+function bridgeValuesView_(sheet){return bridgeCompactView_(sheet)&&sheet.getRange('AB2').getValue()==='sgi.values.v1';}
+function bridgeValueMatches_(sheet,display,index){
+ if(!display.viewRow)return true;
+ const base=sheet.getParent().getSheetByName('_Ввод_значения');
+ if(!base)throw Error('Не найден снимок ввода. Исправление остановлено.');
+ return !display.getFormulas()[0][index]&&JSON.stringify(display.getValues()[0][index])===JSON.stringify(base.getRange(display.viewRow,1,1,7).getValues()[0][index]);
 }

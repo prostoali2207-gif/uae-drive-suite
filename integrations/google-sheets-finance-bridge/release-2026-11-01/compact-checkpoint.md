@@ -1,6 +1,10 @@
 # Compact input month view — checkpoint 2026-11-01
 Status: COMPLETED 2026-11-01. Final acceptance, v20 publication, financial preservation comparison and GitHub changes documented in compact-final-verification.md. Earlier checkpoint below retained as historical handoff evidence.
 
+## Later values-only publication
+
+Published 2026-11-01 at21:18 Dubai. Visible input and Month report contain values, with formulas/calculation on hidden sheets. Native QA, browser period switching and double-click acceptance passed; financial journal unchanged. API version21 retains the existing URL. See [values-view-verification.md](values-view-verification.md) for code composition, triggers, QA evidence and preservation checks. Earlier compact release evidence below is retained as history.
+
 ## Confirmed production state
 - Original spreadsheet 16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA and input sheetId589146974 retained.
 - A:T source rows retained in place; U:AA is a compact monthly projection with mapping AB and signature AC.

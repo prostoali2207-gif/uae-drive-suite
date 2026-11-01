@@ -23,6 +23,7 @@ function showroomGridOnEdit(e) {
   const sh = e.range.getSheet();
   if (sh.getName() !== 'Ввод операций' || sh.getMaxColumns() < 27) return;
   if (e.range.getRow() <= 3 && e.range.getLastRow() >= 3 && e.range.getColumn() <= 24 && e.range.getLastColumn() >= 22) {
+    if(typeof sgvEnabled_==='function'&&sgvEnabled_(sh))sh.getRange('Y3').setValue('ОБНОВЛЕНИЕ СПИСКА…');
     sgiFilter_(sh); return;
   }
   if (e.range.getLastColumn() < 21 || e.range.getColumn() > 27 || e.range.getLastRow() < 5) return;
@@ -66,9 +67,12 @@ function showroomInstallAutosaveRecovery() {
 function showroomResumeGridAutosave() {
   const all = PropertiesService.getScriptProperties().getProperties();
   const ss=SpreadsheetApp.openById(SGI_ID);
-  if (Object.keys(all).some(k=>k.indexOf('sgi.queue.v1.')===0)) sgiDrainGridQueue_(ss);
-  const sh=ss.getSheetByName('Ввод операций');
-  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)&&sgcNeedsRefresh_(sh)) sgcRefresh_(sh);
+  try {
+    if (Object.keys(all).some(k=>k.indexOf('sgi.queue.v1.')===0)) sgiDrainGridQueue_(ss);
+    const sh=ss.getSheetByName('Ввод операций');
+    if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)&&(sgcNeedsRefresh_(sh)||(typeof sgvEnabled_==='function'&&sgvEnabled_(sh)))) sgcRefresh_(sh);
+  } finally {if(typeof sgvReportRefresh_==='function')sgvReportRefresh_(ss);}
+
 }
 
 /** Coalesce queued edits by row; acknowledge only the captured event IDs after processing. */
@@ -149,7 +153,8 @@ function sgiMirror_(sh, r, expected) {
   }
   const sourceIndexes = [0,5,1,2,19,3,4];
   if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) {
-    sh.getRange(r,21,1,7).setFormulas([SGI_COLS.map((col,i)=>stored[sourceIndexes[i]]===''||stored[sourceIndexes[i]]===null?'':sgcMirrorFormula_(col,r,sgcSourceRow_(sh,r)))]);
+    if(typeof sgvEnabled_==='function'&&sgvEnabled_(sh))sgvPublish_(sh,r,[sourceIndexes.map(i=>stored[i])]);
+    else sh.getRange(r,21,1,7).setFormulas([SGI_COLS.map((col,i)=>stored[sourceIndexes[i]]===''||stored[sourceIndexes[i]]===null?'':sgcMirrorFormula_(col,r,sgcSourceRow_(sh,r)))]);
     sh.getRange(r,29).setValue(sgiSignature_(stored));
     sh.getRange(r,21).clearNote();return;
   }
@@ -168,6 +173,7 @@ function sgiMirror_(sh, r, expected) {
 
 /** Never copy stale mirror values into a different financial record. */
 function sgiCheckMirrors_(sh, r, edited, draft, newRow, emptyMirrors) {
+  if(typeof sgvEnabled_==='function'&&sgvEnabled_(sh)){sgvCheckRow_(sh,r,edited);return;}
   const formulas = sh.getRange(r,21,1,7).getFormulas()[0];
   const from = edited.getColumn(), to = edited.getLastColumn();
   const clean = function(value) { return String(value || '').replace(/\s/g,'').replace(/,/g,';'); };
@@ -245,6 +251,7 @@ function sgiRow_(sh, r, edited, model) {
   // A queued event can arrive after an earlier event has already saved and restored this input.
   // A real retry replaces the formula with a value and still reaches pair recovery below.
   const inputFormulas = area.getFormulas()[0];
+  if(typeof sgvEnabled_==='function'&&sgvEnabled_(sh)&&!oldNote.startsWith('sgi:')&&occupied&&sgvEqual_(visible,sgvBase_(sh).getRange(r,1,1,7).getValues()[0]))return;
   if (!oldNote.startsWith('sgi:') && occupied &&
       sgiEditedColumns_(edited).every(c=>Boolean(inputFormulas[c-21]))) return;
   const editedColumns = sgiEditedColumns_(edited);

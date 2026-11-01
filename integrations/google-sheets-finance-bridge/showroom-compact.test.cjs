@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const grid=fs.readFileSync(__dirname+'/ShowroomGrid.gs','utf8'),compact=fs.readFileSync(__dirname+'/ShowroomCompact.gs','utf8');
 let count=0;const test=(name,fn)=>{fn();count++;console.log('PASS '+name);};
-function fixture(hasFilter=false){
+function fixture(hasFilter=false,valuesMode=false){
  const data=Array.from({length:1005},()=>Array(35).fill('')),forms=Array.from({length:1005},()=>Array(35).fill('')),notes={};let uuid=0,writes=[];
  const col=s=>s.split('').reduce((n,c)=>n*26+c.charCodeAt(0)-64,0);
  const value=(r,c)=>{const f=forms[r][c];if(f){const m=/'Ввод операций'!\$([A-Z]+)\$(\d+)/.exec(f);if(m)return value(Number(m[2]),col(m[1]));}if(c===6&&data[r][1])return /^приход/.test(data[r][3])?'Приход':'Расход';return data[r]?.[c]??'';};
@@ -13,18 +13,22 @@ function fixture(hasFilter=false){
    setFormulas:vals=>{vals.forEach((row,i)=>row.forEach((v,j)=>{forms[r+i][c+j]=v;data[r+i][c+j]='';}));return range;},setFormula:f=>range.setFormulas([[f]]),
    setNote:n=>{notes[r+','+c]=n;return range;},clearNote:()=>{for(let i=0;i<h;i++)for(let j=0;j<w;j++)delete notes[(r+i)+','+(c+j)];return range;},clearContent:()=>range.setValues(rows(()=>'')),setDataValidation:()=>range,getDataValidations:()=>rows(()=>null),setDataValidations:()=>range,clearDataValidations:()=>range,activate:()=>range};return range;
  }};
- let staged=[];const buffer={clearContent(){staged=[];return this;},clearDataValidations(){return this;},setFormulas:f=>{staged=f;},copyTo:target=>{assert.equal(hasFilter,false,'native paste must not skip filtered rows');target.setFormulas(staged);}};
+ const saved=Array.from({length:1005},()=>Array(7).fill(''));
+ const baseline={getRange:(r,c,h=1,w=1)=>{const area={getValues:()=>Array.from({length:h},(_,i)=>saved[r+i].slice(c-1,c-1+w)),setValues:v=>{v.forEach((row,i)=>row.forEach((x,j)=>saved[r+i][c-1+j]=x));return area;},copyTo:target=>target.setValues(area.getValues())};return area;}};
+ let staged=[],stageKind='formulas';const buffer={clearContent(){staged=[];return this;},clearDataValidations(){return this;},setValues:f=>{staged=f;stageKind='values';},setFormulas:f=>{staged=f;stageKind='formulas';},copyTo:target=>{assert.equal(hasFilter,false,'native paste must not skip filtered rows');target[stageKind==='values'?'setValues':'setFormulas'](staged);}};
  const stage={getMaxRows:()=>1004,getRange:()=>buffer};
- const ss={toast(){},getSheetByName:()=>stage};
+ const ss={toast(){},getSheetByName:name=>name==='_Ввод_значения'?baseline:stage};
  const builder={requireDateBetween(){return this;},requireValueInList(){return this;},setAllowInvalid(){return this;},setHelpText(){return this;},build(){return this;}};
- const ctx={Date,console,SpreadsheetApp:{flush(){},CopyPasteType:{PASTE_FORMULA:'formula'},newDataValidation:()=>builder,DataValidationCriteria:{DATE_BETWEEN:'DATE_BETWEEN'}},PropertiesService:{getScriptProperties:()=>({getProperties:()=>({})})},Utilities:{getUuid:()=> 'test-'+(++uuid),formatDate:(d,t,f)=>d.toISOString().slice(0,f==='yyyy-MM'?7:10),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(alg,s)=>Array.from(crypto.createHash(alg).update(s).digest())},stSyncRow_:()=>{}};
+ const ctx={Date,console,SpreadsheetApp:{flush(){},CopyPasteType:{PASTE_FORMULA:'formula',PASTE_VALUES:'values'},newDataValidation:()=>builder,DataValidationCriteria:{DATE_BETWEEN:'DATE_BETWEEN'}},PropertiesService:{getScriptProperties:()=>({getProperties:()=>({})})},Utilities:{getUuid:()=> 'test-'+(++uuid),formatDate:(d,t,f)=>d.toISOString().slice(0,f==='yyyy-MM'?7:10),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(alg,s)=>Array.from(crypto.createHash(alg).update(s).digest())},stSyncRow_:()=>{}};
  vm.createContext(ctx);vm.runInContext(grid+'\n'+compact+'\nsgiModel_=()=>[{name:"покупка авто для перепродажи",type:"Расход",accounts:["Касса"],sub:["Lexus"]}];',ctx);
+ if(valuesMode)vm.runInContext(fs.readFileSync(__dirname+'/ShowroomReportValues.gs','utf8')+'\n'+fs.readFileSync(__dirname+'/ShowroomValues.gs','utf8'),ctx);
  const api=vm.runInContext('({sgiRow_,sgiMirror_,sgiSignature_,sgcRender_,sgcPlan_,sgcSourceRow_,sgcMirrorFormula_,sgcNeedsRefresh_})',ctx);
  const seed=(r,date,amount,article='покупка авто для перепродажи')=>{data[r][1]=new Date(date+'T08:00:00Z');data[r][2]='Касса';data[r][3]=article;data[r][4]=amount;data[r][14]='id-source-'+r;data[r][20]='Lexus';};
+ if(valuesMode)data[2][28]='sgi.values.v1';
  data[1][28]='sgi.compact.v1';data[3][24]='Ноябрь 2026';data[3][22]='Все';seed(5,'2026-08-01',100);seed(104,'2026-11-01',810);seed(105,'2026-11-01',20);
  const model=[{name:'покупка авто для перепродажи',type:'Расход',accounts:['Касса'],sub:['Lexus']}];
  const edit=(r,c=26,extra={})=>api.sgiRow_(sh,r,{getColumn:()=>c,getLastColumn:()=>c,getSelectedMonth:()=>data[3][24],getViewKey:()=>data[1][31],...extra},model);
- return{data,forms,sh,api,edit,ctx,seed,writes,clearWrites:()=>{writes.length=0;}};
+ return{data,forms,sh,api,edit,ctx,seed,writes,saved,clearWrites:()=>{writes.length=0;}};
 }
 test('November source104/105 starts at display5/6, journal untouched',()=>{const f=fixture();f.api.sgcRender_(f.sh);assert.equal(f.data[5][28],104);assert.equal(f.data[6][28],105);assert.equal(f.sh.getRange(5,26).getValue(),810);assert.equal(f.writes.length,0);});
 test('legacy filter is removed before paste so rows are neither skipped nor inserted',()=>{const f=fixture(true);f.api.sgcRender_(f.sh);assert.equal(f.sh.getFilter(),null);assert.equal(f.data[5][28],104);assert.equal(f.writes.length,0);});
@@ -45,4 +49,10 @@ test('draft handling never erases producer notification and resumes after clear'
 test('short month clears previous long view, next render writes only used rows plus input',()=>{const f=fixture();for(let i=0;i<80;i++)f.seed(200+i,'2026-08-02',i+1);f.data[3][24]='Август 2026';assert.equal(f.api.sgcRender_(f.sh).rowsWritten,82);f.data[3][24]='Ноябрь 2026';assert.equal(f.api.sgcRender_(f.sh).rowsWritten,81);assert.equal(f.forms[85][21],'');assert.equal(f.data[85][28],'');f.data[3][22]='Расход';const result=f.api.sgcRender_(f.sh);assert.equal(result.rowsWritten,3);assert.equal(f.writes.length,0);});
 test('legacy blank signatures are removed once rather than rewritten indefinitely',()=>{const f=fixture();for(let r=5;r<=1004;r++){f.data[r][28]=0;f.data[r][29]='blank legacy signature';}assert.equal(f.api.sgcRender_(f.sh).rowsWritten,1000);assert.equal(f.data[1004][29],'');f.data[3][22]='Расход';assert.equal(f.api.sgcRender_(f.sh).rowsWritten,3);});
 test('draft far below used rows still prevents any compact rewrite',()=>{const f=fixture();f.api.sgcRender_(f.sh);f.sh.getRange(999,27).setValue('unfinished');f.data[3][24]='Август 2026';assert.equal(f.api.sgcRender_(f.sh).draft,true);assert.equal(f.data[999][27],'unfinished');assert.equal(f.data[3][24],'Ноябрь 2026');});
+test('values view publishes no formulas and recognizes saved raw cells as clean',()=>{const f=fixture(false,true);f.api.sgcRender_(f.sh);assert.equal(f.forms[5][21],'');assert.equal(f.data[5][26],810);assert.equal(f.saved[5][5],810);assert.equal(vm.runInContext('sgcHasDraft_',f.ctx)(f.sh),false);assert.equal(f.writes.length,0);});
+test('values view edits source in place and updates hidden baseline exactly once',()=>{const f=fixture(false,true);f.api.sgcRender_(f.sh);f.sh.getRange(5,26).setValue(811);f.edit(5);assert.equal(f.data[104][4],811);assert.equal(f.saved[5][5],811);const n=f.writes.length;f.edit(5);assert.equal(f.writes.length,n);assert.equal(f.forms[5][26],'');});
+test('values view distinguishes external source refresh from a manual draft',()=>{const f=fixture(false,true);f.api.sgcRender_(f.sh);f.data[104][4]=900;f.api.sgcRender_(f.sh);assert.equal(f.data[5][26],900);assert.equal(f.saved[5][5],900);});
+test('values view preserves unfinished input and reverts month switch',()=>{const f=fixture(false,true);f.api.sgcRender_(f.sh);f.sh.getRange(7,21).setValue(new Date('2026-11-01T08:00:00Z'));f.data[3][24]='Август 2026';assert.equal(f.api.sgcRender_(f.sh).draft,true);assert.equal(f.data[3][24],'Ноябрь 2026');assert.equal(f.writes.length,0);});
+test('values view rejects an unqueued second edit or executable input formula',()=>{const f=fixture(false,true);f.api.sgcRender_(f.sh);f.data[5][23]='AJMAN';f.sh.getRange(5,26).setValue(811);assert.throws(()=>f.edit(5),/незавершённая/);assert.equal(f.writes.length,0);f.data[5][23]='Касса';f.sh.getRange(5,26).setFormula('=2+2');assert.throws(()=>f.edit(5),/без формул/);assert.equal(f.writes.length,0);});
+test('API values inspection accepts only the published baseline, including zero/false drafts',()=>{const f=fixture(false,true);f.api.sgcRender_(f.sh);vm.runInContext(fs.readFileSync(__dirname+'/FinanceBridgeLive_2026-11-01_compact.gs','utf8'),f.ctx);const a=vm.runInContext('({bridgeValueMatches_,bridgeDisplayArea_,bridgeValuesView_})',f.ctx);const display=a.bridgeDisplayArea_(f.sh,104);assert.equal(a.bridgeValuesView_(f.sh),true);assert.equal(a.bridgeValueMatches_(f.sh,display,5),true);for(const value of [0,false,811]){f.data[5][26]=value;assert.equal(a.bridgeValueMatches_(f.sh,display,5),false);}assert.equal(f.writes.length,0);});
 console.log(count+' compact projection scenarios passed.');
