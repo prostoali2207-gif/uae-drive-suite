@@ -3,7 +3,10 @@ const SGI_ID = '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA';
 const SGI_COLS = ['A','F','B','C','T','D','E'];
 
 /** Run once from the bound editor. Creates only this handler; leaves all other triggers intact. */
-function showroomInstallGridTrigger() {
+function showroomInstallGridTrigger(confirmedSpreadsheetId) {
+  // The editor Run button supplies no arguments. Never install a duplicate by accident;
+  // another account's installed trigger is not visible to getUserTriggers().
+  if (confirmedSpreadsheetId !== SGI_ID) throw new Error('Установка отключена из меню Выполнить: сначала проверьте обработчики всех владельцев.');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss || ss.getId() !== SGI_ID) throw new Error('Неверная таблица для установки автосохранения.');
   const existing = ScriptApp.getUserTriggers(ss).filter(t => t.getHandlerFunction() === 'showroomGridOnEdit');

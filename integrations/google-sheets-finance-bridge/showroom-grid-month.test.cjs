@@ -1,5 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync(__dirname+'/ShowroomGrid.gs','utf8');
+assert.throws(()=>vm.runInNewContext(source+'\nshowroomInstallGridTrigger()'),/Установка отключена/);
 const filters={},rules=[];let selected='Ноябрь 2026',mode='Расход',writes=0;
 const ctx={Date,console,Utilities:{formatDate:(d,tz,f)=>d.toISOString().slice(0,f==='yyyy-MM'?7:10)},SpreadsheetApp:{newFilterCriteria:()=>({whenFormulaSatisfied:f=>({build:()=>f})}),newDataValidation:()=>{const r={setAllowInvalid:()=>r,requireDateBetween:(a,b)=>{rules.push([a,b]);return r;},requireFormulaSatisfied:f=>{rules.push(f);return r;},setHelpText:()=>r,build:()=>r};return r;}}};
 const api=vm.runInNewContext(source+'\n({sgiAssertMonth_,sgiMonth_,sgiFilter_,sgiRow_})',ctx);
