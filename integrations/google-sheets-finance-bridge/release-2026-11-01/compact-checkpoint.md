@@ -1,5 +1,5 @@
 # Compact input month view — checkpoint 2026-11-01
-Status: PARTIALLY RELEASED; final browser acceptance blocked by usage-limit automatic approval rejection. Do not describe as fully completed.
+Status: COMPLETED 2026-11-01. Final acceptance, v20 publication, financial preservation comparison and GitHub changes documented in compact-final-verification.md. Earlier checkpoint below retained as historical handoff evidence.
 
 ## Confirmed production state
 - Original spreadsheet 16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA and input sheetId589146974 retained.
@@ -28,7 +28,7 @@ Status: PARTIALLY RELEASED; final browser acceptance blocked by usage-limit auto
 - Native Range.setFormulas hit dependent dropdown validation. Final path builds absolute source formulas on hidden _Ввод_месяц_буфер then native-pastes formulas; removes basic filter BEFORE paste to avoid skipped rows/grid expansion.
 - Simple onOpen timeout found in live verification. Deployed fix schedules refresh and returns within simple-trigger budget; loading banner and pre-write guard block edits while selected/rendered contexts differ.
 
-## Outstanding
+## Outstanding at earlier handoff (resolved; see final verification)
 - Final browser switching/visual acceptance and byte-exact source re-read after latest fixes.
 - Refresh-cursor refinement was prepared in orchestration but NOT published: keep producer notification AF separate from acknowledged cursor/hash AG/AH to avoid lost or repeated refresh notifications. Two hidden columns AG/AH were reserved and are blank; deployed code still uses AF protocol.
 - Current working files reconstruct the last released AF protocol, not that pending refinement. Verify against live source before resuming publication.

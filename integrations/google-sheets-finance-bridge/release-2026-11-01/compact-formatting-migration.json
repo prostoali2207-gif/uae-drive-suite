@@ -1,0 +1,490 @@
+[
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 5,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 0,
+            "endColumnIndex": 5
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 19,
+            "endColumnIndex": 20
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 27,
+            "endColumnIndex": 34
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$I5=\"⚠ ПРОВЕРЬ\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 1,
+              "green": 0.8,
+              "blue": 0.8
+            },
+            "textFormat": {
+              "foregroundColor": {
+                "red": 0.54901963,
+                "green": 0.078431375,
+                "blue": 0.078431375
+              },
+              "bold": true,
+              "foregroundColorStyle": {
+                "rgbColor": {
+                  "red": 0.54901963,
+                  "green": 0.078431375,
+                  "blue": 0.078431375
+                }
+              }
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 1,
+                "green": 0.8,
+                "blue": 0.8
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 6,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 0,
+            "endColumnIndex": 5
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 19,
+            "endColumnIndex": 20
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 27,
+            "endColumnIndex": 34
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$F5=\"Приход\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 0.81960785,
+              "green": 0.9490196,
+              "blue": 0.85882354
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 0.81960785,
+                "green": 0.9490196,
+                "blue": 0.85882354
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 7,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 0,
+            "endColumnIndex": 5
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 19,
+            "endColumnIndex": 20
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 27,
+            "endColumnIndex": 34
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$F5=\"Расход\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 0.9764706,
+              "green": 0.85882354,
+              "blue": 0.8
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 0.9764706,
+                "green": 0.85882354,
+                "blue": 0.8
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 10,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 19,
+            "endColumnIndex": 20
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 27,
+            "endColumnIndex": 34
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$I5=\"⚠ ПРОВЕРЬ\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 1,
+              "green": 0.8,
+              "blue": 0.8
+            },
+            "textFormat": {
+              "foregroundColor": {
+                "red": 0.54901963,
+                "green": 0.078431375,
+                "blue": 0.078431375
+              },
+              "bold": true,
+              "foregroundColorStyle": {
+                "rgbColor": {
+                  "red": 0.54901963,
+                  "green": 0.078431375,
+                  "blue": 0.078431375
+                }
+              }
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 1,
+                "green": 0.8,
+                "blue": 0.8
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 11,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 19,
+            "endColumnIndex": 20
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 27,
+            "endColumnIndex": 34
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$F5=\"Приход\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 0.81960785,
+              "green": 0.9490196,
+              "blue": 0.85882354
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 0.81960785,
+                "green": 0.9490196,
+                "blue": 0.85882354
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 12,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 19,
+            "endColumnIndex": 20
+          },
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 27,
+            "endColumnIndex": 34
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$F5=\"Расход\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 0.9764706,
+              "green": 0.85882354,
+              "blue": 0.8
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 0.9764706,
+                "green": 0.85882354,
+                "blue": 0.8
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "addConditionalFormatRule": {
+      "index": 0,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 20,
+            "endColumnIndex": 27
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=AND($AB5>0;INDEX($I:$I;$AB5)=\"⚠ ПРОВЕРЬ\")"
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 1,
+              "green": 0.8,
+              "blue": 0.8
+            },
+            "textFormat": {
+              "foregroundColor": {
+                "red": 0.54901963,
+                "green": 0.078431375,
+                "blue": 0.078431375
+              },
+              "bold": true,
+              "foregroundColorStyle": {
+                "rgbColor": {
+                  "red": 0.54901963,
+                  "green": 0.078431375,
+                  "blue": 0.078431375
+                }
+              }
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 1,
+                "green": 0.8,
+                "blue": 0.8
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "addConditionalFormatRule": {
+      "index": 1,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 20,
+            "endColumnIndex": 27
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$V5=\"Приход\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 0.81960785,
+              "green": 0.9490196,
+              "blue": 0.85882354
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 0.81960785,
+                "green": 0.9490196,
+                "blue": 0.85882354
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "addConditionalFormatRule": {
+      "index": 2,
+      "rule": {
+        "ranges": [
+          {
+            "sheetId": 589146974,
+            "startRowIndex": 4,
+            "endRowIndex": 1004,
+            "startColumnIndex": 20,
+            "endColumnIndex": 27
+          }
+        ],
+        "booleanRule": {
+          "condition": {
+            "type": "CUSTOM_FORMULA",
+            "values": [
+              {
+                "userEnteredValue": "=$V5=\"Расход\""
+              }
+            ]
+          },
+          "format": {
+            "backgroundColor": {
+              "red": 0.9764706,
+              "green": 0.85882354,
+              "blue": 0.8
+            },
+            "backgroundColorStyle": {
+              "rgbColor": {
+                "red": 0.9764706,
+                "green": 0.85882354,
+                "blue": 0.8
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 1,
+      "newIndex": 4
+    }
+  },
+  {
+    "updateConditionalFormatRule": {
+      "sheetId": 589146974,
+      "index": 1,
+      "newIndex": 4
+    }
+  }
+]

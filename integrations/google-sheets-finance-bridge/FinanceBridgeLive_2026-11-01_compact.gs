@@ -714,7 +714,7 @@ function bridgeEnsureTransfer_(sheet, sourceRow) {
 
 // Restore missing display formulas without replacing manual values or existing formulas.
 function bridgeDisplayRow_(sheet, row) {
-  if (bridgeCompactView_(sheet)) { sheet.getRange('AF1').setValue('dirty'); return; } // Never write into another displayed record.
+  if (bridgeCompactView_(sheet)) { sheet.getRange('AF1').setValue('dirty:'+Utilities.getUuid()); return; } // Never write into another displayed record.
   const columns = ['A','F','B','C','T','D','E'];
   for (let i = 0; i < columns.length; i++) {
     const cell = sheet.getRange(row, 21 + i);

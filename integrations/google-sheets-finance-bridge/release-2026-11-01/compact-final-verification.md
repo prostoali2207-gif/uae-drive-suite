@@ -1,0 +1,14 @@
+# Compact month view — final acceptance 2026-11-01
+
+- Continued branch checkpoint; compared both live Apps Script projects with repository before changes. Bound Grid differed only in a comment; Entry matched exactly; API HEAD already contained the pending UUID notification change while active deployment was v19.
+- Refresh AF is producer-owned; AG acknowledges the captured notification; AH records the rendered digest. A producer event arriving during render cannot be overwritten by a consumer. Repeated notifications acknowledge without changing view generation.
+- Local compact 16 scenarios passed, including concurrent notification, repeat notification, draft handling; grid14, durable queue9, month boundaries11, entry-form, corrections37 and deployed-bridge checks passed.
+- Live QA 16:45:08–16:48:39 Dubai: A5:T1004 values/formulas unchanged by render and switching; November and September start at display5; draft survives attempted switch; wrong-month guard blocks before writing; external source +0.01 AED appears at display5; amount restored exactly; QA_RELEASE_PASS. QA workbook 1B2JraDVMC4Ps3j_seaEsVQiTZvS3u13iiN3No3qUa6Q only.
+- QA used a temporary, function-local copy of candidate code invoked from the already authorized bound project, with SGI_ID and openById hard-bound to QA. No new service, trigger or permissions. Temporary wrapper removed. QA project's original Grid restored after cancelling its authorization prompt.
+- Published bound Grid as concatenated repository ShowroomGrid.gs + ShowroomCompact.gs; clipboard reread matched exactly, without QA wrapper. Entry unchanged.
+- API deployment v20 confirmed at16:50 Dubai, same deployment ID/URL AKfycbx-Zh3OD-aXy2rpmBFWw2mXvUUOLMn69Ndxx4lf2KDBi26FgfPRvY5UPfTMj6-49wY_uA. Public GET ledger=showroom returned ok:true and2026-11-01..2026-11-30.
+- Found legacy conditional formatting covering projection based on physical source row. Split its ranges to preserve A:T/helper behavior; new U:AA rules use display V and mapped I via AB. Tested QA native effective formats: expense orange, income green. Exact production requests recorded in compact-formatting-migration.json.
+- Production browser switched November→October successfully; October at row5 linked to source26; native date constraint01.10..31.10.2026; ready banner confirmed. Returned selector to November; ready banner and native date constraint01.11..30.11.2026 confirmed; four existing operations at display5:8 and empty next row9.
+- Production A5:T1004 userEnteredValue/effectiveValue comparison and Month A1:J20 comparison matched exactly after publication and October switch; final November comparison repeated before commit. No production test payment; Rental and accounting logic unchanged.
+
+Manual check: choose month in X3; wait for ВВОД banner; operations start at row5. Enter only a date inside the selected month. Finish or clear a draft before switching—the switch is reverted while keeping the draft.

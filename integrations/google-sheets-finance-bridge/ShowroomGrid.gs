@@ -68,7 +68,7 @@ function showroomResumeGridAutosave() {
   const ss=SpreadsheetApp.openById(SGI_ID);
   if (Object.keys(all).some(k=>k.indexOf('sgi.queue.v1.')===0)) sgiDrainGridQueue_(ss);
   const sh=ss.getSheetByName('Ввод операций');
-  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)&&String(sh.getRange('AF1').getValue()).indexOf('dirty')===0) sgcRefresh_(sh);
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)&&sgcNeedsRefresh_(sh)) sgcRefresh_(sh);
 }
 
 /** Coalesce queued edits by row; acknowledge only the captured event IDs after processing. */

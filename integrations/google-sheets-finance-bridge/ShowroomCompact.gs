@@ -36,6 +36,13 @@ function sgcHasDraft_(sh) {
   const area=sh.getRange('U5:AA1004'),values=area.getValues(),formulas=area.getFormulas();
   return values.some((row,r)=>row.some((value,c)=>value!==''&&value!==null&&!formulas[r][c]));
 }
+/** AF is producer-owned; AG acknowledges the captured notification, AH the rendered hash.
+ * Never overwrite AF while consuming: a bridge write may race with the render. */
+function sgcNeedsRefresh_(sh) {
+  const state=sh.getRange('AF1:AG1').getValues()[0];
+  const rendered=sh.getRange('AC1:AD1').getValues()[0];
+  return String(state[0])!==String(state[1]) || rendered[0]!==String(sh.getRange('X3').getValue()) || rendered[1]!==String(sh.getRange('V3').getValue()||'Все');
+}
 function sgcRefresh_(sh) {
   const lock=LockService.getScriptLock();
   if(!lock.tryLock(1000)) {sh.getRange('AF1').setValue('dirty:'+Utilities.getUuid());return {pending:true};}
@@ -46,19 +53,22 @@ function sgcRender_(sh) {
   const month=sgiMonth_(label);
   if(!month) throw new Error('Выберите месяц. Общий список больше не используется.');
   const previous=sh.getRange('AC1:AD1').getValues()[0];
+  const triggerToken=String(sh.getRange('AF1').getValue());
   if(sgcHasDraft_(sh)) {
-    sh.getRange('AF1').setValue('draft'); // Do not rescan an unattended draft every minute.
+    sh.getRange('AG1').setValue(triggerToken); // Preserve draft; the next edit retries rendering.
     if(previous[0]&&(previous[0]!==label||previous[1]!==mode)) {
       sh.getRange('X3').setValue(previous[0]);sh.getRange('V3').setValue(previous[1]);
       sh.getParent().toast('Завершите или очистите черновик перед сменой месяца или типа.','Черновик сохранён',10);
     }
     return {draft:true};
   }
-  const triggerToken=String(sh.getRange('AF1').getValue());
   const key=month.year+'-'+String(month.month).padStart(2,'0');
   const plan=sgcPlan_(sh.getRange(5,1,1000,20).getValues(),key,mode);
   const digest=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify([label,mode,plan.map(x=>[x.row,sgiSignature_(x.values)])])).map(b=>('0'+((b+256)%256).toString(16)).slice(-2)).join('');
-  if(triggerToken===digest) return {unchanged:true,count:plan.length};
+  if(String(sh.getRange('AH1').getValue())===digest) {
+    sh.getRange('AG1').setValue(triggerToken);
+    return {unchanged:true,count:plan.length};
+  }
   const pending=Object.keys(PropertiesService.getScriptProperties().getProperties()).some(k=>k.indexOf('sgi.queue.v1.')===0&&!JSON.parse(PropertiesService.getScriptProperties().getProperty(k)).blocked);
   if(pending) {
     if(previous[0]){sh.getRange('X3').setValue(previous[0]);sh.getRange('V3').setValue(previous[1]);}
@@ -90,11 +100,8 @@ function sgcRender_(sh) {
   buffer.copyTo(area,SpreadsheetApp.CopyPasteType.PASTE_FORMULA,false);SpreadsheetApp.flush();
   area.setDataValidations(rules);
   sh.getRange('U5:U1004').clearNote();
-  const latestToken=String(sh.getRange('AF1').getValue());
-  const newerDirty=latestToken.indexOf('dirty')===0&&latestToken!==triggerToken;
-  const changedSelection=label!==String(sh.getRange('X3').getValue())||mode!==String(sh.getRange('V3').getValue());
-  const nextToken=newerDirty?latestToken:changedSelection?'dirty:'+Utilities.getUuid():digest;
-  sh.getRange('AC1:AF1').setValues([[label,mode,Utilities.getUuid(),nextToken]]);
+  sh.getRange('AC1:AE1').setValues([[label,mode,Utilities.getUuid()]]);
+  sh.getRange('AG1:AH1').setValues([[triggerToken,digest]]);
   SpreadsheetApp.flush();
   if(previous[0]!==label||previous[1]!==mode)sh.getRange('U5').activate();
   return {count:plan.length,firstRow:5};
@@ -107,11 +114,11 @@ function showroomEnableCompactMonthView() {
   const sh=ss.getSheetByName('Ввод операций');
   const active=Object.keys(PropertiesService.getScriptProperties().getProperties()).some(k=>k.indexOf('sgi.queue.v1.')===0&&!JSON.parse(PropertiesService.getScriptProperties().getProperty(k)).blocked);
   if(active||sgcHasDraft_(sh)) throw new Error('Есть незавершённый ввод. Завершите его перед обновлением вида.');
-  if(sh.getMaxColumns()<32)sh.insertColumnsAfter(sh.getMaxColumns(),32-sh.getMaxColumns());
+  if(sh.getMaxColumns()<34)sh.insertColumnsAfter(sh.getMaxColumns(),34-sh.getMaxColumns());
   sh.getRange('AB1').setValue('sgi.compact.v1');
   SGC_MODE_CACHE.delete(sh);
-  sh.hideColumns(28,5);
-  sh.getRange('AF1').clearContent();
+  sh.hideColumns(28,7);
+  sh.getRange('AG1:AH1').clearContent();
   const months=ss.getSheets().map(s=>s.getName()).filter(n=>sgiMonth_(n));
   sh.getRange('X3').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(months,true).setAllowInvalid(false).build());
   sh.getRange('U2').setValue('Выберите месяц сверху. Все его операции начинаются с пятой строки. Дата должна относиться к выбранному месяцу.');
