@@ -92,6 +92,7 @@ function showroomEntrySubmit(form) {
       if (row !== 9 && row !== 13) stSyncRow_(sh,row);
       SpreadsheetApp.flush();
       const meta = sh.getRange(row,17,1,2).getDisplayValues()[0];
+      if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) sh.getRange('AF1').setValue('dirty:'+Utilities.getUuid());
       return {ok:true,row:row,paired:Boolean(meta[0]),role:meta[1] || '',duplicate:true};
     }
     const duplicateRow = sgiDuplicateRow_(sh,0,[dateValue,account,operation,amount,note],subcategory);
@@ -122,5 +123,6 @@ function showroomEntrySubmit(form) {
   showroomTransferOnEdit(event);
   SpreadsheetApp.flush();
   const pairMeta = sh.getRange(targetRow, 17, 1, 2).getDisplayValues()[0];
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) sh.getRange('AF1').setValue('dirty:'+Utilities.getUuid());
   return { ok: true, row: targetRow, paired: Boolean(pairMeta[0]), role: pairMeta[1] || '', warning: similarRow ? 'Возможный дубль со строкой '+similarRow+'. Проверьте, что это отдельный платёж.' : '' };
 }

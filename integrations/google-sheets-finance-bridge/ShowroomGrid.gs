@@ -41,7 +41,7 @@ function sgiQueueEdit_(e) {
   const props = PropertiesService.getScriptProperties();
   for (let row = first; row <= last; row++) {
     props.setProperty('sgi.queue.v1.' + row + '.' + Utilities.getUuid(), JSON.stringify({
-      row:row, columns:columns, month:String(e.range.getSheet().getRange('X3').getValue() || ''), created:Date.now(), attempts:0
+      row:row, columns:columns, month:String(e.range.getSheet().getRange('X3').getValue() || ''), viewKey:typeof sgcEnabled_==='function'&&sgcEnabled_(e.range.getSheet())?String(e.range.getSheet().getRange('AE1').getValue()):'', created:Date.now(), attempts:0
     }));
   }
 }
@@ -65,8 +65,10 @@ function showroomInstallAutosaveRecovery() {
 
 function showroomResumeGridAutosave() {
   const all = PropertiesService.getScriptProperties().getProperties();
-  if (!Object.keys(all).some(k=>k.indexOf('sgi.queue.v1.')===0)) return;
-  sgiDrainGridQueue_(SpreadsheetApp.openById(SGI_ID));
+  const ss=SpreadsheetApp.openById(SGI_ID);
+  if (Object.keys(all).some(k=>k.indexOf('sgi.queue.v1.')===0)) sgiDrainGridQueue_(ss);
+  const sh=ss.getSheetByName('Ввод операций');
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)&&String(sh.getRange('AF1').getValue()).indexOf('dirty')===0) sgcRefresh_(sh);
 }
 
 /** Coalesce queued edits by row; acknowledge only the captured event IDs after processing. */
@@ -93,7 +95,8 @@ function sgiDrainGridQueue_(ss) {
     for (const job of jobs) {
       if (Date.now()-started>90000) break; // Leave the remaining durable work for the next tick.
       const edited={getColumn:()=>Math.min(...job.columns),getLastColumn:()=>Math.max(...job.columns),
-        getEditedColumns:()=>job.columns.slice(), getSelectedMonth:()=>job.events[job.events.length-1].item.month};
+        getEditedColumns:()=>job.columns.slice(), getSelectedMonth:()=>job.events[job.events.length-1].item.month,
+        getViewKey:()=>job.events[job.events.length-1].item.viewKey};
       try {
         sgiRow_(sh,job.row,edited,model);
         SpreadsheetApp.flush();
@@ -110,7 +113,7 @@ function sgiDrainGridQueue_(ss) {
         console.error('sgi queue row '+job.row+': '+message);
       }
     }
-    if (processed) sgiFilter_(sh);
+    if (processed) sgiFilter_(sh,true);
     if (failures.length) throw new Error(failures.join('\n'));
     return {processed:processed};
   } finally { lock.releaseLock(); }
@@ -137,7 +140,7 @@ function sgiMirrorFormula_(col) {
 }
 
 function sgiMirror_(sh, r, expected) {
-  const stored = sh.getRange(r,1,1,20).getValues()[0];
+  const stored = sgiStored_(sh,r);
   // A user can edit while the script lock is held. Never erase that pending input.
   if (expected && JSON.stringify(sh.getRange(r,21,1,7).getValues()[0]) !== JSON.stringify(expected)) {
     sh.getRange(r,21).setNote('sgi:'+sgiSignature_(stored));
@@ -145,6 +148,11 @@ function sgiMirror_(sh, r, expected) {
     return;
   }
   const sourceIndexes = [0,5,1,2,19,3,4];
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) {
+    sh.getRange(r,21,1,7).setFormulas([SGI_COLS.map((col,i)=>stored[sourceIndexes[i]]===''||stored[sourceIndexes[i]]===null?'':sgcMirrorFormula_(col,r,sgcSourceRow_(sh,r)))]);
+    sh.getRange(r,29).setValue(sgiSignature_(stored));
+    sh.getRange(r,21).clearNote();return;
+  }
   // Strict date/number/dropdown rules accept a real blank, not a formula returning an empty string.
   const formulas = SGI_COLS.map((col,i) => stored[sourceIndexes[i]] === '' || stored[sourceIndexes[i]] === null ? '' : sgiMirrorFormula_(col));
   let pending = false;
@@ -167,8 +175,8 @@ function sgiCheckMirrors_(sh, r, edited, draft, newRow, emptyMirrors) {
     const col = 21 + i;
     if (sgiEditedColumns_(edited).includes(col)) continue; // The user explicitly changed this cell.
     const legacy = '=IF(' + SGI_COLS[i] + r + '="";"";' + SGI_COLS[i] + r + ')';
-    const correct = sgiMirrorFormula_(SGI_COLS[i]);
-    if ((formulas[i] && clean(formulas[i]) !== clean(legacy) && clean(formulas[i]) !== clean(correct)) ||
+    const correct = typeof sgcEnabled_==='function'&&sgcEnabled_(sh)?sgcMirrorFormula_(SGI_COLS[i],r,sgcSourceRow_(sh,r)):sgiMirrorFormula_(SGI_COLS[i]);
+    if ((formulas[i] && (typeof sgcEnabled_==='function'&&sgcEnabled_(sh)?clean(formulas[i])!==clean(correct):clean(formulas[i]) !== clean(legacy) && clean(formulas[i]) !== clean(correct))) ||
         (!formulas[i] && !draft && !newRow && !(emptyMirrors || []).includes(i))) {
       sgiMirror_(sh,r);
       throw new Error('В строке ' + r + ' была повреждена связь с данными. Показаны исходные значения; повторите ввод.');
@@ -214,8 +222,14 @@ function sgiDuplicateRow_(sh, currentRow, next, vehicle, ignoreNote) {
 
 function sgiRow_(sh, r, edited, model) {
   const cell = sh.getRange(r,21), area = sh.getRange(r,21,1,7);
-  const stored = sh.getRange(r,1,1,20).getValues()[0];
+  const compact=typeof sgcEnabled_==='function'&&sgcEnabled_(sh);
+  if(compact&&typeof edited.getViewKey==='function'&&edited.getViewKey()&&edited.getViewKey()!==String(sh.getRange('AE1').getValue())) throw new Error('Выбран другой список после ввода. Повторите правку.');
+  let sourceRow=compact?sgcSourceRow_(sh,r):r;
+  const stored = sgiStored_(sh,r);
   const base = sgiSignature_(stored), oldNote = cell.getNote();
+  if(compact&&sourceRow&&!oldNote.startsWith('sgi:')&&String(sh.getRange(r,29).getValue())!==base) {
+    sgiMirror_(sh,r);throw new Error('Запись обновлена другим источником. Повторите правку.');
+  }
   if (oldNote.startsWith('sgi:') && oldNote.substring(4) !== base) {
     sgiMirror_(sh,r);
     throw new Error('Строка '+r+' обновлена другим источником. Показаны актуальные данные; повторите правку.');
@@ -265,21 +279,24 @@ function sgiRow_(sh, r, edited, model) {
   const same = JSON.stringify(next) === JSON.stringify(stored.slice(0,5)) && v[4] === stored[19];
   if (same) {
     // Retry must finish a pair interrupted after its source was saved.
-    if (r !== 9 && r !== 13) stSyncRow_(sh,r);
+    if (sourceRow !== 9 && sourceRow !== 13) stSyncRow_(sh,sourceRow);
     SpreadsheetApp.flush();
     sgiMirror_(sh,r,v); return;
   }
-  const duplicateRow = sgiDuplicateRow_(sh,r,next,v[4]);
+  const duplicateRow = sgiDuplicateRow_(sh,sourceRow,next,v[4]);
   if (duplicateRow) throw new Error('Похожая операция уже есть в строке ' + duplicateRow + '. Повтор не сохранён. Если это отдельный платёж, добавьте пояснение в Примечание.');
-  const similarRow = sgiDuplicateRow_(sh,r,next,v[4],true);
+  const similarRow = sgiDuplicateRow_(sh,sourceRow,next,v[4],true);
   if (similarRow) sh.getParent().toast('Возможный дубль со строкой '+similarRow+'. Отдельный платёж сохранён с вашим пояснением.', 'Проверьте платёж', 10);
   // Keep financial storage untouched until the row is complete and valid.
-  sh.getRange(r,1,1,5).setValues([next]);
-  sh.getRange(r,20).setValue(v[4]);
-  if (!occupied && !stored[13]) sh.getRange(r,14).setValue('sgi-' + Utilities.getUuid());
-  if (!stored[15]) sh.getRange(r,16).setValue(new Date());
+  if(compact&&!sourceRow) {
+    sourceRow=sgcAllocate_(sh);sh.getRange(r,28).setValue(sourceRow);
+  }
+  if (!occupied && !stored[13]) sh.getRange(sourceRow,14).setValue('sgi-' + Utilities.getUuid());
+  sh.getRange(sourceRow,1,1,5).setValues([next]);
+  sh.getRange(sourceRow,20).setValue(v[4]);
+  if (!stored[15]) sh.getRange(sourceRow,16).setValue(new Date());
   // Existing installed handlers ignore U:AA. Invoke the same pair logic under its shared lock.
-  if (r !== 9 && r !== 13 && (JSON.stringify(next.slice(0,4)) !== JSON.stringify(stored.slice(0,4)))) stSyncRow_(sh,r);
+  if (sourceRow !== 9 && sourceRow !== 13 && (JSON.stringify(next.slice(0,4)) !== JSON.stringify(stored.slice(0,4)))) stSyncRow_(sh,sourceRow);
   SpreadsheetApp.flush();
   sgiMirror_(sh,r,v);
 }
@@ -288,6 +305,7 @@ function sgiRow_(sh, r, edited, model) {
 function sgiRepairMirrors_() {
   const sh = SpreadsheetApp.openById(SGI_ID).getSheetByName('Ввод операций');
   if (!sh) throw new Error('Не найден лист «Ввод операций».');
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh))return sgcRefresh_(sh);
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
@@ -315,7 +333,8 @@ function sgiRepairMirrors_() {
   } finally { lock.releaseLock(); }
 }
 
-function sgiFilter_(sh) {
+function sgiFilter_(sh,lockHeld) {
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) return lockHeld?sgcRender_(sh):sgcRefresh_(sh);
   const mode = String(sh.getRange('V3').getValue());
   let filter = sh.getFilter();
   if (!filter) filter = sh.getRange('A4:AA1004').createFilter();
@@ -340,6 +359,10 @@ function sgiMonth_(label) {
 function sgiAssertMonth_(sh,date,capturedMonth) {
   const label=String(sh.getRange('X3').getValue()||'').trim(), month=sgiMonth_(label);
   if(!month) throw new Error('Выберите конкретный месяц в X3. «Все месяцы» — только просмотр.');
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) {
+    const rendered=sh.getRange('AC1:AD1').getValues()[0];
+    if(rendered[0]!==label||rendered[1]!==String(sh.getRange('V3').getValue())) throw new Error('Выбранный месяц и тип ещё обновляются. Дождитесь готового списка.');
+  }
   if(capturedMonth!==undefined && capturedMonth!==label) throw new Error('Выбран другой месяц после ввода. Проверьте дату и повторите ввод.');
   if(date instanceof Date && !isNaN(date.getTime()) && Utilities.formatDate(date,'Asia/Dubai','yyyy-MM')!==month.year+'-'+String(month.month).padStart(2,'0'))
     throw new Error('Выбран '+label+'. Измените дату или переключите месяц.');
@@ -353,10 +376,20 @@ function showroomGridMonthOnOpen() {
   const months=ss.getSheets().map(s=>s.getName()).filter(s=>sgiMonth_(s));
   const today=Utilities.formatDate(new Date(),'Asia/Dubai','yyyy-MM').split('-').map(Number);
   const current=SGI_MONTH_NAMES[today[1]-1]+' '+today[0];
-  sh.getRange('X3').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(months.concat(['Все месяцы']),true).setAllowInvalid(false).build());
+  sh.getRange('X3').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(months,true).setAllowInvalid(false).build());
   // Preserve an in-progress draft when another manager opens the workbook.
   const pending=Object.keys(PropertiesService.getScriptProperties().getProperties()).some(k=>k.indexOf('sgi.queue.v1.')===0);
   if(!pending && months.includes(current)) sh.getRange('X3').setValue(current);
+  if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) {
+    const rendered=sh.getRange('AC1:AD1').getValues()[0];
+    if(rendered[0]!==String(sh.getRange('X3').getValue())||rendered[1]!==String(sh.getRange('V3').getValue()))sh.getRange('AF1').setValue('dirty:'+Utilities.getUuid());
+    return; // Simple onOpen has a 30-second limit; the timer renders asynchronously.
+  }
   sgiFilter_(sh);
+}
+
+function sgiStored_(sh,r) {
+  const source=typeof sgcEnabled_==='function'&&sgcEnabled_(sh)?sgcSourceRow_(sh,r):r;
+  return source?sh.getRange(source,1,1,20).getValues()[0]:Array(20).fill('');
 }
 
