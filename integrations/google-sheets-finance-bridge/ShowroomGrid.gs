@@ -19,7 +19,7 @@ function showroomGridOnEdit(e) {
   if (!e || !e.range || !e.source || e.source.getId() !== SGI_ID) return;
   const sh = e.range.getSheet();
   if (sh.getName() !== 'Ввод операций' || sh.getMaxColumns() < 27) return;
-  if (e.range.getRow() <= 3 && e.range.getLastRow() >= 3 && e.range.getColumn() <= 22 && e.range.getLastColumn() >= 22) {
+  if (e.range.getRow() <= 3 && e.range.getLastRow() >= 3 && e.range.getColumn() <= 24 && e.range.getLastColumn() >= 22) {
     sgiFilter_(sh); return;
   }
   if (e.range.getLastColumn() < 21 || e.range.getColumn() > 27 || e.range.getLastRow() < 5) return;
@@ -38,7 +38,7 @@ function sgiQueueEdit_(e) {
   const props = PropertiesService.getScriptProperties();
   for (let row = first; row <= last; row++) {
     props.setProperty('sgi.queue.v1.' + row + '.' + Utilities.getUuid(), JSON.stringify({
-      row:row, columns:columns, created:Date.now(), attempts:0
+      row:row, columns:columns, month:String(e.range.getSheet().getRange('X3').getValue() || ''), created:Date.now(), attempts:0
     }));
   }
 }
@@ -90,7 +90,7 @@ function sgiDrainGridQueue_(ss) {
     for (const job of jobs) {
       if (Date.now()-started>90000) break; // Leave the remaining durable work for the next tick.
       const edited={getColumn:()=>Math.min(...job.columns),getLastColumn:()=>Math.max(...job.columns),
-        getEditedColumns:()=>job.columns.slice()};
+        getEditedColumns:()=>job.columns.slice(), getSelectedMonth:()=>job.events[job.events.length-1].item.month};
       try {
         sgiRow_(sh,job.row,edited,model);
         SpreadsheetApp.flush();
@@ -100,7 +100,7 @@ function sgiDrainGridQueue_(ss) {
         const message=String(err.message||err);
         job.events.forEach(e=>{
           const item=e.item;item.attempts=Number(item.attempts||0)+1;item.error=message;
-          item.blocked=item.attempts>=3 || /Похожая операция|повреждена связь|обновлена другим|Дата вне|Примечание должно|автоматическая пара/.test(message);
+          item.blocked=item.attempts>=3 || /Похожая операция|повреждена связь|обновлена другим|Дата вне|Выбран|месяц|Примечание должно|автоматическая пара/.test(message);
           props.setProperty(e.key,JSON.stringify(item));
         });
         failures.push('Строка '+job.row+': '+message);
@@ -232,6 +232,8 @@ function sgiRow_(sh, r, edited, model) {
       sgiEditedColumns_(edited).every(c=>Boolean(inputFormulas[c-21]))) return;
   const editedColumns = sgiEditedColumns_(edited);
   const controls = editedColumns.some(c=>c>=22&&c<=24);
+  try { sgiAssertMonth_(sh,visible[0],typeof edited.getSelectedMonth==='function'?edited.getSelectedMonth():undefined); }
+  catch (err) { cell.setNote('sgi:'+base); sh.getParent().toast(String(err.message||err),'Операция не сохранена',10); throw err; }
   let v = visible;
   if (stored[17] === 'auto' && !editedColumns.every(c=>c===21||c===26)) {
     sgiMirror_(sh,r);
@@ -317,5 +319,41 @@ function sgiFilter_(sh) {
   if (mode === 'Приход' || mode === 'Расход') {
     filter.setColumnFilterCriteria(6,SpreadsheetApp.newFilterCriteria().whenFormulaSatisfied('=OR($A5="";$F5="'+mode+'")').build());
   } else filter.removeColumnFilterCriteria(6);
+  const month=sgiMonth_(String(sh.getRange('X3').getValue()||''));
+  const formula=month ? '=OR($A5="";AND(ISNUMBER($A5);$A5>=DATE('+month.year+';'+month.month+';1);$A5<EDATE(DATE('+month.year+';'+month.month+';1);1)))' : '=$A5<>""';
+  filter.setColumnFilterCriteria(1,SpreadsheetApp.newFilterCriteria().whenFormulaSatisfied(formula).build());
+  const rule=SpreadsheetApp.newDataValidation().setAllowInvalid(false);
+  if(month) rule.requireDateBetween(new Date(Date.UTC(month.year,month.month-1,1,8)),new Date(Date.UTC(month.year,month.month,0,8)));
+  else rule.requireFormulaSatisfied('=OR(U5="";AND(ISNUMBER(U5);U5=INDEX($A:$A;ROW())))');
+  sh.getRange('U5:U1004').setDataValidation(rule.setHelpText(month?'Дата только за '+month.label+'.':'Выберите месяц в X3 для ввода.').build());
+}
+
+const SGI_MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+function sgiMonth_(label) {
+  const match=/^(\S+) (\d{4})$/.exec(String(label||'').trim());
+  if(!match || !SGI_MONTH_NAMES.includes(match[1])) return null;
+  return {year:Number(match[2]),month:SGI_MONTH_NAMES.indexOf(match[1])+1,label:match[0]};
+}
+function sgiAssertMonth_(sh,date,capturedMonth) {
+  const label=String(sh.getRange('X3').getValue()||'').trim(), month=sgiMonth_(label);
+  if(!month) throw new Error('Выберите конкретный месяц в X3. «Все месяцы» — только просмотр.');
+  if(capturedMonth!==undefined && capturedMonth!==label) throw new Error('Выбран другой месяц после ввода. Проверьте дату и повторите ввод.');
+  if(date instanceof Date && !isNaN(date.getTime()) && Utilities.formatDate(date,'Asia/Dubai','yyyy-MM')!==month.year+'-'+String(month.month).padStart(2,'0'))
+    throw new Error('Выбран '+label+'. Измените дату или переключите месяц.');
+  return month;
+}
+/** Rebuild choices from actual monthly sheets, without editing financial storage. */
+function showroomGridMonthOnOpen() {
+  const ss=SpreadsheetApp.getActiveSpreadsheet();
+  if(!ss || ss.getId()!==SGI_ID) return;
+  const sh=ss.getSheetByName('Ввод операций');
+  const months=ss.getSheets().map(s=>s.getName()).filter(s=>sgiMonth_(s));
+  const today=Utilities.formatDate(new Date(),'Asia/Dubai','yyyy-MM').split('-').map(Number);
+  const current=SGI_MONTH_NAMES[today[1]-1]+' '+today[0];
+  sh.getRange('X3').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(months.concat(['Все месяцы']),true).setAllowInvalid(false).build());
+  // Preserve an in-progress draft when another manager opens the workbook.
+  const pending=Object.keys(PropertiesService.getScriptProperties().getProperties()).some(k=>k.indexOf('sgi.queue.v1.')===0);
+  if(!pending && months.includes(current)) sh.getRange('X3').setValue(current);
+  sgiFilter_(sh);
 }
 

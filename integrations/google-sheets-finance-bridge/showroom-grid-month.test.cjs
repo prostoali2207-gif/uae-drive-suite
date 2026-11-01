@@ -1,0 +1,22 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync(__dirname+'/ShowroomGrid.gs','utf8');
+const filters={},rules=[];let selected='Ноябрь 2026',mode='Расход',writes=0;
+const ctx={Date,console,Utilities:{formatDate:(d,tz,f)=>d.toISOString().slice(0,f==='yyyy-MM'?7:10)},SpreadsheetApp:{newFilterCriteria:()=>({whenFormulaSatisfied:f=>({build:()=>f})}),newDataValidation:()=>{const r={setAllowInvalid:()=>r,requireDateBetween:(a,b)=>{rules.push([a,b]);return r;},requireFormulaSatisfied:f=>{rules.push(f);return r;},setHelpText:()=>r,build:()=>r};return r;}}};
+const api=vm.runInNewContext(source+'\n({sgiAssertMonth_,sgiMonth_,sgiFilter_,sgiRow_})',ctx);
+const sheet={getParent:()=>({toast(){}}),getFilter:()=>({setColumnFilterCriteria:(c,f)=>{filters[c]=f;},removeColumnFilterCriteria:c=>{delete filters[c];}}),getRange:(r,c,h,w)=>{
+ if(r==='X3')return{getValue:()=>selected};if(r==='V3')return{getValue:()=>mode};if(r==='U5:U1004')return{setDataValidation(){}};
+ if(c===1)return{getValues:()=>[Array(20).fill('')]};
+ if(c===21&&w===7)return{getValues:()=>[[new Date('2026-09-01T08:00:00Z'),'Расход','Касса','Прочие','',10,'']],getFormulas:()=>[Array(7).fill('')]};
+ return{getNote:()=>'',setNote(){},setValues(){writes++;},setValue(){writes++;}};
+}};
+assert.equal(api.sgiAssertMonth_(sheet,new Date('2026-11-30T08:00:00Z')).month,11);
+assert.throws(()=>api.sgiAssertMonth_(sheet,new Date('2026-12-01T08:00:00Z')),/Выбран Ноябрь/);
+assert.throws(()=>api.sgiAssertMonth_(sheet,new Date('2026-09-01T08:00:00Z')),/Выбран Ноябрь/);
+assert.throws(()=>api.sgiAssertMonth_(sheet,new Date('2026-11-01T08:00:00Z'),'Октябрь 2026'),/другой месяц/);
+assert.throws(()=>api.sgiRow_(sheet,250,{getColumn:()=>21,getLastColumn:()=>27},[]),/Выбран Ноябрь/);assert.equal(writes,0);
+api.sgiFilter_(sheet);assert.match(filters[1],/DATE\(2026;11;1\)/);assert.match(filters[6],/Расход/);
+assert.equal(rules[0][1].toISOString().slice(0,10),'2026-11-30');
+selected='Все месяцы';assert.throws(()=>api.sgiAssertMonth_(sheet,new Date()),/только просмотр/);api.sgiFilter_(sheet);assert.equal(filters[1],'=$A5<>""');assert.match(rules[1],/U5=INDEX\(\$A:\$A;ROW\(\)\)/);
+selected='Сентябрь 2026';assert.equal(api.sgiAssertMonth_(sheet,new Date('2026-09-30T08:00:00Z')).month,9);
+selected='Февраль 2028';api.sgiFilter_(sheet);assert.equal(rules[2][1].toISOString().slice(0,10),'2028-02-29');
+console.log('PASS 11 month-boundary, read-only, archived-month, queue-switch and filter scenarios');

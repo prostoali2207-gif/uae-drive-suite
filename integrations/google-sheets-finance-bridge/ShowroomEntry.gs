@@ -4,6 +4,7 @@ function onOpen() {
     .createMenu('Операции автосалона')
     .addItem('Добавить операцию', 'showroomEntryShowForm_')
     .addToUi();
+  showroomGridMonthOnOpen();
 }
 
 function showroomEntryShowForm_() {
@@ -80,6 +81,7 @@ function showroomEntrySubmit(form) {
   lock.waitLock(15000);
   let targetRow = 0, similarRow = 0;
   try {
+    sgiAssertMonth_(sh,dateValue);
     const ids = sh.getRange(firstRow,14,count,1).getDisplayValues();
     const existingIndex = ids.findIndex(r => r[0] === requestId);
     if (existingIndex >= 0) {

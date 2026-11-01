@@ -8,7 +8,7 @@ function check(name,fn){fn();tests++;console.log('PASS '+name);}
 function fixture(){
  const data={},processed=[],financial=new Map(); let busy=true,seq=0,throws='',during=null,flushFails=false,released=0;
  const props={getProperties:()=>({...data}),setProperty:(k,v)=>{data[k]=v;},deleteProperty:k=>{delete data[k];}};
- const sheet={getName:()=> 'Ввод операций',getMaxColumns:()=>27};
+ const sheet={getName:()=> 'Ввод операций',getMaxColumns:()=>27,getRange:()=>({getValue:()=> 'Октябрь 2026'})};
  const ss={getId:()=> '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA',getSheetByName:()=>sheet,toast(){}};
  const ctx=vm.createContext({console,PropertiesService:{getScriptProperties:()=>props},
   Utilities:{getUuid:()=>String(++seq)},LockService:{getScriptLock:()=>({tryLock:ms=>{assert.equal(ms,1000);return !busy;},releaseLock:()=>{released++;}})},

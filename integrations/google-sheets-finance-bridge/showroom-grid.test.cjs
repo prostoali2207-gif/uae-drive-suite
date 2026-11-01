@@ -85,7 +85,7 @@ check('repair migration skips draft and changes only fully mirrored rows', () =>
 
 const duplicateCtx = {
   Utilities: {
-    formatDate: (d) => d.toISOString().slice(0, 10),
+    formatDate: (d,tz,format) => d.toISOString().slice(0, format==='yyyy-MM'?7:10),
     getUuid: () => 'test-request-id',
   },
   SpreadsheetApp: { flush() {} },
@@ -145,6 +145,7 @@ check('attempted duplicate cannot write any A:T financial cells', () => {
   const sh = {
     getMaxRows: () => 1004,
     getRange: (r,c,h,w) => {
+      if (r === 'X3') return {getValue:()=> 'Октябрь 2026'};
       if (r === 'A5') return { getDataValidation: () => null };
       if (r === 52 && c === 21 && !h) return { getNote: () => note, setNote: v => {note = v;}, clearNote: () => {note = '';} };
       if (r === 52 && c === 21 && h === 1 && w === 7) return area;
@@ -175,6 +176,7 @@ check('automatic transfer accepts allowed coalesced date/amount edit',()=>{
  const mirrored=cols.map(posting.sgiMirrorFormula_);mirrored[0]='';mirrored[5]='';
  let note='sgi:'+posting.sgiSignature_(stored);
  const sh={getRange:(r,c,h,w)=>{
+  if(r==='X3')return{getValue:()=> 'Октябрь 2026'};
   if(c===1)return{getValues:()=>[stored]};
   if(c===21&&w===7)return{getValues:()=>[draft],getFormulas:()=>[mirrored]};
   return{getNote:()=>note,setNote:v=>{note=v;}};
