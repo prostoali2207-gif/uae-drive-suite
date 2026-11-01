@@ -1,0 +1,11 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync(__dirname+'/ShowroomGrid.gs','utf8');
+let selected='Сентябрь 2026',writes=0;
+const months=['Сентябрь 2026','Октябрь 2026','Ноябрь 2026'];
+const selector={getValue:()=>selected,getDataValidation:()=>({getCriteriaType:()=> 'list',getCriteriaValues:()=>[months]}),setValue(v){selected=v;writes++;},setDataValidation(){writes++;}};
+const sh={getRange:name=>{assert.equal(name,'X3');return selector;}};
+const ss={getId:()=> '16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA',getSheetByName:()=>sh,getSheets:()=>months.map(name=>({getName:()=>name}))};
+const ctx={Date,console,SpreadsheetApp:{getActiveSpreadsheet:()=>ss,DataValidationCriteria:{VALUE_IN_LIST:'list'}},Utilities:{formatDate:()=> '2026-11'},PropertiesService:{getScriptProperties:()=>({getProperties:()=>({})})}};
+vm.runInNewContext(source+'\nsgiFilter_=()=>{};showroomGridMonthOnOpen();',ctx);
+assert.equal(selected,'Сентябрь 2026');assert.equal(writes,0);
+console.log('PASS opening a tab preserves the selected month and performs no redundant selector writes');

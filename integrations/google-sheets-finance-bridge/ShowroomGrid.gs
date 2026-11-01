@@ -376,10 +376,19 @@ function showroomGridMonthOnOpen() {
   const months=ss.getSheets().map(s=>s.getName()).filter(s=>sgiMonth_(s));
   const today=Utilities.formatDate(new Date(),'Asia/Dubai','yyyy-MM').split('-').map(Number);
   const current=SGI_MONTH_NAMES[today[1]-1]+' '+today[0];
-  sh.getRange('X3').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(months,true).setAllowInvalid(false).build());
-  // Preserve an in-progress draft when another manager opens the workbook.
-  const pending=Object.keys(PropertiesService.getScriptProperties().getProperties()).some(k=>k.indexOf('sgi.queue.v1.')===0);
-  if(!pending && months.includes(current)) sh.getRange('X3').setValue(current);
+  const selector=sh.getRange('X3'),selected=String(selector.getValue()||'');
+  const rule=selector.getDataValidation();
+  const existing=rule&&rule.getCriteriaType()===SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST?rule.getCriteriaValues()[0]:null;
+  if(!existing||JSON.stringify(existing)!==JSON.stringify(months)) selector.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(months,true).setAllowInvalid(false).build());
+  // Opening another browser tab must not change a shared, valid month selection.
+  // Avoid a no-op write as well: it needlessly invalidates dependent calculations.
+  if(!months.includes(selected)) {
+    const pending=Object.keys(PropertiesService.getScriptProperties().getProperties()).some(k=>k.indexOf('sgi.queue.v1.')===0);
+    if(!pending&&!(typeof sgcHasDraft_==='function'&&sgcEnabled_(sh)&&sgcHasDraft_(sh))) {
+      const fallback=months.includes(current)?current:months[months.length-1];
+      if(fallback)selector.setValue(fallback);
+    }
+  }
   if(typeof sgcEnabled_==='function'&&sgcEnabled_(sh)) {
     const rendered=sh.getRange('AC1:AD1').getValues()[0];
     if(rendered[0]!==String(sh.getRange('X3').getValue())||rendered[1]!==String(sh.getRange('V3').getValue()))sh.getRange('AF1').setValue('dirty:'+Utilities.getUuid());

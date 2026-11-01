@@ -32,16 +32,18 @@ function sgcAllocate_(sh) {
   }
   throw new Error('Нет свободных строк в журнале. Операция не сохранена.');
 }
+function sgcScanRows_(sh) {
+  return typeof sh.getLastRow==='function'?Math.max(1,Math.min(1004,sh.getLastRow())-4):1000;
+}
 function sgcHasDraft_(sh) {
-  const area=sh.getRange('U5:AA1004'),values=area.getValues(),formulas=area.getFormulas();
+  const area=sh.getRange(5,21,sgcScanRows_(sh),7),values=area.getValues(),formulas=area.getFormulas();
   return values.some((row,r)=>row.some((value,c)=>value!==''&&value!==null&&!formulas[r][c]));
 }
 /** AF is producer-owned; AG acknowledges the captured notification, AH the rendered hash.
  * Never overwrite AF while consuming: a bridge write may race with the render. */
 function sgcNeedsRefresh_(sh) {
-  const state=sh.getRange('AF1:AG1').getValues()[0];
-  const rendered=sh.getRange('AC1:AD1').getValues()[0];
-  return String(state[0])!==String(state[1]) || rendered[0]!==String(sh.getRange('X3').getValue()) || rendered[1]!==String(sh.getRange('V3').getValue()||'Все');
+  const state=sh.getRange('AC1:AG1').getValues()[0],controls=sh.getRange('V3:X3').getValues()[0];
+  return String(state[3])!==String(state[4]) || state[0]!==String(controls[2]) || state[1]!==String(controls[0]||'Все');
 }
 function sgcRefresh_(sh) {
   const lock=LockService.getScriptLock();
@@ -49,12 +51,16 @@ function sgcRefresh_(sh) {
   try{return sgcRender_(sh);}finally{lock.releaseLock();}
 }
 function sgcRender_(sh) {
-  const label=String(sh.getRange('X3').getValue()),mode=String(sh.getRange('V3').getValue()||'Все');
+  // One coherent values snapshot replaces separate service round-trips for controls,
+  // source, row mapping, cursor and digest. Formulas distinguish editable drafts.
+  const snapshot=sh.getRange(1,1,1004,34).getValues();
+  const inputFormulas=sh.getRange('U5:AA1004').getFormulas();
+  const label=String(snapshot[2][23]),mode=String(snapshot[2][21]||'Все');
   const month=sgiMonth_(label);
   if(!month) throw new Error('Выберите месяц. Общий список больше не используется.');
-  const previous=sh.getRange('AC1:AD1').getValues()[0];
-  const triggerToken=String(sh.getRange('AF1').getValue());
-  if(sgcHasDraft_(sh)) {
+  const previous=snapshot[0].slice(28,30),triggerToken=String(snapshot[0][31]);
+  const hasDraft=snapshot.slice(4).some((row,r)=>row.slice(20,27).some((value,c)=>value!==''&&value!==null&&!inputFormulas[r][c]));
+  if(hasDraft) {
     sh.getRange('AG1').setValue(triggerToken); // Preserve draft; the next edit retries rendering.
     if(previous[0]&&(previous[0]!==label||previous[1]!==mode)) {
       sh.getRange('X3').setValue(previous[0]);sh.getRange('V3').setValue(previous[1]);
@@ -63,9 +69,9 @@ function sgcRender_(sh) {
     return {draft:true};
   }
   const key=month.year+'-'+String(month.month).padStart(2,'0');
-  const plan=sgcPlan_(sh.getRange(5,1,1000,20).getValues(),key,mode);
+  const plan=sgcPlan_(snapshot.slice(4).map(row=>row.slice(0,20)),key,mode);
   const digest=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify([label,mode,plan.map(x=>[x.row,sgiSignature_(x.values)])])).map(b=>('0'+((b+256)%256).toString(16)).slice(-2)).join('');
-  if(String(sh.getRange('AH1').getValue())===digest) {
+  if(String(snapshot[0][33])===digest) {
     sh.getRange('AG1').setValue(triggerToken);
     return {unchanged:true,count:plan.length};
   }
@@ -74,37 +80,45 @@ function sgcRender_(sh) {
     if(previous[0]){sh.getRange('X3').setValue(previous[0]);sh.getRange('V3').setValue(previous[1]);}
     return {pending:true};
   }
+  // Include the old extent to clear stale rows after switching to a shorter month.
+  // Legacy blank signatures are cleared once; later renders touch only real rows + one input row.
+  const oldMap=snapshot.slice(4).map(row=>row.slice(27,29));
+  const previousExtent=oldMap.reduce((n,row,i)=>row.some(v=>v!==''&&v!==null&&v!==0)?i+1:n,0);
+  const span=Math.min(1000,Math.max(previousExtent,plan.length+1,1));
   const map=[],formulas=[],sourceIndexes=[0,5,1,2,19,3,4];
-  for(let i=0;i<1000;i++) {
+  for(let i=0;i<span;i++) {
     const entry=plan[i],v=entry?entry.values:Array(20).fill('');
-    map.push([entry?entry.row:0,sgiSignature_(v)]);
+    map.push(entry?[entry.row,sgiSignature_(v)]:['','']);
     formulas.push(SGI_COLS.map((col,c)=>v[sourceIndexes[c]]===''||v[sourceIndexes[c]]===null?'':sgcMirrorFormula_(col,i+5,entry.row)));
   }
   // Set mappings before formulas; no financial cell is written by rendering.
-  const area=sh.getRange('U5:AA1004'),rules=area.getDataValidations();
+  const area=sh.getRange(5,21,span,7),dates=sh.getRange('U5:U1004');
   const dateRule=SpreadsheetApp.newDataValidation().requireDateBetween(new Date(Date.UTC(month.year,month.month-1,1,8)),new Date(Date.UTC(month.year,month.month,0,8))).setAllowInvalid(false).setHelpText('Дата только за '+label+'.').build();
-  rules.forEach((row,i)=>{
-    row[0]=dateRule;
-  });
   // Build on an unvalidated hidden buffer, then publish through native paste.
   // Paste is one native operation, avoiding Range.setFormulas' stale-list checks.
   const ss=sh.getParent();let stage=ss.getSheetByName('_Ввод_месяц_буфер');
   if(!stage){stage=ss.insertSheet('_Ввод_месяц_буфер');stage.hideSheet();}
   if(stage.getMaxRows()<1004)stage.insertRowsAfter(stage.getMaxRows(),1004-stage.getMaxRows());
-  const buffer=stage.getRange(5,1,1000,7);
-  buffer.clearDataValidations();buffer.setFormulas(formulas);SpreadsheetApp.flush();
+  const buffer=stage.getRange(5,1,span,7);
+  buffer.clearDataValidations();buffer.setFormulas(formulas);
   // Native paste skips rows hidden by an existing filter; remove it BEFORE pasting.
   const filter=sh.getFilter();if(filter)filter.remove();
-  sh.showRows(5,1000);SpreadsheetApp.flush();
-  sh.getRange(5,28,1000,2).setValues(map);SpreadsheetApp.flush();
-  buffer.copyTo(area,SpreadsheetApp.CopyPasteType.PASTE_FORMULA,false);SpreadsheetApp.flush();
-  area.setDataValidations(rules);
-  sh.getRange('U5:U1004').clearNote();
+  sh.showRows(5,span);
+  sh.getRange(5,28,span,2).setValues(map);
+  // Preserve dropdown/amount/note rules in place; only the date bounds change.
+  // Restore the guard even if native paste fails. Ready context is published only after flush.
+  try {
+    dates.clearDataValidations();
+    buffer.copyTo(area,SpreadsheetApp.CopyPasteType.PASTE_FORMULA,false);
+    buffer.clearContent(); // Published formulas point directly to A:T; the staging sheet need not recalculate.
+  } finally { dates.setDataValidation(dateRule); }
+  sh.getRange(5,21,span,1).clearNote();
+  SpreadsheetApp.flush();
   sh.getRange('AC1:AE1').setValues([[label,mode,Utilities.getUuid()]]);
   sh.getRange('AG1:AH1').setValues([[triggerToken,digest]]);
   SpreadsheetApp.flush();
   if(previous[0]!==label||previous[1]!==mode)sh.getRange('U5').activate();
-  return {count:plan.length,firstRow:5};
+  return {count:plan.length,firstRow:5,rowsWritten:span};
 }
 
 /** Explicitly invoked only after the candidate passed QA. Never posts an existing draft. */
