@@ -1,0 +1,94 @@
+{
+  "spreadsheet_id": "16Nb1bP-u5ox9RX4kH5fWa-GaYvAIoisyLMFSiGbtvJA",
+  "sheet_id": 473126496,
+  "sheet": "Месяц",
+  "frozenColumnCount": 0,
+  "frozenRowCount": 2,
+  "editableException": "B2",
+  "protectedRanges": [
+    {
+      "protectedRangeId": 1678230971,
+      "range": {
+        "sheetId": 473126496
+      },
+      "description": "Месяц — отчёт для просмотра. Ввод через «Ввод операций». Доступен выбор периода B2.",
+      "requestingUserCanEdit": true,
+      "unprotectedRanges": [
+        {
+          "sheetId": 473126496,
+          "startRowIndex": 1,
+          "endRowIndex": 2,
+          "startColumnIndex": 1,
+          "endColumnIndex": 2
+        }
+      ],
+      "editors": {
+        "users": [
+          "muzafirvat@gmail.com"
+        ]
+      }
+    },
+    {
+      "protectedRangeId": 1499956287,
+      "range": {
+        "sheetId": 473126496,
+        "startRowIndex": 0,
+        "endRowIndex": 1,
+        "startColumnIndex": 0,
+        "endColumnIndex": 10
+      },
+      "description": "Расчётный отчёт. Для ввода используйте «Ввод операций».",
+      "warningOnly": true,
+      "requestingUserCanEdit": true,
+      "editors": {}
+    },
+    {
+      "protectedRangeId": 354269546,
+      "range": {
+        "sheetId": 473126496,
+        "startRowIndex": 1,
+        "endRowIndex": 2,
+        "startColumnIndex": 0,
+        "endColumnIndex": 1
+      },
+      "description": "Расчётный отчёт. Для ввода используйте «Ввод операций».",
+      "warningOnly": true,
+      "requestingUserCanEdit": true,
+      "editors": {}
+    },
+    {
+      "protectedRangeId": 1960856108,
+      "range": {
+        "sheetId": 473126496,
+        "startRowIndex": 1,
+        "endRowIndex": 2,
+        "startColumnIndex": 2,
+        "endColumnIndex": 10
+      },
+      "description": "Расчётный отчёт. Для ввода используйте «Ввод операций».",
+      "warningOnly": true,
+      "requestingUserCanEdit": true,
+      "editors": {}
+    },
+    {
+      "protectedRangeId": 847597301,
+      "range": {
+        "sheetId": 473126496,
+        "startRowIndex": 2,
+        "endRowIndex": 346,
+        "startColumnIndex": 0,
+        "endColumnIndex": 10
+      },
+      "description": "Расчётный отчёт. Для ввода используйте «Ввод операций».",
+      "warningOnly": true,
+      "requestingUserCanEdit": true,
+      "editors": {}
+    }
+  ],
+  "verification": {
+    "allA1J346ValuesFormulasAndValidationUnchanged": true,
+    "periodControlAccessible": true,
+    "nativeFrozenColumnCountRemoved": true
+  },
+  "ownerLimitation": "Google file owner retains editing rights; warning-only ranges prompt before changing report cells."
+}
