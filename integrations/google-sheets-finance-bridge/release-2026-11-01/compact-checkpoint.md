@@ -1,6 +1,10 @@
 # Compact input month view — checkpoint 2026-11-01
 Status: COMPLETED 2026-11-01. Final acceptance, v20 publication, financial preservation comparison and GitHub changes documented in compact-final-verification.md. Earlier checkpoint below retained as historical handoff evidence.
 
+## Latest bounded report publication — 2026-11-02
+
+API version23 and bound Grid now publish only the smallest changed report rectangle. Native financial/carry-forward QA and live preservation checks passed. Deeper live-cache and input rewrites were benchmarked and rejected because they did not improve speed; none were installed in production. See [deeper-performance-verification.md](../release-2026-11-02/deeper-performance-verification.md).
+
 ## Latest input-date repair — 2026-11-02
 
 General-formatted U55 exposed serial46317 instead of22.10.2026 and caused a false draft, blocking October→November. Restored visible date format; render and installer now enforce it. Native QA and genuine-draft preservation passed. Live November ready at row5;1572 financial cells unchanged. See [input-date-format-verification.md](../release-2026-11-02/input-date-format-verification.md).

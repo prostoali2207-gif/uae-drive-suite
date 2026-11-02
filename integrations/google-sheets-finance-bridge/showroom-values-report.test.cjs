@@ -1,10 +1,10 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto');
 const code=fs.readFileSync(__dirname+'/ShowroomReportValues.gs','utf8');
 function fixture(){
- let period=new Date('2026-10-31T20:00:00Z'),publicRows=[['Расход',810]],calculated=[['Расход',810]],staged=[],writes=0,changeAt=0,reads=0;
+ let period=new Date('2026-10-31T20:00:00Z'),publicRows=[['Расход',809]],calculated=[['Расход',810]],staged=[],writes=0,changeAt=0,reads=0;
  const props=new Map();
  function range(kind){return {getValue:()=>{if(++reads===changeAt)period=new Date('2026-09-30T20:00:00Z');return period;},getValues:()=>kind==='calc'?calculated:publicRows,setValues:v=>{if(kind==='view'){publicRows=v;writes++;}else staged=v;},setValue:v=>{},clearContent:()=>{staged=[];},copyTo:()=>{publicRows=staged.map(r=>r.slice());writes++;}};}
- const view={getRange:(r)=>range(r==='B2'?'period':'view')},calc={getMaxRows:()=>3,getMaxColumns:()=>2,getRange:r=>range(r==='B2'?'period':'calc')},stage={getMaxRows:()=>3,getMaxColumns:()=>2,getRange:()=>range('stage')};
+ const view={getRange:(r,c=1,h=1,w=2)=>{const result=range(r==='B2'?'period':'view');if(typeof r==='number')result.setValues=values=>{writes++;values.forEach((row,i)=>row.forEach((v,j)=>{publicRows[r-3+i][c-1+j]=v;}));};return result;}},calc={getMaxRows:()=>3,getMaxColumns:()=>2,getRange:r=>range(r==='B2'?'period':'calc')},stage={getMaxRows:()=>3,getMaxColumns:()=>2,getRange:()=>range('stage')};
  const ss={getId:()=> 'qa-only',getSheetByName:n=>({'Месяц':view,'_Месяц_расчёт':calc,'_Месяц_значения':stage}[n])};
  const context=vm.createContext({Date,JSON,SpreadsheetApp:{CopyPasteType:{PASTE_VALUES:'values'}},Utilities:{DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_,v)=>Array.from(crypto.createHash('sha256').update(v).digest())},PropertiesService:{getScriptProperties:()=>({getProperty:k=>props.get(k),setProperty:(k,v)=>props.set(k,v)})}});
  vm.runInContext(code,context);
@@ -20,7 +20,7 @@ function fixture(){
  console.log('PASS period race before write cannot publish another month');
 }
 {
- const f=fixture();f.raceAt(4);assert.equal(f.refresh().pending,true);assert.equal(f.writes(),1);assert.equal(f.refresh().updated,true);
+ const f=fixture();f.raceAt(4);assert.equal(f.refresh().pending,true);assert.equal(f.writes(),1);assert.equal(Boolean(f.refresh().pending),false);
  console.log('PASS period race after write stays pending and recovers on next refresh');
 }
 {
@@ -28,3 +28,5 @@ function fixture(){
  assert.equal(literal[0][0],"'=hello");assert.equal(literal[0][1],0);assert.equal(literal[0][2],false);assert.equal(literal[0][3],'ordinary');
  console.log('PASS literal staging escapes formula text and preserves zero/false');
 }
+
+{const f=fixture(),fn=f.api.sgvChangedBox_;assert.equal(fn([[0,false,'']],[[0,false,'']]),null);assert.equal(JSON.stringify(fn([[1,2,3],[4,5,6]],[[1,0,3],[4,0,6]])),JSON.stringify({row:0,col:1,rows:2,cols:1}));assert.equal(f.refresh().writtenCells,1);f.edit([['Расход',811]]);assert.equal(f.refresh().writtenCells,1);assert.deepEqual(f.rows(),[['Расход',810]]);console.log('PASS minimal changed rectangle preserves adjacent cells and distinguishes zero/false');}
