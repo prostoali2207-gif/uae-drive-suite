@@ -86,6 +86,8 @@ function sgvInstall_(ss){
   const calc=view.copyTo(ss).setName('_Месяц_расчёт');calc.hideSheet();
   calc.getRange('B2').clearDataValidations().setFormula("='Месяц'!B2");SpreadsheetApp.flush();
   if(!sgvEqual_(before,calc.getRange(1,1,rows,cols).getValues()))throw Error('Расчётная копия отличается. Видимые формулы не заменены.');
+  view.getRange('B2').setNumberFormat('mmmm yyyy');
+  calc.getRange('B2').setNumberFormat('mmmm yyyy');
   const base=ss.insertSheet('_Ввод_значения');base.hideSheet();
   if(base.getMaxRows()<1004)base.insertRowsAfter(base.getMaxRows(),1004-base.getMaxRows());
   base.getRange('A5:A1004').setNumberFormat('yyyy-mm-dd hh:mm:ss');

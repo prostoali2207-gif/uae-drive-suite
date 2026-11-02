@@ -12,16 +12,9 @@ function sgvReportRefresh_(ss) {
   const props=PropertiesService.getScriptProperties(),cursor='sgv.report.v1.'+ss.getId();
   if(props.getProperty(cursor)===digest&&JSON.stringify(view.getRange(3,1,rows-2,cols).getValues())===JSON.stringify(data))return {unchanged:true};
   if(JSON.stringify(view.getRange('B2').getValue())!==key)return {pending:true};
-  // Paste values preserves report formats and protections; B2 is never overwritten.
-  // Copy the captured snapshot, not live calculation cells that could switch periods mid-copy.
-  let stage=ss.getSheetByName('_Месяц_значения');
-  if(!stage){stage=ss.insertSheet('_Месяц_значения');stage.hideSheet();}
-  if(stage.getMaxRows()<rows)stage.insertRowsAfter(stage.getMaxRows(),rows-stage.getMaxRows());
-  if(stage.getMaxColumns()<cols)stage.insertColumnsAfter(stage.getMaxColumns(),cols-stage.getMaxColumns());
-  const buffer=stage.getRange(3,1,rows-2,cols);buffer.setValues(sgvLiteralValues_(data));
-  if(JSON.stringify(view.getRange('B2').getValue())!==key){buffer.clearContent();return {pending:true};}
-  buffer.copyTo(view.getRange(3,1,rows-2,cols),SpreadsheetApp.CopyPasteType.PASTE_VALUES,false);
-  buffer.clearContent();
+  // Visible report contains values only; keep its formats and validation in place.
+  // Write the captured snapshot directly: preserves formats, avoids staging and copy/clear calls.
+  view.getRange(3,1,rows-2,cols).setValues(sgvLiteralValues_(data));
   if(JSON.stringify(view.getRange('B2').getValue())!==key){view.getRange('H4').setValue('Обновление отчёта…');return {pending:true};}
   props.setProperty(cursor,digest);
   return {updated:true};

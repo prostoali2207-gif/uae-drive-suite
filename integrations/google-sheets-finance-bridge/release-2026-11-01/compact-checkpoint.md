@@ -1,6 +1,10 @@
 # Compact input month view — checkpoint 2026-11-01
 Status: COMPLETED 2026-11-01. Final acceptance, v20 publication, financial preservation comparison and GitHub changes documented in compact-final-verification.md. Earlier checkpoint below retained as historical handoff evidence.
 
+## Latest performance publication — 2026-11-02
+
+API version22 and bound Grid use direct captured values for report refresh. Same-copy alternating QA measured46.5% less refresh time, with identical output and unchanged journal. Month B2 uses `mmmm yyyy` on public and hidden calculation sheets. See [report-speed-verification.md](../release-2026-11-02/report-speed-verification.md).
+
 ## Later values-only publication
 
 Published 2026-11-01 at21:18 Dubai. Visible input and Month report contain values, with formulas/calculation on hidden sheets. Native QA, browser period switching and double-click acceptance passed; financial journal unchanged. API version21 retains the existing URL. See [values-view-verification.md](values-view-verification.md) for code composition, triggers, QA evidence and preservation checks. Earlier compact release evidence below is retained as history.
