@@ -1,6 +1,10 @@
 # Compact input month view — checkpoint 2026-11-01
 Status: COMPLETED 2026-11-01. Final acceptance, v20 publication, financial preservation comparison and GitHub changes documented in compact-final-verification.md. Earlier checkpoint below retained as historical handoff evidence.
 
+## Latest input-date repair — 2026-11-02
+
+General-formatted U55 exposed serial46317 instead of22.10.2026 and caused a false draft, blocking October→November. Restored visible date format; render and installer now enforce it. Native QA and genuine-draft preservation passed. Live November ready at row5;1572 financial cells unchanged. See [input-date-format-verification.md](../release-2026-11-02/input-date-format-verification.md).
+
 ## Latest performance publication — 2026-11-02
 
 API version22 and bound Grid use direct captured values for report refresh. Same-copy alternating QA measured46.5% less refresh time, with identical output and unchanged journal. Month B2 uses `mmmm yyyy` on public and hidden calculation sheets. See [report-speed-verification.md](../release-2026-11-02/report-speed-verification.md).

@@ -115,6 +115,7 @@ function sgcRender_(sh) {
   // Restore the guard even if native paste fails. Ready context is published only after flush.
   try {
     dates.clearDataValidations();
+    dates.setNumberFormat('dd.mm.yyyy'); // Values-only projection must not inherit a General date cell.
     if(valueMode)buffer.copyTo(sgvBase_(sh).getRange(5,1,span,7),SpreadsheetApp.CopyPasteType.PASTE_VALUES,false);
     buffer.copyTo(area,valueMode?SpreadsheetApp.CopyPasteType.PASTE_VALUES:SpreadsheetApp.CopyPasteType.PASTE_FORMULA,false);
     buffer.clearContent(); // Published formulas point directly to A:T; the staging sheet need not recalculate.

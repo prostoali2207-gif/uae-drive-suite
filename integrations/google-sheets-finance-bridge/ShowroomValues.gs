@@ -91,6 +91,7 @@ function sgvInstall_(ss){
   const base=ss.insertSheet('_Ввод_значения');base.hideSheet();
   if(base.getMaxRows()<1004)base.insertRowsAfter(base.getMaxRows(),1004-base.getMaxRows());
   base.getRange('A5:A1004').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  sh.getRange('U5:U1004').setNumberFormat('dd.mm.yyyy');
   sh.getRange('U5:AA1004').copyTo(base.getRange(5,1,1000,7),SpreadsheetApp.CopyPasteType.PASTE_VALUES,false);
   base.getRange(5,1,1000,7).copyTo(sh.getRange('U5:AA1004'),SpreadsheetApp.CopyPasteType.PASTE_VALUES,false);
   const area=view.getRange(3,1,rows-2,cols);area.copyTo(area,SpreadsheetApp.CopyPasteType.PASTE_VALUES,false);
