@@ -112,6 +112,51 @@ export async function createSharjahBlackPointsPdf(values: SharjahBlackPointsValu
     context.fillText(output, x * scale, (pageHeight - y) * scale);
   };
 
+  // The downloaded authority template renders the original checkbox glyphs as
+  // misplaced black squares. Recreate just this choice area using outlined boxes
+  // and the exact Arabic options from the official form.
+  //
+  // This generator is exclusively for transferring black points (not fines).
+  // Therefore the second service is selected for UAE and international licences.
+  context.fillStyle = "#ffffff";
+  context.fillRect(18 * scale, (pageHeight - 704) * scale, 282 * scale, 87 * scale);
+  context.fillStyle = "#0d0d0d";
+  context.textAlign = "right";
+  context.direction = "rtl";
+
+  const writeServiceLabel = (label: string, x: number, y: number, fontSize: number, maxWidth: number) => {
+    let size = fontSize;
+    context.font = `600 ${size * scale}px Arial, sans-serif`;
+    while (size > 7.5 && context.measureText(label).width > maxWidth * scale) {
+      size -= 0.25;
+      context.font = `600 ${size * scale}px Arial, sans-serif`;
+    }
+    context.fillText(label, x * scale, (pageHeight - y) * scale, maxWidth * scale);
+  };
+
+  writeServiceLabel("يرجى اختيار خدمة واحدة فقط:", 275, 680, 10, 250);
+  writeServiceLabel("تحويل المخالفات + النقاط المرورية (الرخص المحلية فقط)", 268, 653, 9.2, 245);
+  writeServiceLabel("تحويل النقاط المرورية (الرخص المحلية والدولية)", 268, 629, 9.2, 245);
+
+  const serviceBoxX = 276;
+  const serviceBoxSize = 10;
+  context.lineWidth = 0.9 * scale;
+  context.strokeStyle = "#252525";
+  for (const boxTopY of [661, 637]) {
+    context.strokeRect(serviceBoxX * scale, (pageHeight - boxTopY) * scale, serviceBoxSize * scale, serviceBoxSize * scale);
+  }
+  // Mark exactly one choice: points-only, which is the scope of this PDF.
+  context.beginPath();
+  context.lineWidth = 1.55 * scale;
+  context.strokeStyle = "#111111";
+  context.moveTo(278 * scale, (pageHeight - 631) * scale);
+  context.lineTo(280.5 * scale, (pageHeight - 628.5) * scale);
+  context.lineTo(284.5 * scale, (pageHeight - 634) * scale);
+  context.stroke();
+
+  context.textAlign = "left";
+  context.direction = "ltr";
+
   // The authority form has two fine-data columns. Keep its numbered rows,
   // but divide the fine-data area into date, violation, and fine number.
   const fineGridX = [18, 83, 177, 246];
