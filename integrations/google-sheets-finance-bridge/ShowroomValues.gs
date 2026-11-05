@@ -23,7 +23,8 @@ function sgvCheckRow_(sh,r,edited) {
   const area=sh.getRange(r,21,1,7),visible=area.getValues()[0],formulas=area.getFormulas()[0];
   const saved=sgvBase_(sh).getRange(r,1,1,7).getValues()[0];
   if(formulas.some(Boolean))throw Error('Введите обычные значения, без формул.');
-  if(visible.some((v,i)=>!sgiEditedColumns_(edited).includes(i+21)&&!sgvEqual_(v,saved[i])))throw Error('Есть другая незавершённая правка строки. Завершите её перед сохранением.');
+  // A values row is one accumulated draft: earlier cell edits may still be waiting.
+  // sgiRow_ validates the complete row and checks the source signature before writing.
 }
 function sgvBanner_(sh) {
   const state=sh.getRange('AC1:AD1').getValues()[0],controls=sh.getRange('V3:X3').getValues()[0];
