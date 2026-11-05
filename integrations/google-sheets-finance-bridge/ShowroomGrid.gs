@@ -255,6 +255,22 @@ function sgiRow_(sh, r, edited, model) {
   if (!oldNote.startsWith('sgi:') && occupied &&
       sgiEditedColumns_(edited).every(c=>Boolean(inputFormulas[c-21]))) return;
   const editedColumns = sgiEditedColumns_(edited);
+  // Clearing the entire visible row deletes its mapped operation, before date validation.
+  // Keep ID/timestamp as a tombstone; existing source signatures and view checks still apply.
+  if (visible.every(v=>v===''||v===null) && [21,22,23,24,25,26,27].every(c=>editedColumns.includes(c))) {
+    sgiAssertMonth_(sh,visible[0],typeof edited.getSelectedMonth==='function'?edited.getSelectedMonth():undefined);
+    if(sourceRow) {
+      cell.setNote('sgi:'+base);
+      sh.getRange(sourceRow,1,1,5).clearContent();
+      sh.getRange(sourceRow,20).clearContent();
+      if(sourceRow!==9&&sourceRow!==13)stSyncRow_(sh,sourceRow);
+      SpreadsheetApp.flush();
+    }
+    sgiMirror_(sh,r,visible);
+    if(compact)sh.getRange('AF1').setValue('dirty:'+Utilities.getUuid());
+    return;
+  }
+
   const controls = editedColumns.some(c=>c>=22&&c<=24);
   try { sgiAssertMonth_(sh,visible[0],typeof edited.getSelectedMonth==='function'?edited.getSelectedMonth():undefined); }
   catch (err) { cell.setNote('sgi:'+base); sh.getParent().toast(String(err.message||err),'Операция не сохранена',10); throw err; }
