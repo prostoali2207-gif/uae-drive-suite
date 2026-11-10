@@ -31,6 +31,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { RecordPaymentModal, type PaymentAllocationLine } from "@/components/RecordPaymentModal";
+import { ContractSigningLinkButton } from "@/components/contracts/ContractSigningLinkButton";
 import AddFeeInline, { type AddFeeInlineFee } from "@/components/contracts/AddFeeInline";
 import { VehicleTimelineSheet } from "@/components/VehicleTimelineSheet";
 import SalikModal from "@/components/SalikModal";
@@ -6039,6 +6040,7 @@ const ContractDetail = () => {
 
             <div className="flex max-w-full min-w-0 items-center gap-4">
               <div className="flex max-w-full flex-nowrap items-center gap-1.5">
+                <ContractSigningLinkButton contractId={contract.id} disabled={isContractClosed} />
                 <Button
                   variant="outline"
                   size="sm"
