@@ -495,8 +495,8 @@ function PickupInspectionModal({ contractId, uploadedBy, open, onContinue }: Pic
             next[photo.id] = photo.photo_url;
             return;
           }
-          const { data } = supabase.storage.from("inspection-photos").getPublicUrl(photo.photo_url);
-          if (data?.publicUrl) next[photo.id] = data.publicUrl;
+          const { data } = await supabase.storage.from("inspection-photos").createSignedUrl(photo.photo_url, 60 * 10);
+          if (data?.signedUrl) next[photo.id] = data.signedUrl;
         }),
       );
       if (!cancelled) setPreviews(next);
