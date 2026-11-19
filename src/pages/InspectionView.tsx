@@ -100,10 +100,10 @@ const InspectionView = () => {
             return;
           }
 
-          const { data: publicUrlData } = supabase.storage
+          const { data: signedUrlData } = await supabase.storage
             .from("inspection-photos")
-            .getPublicUrl(photoUrl);
-          if (publicUrlData?.publicUrl) urls.push(publicUrlData.publicUrl);
+            .createSignedUrl(photoUrl, 60 * 10);
+          if (signedUrlData?.signedUrl) urls.push(signedUrlData.signedUrl);
         }),
       );
 
@@ -159,11 +159,11 @@ const InspectionView = () => {
 
           let resolvedUrl = photoUrl;
           if (!/^(https?:|data:|blob:)/.test(photoUrl)) {
-            const { data: publicUrlData } = supabase.storage
+            const { data: signedUrlData } = await supabase.storage
               .from("inspection-photos")
-              .getPublicUrl(photoUrl);
-            if (!publicUrlData?.publicUrl) return;
-            resolvedUrl = publicUrlData.publicUrl;
+              .createSignedUrl(photoUrl, 60 * 10);
+            if (!signedUrlData?.signedUrl) return;
+            resolvedUrl = signedUrlData.signedUrl;
           }
 
           const group = groups.get(replacementId) ?? {
