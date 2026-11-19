@@ -258,7 +258,10 @@ export default function NewContract() {
     const rows = (data || []) as PickupPhoto[];
     setPhotos(rows);
     const previews: Record<string, string> = {};
-    rows.forEach((photo) => { previews[photo.id] = supabase.storage.from("inspection-photos").getPublicUrl(photo.photo_url).data.publicUrl; });
+    await Promise.all(rows.map(async (photo) => {
+      const { data: signed } = await supabase.storage.from("inspection-photos").createSignedUrl(photo.photo_url, 60 * 10);
+      if (signed?.signedUrl) previews[photo.id] = signed.signedUrl;
+    }));
     setPhotoPreviews(previews);
   };
 
