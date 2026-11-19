@@ -240,8 +240,11 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
         upsert: true,
       });
       if (uploadError) throw uploadError;
-      const publicUrl = supabase.storage.from("contract-pdfs").getPublicUrl(filePath).data.publicUrl;
-      setPdfUrl(publicUrl);
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from("contract-pdfs")
+        .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+      if (signedError || !signedData?.signedUrl) throw signedError || new Error("Unable to create PDF link");
+      setPdfUrl(signedData.signedUrl);
       const activated = await onActivate();
       if (!activated) return;
       setStep("success");
@@ -255,9 +258,7 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
 
   if (!open) return null;
 
-  const signedPdfUrl = contractId
-    ? supabase.storage.from("contract-pdfs").getPublicUrl(`${contractId}.pdf`).data.publicUrl
-    : "";
+  const signedPdfUrl = pdfUrl;
 
   const contract = loaded?.data as (ContractForPdf & {
     clients?: { full_name?: string | null; phone?: string | null; license_number?: string | null } | null;
@@ -413,14 +414,14 @@ export function SignContractModal({ contractId, clientName, open, onActivate, on
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <Button variant="outline" className="h-12 border-slate-300 bg-white" onClick={() => {
                   if (!signedPdfUrl || !/^https?:\/\//i.test(signedPdfUrl)) {
-                    toast.error("Public PDF link is not available");
+                    toast.error("PDF link is not available");
                     return;
                   }
                   window.open(signedPdfUrl, "_blank", "noopener,noreferrer");
                 }}>Open PDF</Button>
                 <Button className="h-12 gap-2 bg-green-600 text-white hover:bg-green-700" onClick={() => {
                   if (!signedPdfUrl || !/^https?:\/\//i.test(signedPdfUrl)) {
-                    toast.error("Public PDF link is not available");
+                    toast.error("PDF link is not available");
                     return;
                   }
                   const phone = String((loaded.data as ContractForPdf & { clients?: { phone?: string | null } | null }).clients?.phone || "").replace(/[\s\-()]/g, "");
