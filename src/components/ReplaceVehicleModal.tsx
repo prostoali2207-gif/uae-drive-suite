@@ -1885,7 +1885,6 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
     let signedAddendum: ReplacementAddendumPreviewData;
     let blob: Blob;
     let storagePath = "";
-    let publicUrl = "";
 
     try {
       signedAddendum = {
@@ -1916,19 +1915,6 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       throw new Error(`PDF upload failed: ${getReplacementAddendumErrorMessage(error)}`);
     }
 
-    try {
-      const { data: publicData } = supabase.storage
-        .from("contract-pdfs")
-        .getPublicUrl(storagePath);
-      publicUrl = publicData?.publicUrl ?? "";
-      if (!publicUrl) {
-        throw new Error("Supabase did not return a public URL.");
-      }
-    } catch (error) {
-      console.error("Replacement addendum public URL generation failed", error);
-      throw new Error(`Public URL generation failed: ${getReplacementAddendumErrorMessage(error)}`);
-    }
-
     const documentPayload = {
       contract_id: contractId,
       owner_id: replacementAddendumData.ownerId,
@@ -1936,7 +1922,7 @@ export const ReplaceVehicleModal: React.FC<ReplaceVehicleModalProps> = ({
       title: `Replacement Addendum #${replacementAddendumData.replacementNo}`,
       storage_bucket: "contract-pdfs",
       storage_path: storagePath,
-      public_url: publicUrl,
+      public_url: null,
       created_by: replacementAddendumData.createdBy,
     };
 
