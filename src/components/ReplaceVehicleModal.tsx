@@ -812,10 +812,10 @@ function ReplacementInspectionModal({
             nextPreviews[key] = photo.photo_url;
             return;
           }
-          const { data } = supabase.storage
+          const { data } = await supabase.storage
             .from("inspection-photos")
-            .getPublicUrl(photo.photo_url);
-          if (data?.publicUrl) nextPreviews[key] = data.publicUrl;
+            .createSignedUrl(photo.photo_url, 60 * 10);
+          if (data?.signedUrl) nextPreviews[key] = data.signedUrl;
         }),
       );
       if (!cancelled) setPreviews(nextPreviews);
