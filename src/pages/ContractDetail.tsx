@@ -4172,37 +4172,59 @@ const ContractDetail = () => {
     await fetchData();
   }, [fetchData, reconcileFinePaymentStatuses]);
 
-  const getContractDocumentUrl = useCallback((document: ContractDocumentRow) => {
+  const getContractDocumentUrl = useCallback(async (document: ContractDocumentRow) => {
+    if (document.storage_bucket === "contract-pdfs") {
+      const { data, error } = await supabase.storage
+        .from(document.storage_bucket)
+        .createSignedUrl(document.storage_path, 60 * 60 * 24 * 7);
+      if (error) throw error;
+      return data?.signedUrl ?? "";
+    }
     if (document.public_url) return document.public_url;
-
     const { data } = supabase.storage
       .from(document.storage_bucket)
       .getPublicUrl(document.storage_path);
-
     return data.publicUrl;
   }, []);
 
-  const openContractDocument = useCallback((document: ContractDocumentRow) => {
-    const url = getContractDocumentUrl(document);
-    if (!url) {
-      toast.error("Document URL is not available");
+  const openContractDocument = useCallback(async (document: ContractDocumentRow) => {
+    const tab = window.open("", "_blank");
+    if (!tab) {
+      toast.error("Allow pop-ups to open the document");
       return;
     }
-
-    window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const url = await getContractDocumentUrl(document);
+      if (!url) throw new Error("Document URL is not available");
+      tab.opener = null;
+      tab.location.href = url;
+    } catch {
+      tab.close();
+      toast.error("Unable to open document");
+    }
   }, [getContractDocumentUrl]);
 
-  const shareContractDocumentOnWhatsApp = useCallback((document: ContractDocumentRow) => {
-    if (!document.public_url) return;
-
-    const phone = contract?.clients?.phone?.replace(/\D/g, "") ?? "";
-    const message = `${document.title}: ${document.public_url}`;
-    const url = phone
-      ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
-      : `https://wa.me/?text=${encodeURIComponent(message)}`;
-
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, [contract?.clients?.phone]);
+  const shareContractDocumentOnWhatsApp = useCallback(async (document: ContractDocumentRow) => {
+    const tab = window.open("", "_blank");
+    if (!tab) {
+      toast.error("Allow pop-ups to share the document");
+      return;
+    }
+    try {
+      const documentUrl = await getContractDocumentUrl(document);
+      if (!documentUrl) throw new Error("Document URL is not available");
+      const phone = contract?.clients?.phone?.replace(/\\D/g, "") ?? "";
+      const message = `${document.title}: ${documentUrl}`;
+      const url = phone
+        ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+        : `https://wa.me/?text=${encodeURIComponent(message)}`;
+      tab.opener = null;
+      tab.location.href = url;
+    } catch {
+      tab.close();
+      toast.error("Unable to share document");
+    }
+  }, [contract?.clients?.phone, getContractDocumentUrl]);
 
   const effectiveContractEndDate = contract ? getLatestRentalPeriodEnd(contract, contractFees) : "";
 
